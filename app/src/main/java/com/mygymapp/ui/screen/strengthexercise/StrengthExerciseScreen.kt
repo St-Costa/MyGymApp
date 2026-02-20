@@ -84,23 +84,24 @@ fun StrengthExerciseScreen(
                 // Sets header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         "Set",
                         style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.weight(0.5f),
+                        modifier = Modifier.weight(0.8f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     Text(
                         "Reps",
                         style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(2f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     Text(
-                        "Weight (kg)",
+                        "Weight (Kg)",
                         style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(2f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                 }
@@ -108,34 +109,51 @@ fun StrengthExerciseScreen(
                 HorizontalDivider()
 
                 // Set rows
+                val repRangeText = if (uiState.repRangeMin > 0 && uiState.repRangeMax > 0) {
+                    "${uiState.repRangeMin}-${uiState.repRangeMax}"
+                } else ""
+
                 uiState.sets.forEachIndexed { index, set ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // Set number
                         Text(
                             "${index + 1}",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(0.5f),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.weight(0.8f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
 
-                        ScrollPickerInput(
-                            value = set.reps,
-                            onValueChange = { viewModel.updateReps(index, it.toInt()) },
-                            label = "Reps",
-                            previousValue = if (set.previousReps > 0) "${set.previousReps}" else "",
-                            modifier = Modifier.weight(1f),
-                        )
+                        // Reps picker
+                        Column(
+                            modifier = Modifier.weight(2f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            ScrollPickerInput(
+                                value = set.reps,
+                                onValueChange = { viewModel.updateReps(index, it.toInt()) },
+                                scrollStep = 5.0,
+                                buttonStep = 1.0,
+                            )
+                            if (repRangeText.isNotBlank()) {
+                                Text(
+                                    text = repRangeText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                )
+                            }
+                        }
 
+                        // Weight picker
                         ScrollPickerInput(
                             value = set.weight,
                             onValueChange = { viewModel.updateWeight(index, it.toDouble()) },
-                            label = "kg",
-                            previousValue = if (set.previousWeight > 0) "%.1f".format(set.previousWeight) else "",
-                            step = 0.5,
+                            scrollStep = 5.0,
+                            buttonStep = 1.0,
                             isDecimal = true,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(2f),
                         )
                     }
                     if (index < uiState.sets.lastIndex) {

@@ -66,10 +66,10 @@ object MarkdownParser {
                                 val entries = itemMap.entries.toList()
                                 if (entries.isNotEmpty()) {
                                     val (firstKey, firstVal) = entries.first()
-                                    sb.appendLine("$prefix  - $firstKey: ${formatValue(firstVal)}")
+                                    serializeMapEntry(sb, firstKey, firstVal, "$prefix    ", isFirst = true)
                                     for (i in 1 until entries.size) {
                                         val (k, v) = entries[i]
-                                        sb.appendLine("$prefix    $k: ${formatValue(v)}")
+                                        serializeMapEntry(sb, k, v, "$prefix    ", isFirst = false)
                                     }
                                 }
                             }
@@ -84,6 +84,45 @@ object MarkdownParser {
                 }
                 else -> sb.appendLine("$prefix$key: \"$value\"")
             }
+        }
+    }
+
+    private fun serializeMapEntry(
+        sb: StringBuilder,
+        key: String,
+        value: Any?,
+        prefix: String,
+        isFirst: Boolean,
+    ) {
+        val linePrefix = if (isFirst) "${prefix.dropLast(2)}- " else prefix
+        when (value) {
+            is List<*> -> {
+                sb.appendLine("$linePrefix$key:")
+                for (item in value) {
+                    when (item) {
+                        is Map<*, *> -> {
+                            @Suppress("UNCHECKED_CAST")
+                            val itemMap = item as Map<String, Any?>
+                            val entries = itemMap.entries.toList()
+                            if (entries.isNotEmpty()) {
+                                val (fk, fv) = entries.first()
+                                serializeMapEntry(sb, fk, fv, "$prefix    ", isFirst = true)
+                                for (i in 1 until entries.size) {
+                                    val (k, v) = entries[i]
+                                    serializeMapEntry(sb, k, v, "$prefix    ", isFirst = false)
+                                }
+                            }
+                        }
+                        else -> sb.appendLine("$prefix  - ${formatValue(item)}")
+                    }
+                }
+            }
+            is Map<*, *> -> {
+                sb.appendLine("$linePrefix$key:")
+                @Suppress("UNCHECKED_CAST")
+                serializeYaml(sb, value as Map<String, Any?>, prefix.length / 2)
+            }
+            else -> sb.appendLine("$linePrefix$key: ${formatValue(value)}")
         }
     }
 

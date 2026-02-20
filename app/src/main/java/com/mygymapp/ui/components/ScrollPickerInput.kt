@@ -2,9 +2,11 @@ package com.mygymapp.ui.components
 
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,80 +24,73 @@ import kotlin.math.roundToInt
 fun ScrollPickerInput(
     value: Number,
     onValueChange: (Number) -> Unit,
-    label: String,
-    previousValue: String = "",
-    step: Double = 1.0,
+    scrollStep: Double = 5.0,
+    buttonStep: Double = 1.0,
     minValue: Double = 0.0,
     isDecimal: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
-    val sensitivity = 20f // pixels per step
+    val sensitivity = 20f
 
-    Column(
+    val displayValue = if (isDecimal) {
+        val d = value.toDouble()
+        if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
+    } else {
+        value.toInt().toString()
+    }
+
+    fun applyChange(delta: Double) {
+        val newValue = if (isDecimal) {
+            (value.toDouble() + delta).coerceAtLeast(minValue)
+        } else {
+            (value.toInt() + delta.roundToInt()).coerceAtLeast(minValue.roundToInt())
+        }
+        if (isDecimal) onValueChange(newValue as Number) else onValueChange((newValue as Number).toInt())
+    }
+
+    Row(
         modifier = modifier
-            .width(80.dp)
-            .pointerInput(step, minValue) {
+            .pointerInput(scrollStep, minValue) {
                 detectVerticalDragGestures(
                     onDragStart = { dragAccumulator = 0f },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        dragAccumulator -= dragAmount // negative because drag down = decrease
+                        dragAccumulator -= dragAmount
                         val steps = (dragAccumulator / sensitivity).toInt()
                         if (steps != 0) {
                             dragAccumulator -= steps * sensitivity
-                            val newValue = if (isDecimal) {
-                                val current = value.toDouble()
-                                (current + steps * step).coerceAtLeast(minValue)
-                            } else {
-                                val current = value.toInt()
-                                (current + (steps * step).roundToInt()).coerceAtLeast(minValue.roundToInt())
-                            }
-                            if (isDecimal) {
-                                onValueChange(newValue as Number)
-                            } else {
-                                onValueChange((newValue as Number).toInt())
-                            }
+                            applyChange(steps * scrollStep)
                         }
                     },
                 )
             },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-        )
-
-        if (previousValue.isNotBlank()) {
-            Text(
-                text = previousValue,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                textAlign = TextAlign.Center,
-            )
-        }
-
-        val displayValue = if (isDecimal) {
-            val d = value.toDouble()
-            if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
-        } else {
-            value.toInt().toString()
+        OutlinedButton(
+            onClick = { applyChange(-buttonStep) },
+            modifier = Modifier.size(32.dp),
+            shape = CircleShape,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+        ) {
+            Text("\u2212", style = MaterialTheme.typography.titleMedium)
         }
 
         Text(
             text = displayValue,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
         )
 
-        Text(
-            text = "scroll",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
-        )
+        OutlinedButton(
+            onClick = { applyChange(buttonStep) },
+            modifier = Modifier.size(32.dp),
+            shape = CircleShape,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+        ) {
+            Text("+", style = MaterialTheme.typography.titleMedium)
+        }
     }
 }

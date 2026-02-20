@@ -7,6 +7,7 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.repository.ExerciseRepository
+import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ data class StrengthExerciseUiState(
 class StrengthExerciseViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
+    private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
 ) : ViewModel() {
 
@@ -66,12 +68,16 @@ class StrengthExerciseViewModel @Inject constructor(
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
             val setCount = workoutExercise?.sets?.size ?: 3
 
-            // Get routine exercise config for rep range
+            // Get rep range from routine
+            var repMin = 0
+            var repMax = 0
             val routineId = session?.routineId ?: ""
-            val routine = if (routineId.isNotBlank()) {
-                com.mygymapp.data.repository.RoutineRepository::class.java
-                    .let { null } // We'll get rep range from the routine
-            } else null
+            if (routineId.isNotBlank()) {
+                val routine = routineRepository.getById(routineId)
+                val routineExercise = routine?.exercises?.find { it.exerciseId == exerciseId }
+                repMin = routineExercise?.repRangeMin ?: 0
+                repMax = routineExercise?.repRangeMax ?: 0
+            }
 
             val sets = (0 until setCount).map { i ->
                 val prev = previousSets.getOrNull(i)
@@ -84,6 +90,8 @@ class StrengthExerciseViewModel @Inject constructor(
             _uiState.value = StrengthExerciseUiState(
                 exercise = exercise,
                 sets = sets,
+                repRangeMin = repMin,
+                repRangeMax = repMax,
                 description = exercise.notes,
                 isLoading = false,
             )
