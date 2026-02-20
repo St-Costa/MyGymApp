@@ -33,16 +33,24 @@ class MainViewModel @Inject constructor(
     fun loadGitgraph() {
         viewModelScope.launch {
             val today = LocalDate.now()
-            val startDate = today.minusDays(27)
+            // Align to weeks: each row is Mon–Sun
+            // dayOfWeek: 1=Monday .. 7=Sunday
+            val todayDow = today.dayOfWeek.value // 1=Mon, 7=Sun
+            val currentWeekMonday = today.minusDays((todayDow - 1).toLong())
+            val startDate = currentWeekMonday.minusWeeks(3) // 4 weeks total
 
             val sessions = workoutRepository.getSessionsInRange(startDate, today)
 
             // Group sessions by routineId, sorted by date
             val sessionsByRoutine = sessions.groupBy { it.routineId }
 
-            // For each day, determine the status
+            // For each day in the 4-week grid, determine the status
             val days = (0 until 28).map { dayOffset ->
                 val date = startDate.plusDays(dayOffset.toLong())
+                // Future days (after today) stay NONE
+                if (date.isAfter(today)) {
+                    return@map DayStatus.NONE
+                }
                 val dateStr = date.toString()
                 val daySessions = sessions.filter { it.date == dateStr }
 
@@ -72,7 +80,8 @@ class MainViewModel @Inject constructor(
                 }
             }
 
-            val todayIndex = 27 // Today is always the last day
+            // Today's index: row 3 (last week) + column based on day of week
+            val todayIndex = 3 * 7 + (todayDow - 1)
 
             _uiState.value = MainUiState(
                 gitgraphDays = days,
