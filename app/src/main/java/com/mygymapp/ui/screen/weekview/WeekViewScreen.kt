@@ -84,17 +84,21 @@ fun WeekViewScreen(
                         )
                     } else {
                         day.routines.forEach { routine ->
+                            val isCompleted = routine.id in day.completedRoutineIds
+                            val isMissed = day.isPast && !isCompleted
+                            val borderStroke = when {
+                                isCompleted -> BorderStroke(2.dp, Color(0xFF4CAF50))
+                                isMissed -> BorderStroke(2.dp, Color(0xFFF44336))
+                                day.isToday -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                                else -> BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant)
+                            }
                             Card(
                                 onClick = { onNavigateToRoutine(routine.id) },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surface,
                                 ),
-                                border = if (day.isToday) {
-                                    BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                                } else {
-                                    BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant)
-                                },
+                                border = borderStroke,
                             ) {
                                 Column(
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
