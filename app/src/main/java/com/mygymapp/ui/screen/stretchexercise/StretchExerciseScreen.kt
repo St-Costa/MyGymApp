@@ -1,0 +1,163 @@
+package com.mygymapp.ui.screen.stretchexercise
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import android.content.Intent
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.service.StopwatchService
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StretchExerciseScreen(
+    onBack: () -> Unit,
+    viewModel: StretchExerciseViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(uiState.exercise?.name ?: "Exercise") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Description
+                AutoSaveTextField(
+                    value = uiState.description,
+                    onValueChange = viewModel::updateDescription,
+                    onSave = viewModel::saveDescription,
+                    label = "Description",
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4,
+                )
+
+                // Stopwatch button
+                val context = LocalContext.current
+                Button(
+                    onClick = {
+                        viewModel.toggleStopwatch()
+                        val intent = Intent(context, StopwatchService::class.java).apply {
+                            action = if (uiState.isStopwatchRunning) {
+                                StopwatchService.ACTION_STOP
+                            } else {
+                                StopwatchService.ACTION_START
+                            }
+                        }
+                        context.startForegroundService(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.isStopwatchRunning)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.secondary,
+                    ),
+                ) {
+                    Text(
+                        if (uiState.isStopwatchRunning) "Stop Stopwatch" else "Start Stopwatch"
+                    )
+                }
+
+                // Sets
+                Text("Sets", style = MaterialTheme.typography.titleLarge)
+
+                uiState.sets.forEachIndexed { index, set ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Set ${index + 1}",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "${set.timeSeconds}s",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        )
+                        Checkbox(
+                            checked = set.done,
+                            onCheckedChange = {
+                                if (!set.done) viewModel.toggleSetDone(index)
+                            },
+                        )
+                    }
+                    if (index < uiState.sets.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = {
+                        viewModel.completeExercise()
+                        onBack()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                    ),
+                ) {
+                    Text("Complete Exercise")
+                }
+
+                Spacer(modifier = Modifier.height(80.dp))
+            }
+        }
+    }
+}

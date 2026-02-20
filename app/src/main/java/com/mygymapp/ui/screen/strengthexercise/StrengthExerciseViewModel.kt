@@ -1,0 +1,138 @@
+package com.mygymapp.ui.screen.strengthexercise
+
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.model.Exercise
+import com.mygymapp.data.model.ExerciseSet
+import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.repository.ExerciseRepository
+import com.mygymapp.data.repository.WorkoutRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class StrengthSetUi(
+    val reps: Int = 0,
+    val weight: Double = 0.0,
+    val previousReps: Int = 0,
+    val previousWeight: Double = 0.0,
+)
+
+data class StrengthExerciseUiState(
+    val exercise: Exercise? = null,
+    val sets: List<StrengthSetUi> = emptyList(),
+    val repRangeMin: Int = 0,
+    val repRangeMax: Int = 0,
+    val description: String = "",
+    val isLoading: Boolean = true,
+    val allSetsFilled: Boolean = false,
+)
+
+@HiltViewModel
+class StrengthExerciseViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val exerciseRepository: ExerciseRepository,
+    private val workoutRepository: WorkoutRepository,
+) : ViewModel() {
+
+    private val sessionId: String = savedStateHandle["sessionId"] ?: ""
+    private val exerciseId: String = savedStateHandle["exerciseId"] ?: ""
+
+    private val _uiState = MutableStateFlow(StrengthExerciseUiState())
+    val uiState: StateFlow<StrengthExerciseUiState> = _uiState
+
+    private var currentSession: WorkoutSession? = null
+
+    init {
+        viewModelScope.launch {
+            val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
+
+            // Find previous workout data for this exercise
+            val previousSessions = workoutRepository.getSessionsForExercise(exerciseId, 1)
+            val previousSets = previousSessions.firstOrNull()?.exercises
+                ?.find { it.exerciseId == exerciseId }?.sets
+                ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+
+            // Find current session to get set count and rep range
+            val sessions = workoutRepository.getSessionsInRange(
+                java.time.LocalDate.now(), java.time.LocalDate.now()
+            )
+            val session = sessions.find { it.id == sessionId }
+            currentSession = session
+
+            val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
+            val setCount = workoutExercise?.sets?.size ?: 3
+
+            // Get routine exercise config for rep range
+            val routineId = session?.routineId ?: ""
+            val routine = if (routineId.isNotBlank()) {
+                com.mygymapp.data.repository.RoutineRepository::class.java
+                    .let { null } // We'll get rep range from the routine
+            } else null
+
+            val sets = (0 until setCount).map { i ->
+                val prev = previousSets.getOrNull(i)
+                StrengthSetUi(
+                    previousReps = prev?.reps ?: 0,
+                    previousWeight = prev?.weight ?: 0.0,
+                )
+            }
+
+            _uiState.value = StrengthExerciseUiState(
+                exercise = exercise,
+                sets = sets,
+                description = exercise.notes,
+                isLoading = false,
+            )
+        }
+    }
+
+    fun updateReps(setIndex: Int, reps: Int) {
+        updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0)) }
+    }
+
+    fun updateWeight(setIndex: Int, weight: Double) {
+        updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0)) }
+    }
+
+    fun updateDescription(text: String) {
+        _uiState.value = _uiState.value.copy(description = text)
+    }
+
+    fun saveDescription(text: String) {
+        viewModelScope.launch {
+            val exercise = _uiState.value.exercise ?: return@launch
+            exerciseRepository.save(exercise.copy(notes = text))
+        }
+    }
+
+    fun completeExercise(): Boolean {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            val exercises = session.exercises.map { ex ->
+                if (ex.exerciseId == exerciseId) {
+                    val updatedSets = _uiState.value.sets.map { setUi ->
+                        ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                    }
+                    ex.copy(completed = true, sets = updatedSets)
+                } else ex
+            }
+            val updatedSession = session.copy(exercises = exercises)
+            currentSession = updatedSession
+            workoutRepository.save(updatedSession)
+        }
+        return true
+    }
+
+    private fun updateSet(index: Int, transform: (StrengthSetUi) -> StrengthSetUi) {
+        val sets = _uiState.value.sets.toMutableList()
+        if (index in sets.indices) {
+            sets[index] = transform(sets[index])
+            val allFilled = sets.all { it.reps > 0 && it.weight > 0 }
+            _uiState.value = _uiState.value.copy(sets = sets, allSetsFilled = allFilled)
+        }
+    }
+}
