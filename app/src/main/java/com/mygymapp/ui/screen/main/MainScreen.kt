@@ -1,0 +1,85 @@
+package com.mygymapp.ui.screen.main
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.ui.components.GitgraphView
+
+@Composable
+fun MainScreen(
+    onNavigateToWeekView: () -> Unit,
+    onNavigateToExercises: () -> Unit,
+    onNavigateToRoutines: () -> Unit,
+    viewModel: MainViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadGitgraph()
+    }
+
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "MyGymApp",
+                style = MaterialTheme.typography.headlineLarge,
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Gitgraph
+            GitgraphView(
+                days = uiState.gitgraphDays,
+                todayIndex = uiState.todayIndex,
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Button(
+                    onClick = onNavigateToWeekView,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Week View")
+                }
+                Button(
+                    onClick = onNavigateToExercises,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Exercises")
+                }
+                Button(
+                    onClick = onNavigateToRoutines,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Routines")
+                }
+            }
+        }
+    }
+}
