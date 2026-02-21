@@ -49,7 +49,7 @@ File naming: `slugify(name)-shortId.md` for exercises/routines, `YYYY-MM-DD_slug
 ## Screens
 1. **MainScreen** — Gitgraph view + navigation buttons (Week View, Exercises, Routines)
 2. **WeekViewScreen** — 7 days with assigned enabled routines, current day highlighted
-3. **ExerciseListScreen** — Grouped by body part, red/blue borders (forza/stretch), picker mode for routine creation
+3. **ExerciseListScreen** — Grouped by body part, orange/blue borders (forza/stretch), picker mode for routine creation
 4. **ExerciseEditScreen** — Create/edit exercise (name, link, notes, bodypart autocomplete, type toggle)
 5. **RoutineListScreen** — List with enable/disable toggle
 6. **RoutineEditScreen** — Name, day, exercise selection + set config
@@ -71,7 +71,7 @@ What exists:
 - **Launcher icon**: Simple barbell vector drawable
 
 ### [x] Phase 2: Exercise Management — DONE
-- `ExerciseListScreen` with ViewModel: grouped by bodypart, red (forza) / blue (stretch) borders, picker mode
+- `ExerciseListScreen` with ViewModel: grouped by bodypart, orange (forza) / blue (stretch) borders, picker mode
 - `ExerciseEditScreen` with ViewModel: form with name, type toggle (FilterChip), bodypart autocomplete, link, notes
 - Components: `ExerciseCard`, `BodyPartAutocomplete`
 
