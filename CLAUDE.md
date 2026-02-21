@@ -94,13 +94,16 @@ What exists:
 - Tonnage calculation in `ActiveRoutineViewModel.finalizeSession()`: sum(reps*weight) per exercise and by bodypart, stored in session file
 
 ### [x] Phase 6: Media & Polish — DONE
-- `StopwatchService`: foreground service (`foregroundServiceType="specialUse"`) with Chronometer notification
-  - Channel ID `stopwatch_channel_v2`, `IMPORTANCE_DEFAULT` + `setSound(null,null)` (silent but icon visible)
+- `StopwatchService`: foreground service (`foregroundServiceType="specialUse"`) with dynamic bitmap notification icon
+  - Channel ID `stopwatch_channel_v2`, `IMPORTANCE_DEFAULT` + `setSound(null,null)` (silent but visible)
   - `FOREGROUND_SERVICE_IMMEDIATE` to bypass Android 14+ 10-second notification delay
   - API 34+ (`UPSIDE_DOWN_CAKE`): `startForeground()` with `FOREGROUND_SERVICE_TYPE_SPECIAL_USE`
   - Manifest: `<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE">` required on API 34+
-  - Custom icon `ic_stopwatch.xml`
-- `MainActivity`: requests `POST_NOTIFICATIONS` permission at runtime on API 33+ (required for notification to appear)
+  - API 36+ (`BAKLAVA`): uses `Notification.Builder` directly with `VISIBILITY_PUBLIC`, `setColor()`, `setUsesChronometer()`, and `requestPromotedOngoing=true` extra (for future Live Updates / Samsung NowBar support)
+  - Dynamic bitmap icon: 96×96px purple square, minutes on top / seconds on bottom, updates every second via Handler
+  - `setLargeIcon(bitmap)` for notification shade display; `setUsesChronometer(true)` + `setWhen(startTime)` for auto-running time in shade
+  - Note: Samsung NowBar / Android 16 Live Updates pill requires proprietary Samsung APIs — NOT accessible to third-party apps. Standard APIs confirmed insufficient after testing.
+- `MainActivity`: requests `POST_NOTIFICATIONS` permission at runtime on API 33+
 - `StretchExerciseViewModel`: in-app coroutine timer (`timerJob`, `elapsedSeconds`), resets on each Start
 - `StretchExerciseScreen`: in-app `MM:SS` display always visible (dimmed when stopped, secondary color when running); button logic captures `wasRunning` before `toggleStopwatch()` to avoid async state race
 - `ImageCacheRepository`: downloads images from URLs, caches by SHA-256 hash, handles Google Drive URL conversion
