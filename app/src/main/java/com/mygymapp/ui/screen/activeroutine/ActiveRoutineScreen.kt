@@ -6,18 +6,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
@@ -112,6 +117,12 @@ fun ActiveRoutineScreen(
                         ProgressSection(
                             totalTonnage = uiState.totalTonnage,
                             previousTonnage = uiState.previousTonnage,
+                            sessionTonnage = uiState.sessionTonnage,
+                            sessionTonnageByBodypart = uiState.sessionTonnageByBodypart,
+                            sessionLabels = uiState.sessionLabels,
+                            selectedFilter = uiState.selectedChartFilter,
+                            isLoadingChart = uiState.isLoadingChart,
+                            onFilterSelected = { viewModel.selectChartFilter(it) },
                         )
                     }
                 }
@@ -132,9 +143,7 @@ private fun ExerciseRow(
 
     Card(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(if (exercise.completed) 0.5f else 1f),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(2.dp, borderColor),
     ) {
@@ -145,7 +154,12 @@ private fun ExerciseRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            // Left side: name + sets — dimmed when completed
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(if (exercise.completed) 0.4f else 1f),
+            ) {
                 Text(
                     text = exercise.exerciseName,
                     style = MaterialTheme.typography.titleMedium,
@@ -157,11 +171,13 @@ private fun ExerciseRow(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
             }
-            if (exercise.completed) {
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = "Completed",
-                    tint = GitgraphGreen,
+            // Right side: progress % (bright, not dimmed) or nothing
+            if (exercise.completed && exercise.tonnageChangePct != null) {
+                val color = if (exercise.tonnageChangePct > 0) GitgraphGreen else GitgraphRed
+                Text(
+                    text = "%+.1f%%".format(exercise.tonnageChangePct),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = color,
                 )
             }
         }
@@ -172,6 +188,12 @@ private fun ExerciseRow(
 private fun ProgressSection(
     totalTonnage: Double,
     previousTonnage: Double?,
+    sessionTonnage: List<Double>,
+    sessionTonnageByBodypart: Map<String, List<Double>>,
+    sessionLabels: List<String>,
+    selectedFilter: String,
+    isLoadingChart: Boolean,
+    onFilterSelected: (String) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -183,19 +205,42 @@ private fun ProgressSection(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Workout Complete!", style = MaterialTheme.typography.titleLarge)
-            Text(
-                text = "Total tonnage: %.1f kg".format(totalTonnage),
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            if (previousTonnage != null && previousTonnage > 0) {
-                val diff = totalTonnage - previousTonnage
-                val pct = (diff / previousTonnage) * 100
-                val color = if (diff >= 0) GitgraphGreen else GitgraphRed
+            if (isLoadingChart) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (sessionTonnage.isNotEmpty()) {
+                // Filter chips
+                val filters = listOf("Totale") + sessionTonnageByBodypart.keys.toList()
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(filters) { filter ->
+                        FilterChip(
+                            selected = filter == selectedFilter,
+                            onClick = { onFilterSelected(filter) },
+                            label = { Text(filter) },
+                        )
+                    }
+                }
+
+                // Chart title: current session's tonnage for the selected filter
+                val chartData = if (selectedFilter == "Totale") {
+                    sessionTonnage
+                } else {
+                    sessionTonnageByBodypart[selectedFilter] ?: sessionTonnage
+                }
+                val currentValue = chartData.lastOrNull() ?: 0.0
                 Text(
-                    text = "vs previous: %+.1f%% (%+.1f kg)".format(pct, diff),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = color,
+                    text = "$selectedFilter: %.1f kg".format(currentValue),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+
+                TonnageLineChart(
+                    data = chartData,
+                    labels = sessionLabels,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

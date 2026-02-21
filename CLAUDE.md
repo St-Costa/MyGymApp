@@ -101,11 +101,16 @@ What exists:
 ### Remaining Work (future enhancements)
 - [ ] YouTubeEmbed component (WebView-based, muted, paused)
 - [ ] CachedImage component using Coil with custom cache dir
-- [ ] Vico charts for detailed progress (exercise-level line charts over time)
 - [ ] Image/video display in StrengthExerciseScreen and StretchExerciseScreen
 - [ ] Delete confirmation dialogs for exercises and routines
 - [ ] Reorder exercises in routine edit (drag & drop)
 - [ ] Export/import data
+
+### [x] Phase 7: Progress & Charts (post-completion) — DONE
+- `TonnageLineChart` in `ui/components/`: pure Canvas line chart, one point per completed session, green/red coloring, no external library
+- `ActiveRoutineScreen` progress section: filter chips (Totale + per bodypart), chart title with current tonnage, loading spinner
+- `ActiveRoutineViewModel`: per-exercise tonnage change badge (loaded from reloaded session on disk), 12-week history query, fixed `finalizeSession` bug (now reloads from disk before computing tonnage)
+- `WorkoutRepository`: added `getSession(sessionId, date)`, fixed `getLastSessionForRoutine` to sort by `completedAt` (was sorting by filename/UUID → wrong order for same-day sessions)
 
 ## Build & Run
 ```bash
