@@ -107,6 +107,7 @@ What exists:
 - `ExerciseEditScreen`: live preview below link field, debounced 800ms; clears immediately if field emptied
 - `StrengthExerciseScreen` + `StretchExerciseScreen`: MediaPreview shown above description field
 - Note: WebView always shows gray in Android Studio Compose Preview — works correctly on device/emulator
+- `MyGymApp` implements `ImageLoaderFactory`: Coil configured with permanent disk cache in `filesDir/gymdata/image_cache/` (100MB, never cleared by Android) + memory cache at 20% RAM
 
 ### Remaining Work (future enhancements)
 - [ ] Delete confirmation dialogs for exercises and routines
