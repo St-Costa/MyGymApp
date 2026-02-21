@@ -98,10 +98,17 @@ What exists:
 - `ImageCacheRepository`: downloads images from URLs, caches by SHA-256 hash, handles Google Drive URL conversion
 - All screens have loading states (CircularProgressIndicator) and empty states
 
+### [x] Phase 8: Media Display — DONE
+- `MediaPreview` in `ui/components/`: handles images and YouTube videos
+  - Images: loaded via Coil (SubcomposeAsyncImage), Google Drive share links auto-converted to direct download URL
+  - YouTube: extracts video ID from watch/shorts/embed/youtu.be URLs; shows thumbnail (hqdefault.jpg) with play button overlay; tap → inline WebView player (`youtube.com/embed/{id}?autoplay=1&playsinline=1&rel=0`)
+  - WebView settings: javaScriptEnabled, domStorageEnabled (required by YouTube embed), mediaPlaybackRequiresUserGesture=false
+  - Error state: optional red error text (enabled in ExerciseEditScreen, silent in exercise screens)
+- `ExerciseEditScreen`: live preview below link field, debounced 800ms; clears immediately if field emptied
+- `StrengthExerciseScreen` + `StretchExerciseScreen`: MediaPreview shown above description field
+- Note: WebView always shows gray in Android Studio Compose Preview — works correctly on device/emulator
+
 ### Remaining Work (future enhancements)
-- [ ] YouTubeEmbed component (WebView-based, muted, paused)
-- [ ] CachedImage component using Coil with custom cache dir
-- [ ] Image/video display in StrengthExerciseScreen and StretchExerciseScreen
 - [ ] Delete confirmation dialogs for exercises and routines
 - [ ] Reorder exercises in routine edit (drag & drop)
 - [ ] Export/import data
