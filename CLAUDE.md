@@ -88,8 +88,8 @@ What exists:
 - `StopwatchService`: foreground service with chronometer notification in status bar
 
 ### [x] Phase 5: Progress & Charts — DONE
-- `GitgraphView`: 4x7 grid, colored squares (green=improved, red=regressed, dark=no workout), today highlighted with white border
-- `MainViewModel`: computes gitgraph data from last 28 days of workout history
+- `GitgraphView`: 4x7 grid (48dp cells), day-of-week header (M T W T F S S), colored squares (green=improved, red=regressed, dark=no workout), today highlighted with white border
+- `MainViewModel`: computes gitgraph data from last 28 days; color based on **last completed session of each day** vs most recent previous session for that same routine (sorted by `completedAt`)
 - `WeekViewScreen` with `WeekViewViewModel`: 7 days with assigned enabled routines, current day highlighted (bold + primary color), rest days shown
 - Tonnage calculation in `ActiveRoutineViewModel.finalizeSession()`: sum(reps*weight) per exercise and by bodypart, stored in session file
 

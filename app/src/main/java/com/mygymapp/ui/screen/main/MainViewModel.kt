@@ -57,26 +57,19 @@ class MainViewModel @Inject constructor(
                 if (daySessions.isEmpty()) {
                     DayStatus.NONE
                 } else {
-                    // Check if any session that day had improved tonnage
-                    var improved = false
-                    var regressed = false
-                    for (session in daySessions) {
-                        val routineSessions = sessionsByRoutine[session.routineId]
-                            ?.filter { it.date < dateStr }
-                            ?.sortedByDescending { it.date }
-                        val previous = routineSessions?.firstOrNull()
-                        if (previous != null) {
-                            if (session.totalTonnage >= previous.totalTonnage) {
-                                improved = true
-                            } else {
-                                regressed = true
-                            }
-                        } else {
-                            // First time doing this routine, count as improved
-                            improved = true
-                        }
+                    // Use only the last completed session of the day (by completedAt)
+                    val lastSession = daySessions.maxByOrNull { it.completedAt }!!
+                    val previousSessions = sessionsByRoutine[lastSession.routineId]
+                        ?.filter { it.date < dateStr }
+                        ?.sortedByDescending { it.completedAt }
+                    val previous = previousSessions?.firstOrNull()
+                    if (previous != null) {
+                        if (lastSession.totalTonnage >= previous.totalTonnage) DayStatus.IMPROVED
+                        else DayStatus.REGRESSED
+                    } else {
+                        // First time doing this routine, count as improved
+                        DayStatus.IMPROVED
                     }
-                    if (improved) DayStatus.IMPROVED else if (regressed) DayStatus.REGRESSED else DayStatus.NONE
                 }
             }
 
