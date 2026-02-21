@@ -23,6 +23,7 @@ data class ExerciseEditUiState(
     val isNew: Boolean = true,
     val isSaving: Boolean = false,
     val saved: Boolean = false,
+    val deleted: Boolean = false,
 )
 
 @HiltViewModel
@@ -77,6 +78,14 @@ class ExerciseEditViewModel @Inject constructor(
 
     fun onNotesChange(value: String) {
         _uiState.value = _uiState.value.copy(notes = value)
+    }
+
+    fun deleteExercise() {
+        val id = exerciseId ?: return
+        viewModelScope.launch {
+            exerciseRepository.delete(id)
+            _uiState.value = _uiState.value.copy(deleted = true)
+        }
     }
 
     fun save() {
