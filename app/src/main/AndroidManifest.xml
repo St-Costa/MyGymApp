@@ -25,7 +25,11 @@
         <service
             android:name=".ui.service.StopwatchService"
             android:foregroundServiceType="specialUse"
-            android:exported="false" />
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Stretch exercise stopwatch timer for workout tracking" />
+        </service>
     </application>
 
 </manifest>

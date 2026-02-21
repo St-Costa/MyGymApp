@@ -43,7 +43,7 @@ File naming: `slugify(name)-shortId.md` for exercises/routines, `YYYY-MM-DD_slug
 - **History by date**: `YYYY/MM/` directories for efficient date-range scans
 - **Vertical scroll picker**: For one-handed reps/weight input (no keyboard popup)
 - **Auto-save**: Debounced 500ms writes for text fields (no save button)
-- **Stopwatch**: Foreground service with Chronometer notification (status bar only, no in-app UI)
+- **Stopwatch**: Foreground service with Chronometer notification (status bar) + in-app MM:SS display (always visible, dimmed when stopped)
 - **No popup notifications**
 
 ## Screens
@@ -94,7 +94,15 @@ What exists:
 - Tonnage calculation in `ActiveRoutineViewModel.finalizeSession()`: sum(reps*weight) per exercise and by bodypart, stored in session file
 
 ### [x] Phase 6: Media & Polish — DONE
-- `StopwatchService`: foreground service with Chronometer notification, registered in manifest
+- `StopwatchService`: foreground service (`foregroundServiceType="specialUse"`) with Chronometer notification
+  - Channel ID `stopwatch_channel_v2`, `IMPORTANCE_DEFAULT` + `setSound(null,null)` (silent but icon visible)
+  - `FOREGROUND_SERVICE_IMMEDIATE` to bypass Android 14+ 10-second notification delay
+  - API 34+ (`UPSIDE_DOWN_CAKE`): `startForeground()` with `FOREGROUND_SERVICE_TYPE_SPECIAL_USE`
+  - Manifest: `<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE">` required on API 34+
+  - Custom icon `ic_stopwatch.xml`
+- `MainActivity`: requests `POST_NOTIFICATIONS` permission at runtime on API 33+ (required for notification to appear)
+- `StretchExerciseViewModel`: in-app coroutine timer (`timerJob`, `elapsedSeconds`), resets on each Start
+- `StretchExerciseScreen`: in-app `MM:SS` display always visible (dimmed when stopped, secondary color when running); button logic captures `wasRunning` before `toggleStopwatch()` to avoid async state race
 - `ImageCacheRepository`: downloads images from URLs, caches by SHA-256 hash, handles Google Drive URL conversion
 - All screens have loading states (CircularProgressIndicator) and empty states
 
