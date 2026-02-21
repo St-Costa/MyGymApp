@@ -100,8 +100,9 @@ What exists:
   - API 34+ (`UPSIDE_DOWN_CAKE`): `startForeground()` with `FOREGROUND_SERVICE_TYPE_SPECIAL_USE`
   - Manifest: `<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE">` required on API 34+
   - API 36+ (`BAKLAVA`): uses `Notification.Builder` directly with `VISIBILITY_PUBLIC`, `setColor()`, `setUsesChronometer()`, and `requestPromotedOngoing=true` extra (for future Live Updates / Samsung NowBar support)
-  - Dynamic bitmap icon: 96×96px purple square, minutes on top / seconds on bottom, updates every second via Handler
+  - Dynamic bitmap icon: 96×96px square, **seconds only** (00–59), 72f bold font, color cycles every 60s through 5 colors (purple, amber, cyan, green, pink) readable with black text
   - `setLargeIcon(bitmap)` for notification shade display; `setUsesChronometer(true)` + `setWhen(startTime)` for auto-running time in shade
+  - Vibration every 30 seconds (2000ms); trigger uses `lastVibrationAt` tracking (`elapsed - lastVibrationAt >= 30`) to avoid Handler drift skipping multiples of 30
   - Note: Samsung NowBar / Android 16 Live Updates pill requires proprietary Samsung APIs — NOT accessible to third-party apps. Standard APIs confirmed insufficient after testing.
 - `MainActivity`: requests `POST_NOTIFICATIONS` permission at runtime on API 33+
 - `StretchExerciseViewModel`: in-app coroutine timer (`timerJob`, `elapsedSeconds`), resets on each Start

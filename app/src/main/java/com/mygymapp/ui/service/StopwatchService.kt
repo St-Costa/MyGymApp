@@ -17,6 +17,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
 
@@ -27,15 +30,29 @@ class StopwatchService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.mygymapp.START_STOPWATCH"
         const val ACTION_STOP = "com.mygymapp.STOP_STOPWATCH"
+
+        // 5 light colors readable with black text, one per minute (cycles)
+        private val CYCLE_COLORS = intArrayOf(
+            0xFFBB86FC.toInt(),  // purple
+            0xFFFFD54F.toInt(),  // amber
+            0xFF4DD0E1.toInt(),  // cyan
+            0xFF81C784.toInt(),  // green
+            0xFFF48FB1.toInt(),  // pink
+        )
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var startElapsedRealtime = 0L
-    private var startWallClockTime = 0L  // for chronometer (stays constant)
+    private var startWallClockTime = 0L
+    private var lastVibrationAt = -1
 
     private val tickRunnable = object : Runnable {
         override fun run() {
             val elapsed = ((SystemClock.elapsedRealtime() - startElapsedRealtime) / 1000).toInt()
+            if (elapsed > 0 && elapsed - lastVibrationAt >= 30) {
+                lastVibrationAt = elapsed
+                vibrate()
+            }
             getSystemService(NotificationManager::class.java)
                 .notify(NOTIFICATION_ID, buildNotification(elapsed))
             handler.postDelayed(this, 1000)
@@ -52,6 +69,7 @@ class StopwatchService : Service() {
             ACTION_START -> {
                 startElapsedRealtime = SystemClock.elapsedRealtime()
                 startWallClockTime = System.currentTimeMillis()
+                lastVibrationAt = -1
                 val notification = buildNotification(0)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
@@ -66,6 +84,7 @@ class StopwatchService : Service() {
             }
             ACTION_STOP -> {
                 handler.removeCallbacks(tickRunnable)
+                lastVibrationAt = -1
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -81,21 +100,22 @@ class StopwatchService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun buildNotification(elapsedSeconds: Int): Notification {
-        val minutes = elapsedSeconds / 60
         val secs = elapsedSeconds % 60
-        val bitmap = createTimerBitmap(minutes, secs)
+        val colorIndex = (elapsedSeconds / 60) % CYCLE_COLORS.size
+        val bgColor = CYCLE_COLORS[colorIndex]
+        val bitmap = createTimerBitmap(secs, bgColor)
+        val totalTime = "%d:%02d".format(elapsedSeconds / 60, secs)
 
-        // Android 16+ (API 36): use native Notification.Builder + set requestPromotedOngoing
-        // extra via bundle (setRequestPromotedOngoing() is only in API 36.1+).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
             val n = Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(Icon.createWithBitmap(bitmap))
                 .setLargeIcon(Icon.createWithBitmap(bitmap))
                 .setContentTitle("Stopwatch")
+                .setContentText(totalTime)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setColor(0xFFBB86FC.toInt())
+                .setColor(bgColor)
                 .setUsesChronometer(true)
                 .setWhen(startWallClockTime)
                 .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
@@ -108,53 +128,50 @@ class StopwatchService : Service() {
             .setSmallIcon(IconCompat.createWithBitmap(bitmap))
             .setLargeIcon(bitmap)
             .setContentTitle("Stopwatch")
+            .setContentText(totalTime)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setColor(0xFFBB86FC.toInt())
+            .setColor(bgColor)
             .setUsesChronometer(true)
             .setWhen(startWallClockTime)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
-    private fun createTimerBitmap(minutes: Int, seconds: Int): Bitmap {
+    private fun createTimerBitmap(seconds: Int, bgColor: Int): Bitmap {
         val size = 96
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        // Purple background (Primary: 0xFFBB86FC)
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFBB86FC.toInt()
-        }
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
         canvas.drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), 12f, 12f, bgPaint)
 
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.BLACK
             textAlign = Paint.Align.CENTER
             typeface = Typeface.DEFAULT_BOLD
-            textSize = 50f
+            textSize = 72f
         }
 
         val cx = size / 2f
-        val half = size / 2f
-        val vOffset = -(textPaint.ascent() + textPaint.descent()) / 2f
-
-        // Minutes on top half
-        canvas.drawText(minutes.toString(), cx, half / 2f + vOffset, textPaint)
-
-        // Thin divider
-        val divPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.BLACK
-            alpha = 60
-            strokeWidth = 1f
-        }
-        canvas.drawLine(10f, half, size - 10f, half, divPaint)
-
-        // Seconds on bottom half (always 2 digits)
-        canvas.drawText("%02d".format(seconds), cx, half + half / 2f + vOffset, textPaint)
+        val cy = size / 2f
+        val y = cy - (textPaint.ascent() + textPaint.descent()) / 2f
+        canvas.drawText("%02d".format(seconds), cx, y, textPaint)
 
         return bitmap
+    }
+
+    private fun vibrate() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java)
+                .defaultVibrator
+                .vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Vibrator::class.java)
+                .vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
     }
 
     private fun createNotificationChannel() {
