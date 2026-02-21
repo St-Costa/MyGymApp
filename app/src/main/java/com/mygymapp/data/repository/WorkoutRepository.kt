@@ -74,7 +74,8 @@ class WorkoutRepository @Inject constructor(
     suspend fun getLastSessionForRoutine(routineId: String): WorkoutSession? =
         withContext(Dispatchers.IO) {
             val today = LocalDate.now()
-            // Search backwards up to 6 months
+            val candidates = mutableListOf<WorkoutSession>()
+            // Collect all completed sessions for this routine in the last 6 months
             for (i in 0..5) {
                 val month = today.minusMonths(i.toLong())
                 val dir = File(
@@ -82,15 +83,34 @@ class WorkoutRepository @Inject constructor(
                     "history/${month.year}/${month.monthValue.toString().padStart(2, '0')}"
                 )
                 if (!dir.exists()) continue
-                val files = dir.listFiles()?.filter { it.extension == "md" }
-                    ?.sortedByDescending { it.name } ?: continue
-                for (file in files) {
+                dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
                     try {
                         val session = WorkoutParser.fromMarkdown(file.readText())
-                        if (session.routineId == routineId) return@withContext session
+                        if (session.routineId == routineId && session.completedAt.isNotBlank()) {
+                            candidates.add(session)
+                        }
                     } catch (_: Exception) {
                         // Skip
                     }
+                }
+            }
+            // Return the one with the most recent completedAt (ISO format is lexicographically sortable)
+            candidates.maxByOrNull { it.completedAt }
+        }
+
+    suspend fun getSession(sessionId: String, date: LocalDate): WorkoutSession? =
+        withContext(Dispatchers.IO) {
+            val dir = File(
+                fileManager.root,
+                "history/${date.year}/${date.monthValue.toString().padStart(2, '0')}"
+            )
+            if (!dir.exists()) return@withContext null
+            dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                try {
+                    val session = WorkoutParser.fromMarkdown(file.readText())
+                    if (session.id == sessionId) return@withContext session
+                } catch (_: Exception) {
+                    // Skip
                 }
             }
             null

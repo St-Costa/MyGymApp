@@ -14,8 +14,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class ActiveRoutineUiState(
@@ -27,6 +29,12 @@ data class ActiveRoutineUiState(
     val allCompleted: Boolean = false,
     val totalTonnage: Double = 0.0,
     val previousTonnage: Double? = null,
+    // Chart: one point per completed session (last 12 weeks), oldest first
+    val sessionTonnage: List<Double> = emptyList(),
+    val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
+    val sessionLabels: List<String> = emptyList(),
+    val selectedChartFilter: String = "Totale",
+    val isLoadingChart: Boolean = false,
 )
 
 data class ActiveExerciseUi(
@@ -36,6 +44,7 @@ data class ActiveExerciseUi(
     val bodypart: String,
     val completed: Boolean = false,
     val setCount: Int = 0,
+    val tonnageChangePct: Double? = null,
 )
 
 @HiltViewModel
@@ -52,6 +61,7 @@ class ActiveRoutineViewModel @Inject constructor(
     val uiState: StateFlow<ActiveRoutineUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
+    private var previousTonnageByExercise: Map<String, Double> = emptyMap()
 
     init {
         viewModelScope.launch {
@@ -68,7 +78,18 @@ class ActiveRoutineViewModel @Inject constructor(
                 )
             }
 
-            // Create workout session
+            // Load previous session BEFORE saving the current one, so we don't find ourselves
+            val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
+
+            // Pre-compute per-exercise tonnage from previous session
+            previousTonnageByExercise = previousSession?.exercises
+                ?.associate { ex ->
+                    ex.exerciseId to ex.sets
+                        .filterIsInstance<ExerciseSet.Strength>()
+                        .sumOf { it.reps * it.weight }
+                } ?: emptyMap()
+
+            // Create and save the workout session
             val workoutExercises = routine.exercises.mapNotNull { re ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
                 val sets = (1..re.sets).map { _ ->
@@ -97,9 +118,6 @@ class ActiveRoutineViewModel @Inject constructor(
             val saved = workoutRepository.save(session)
             currentSession = saved
 
-            // Get previous session for comparison
-            val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
-
             _uiState.value = ActiveRoutineUiState(
                 routineName = routine.name,
                 notes = routine.notes,
@@ -112,17 +130,40 @@ class ActiveRoutineViewModel @Inject constructor(
     }
 
     fun markExerciseCompleted(exerciseId: String) {
-        val exercises = _uiState.value.exercises.map { ex ->
-            if (ex.exerciseId == exerciseId) ex.copy(completed = true) else ex
-        }
-        val allCompleted = exercises.all { it.completed }
-        _uiState.value = _uiState.value.copy(
-            exercises = exercises,
-            allCompleted = allCompleted,
-        )
+        viewModelScope.launch {
+            // Reload session from disk to get actual set data written by exercise screen
+            val session = currentSession ?: return@launch
+            val today = LocalDate.parse(session.date)
+            val reloaded = workoutRepository.getSession(session.id, today) ?: session
 
-        if (allCompleted) {
-            finalizeSession()
+            // Compute current tonnage for this exercise
+            val currentExTonnage = reloaded.exercises
+                .find { it.exerciseId == exerciseId }
+                ?.sets?.filterIsInstance<ExerciseSet.Strength>()
+                ?.sumOf { it.reps * it.weight } ?: 0.0
+
+            val prevExTonnage = previousTonnageByExercise[exerciseId]
+            val changePct: Double? = if (prevExTonnage != null && prevExTonnage > 0) {
+                ((currentExTonnage - prevExTonnage) / prevExTonnage) * 100.0
+            } else null
+
+            val updatedExercises = _uiState.value.exercises.map { ex ->
+                if (ex.exerciseId == exerciseId) {
+                    ex.copy(
+                        completed = true,
+                        tonnageChangePct = if (ex.type == ExerciseType.FORZA) changePct else null,
+                    )
+                } else ex
+            }
+            val allCompleted = updatedExercises.all { it.completed }
+            _uiState.value = _uiState.value.copy(
+                exercises = updatedExercises,
+                allCompleted = allCompleted,
+            )
+
+            if (allCompleted) {
+                finalizeSession(reloaded)
+            }
         }
     }
 
@@ -138,14 +179,18 @@ class ActiveRoutineViewModel @Inject constructor(
         }
     }
 
-    private fun finalizeSession() {
+    fun selectChartFilter(filter: String) {
+        _uiState.value = _uiState.value.copy(selectedChartFilter = filter)
+    }
+
+    private fun finalizeSession(reloaded: WorkoutSession) {
         viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            // Reload session from file to get updated exercise data
-            val updated = session.copy(
+            _uiState.value = _uiState.value.copy(isLoadingChart = true)
+
+            val updated = reloaded.copy(
                 completedAt = LocalDateTime.now().toString(),
             )
-            // Calculate tonnage
+            // Calculate tonnage from actual set data
             var totalTonnage = 0.0
             val tonnageByBodypart = mutableMapOf<String, Double>()
             for (ex in updated.exercises) {
@@ -166,7 +211,32 @@ class ActiveRoutineViewModel @Inject constructor(
             currentSession = finalSession
             workoutRepository.save(finalSession)
 
-            _uiState.value = _uiState.value.copy(totalTonnage = totalTonnage)
+            // Load all sessions for this routine in the last 12 weeks, one point per session
+            val today = LocalDate.now()
+            val startDate = today.with(DayOfWeek.MONDAY).minusWeeks(11)
+            val allSessions = workoutRepository.getSessionsInRange(startDate, today)
+                .filter { it.routineId == routineId }  // already sorted by date ascending
+
+            val labelFmt = DateTimeFormatter.ofPattern("d/M")
+            val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
+            val sessionTonnage = allSessions.map { it.totalTonnage }
+
+            // Only bodyparts with strength exercises
+            val bodyparts = finalSession.exercises
+                .filter { it.type == ExerciseType.FORZA }
+                .map { it.bodypart }.distinct()
+            val sessionTonnageByBodypart = bodyparts.associateWith { bp ->
+                allSessions.map { it.tonnageByBodypart[bp] ?: 0.0 }
+            }
+
+            _uiState.value = _uiState.value.copy(
+                totalTonnage = totalTonnage,
+                sessionTonnage = sessionTonnage,
+                sessionTonnageByBodypart = sessionTonnageByBodypart,
+                sessionLabels = sessionLabels,
+                selectedChartFilter = "Totale",
+                isLoadingChart = false,
+            )
         }
     }
 }
