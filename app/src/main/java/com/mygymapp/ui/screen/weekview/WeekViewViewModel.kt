@@ -52,10 +52,10 @@ class WeekViewViewModel @Inject constructor(
             val sunday = monday.plusDays(6)
 
             val sessions = workoutRepository.getSessionsInRange(monday, sunday)
-            val completedByDate = sessions
+            val completedRoutineIds = sessions
                 .filter { it.completedAt.isNotBlank() }
-                .groupBy({ it.date }, { it.routineId })
-                .mapValues { (_, ids) -> ids.toSet() }
+                .map { it.routineId }
+                .toSet()
 
             val dayEntries = listOf(
                 "Monday" to DayOfWeek.MONDAY,
@@ -73,13 +73,12 @@ class WeekViewViewModel @Inject constructor(
                 val routines = allRoutines.filter {
                     it.day.equals(key, ignoreCase = true) && it.enabled
                 }
-                val dateStr = date.toString()
                 WeekDayUi(
                     dayName = display,
                     dayKey = key,
                     date = date,
                     routines = routines,
-                    completedRoutineIds = completedByDate[dateStr] ?: emptySet(),
+                    completedRoutineIds = completedRoutineIds,
                     isToday = key == todayKey,
                     isPast = date.isBefore(today),
                 )
