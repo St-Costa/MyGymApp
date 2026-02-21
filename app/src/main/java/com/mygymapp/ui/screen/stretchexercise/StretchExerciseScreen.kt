@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import android.content.Intent
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.service.StopwatchService
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,6 +73,9 @@ fun StretchExerciseScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Media (image or YouTube thumbnail)
+                MediaPreview(link = uiState.exercise?.link ?: "")
 
                 // Description
                 AutoSaveTextField(

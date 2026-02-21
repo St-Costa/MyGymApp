@@ -28,11 +28,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.BodyPartAutocomplete
+import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
 
@@ -44,6 +49,18 @@ fun ExerciseEditScreen(
     viewModel: ExerciseEditViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Debounce link preview: wait 800ms after the user stops typing before loading
+    var previewLink by remember { mutableStateOf(uiState.link) }
+    LaunchedEffect(uiState.link) {
+        val current = uiState.link.trim()
+        if (current.isBlank()) {
+            previewLink = ""
+        } else {
+            delay(800)
+            previewLink = current
+        }
+    }
 
     LaunchedEffect(uiState.saved) {
         if (uiState.saved) onBack()
@@ -117,6 +134,8 @@ fun ExerciseEditScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            MediaPreview(link = previewLink, showErrorText = true)
 
             OutlinedTextField(
                 value = uiState.notes,
