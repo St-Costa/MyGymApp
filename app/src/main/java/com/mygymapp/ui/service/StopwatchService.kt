@@ -5,14 +5,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
-import android.os.SystemClock
 import androidx.core.app.NotificationCompat
+import com.mygymapp.R
 
 class StopwatchService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "stopwatch_channel"
+        const val CHANNEL_ID = "stopwatch_channel_v2"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.mygymapp.START_STOPWATCH"
         const val ACTION_STOP = "com.mygymapp.STOP_STOPWATCH"
@@ -27,7 +29,15 @@ class StopwatchService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 val notification = buildNotification()
-                startForeground(NOTIFICATION_ID, notification)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
             }
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -41,12 +51,14 @@ class StopwatchService : Service() {
 
     private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setSmallIcon(R.drawable.ic_stopwatch)
             .setContentTitle("Stopwatch")
+            .setContentText("Stretch timer running")
             .setOngoing(true)
             .setUsesChronometer(true)
             .setWhen(System.currentTimeMillis())
             .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
@@ -54,10 +66,11 @@ class StopwatchService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Stopwatch",
-            NotificationManager.IMPORTANCE_LOW,
+            NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
             description = "Stretch timer stopwatch"
             setShowBadge(false)
+            setSound(null, null)
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(channel)

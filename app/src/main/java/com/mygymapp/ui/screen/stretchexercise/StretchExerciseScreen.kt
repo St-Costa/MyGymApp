@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.content.Intent
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -88,19 +89,38 @@ fun StretchExerciseScreen(
                     maxLines = 4,
                 )
 
+                // Stopwatch timer display
+                val elapsed = uiState.elapsedSeconds
+                val formatted = "%02d:%02d".format(elapsed / 60, elapsed % 60)
+                Text(
+                    text = formatted,
+                    style = MaterialTheme.typography.displayMedium,
+                    textAlign = TextAlign.Center,
+                    color = if (uiState.isStopwatchRunning)
+                        MaterialTheme.colorScheme.secondary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
                 // Stopwatch button
                 val context = LocalContext.current
                 Button(
                     onClick = {
+                        val wasRunning = uiState.isStopwatchRunning
                         viewModel.toggleStopwatch()
                         val intent = Intent(context, StopwatchService::class.java).apply {
-                            action = if (uiState.isStopwatchRunning) {
+                            action = if (wasRunning) {
                                 StopwatchService.ACTION_STOP
                             } else {
                                 StopwatchService.ACTION_START
                             }
                         }
-                        context.startForegroundService(intent)
+                        if (wasRunning) {
+                            context.startService(intent)
+                        } else {
+                            context.startForegroundService(intent)
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
