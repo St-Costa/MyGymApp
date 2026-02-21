@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.GitgraphView
 
@@ -58,26 +59,26 @@ fun MainScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Button(
                     onClick = onNavigateToWeekView,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
                 ) {
-                    Text("Week View")
+                    Text("Week View", fontSize = 28.sp)
                 }
                 Button(
                     onClick = onNavigateToExercises,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
                 ) {
-                    Text("Exercises")
+                    Text("Exercises", fontSize = 28.sp)
                 }
                 Button(
                     onClick = onNavigateToRoutines,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
                 ) {
-                    Text("Routines")
+                    Text("Routines", fontSize = 28.sp)
                 }
             }
         }
