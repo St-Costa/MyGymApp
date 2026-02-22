@@ -13,6 +13,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 data class RoutineExerciseUi(
@@ -32,8 +33,6 @@ data class RoutineEditUiState(
     val notes: String = "",
     val exercises: List<RoutineExerciseUi> = emptyList(),
     val isNew: Boolean = true,
-    val isSaving: Boolean = false,
-    val saved: Boolean = false,
     val deleted: Boolean = false,
 )
 
@@ -160,12 +159,11 @@ class RoutineEditViewModel @Inject constructor(
         }
     }
 
-    fun save() {
+    override fun onCleared() {
+        super.onCleared()
         val state = _uiState.value
-        if (state.name.isBlank()) return
-
-        viewModelScope.launch {
-            _uiState.value = state.copy(isSaving = true)
+        if (state.name.isBlank() || state.deleted) return
+        runBlocking {
             val routine = Routine(
                 id = state.id,
                 name = state.name.trim(),
@@ -182,7 +180,6 @@ class RoutineEditViewModel @Inject constructor(
                 },
             )
             routineRepository.save(routine)
-            _uiState.value = _uiState.value.copy(isSaving = false, saved = true)
         }
     }
 }

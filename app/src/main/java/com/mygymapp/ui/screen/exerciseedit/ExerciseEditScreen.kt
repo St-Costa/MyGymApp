@@ -18,8 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -73,9 +71,6 @@ fun ExerciseEditScreen(
         }
     }
 
-    LaunchedEffect(uiState.saved) {
-        if (uiState.saved) onBack()
-    }
     LaunchedEffect(uiState.deleted) {
         if (uiState.deleted) onBack()
     }
@@ -229,17 +224,6 @@ fun ExerciseEditScreen(
                 maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            Button(
-                onClick = viewModel::save,
-                enabled = uiState.name.isNotBlank() && !uiState.isSaving,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Text(if (uiState.isNew) "Create Exercise" else "Save Changes")
-            }
 
             Spacer(modifier = Modifier.height(80.dp))
         }

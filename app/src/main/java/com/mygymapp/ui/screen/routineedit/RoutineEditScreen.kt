@@ -25,8 +25,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -113,9 +111,6 @@ fun RoutineEditScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(uiState.saved) {
-        if (uiState.saved) onBack()
-    }
     LaunchedEffect(uiState.deleted) {
         if (uiState.deleted) onBack()
     }
@@ -219,17 +214,6 @@ fun RoutineEditScreen(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Text("Add Exercise", modifier = Modifier.padding(start = 8.dp))
-            }
-
-            Button(
-                onClick = viewModel::save,
-                enabled = uiState.name.isNotBlank() && !uiState.isSaving,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Text(if (uiState.isNew) "Create Routine" else "Save Changes")
             }
 
             Spacer(modifier = Modifier.height(80.dp))

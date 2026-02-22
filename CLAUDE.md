@@ -51,7 +51,7 @@ File naming:
 - **Auto-prune**: Sessions older than 3 months deleted on startup (MainViewModel.init), with exercise index cleanup
 - **One-time migration**: `migrateOldSessionFiles()` renames old slug-based history files to new ID format and rebuilds exercise index; guarded by `_idx/.migrated` sentinel
 - **Vertical scroll picker**: For one-handed reps/weight input (no keyboard popup)
-- **Auto-save**: Debounced 500ms writes for text fields (no save button)
+- **Auto-save**: Debounced 500ms writes for text fields (no save button); ExerciseEdit and RoutineEdit save automatically via `ViewModel.onCleared()` when user navigates back
 - **Stopwatch**: Foreground service with Chronometer notification (status bar) + in-app MM:SS display (always visible, dimmed when stopped)
 - **No popup notifications**
 
