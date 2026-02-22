@@ -2,6 +2,7 @@ package com.mygymapp.data.repository
 
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.parser.ExerciseParser
+import com.mygymapp.data.util.slugify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -105,11 +106,3 @@ class ExerciseRepository @Inject constructor(
     }
 }
 
-fun slugify(name: String, id: String): String {
-    val slug = name.lowercase()
-        .replace(Regex("[^a-z0-9\\s-]"), "")
-        .replace(Regex("\\s+"), "-")
-        .trim('-')
-        .take(40)
-    return "$slug-$id"
-}

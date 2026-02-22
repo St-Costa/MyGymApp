@@ -1,7 +1,6 @@
 package com.mygymapp.ui.screen.stretchexercise
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +15,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,6 +26,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import android.content.Intent
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.service.StopwatchService
 
@@ -60,10 +60,7 @@ fun StretchExerciseScreen(
         },
     ) { padding ->
         if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            FullscreenLoading(padding)
         } else {
             Column(
                 modifier = Modifier
@@ -91,7 +88,7 @@ fun StretchExerciseScreen(
 
                 // Stopwatch timer display
                 val elapsed = uiState.elapsedSeconds
-                val formatted = "%02d:%02d".format(elapsed / 60, elapsed % 60)
+                val formatted = remember(elapsed) { "%02d:%02d".format(elapsed / 60, elapsed % 60) }
                 Text(
                     text = formatted,
                     style = MaterialTheme.typography.displayMedium,

@@ -51,7 +51,8 @@ File naming:
 - **Auto-prune**: Sessions older than 3 months deleted on startup (MainViewModel.init), with exercise index cleanup
 - **One-time migration**: `migrateOldSessionFiles()` renames old slug-based history files to new ID format and rebuilds exercise index; guarded by `_idx/.migrated` sentinel
 - **Vertical scroll picker**: For one-handed reps/weight input (no keyboard popup)
-- **Auto-save**: Debounced 500ms writes for text fields (no save button); ExerciseEdit and RoutineEdit save automatically via `ViewModel.onCleared()` when user navigates back
+- **Auto-save**: Debounced 500ms writes for text fields (no save button); ExerciseEdit and RoutineEdit save automatically via `ViewModel.onCleared()` when user navigates back. Save uses a dedicated `clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)` (not `runBlocking`) to avoid ANR
+- **DataChangedSignal**: Singleton `SharedFlow` bus (`data/DataChangedSignal.kt`). Edit ViewModels emit `notifyExercisesChanged()` / `notifyRoutinesChanged()` after save completes; list ViewModels (ExerciseList, RoutineList, WeekView, Main) collect and reload so UI reflects changes immediately on navigate back
 - **Stopwatch**: Foreground service with Chronometer notification (status bar) + in-app MM:SS display (always visible, dimmed when stopped)
 - **No popup notifications**
 
@@ -135,9 +136,15 @@ What exists:
 - `StrengthExerciseScreen` + `StretchExerciseScreen`: MediaPreview shown above description field
 - `MyGymApp` implements `ImageLoaderFactory`: Coil configured with permanent disk cache in `filesDir/gymdata/image_cache/` (100MB, never cleared by Android) + memory cache at 20% RAM
 
+### [x] Phase 10: Code Quality & Bug Fixes — DONE
+- **ANR fix**: Replaced `runBlocking` in `ExerciseEditViewModel.onCleared()` and `RoutineEditViewModel.onCleared()` with `clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)`
+- **DataChangedSignal**: `data/DataChangedSignal.kt` singleton bus — edit ViewModels emit after save, list ViewModels collect to reload (fixes stale data after rename)
+- **Deduplication**: `slugify()` extracted to `data/util/StringUtils.kt`; shared composables (`FullscreenLoading`, `EmptyStateBox`, `DeleteConfirmationDialog`, `RoundStepButton`) extracted to `ui/components/CommonComposables.kt` — used across 7+ screens
+- **Performance**: `WorkoutRepository.save()` uses `.distinct()` before exercise index writes; `ImageCacheRepository` streams downloads instead of `readBytes()` (avoids heap spikes); `ExerciseListViewModel.deleteExercise()` and `RoutineListViewModel.toggleEnabled()`/`deleteRoutine()` update state in-memory instead of full reload
+- **Compose**: `remember(key)` memoization for font sizes in `GitgraphView`, rep range text in `StrengthExerciseScreen`, timer string in `StretchExerciseScreen`
+- **Delete dialogs**: `DeleteConfirmationDialog` used in both `ExerciseEditScreen` and `RoutineEditScreen`
+
 ### Remaining Work (future enhancements)
-- [ ] Delete confirmation dialogs for exercises and routines
-- [x] Reorder exercises in routine edit (drag & drop) — DONE
 - [ ] Export/import data
 
 ### [x] Phase 7: Progress & Charts (post-completion) — DONE

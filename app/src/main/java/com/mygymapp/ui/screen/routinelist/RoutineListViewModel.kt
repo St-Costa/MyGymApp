@@ -2,6 +2,7 @@ package com.mygymapp.ui.screen.routinelist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.Routine
 import com.mygymapp.data.repository.RoutineRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,6 +19,7 @@ data class RoutineListUiState(
 @HiltViewModel
 class RoutineListViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
+    private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RoutineListUiState())
@@ -25,6 +27,9 @@ class RoutineListViewModel @Inject constructor(
 
     init {
         loadRoutines()
+        viewModelScope.launch {
+            dataChangedSignal.routinesChanged.collect { loadRoutines() }
+        }
     }
 
     fun loadRoutines() {
@@ -37,15 +42,20 @@ class RoutineListViewModel @Inject constructor(
 
     fun toggleEnabled(routine: Routine) {
         viewModelScope.launch {
-            routineRepository.save(routine.copy(enabled = !routine.enabled))
-            loadRoutines()
+            val updated = routine.copy(enabled = !routine.enabled)
+            routineRepository.save(updated)
+            _uiState.value = _uiState.value.copy(
+                routines = _uiState.value.routines.map { if (it.id == routine.id) updated else it }
+            )
         }
     }
 
     fun deleteRoutine(id: String) {
         viewModelScope.launch {
             routineRepository.delete(id)
-            loadRoutines()
+            _uiState.value = _uiState.value.copy(
+                routines = _uiState.value.routines.filter { it.id != id }
+            )
         }
     }
 }

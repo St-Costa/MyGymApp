@@ -4,13 +4,17 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
+import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.repository.ExerciseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 data class ExerciseEditUiState(
@@ -31,9 +35,12 @@ data class ExerciseEditUiState(
 class ExerciseEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
+    private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
 
     private val exerciseId: String? = savedStateHandle.get<String>("id")?.takeIf { it.isNotBlank() }
+
+    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _uiState = MutableStateFlow(ExerciseEditUiState())
     val uiState: StateFlow<ExerciseEditUiState> = _uiState
@@ -103,7 +110,7 @@ class ExerciseEditViewModel @Inject constructor(
         super.onCleared()
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
-        runBlocking {
+        clearScope.launch {
             val exercise = Exercise(
                 id = state.id,
                 name = state.name.trim(),
@@ -115,6 +122,8 @@ class ExerciseEditViewModel @Inject constructor(
                 defaultRepRangeMax = state.defaultRepRangeMax,
             )
             exerciseRepository.save(exercise)
+            dataChangedSignal.notifyExercisesChanged()
+            clearScope.cancel()
         }
     }
 }

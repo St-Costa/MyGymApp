@@ -2,6 +2,7 @@ package com.mygymapp.ui.screen.exerciselist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.repository.ExerciseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -18,6 +19,7 @@ data class ExerciseListUiState(
 @HiltViewModel
 class ExerciseListViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
+    private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ExerciseListUiState())
@@ -25,6 +27,9 @@ class ExerciseListViewModel @Inject constructor(
 
     init {
         loadExercises()
+        viewModelScope.launch {
+            dataChangedSignal.exercisesChanged.collect { loadExercises() }
+        }
     }
 
     fun loadExercises() {
@@ -42,7 +47,10 @@ class ExerciseListViewModel @Inject constructor(
     fun deleteExercise(id: String) {
         viewModelScope.launch {
             exerciseRepository.delete(id)
-            loadExercises()
+            val updated = _uiState.value.exercisesByBodypart
+                .mapValues { (_, list) -> list.filter { it.id != id } }
+                .filterValues { it.isNotEmpty() }
+            _uiState.value = _uiState.value.copy(exercisesByBodypart = updated)
         }
     }
 }
