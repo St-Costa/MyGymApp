@@ -16,6 +16,7 @@ import javax.inject.Singleton
 @Singleton
 class ExerciseRepository @Inject constructor(
     private val fileManager: FileManager,
+    private val workoutRepository: WorkoutRepository,
 ) {
     private val cache = ConcurrentHashMap<String, Exercise>()
     private val mutex = Mutex()
@@ -34,11 +35,12 @@ class ExerciseRepository @Inject constructor(
     }
 
     suspend fun save(exercise: Exercise): Exercise = withContext(Dispatchers.IO) {
-        mutex.withLock {
+        var nameChanged = false
+        val saved = mutex.withLock {
             val now = LocalDateTime.now().toString()
             val updated = if (exercise.id.isBlank()) {
                 exercise.copy(
-                    id = UUID.randomUUID().toString().take(8),
+                    id = "ex-" + UUID.randomUUID().toString().replace("-", "").take(8),
                     created = now,
                     updated = now,
                 )
@@ -56,12 +58,17 @@ class ExerciseRepository @Inject constructor(
                 if (oldFileName != fileName) {
                     File(exercisesDir(), "$oldFileName.md").delete()
                 }
+                nameChanged = oldExercise.name != updated.name
             }
 
             file.writeText(ExerciseParser.toMarkdown(updated))
             cache[updated.id] = updated
             updated
         }
+        if (nameChanged) {
+            workoutRepository.updateExerciseNameInHistory(saved.id, saved.name)
+        }
+        saved
     }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
