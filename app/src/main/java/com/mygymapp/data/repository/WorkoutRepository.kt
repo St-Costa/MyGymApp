@@ -98,6 +98,18 @@ class WorkoutRepository @Inject constructor(
             candidates.maxByOrNull { it.completedAt }
         }
 
+    suspend fun delete(session: WorkoutSession) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val date = LocalDate.parse(session.date)
+            val dir = fileManager.getHistoryDir(date.year, date.monthValue)
+            dir.listFiles()?.firstOrNull { file ->
+                try {
+                    WorkoutParser.fromMarkdown(file.readText()).id == session.id
+                } catch (_: Exception) { false }
+            }?.delete()
+        }
+    }
+
     suspend fun getSession(sessionId: String, date: LocalDate): WorkoutSession? =
         withContext(Dispatchers.IO) {
             val dir = File(
