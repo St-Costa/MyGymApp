@@ -1,8 +1,8 @@
 package com.mygymapp.ui.components
 
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.content.Intent
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -19,18 +19,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImagePainter
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
@@ -58,7 +52,11 @@ private fun convertGoogleDriveUrl(url: String): String {
 
 /**
  * Shows a preview of an image URL or YouTube video.
- * - YouTube links: shows thumbnail with play button; tap to open the embedded player in-app.
+ * - YouTube links: shows thumbnail with play button; tap opens the video in a Chrome Custom Tab
+ *   (stays within the app's back stack — back button returns to the exercise screen).
+ *   Note: WebView + YouTube is not viable on Android — the hardware video decoder (MediaCodec)
+ *   writes decoded frames to a Surface that Compose cannot composite, causing a black screen.
+ *   Chrome Custom Tabs is the reliable solution with no rendering limitations.
  * - Other URLs: converts Google Drive share links and loads the image via Coil.
  *
  * @param showErrorText if true, shows a red error message when the link can't be loaded.
@@ -135,82 +133,63 @@ private fun RemoteImage(
 
 @Composable
 private fun YouTubeThumbnail(videoId: String, modifier: Modifier = Modifier) {
-    var showPlayer by remember { mutableStateOf(false) }
-
-    if (showPlayer) {
-        YouTubeWebView(videoId = videoId, modifier = modifier)
-    } else {
-        val context = LocalContext.current
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .heightIn(max = 240.dp)
-                .clickable { showPlayer = true },
-            contentAlignment = Alignment.Center,
-        ) {
-            SubcomposeAsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data("https://img.youtube.com/vi/$videoId/hqdefault.jpg")
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "YouTube video thumbnail",
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-            ) {
-                val state = painter.state
-                when {
-                    state is AsyncImagePainter.State.Loading ||
-                    state is AsyncImagePainter.State.Empty -> Box(
-                        modifier = Modifier.fillMaxWidth().height(180.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { CircularProgressIndicator() }
-
-                    state is AsyncImagePainter.State.Success -> SubcomposeAsyncImageContent(
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    state is AsyncImagePainter.State.Error -> Box(
-                        modifier = Modifier.fillMaxWidth().height(0.dp),
-                    )
+    val context = LocalContext.current
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(max = 240.dp)
+            .clickable {
+                val uri = Uri.parse("https://www.youtube.com/watch?v=$videoId")
+                try {
+                    CustomTabsIntent.Builder()
+                        .setShowTitle(true)
+                        .build()
+                        .launchUrl(context, uri)
+                } catch (_: Exception) {
+                    // Fallback if Chrome Custom Tabs not available
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                 }
-            }
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .background(Color.Black.copy(alpha = 0.45f), shape = CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = Color.White,
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        SubcomposeAsyncImage(
+            model = ImageRequest.Builder(context)
+                .data("https://img.youtube.com/vi/$videoId/hqdefault.jpg")
+                .crossfade(true)
+                .build(),
+            contentDescription = "YouTube video thumbnail",
+            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.FillWidth,
+        ) {
+            val state = painter.state
+            when {
+                state is AsyncImagePainter.State.Loading ||
+                state is AsyncImagePainter.State.Empty -> Box(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+
+                state is AsyncImagePainter.State.Success -> SubcomposeAsyncImageContent(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                state is AsyncImagePainter.State.Error -> Box(
+                    modifier = Modifier.fillMaxWidth().height(0.dp),
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun YouTubeWebView(videoId: String, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val webView = remember(videoId) {
-        WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true          // required by YouTube embed
-            settings.mediaPlaybackRequiresUserGesture = false
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
-            webViewClient = WebViewClient()
-            webChromeClient = WebChromeClient()
-            loadUrl("https://www.youtube.com/embed/$videoId?autoplay=1&playsinline=1&rel=0")
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(Color.Black.copy(alpha = 0.45f), shape = CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = Color.White,
+            )
         }
     }
-    DisposableEffect(webView) {
-        onDispose { webView.destroy() }
-    }
-    AndroidView(
-        factory = { webView },
-        modifier = modifier.fillMaxWidth().height(240.dp),
-    )
 }
