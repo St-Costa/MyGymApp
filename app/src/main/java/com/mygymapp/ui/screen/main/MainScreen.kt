@@ -9,8 +9,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -18,6 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,12 +41,46 @@ fun MainScreen(
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showSeedDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadGitgraph()
     }
 
-    Scaffold { padding ->
+    if (showSeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showSeedDialog = false },
+            title = { Text("Seed Debug Data") },
+            text = { Text("This will delete current-week sessions and regenerate debug data. Continue?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSeedDialog = false
+                    viewModel.seedDebugData()
+                }) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSeedDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showSeedDialog = true },
+            ) {
+                if (uiState.isSeedingData) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.Settings, contentDescription = "Debug options")
+                }
+            }
+        },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -79,21 +121,8 @@ fun MainScreen(
                 ) {
                     Text("Routines", fontSize = 28.sp)
                 }
-
-                TextButton(
-                    onClick = { viewModel.seedDebugData() },
-                    enabled = !uiState.isSeedingData,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (uiState.isSeedingData) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Seeding...", fontSize = 12.sp)
-                    } else {
-                        Text("Seed Debug Data", fontSize = 12.sp)
-                    }
-                }
             }
+            Spacer(modifier = Modifier.height(72.dp))
         }
     }
 }
