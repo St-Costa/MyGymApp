@@ -39,6 +39,7 @@ import com.mygymapp.ui.components.ScrollPickerInput
 @Composable
 fun StrengthExerciseScreen(
     onBack: () -> Unit,
+    onComplete: () -> Unit,
     viewModel: StrengthExerciseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -150,7 +151,7 @@ fun StrengthExerciseScreen(
                 Button(
                     onClick = {
                         viewModel.completeExercise()
-                        onBack()
+                        onComplete()
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
