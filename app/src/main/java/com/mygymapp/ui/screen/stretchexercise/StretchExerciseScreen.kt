@@ -141,17 +141,13 @@ fun StretchExerciseScreen(
                 uiState.sets.forEachIndexed { index, set ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Set ${index + 1}",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
                             "${set.timeSeconds}s",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                         Checkbox(
                             checked = set.done,
