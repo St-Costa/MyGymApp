@@ -28,7 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -81,18 +80,6 @@ fun ActiveRoutineScreen(
                     }
                 },
             )
-        },
-        bottomBar = {
-            Surface(shadowElevation = 8.dp) {
-                Button(
-                    onClick = { viewModel.registerRoutine() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    Text("Registra routine")
-                }
-            }
         },
     ) { padding ->
         if (uiState.isLoading) {
@@ -153,6 +140,18 @@ fun ActiveRoutineScreen(
                             isLoadingChart = uiState.isLoadingChart,
                             onFilterSelected = { viewModel.selectChartFilter(it) },
                         )
+                    }
+                }
+
+                // Register button — always last, scrollable with content
+                item(key = "register_button") {
+                    Button(
+                        onClick = { viewModel.registerRoutine() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 8.dp),
+                    ) {
+                        Text("Registra routine")
                     }
                 }
             }
