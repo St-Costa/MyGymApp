@@ -7,6 +7,8 @@ data class Exercise(
     val bodypart: String,
     val link: String = "",
     val notes: String = "",
+    val defaultRepRangeMin: Int = 8,
+    val defaultRepRangeMax: Int = 12,
     val created: String = "",
     val updated: String = "",
 )

@@ -102,6 +102,8 @@ class RoutineEditViewModel @Inject constructor(
                 exerciseId = exercise.id,
                 exerciseName = exercise.name,
                 exerciseType = exercise.type,
+                repRangeMin = exercise.defaultRepRangeMin,
+                repRangeMax = exercise.defaultRepRangeMax,
             )
             _uiState.value = _uiState.value.copy(
                 exercises = _uiState.value.exercises + newItem,

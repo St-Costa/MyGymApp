@@ -72,7 +72,9 @@ What exists:
 
 ### [x] Phase 2: Exercise Management — DONE
 - `ExerciseListScreen` with ViewModel: grouped by bodypart, orange (forza) / blue (stretch) borders, picker mode
-- `ExerciseEditScreen` with ViewModel: form with name, type toggle (FilterChip), bodypart autocomplete, link, notes
+- `ExerciseEditScreen` with ViewModel: form with name, type toggle (FilterChip), bodypart autocomplete, link, notes, default rep range (FORZA only, same +/− UI as RoutineEditScreen)
+- `Exercise` model: `defaultRepRangeMin`/`defaultRepRangeMax` stored in YAML frontmatter (fallback 8/12 for existing files)
+- When adding an exercise to a routine, the default rep range comes from the exercise's `defaultRepRangeMin`/`defaultRepRangeMax`
 - Components: `ExerciseCard`, `BodyPartAutocomplete`
 
 ### [x] Phase 3: Routine Management — DONE

@@ -19,6 +19,8 @@ data class ExerciseEditUiState(
     val bodypart: String = "",
     val link: String = "",
     val notes: String = "",
+    val defaultRepRangeMin: Int = 8,
+    val defaultRepRangeMax: Int = 12,
     val existingBodyparts: List<String> = emptyList(),
     val isNew: Boolean = true,
     val isSaving: Boolean = false,
@@ -50,6 +52,8 @@ class ExerciseEditViewModel @Inject constructor(
                         bodypart = exercise.bodypart,
                         link = exercise.link,
                         notes = exercise.notes,
+                        defaultRepRangeMin = exercise.defaultRepRangeMin,
+                        defaultRepRangeMax = exercise.defaultRepRangeMax,
                         existingBodyparts = bodyparts,
                         isNew = false,
                     )
@@ -80,6 +84,14 @@ class ExerciseEditViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(notes = value)
     }
 
+    fun onRepMinChange(value: Int) {
+        _uiState.value = _uiState.value.copy(defaultRepRangeMin = value.coerceAtLeast(1))
+    }
+
+    fun onRepMaxChange(value: Int) {
+        _uiState.value = _uiState.value.copy(defaultRepRangeMax = value.coerceAtLeast(1))
+    }
+
     fun deleteExercise() {
         val id = exerciseId ?: return
         viewModelScope.launch {
@@ -101,6 +113,8 @@ class ExerciseEditViewModel @Inject constructor(
                 bodypart = state.bodypart.trim(),
                 link = state.link.trim(),
                 notes = state.notes.trim(),
+                defaultRepRangeMin = state.defaultRepRangeMin,
+                defaultRepRangeMax = state.defaultRepRangeMax,
             )
             exerciseRepository.save(exercise)
             _uiState.value = _uiState.value.copy(isSaving = false, saved = true)
