@@ -132,6 +132,9 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(route)
                 },
                 onBack = { navController.popBackStack() },
+                onNavigateHome = {
+                    navController.popBackStack(Screen.Main.route, inclusive = false)
+                },
                 viewModel = viewModel,
             )
         }

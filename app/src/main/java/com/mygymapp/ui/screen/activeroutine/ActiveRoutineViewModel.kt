@@ -35,6 +35,7 @@ data class ActiveRoutineUiState(
     val sessionLabels: List<String> = emptyList(),
     val selectedChartFilter: String = "Totale",
     val isLoadingChart: Boolean = false,
+    val sessionRegistered: Boolean = false,
 )
 
 data class ActiveExerciseUi(
@@ -62,6 +63,7 @@ class ActiveRoutineViewModel @Inject constructor(
 
     private var currentSession: WorkoutSession? = null
     private var previousTonnageByExercise: Map<String, Double> = emptyMap()
+    private var sessionFinalized = false
 
     init {
         viewModelScope.launch {
@@ -183,6 +185,25 @@ class ActiveRoutineViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedChartFilter = filter)
     }
 
+    fun registerRoutine() {
+        viewModelScope.launch {
+            if (!sessionFinalized) {
+                val session = currentSession ?: return@launch
+                val today = LocalDate.parse(session.date)
+                val reloaded = workoutRepository.getSession(session.id, today) ?: session
+                finalizeSession(reloaded)
+            }
+            _uiState.value = _uiState.value.copy(sessionRegistered = true)
+        }
+    }
+
+    fun abandonSession() {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            workoutRepository.delete(session)
+        }
+    }
+
     private fun finalizeSession(reloaded: WorkoutSession) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingChart = true)
@@ -229,6 +250,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 allSessions.map { it.tonnageByBodypart[bp] ?: 0.0 }
             }
 
+            sessionFinalized = true
             _uiState.value = _uiState.value.copy(
                 totalTonnage = totalTonnage,
                 sessionTonnage = sessionTonnage,
