@@ -28,6 +28,7 @@ data class RoutineExerciseUi(
     val repRangeMin: Int = 8,
     val repRangeMax: Int = 12,
     val timePerSetSeconds: Int = 60,
+    val supersetWithNext: Boolean = false,
 )
 
 data class RoutineEditUiState(
@@ -41,6 +42,35 @@ data class RoutineEditUiState(
 )
 
 val DAYS_OF_WEEK = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+// ---------------------------------------------------------------------------
+// Superset segment helpers (also used by the Screen)
+// ---------------------------------------------------------------------------
+
+sealed class ExerciseSegment {
+    data class Single(val index: Int) : ExerciseSegment()
+    data class SupersetPair(val index1: Int, val index2: Int) : ExerciseSegment()
+
+    fun indices(): List<Int> = when (this) {
+        is Single -> listOf(index)
+        is SupersetPair -> listOf(index1, index2)
+    }
+}
+
+fun buildExerciseSegments(exercises: List<RoutineExerciseUi>): List<ExerciseSegment> {
+    val segments = mutableListOf<ExerciseSegment>()
+    var i = 0
+    while (i < exercises.size) {
+        if (exercises[i].supersetWithNext && i + 1 < exercises.size) {
+            segments.add(ExerciseSegment.SupersetPair(i, i + 1))
+            i += 2
+        } else {
+            segments.add(ExerciseSegment.Single(i))
+            i++
+        }
+    }
+    return segments
+}
 
 @HiltViewModel
 class RoutineEditViewModel @Inject constructor(
@@ -72,6 +102,7 @@ class RoutineEditViewModel @Inject constructor(
                             repRangeMin = re.repRangeMin,
                             repRangeMax = re.repRangeMax,
                             timePerSetSeconds = re.timePerSetSeconds,
+                            supersetWithNext = re.supersetWithNext,
                         )
                     }
                     _uiState.value = RoutineEditUiState(
@@ -120,18 +151,51 @@ class RoutineEditViewModel @Inject constructor(
     fun removeExercise(index: Int) {
         val list = _uiState.value.exercises.toMutableList()
         if (index in list.indices) {
+            // If the previous exercise has supersetWithNext=true (this is its second element),
+            // clear the previous exercise's supersetWithNext flag to avoid a dangling link.
+            if (index > 0 && list[index - 1].supersetWithNext) {
+                list[index - 1] = list[index - 1].copy(supersetWithNext = false)
+            }
             list.removeAt(index)
             _uiState.value = _uiState.value.copy(exercises = list)
         }
     }
 
-    fun moveExercise(fromIndex: Int, toIndex: Int) {
-        val list = _uiState.value.exercises.toMutableList()
-        if (fromIndex in list.indices && toIndex in list.indices) {
-            val item = list.removeAt(fromIndex)
-            list.add(toIndex, item)
-            _uiState.value = _uiState.value.copy(exercises = list)
+    fun toggleSuperset(index: Int) {
+        updateExercise(index) { it.copy(supersetWithNext = !it.supersetWithNext) }
+    }
+
+    fun moveSegment(fromSegIdx: Int, toSegIdx: Int) {
+        val exercises = _uiState.value.exercises
+        val segments = buildExerciseSegments(exercises)
+        if (fromSegIdx !in segments.indices || toSegIdx !in segments.indices || fromSegIdx == toSegIdx) return
+
+        val fromSeg = segments[fromSegIdx]
+        val sourceExercises = fromSeg.indices().map { exercises[it] }
+
+        val mutable = exercises.toMutableList()
+        // Remove source exercises (higher index first to avoid index shifting)
+        fromSeg.indices().sortedDescending().forEach { mutable.removeAt(it) }
+
+        // Rebuild segments on the reduced list to find the correct insertion point
+        val newSegments = buildExerciseSegments(mutable)
+        val effectiveToSegIdx = if (toSegIdx > fromSegIdx) toSegIdx - 1 else toSegIdx
+
+        val insertAt: Int = if (toSegIdx > fromSegIdx) {
+            // Moving down: insert after the target segment's last exercise
+            val targetSeg = newSegments.getOrNull(effectiveToSegIdx) ?: newSegments.last()
+            targetSeg.indices().last() + 1
+        } else {
+            // Moving up: insert before the target segment's first exercise
+            val targetSeg = newSegments.getOrNull(effectiveToSegIdx) ?: return
+            targetSeg.indices().first()
         }
+
+        sourceExercises.forEachIndexed { i, ex ->
+            mutable.add((insertAt + i).coerceIn(0, mutable.size), ex)
+        }
+
+        _uiState.value = _uiState.value.copy(exercises = mutable)
     }
 
     fun updateExerciseSets(index: Int, sets: Int) {
@@ -172,21 +236,7 @@ class RoutineEditViewModel @Inject constructor(
     suspend fun saveNow() {
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
-        val routine = Routine(
-            id = state.id,
-            name = state.name.trim(),
-            day = state.day,
-            notes = state.notes.trim(),
-            exercises = state.exercises.map { ex ->
-                RoutineExercise(
-                    exerciseId = ex.exerciseId,
-                    sets = ex.sets,
-                    repRangeMin = ex.repRangeMin,
-                    repRangeMax = ex.repRangeMax,
-                    timePerSetSeconds = ex.timePerSetSeconds,
-                )
-            },
-        )
+        val routine = buildRoutine(state)
         routineRepository.save(routine)
         dataChangedSignal.notifyRoutinesChanged()
         savedExplicitly = true
@@ -198,24 +248,27 @@ class RoutineEditViewModel @Inject constructor(
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {
-            val routine = Routine(
-                id = state.id,
-                name = state.name.trim(),
-                day = state.day,
-                notes = state.notes.trim(),
-                exercises = state.exercises.map { ex ->
-                    RoutineExercise(
-                        exerciseId = ex.exerciseId,
-                        sets = ex.sets,
-                        repRangeMin = ex.repRangeMin,
-                        repRangeMax = ex.repRangeMax,
-                        timePerSetSeconds = ex.timePerSetSeconds,
-                    )
-                },
-            )
+            val routine = buildRoutine(state)
             routineRepository.save(routine)
             dataChangedSignal.notifyRoutinesChanged()
             clearScope.cancel()
         }
     }
+
+    private fun buildRoutine(state: RoutineEditUiState): Routine = Routine(
+        id = state.id,
+        name = state.name.trim(),
+        day = state.day,
+        notes = state.notes.trim(),
+        exercises = state.exercises.map { ex ->
+            RoutineExercise(
+                exerciseId = ex.exerciseId,
+                sets = ex.sets,
+                repRangeMin = ex.repRangeMin,
+                repRangeMax = ex.repRangeMax,
+                timePerSetSeconds = ex.timePerSetSeconds,
+                supersetWithNext = ex.supersetWithNext,
+            )
+        },
+    )
 }

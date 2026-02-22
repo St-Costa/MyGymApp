@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.material.icons.extended)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

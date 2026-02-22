@@ -18,6 +18,7 @@ import com.mygymapp.ui.screen.weekview.WeekViewScreen
 import com.mygymapp.ui.screen.activeroutine.ActiveRoutineScreen
 import com.mygymapp.ui.screen.strengthexercise.StrengthExerciseScreen
 import com.mygymapp.ui.screen.stretchexercise.StretchExerciseScreen
+import com.mygymapp.ui.screen.superset.SupersetScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -113,12 +114,23 @@ fun AppNavigation(navController: NavHostController) {
         ) { backStackEntry ->
             val viewModel: com.mygymapp.ui.screen.activeroutine.ActiveRoutineViewModel = hiltViewModel()
 
-            // Observe exercise completion result
+            // Observe single-exercise completion result
             val completedExId = backStackEntry.savedStateHandle.get<String>("completedExerciseId")
             LaunchedEffect(completedExId) {
                 if (completedExId != null) {
                     viewModel.markExerciseCompleted(completedExId)
                     backStackEntry.savedStateHandle.remove<String>("completedExerciseId")
+                }
+            }
+
+            // Observe superset completion result (comma-separated exerciseId1,exerciseId2)
+            val completedSupersetIds = backStackEntry.savedStateHandle.get<String>("completedSupersetIds")
+            LaunchedEffect(completedSupersetIds) {
+                if (completedSupersetIds != null) {
+                    completedSupersetIds.split(",").forEach { id ->
+                        viewModel.markExerciseCompleted(id)
+                    }
+                    backStackEntry.savedStateHandle.remove<String>("completedSupersetIds")
                 }
             }
 
@@ -130,6 +142,9 @@ fun AppNavigation(navController: NavHostController) {
                         Screen.StrengthExercise.createRoute(sessionId, exerciseId)
                     }
                     navController.navigate(route)
+                },
+                onNavigateToSuperset = { sessionId, exerciseId1, exerciseId2 ->
+                    navController.navigate(Screen.Superset.createRoute(sessionId, exerciseId1, exerciseId2))
                 },
                 onBack = { navController.popBackStack() },
                 onNavigateHome = {
@@ -172,6 +187,27 @@ fun AppNavigation(navController: NavHostController) {
                         ?.set("completedExerciseId", exerciseId)
                     navController.popBackStack()
                 },
+            )
+        }
+
+        composable(
+            route = Screen.Superset.route,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType },
+                navArgument("exerciseId1") { type = NavType.StringType },
+                navArgument("exerciseId2") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val exerciseId1 = backStackEntry.arguments?.getString("exerciseId1") ?: ""
+            val exerciseId2 = backStackEntry.arguments?.getString("exerciseId2") ?: ""
+            SupersetScreen(
+                onComplete = {
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("completedSupersetIds", "$exerciseId1,$exerciseId2")
+                    navController.popBackStack()
+                },
+                onBack = { navController.popBackStack() },
             )
         }
 
