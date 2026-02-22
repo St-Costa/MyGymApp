@@ -20,6 +20,8 @@ data class StrengthSetUi(
     val weight: Double = 0.0,
     val previousReps: Int = 0,
     val previousWeight: Double = 0.0,
+    val repsModified: Boolean = false,
+    val weightModified: Boolean = false,
 )
 
 data class StrengthExerciseUiState(
@@ -82,8 +84,12 @@ class StrengthExerciseViewModel @Inject constructor(
             val sets = (0 until setCount).map { i ->
                 val prev = previousSets.getOrNull(i)
                 StrengthSetUi(
+                    reps = prev?.reps ?: 0,
+                    weight = prev?.weight ?: 0.0,
                     previousReps = prev?.reps ?: 0,
                     previousWeight = prev?.weight ?: 0.0,
+                    repsModified = false,
+                    weightModified = false,
                 )
             }
 
@@ -99,11 +105,11 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     fun updateReps(setIndex: Int, reps: Int) {
-        updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0)) }
+        updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true) }
     }
 
     fun updateWeight(setIndex: Int, weight: Double) {
-        updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0)) }
+        updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true) }
     }
 
     fun updateDescription(text: String) {
