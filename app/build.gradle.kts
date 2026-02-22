@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
 
     implementation(libs.snakeyaml.engine)
+    implementation(libs.androidx.browser)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
 

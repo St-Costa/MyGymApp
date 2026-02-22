@@ -128,12 +128,11 @@ What exists:
 ### [x] Phase 8: Media Display — DONE
 - `MediaPreview` in `ui/components/`: handles images and YouTube videos
   - Images: loaded via Coil (SubcomposeAsyncImage), Google Drive share links auto-converted to direct download URL
-  - YouTube: extracts video ID from watch/shorts/embed/youtu.be URLs; shows thumbnail (hqdefault.jpg) with play button overlay; tap → inline WebView player (`youtube.com/embed/{id}?autoplay=1&playsinline=1&rel=0`)
-  - WebView settings: javaScriptEnabled, domStorageEnabled (required by YouTube embed), mediaPlaybackRequiresUserGesture=false
+  - YouTube: extracts video ID from watch/shorts/embed/youtu.be URLs; shows thumbnail (hqdefault.jpg) with play button overlay; tap → Chrome Custom Tab (`youtube.com/watch?v={id}`), fallback to ACTION_VIEW
+  - **YouTube note**: WebView + YouTube embed is not viable on Android — MediaCodec writes decoded frames to a Surface that Compose cannot composite (confirmed via adb logcat: `setOutputSurface BAD_INDEX`, codec runs but frames invisible). Chrome Custom Tabs (`androidx.browser:1.8.0`) is the correct solution: stays in-app task, back button returns to exercise screen.
   - Error state: optional red error text (enabled in ExerciseEditScreen, silent in exercise screens)
 - `ExerciseEditScreen`: live preview below link field, debounced 800ms; clears immediately if field emptied
 - `StrengthExerciseScreen` + `StretchExerciseScreen`: MediaPreview shown above description field
-- Note: WebView always shows gray in Android Studio Compose Preview — works correctly on device/emulator
 - `MyGymApp` implements `ImageLoaderFactory`: Coil configured with permanent disk cache in `filesDir/gymdata/image_cache/` (100MB, never cleared by Android) + memory cache at 20% RAM
 
 ### Remaining Work (future enhancements)
@@ -168,3 +167,4 @@ Design mockups are in `Design/` folder (Excalidraw files + `Funzionalita_scherma
 ## Gotchas
 - Kotlin: don't name a private property `fooBar` and create `getFooBar()` — the generated getter clashes. Use distinct names.
 - Gradle wrapper jar was copied from `~/.gradle/caches/` (no global gradle installed).
+- **YouTube in WebView + Compose = impossible**: MediaCodec writes video frames to a driver-level Surface that bypasses all LAYER_TYPE settings and Compose compositing. Use Chrome Custom Tabs (`CustomTabsIntent`) instead.
