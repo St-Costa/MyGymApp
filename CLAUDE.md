@@ -79,6 +79,8 @@ What exists:
 - `RoutineListScreen` with ViewModel: list of routines with enable/disable Switch toggle
 - `RoutineEditScreen` with ViewModel: name, day picker (dropdown), notes, exercise selection via picker navigation, set/rep config per exercise
 - Exercise picker result passed via `savedStateHandle`
+- Drag-and-drop reorder: long press hamburger handle → card lifts (elevation + surfaceVariant), drag vertically, surrounding items shift in real-time, release commits via `moveExercise(from, to)`
+- Round +/− buttons (32dp `CircleShape`) for sets, rep range, time; rep range centered with `headlineSmall` font
 
 ### [x] Phase 4: Active Workout — DONE
 - `ActiveRoutineScreen` with ViewModel: shows exercises, completion state (strikethrough + checkmark + opacity), editable notes with AutoSaveTextField, progress section after all complete (tonnage comparison)
@@ -123,7 +125,7 @@ What exists:
 
 ### Remaining Work (future enhancements)
 - [ ] Delete confirmation dialogs for exercises and routines
-- [ ] Reorder exercises in routine edit (drag & drop)
+- [x] Reorder exercises in routine edit (drag & drop) — DONE
 - [ ] Export/import data
 
 ### [x] Phase 7: Progress & Charts (post-completion) — DONE
