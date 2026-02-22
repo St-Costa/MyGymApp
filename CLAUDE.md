@@ -52,6 +52,8 @@ File naming:
 - **One-time migration**: `migrateOldSessionFiles()` renames old slug-based history files to new ID format and rebuilds exercise index; guarded by `_idx/.migrated` sentinel
 - **Vertical scroll picker**: For one-handed reps/weight input (no keyboard popup)
 - **Auto-save**: Debounced 500ms writes for text fields (no save button); ExerciseEdit and RoutineEdit save automatically via `ViewModel.onCleared()` when user navigates back. Save uses a dedicated `clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)` (not `runBlocking`) to avoid ANR
+- **Exercise progress persistence**: StrengthExercise/StretchExercise/Superset ViewModels also use `clearScope` in `onCleared()` to persist in-progress reps/weight/checkboxes to disk on back navigation. A flag (`exerciseCompleted`/`supersetCompleted`) determines whether to save with `completed = true` (user pressed "Complete Exercise") or `false` (navigated back mid-exercise). On re-entry, the VM's `init` reads the current session from disk and restores saved values; `repsModified`/`weightModified` are set only when the saved value differs from the previous session's value (so unmodified values stay grey).
+- **onBack vs onComplete**: Exercise screens (`StrengthExerciseScreen`, `StretchExerciseScreen`, `SupersetScreen`) take two separate navigation callbacks: `onBack` (simple pop, no completion signal) and `onComplete` (sets `completedExerciseId`/`completedSupersetIds` on `savedStateHandle` then pops). This ensures exercises are marked completed only when the user explicitly taps "Complete Exercise".
 - **DataChangedSignal**: Singleton `SharedFlow` bus (`data/DataChangedSignal.kt`). Edit ViewModels emit `notifyExercisesChanged()` / `notifyRoutinesChanged()` after save completes; list ViewModels (ExerciseList, RoutineList, WeekView, Main) collect and reload so UI reflects changes immediately on navigate back
 - **Stopwatch**: Foreground service with Chronometer notification (status bar) + in-app MM:SS display (always visible, dimmed when stopped)
 - **No popup notifications**
@@ -64,7 +66,7 @@ File naming:
 5. **RoutineListScreen** — List with enable/disable toggle
 6. **RoutineEditScreen** — Name, day, exercise selection + set config; superset pairing via chain-link button
 7. **ActiveRoutineScreen** — Active workout: exercise list (singles + superset groups), completion state, editable notes, progress after completion
-8. **StrengthExerciseScreen** — Media, description, sets with scroll picker, previous values, progress chart
+8. **StrengthExerciseScreen** — Media, description, sets with scroll picker, previous values, progress chart; takes `onComplete` (separate from `onBack`)
 9. **StretchExerciseScreen** — Media, description, stopwatch, sets with checkboxes; takes `onComplete` (separate from `onBack`)
 10. **SupersetScreen** — Interleaved sets for two paired exercises; FORZA pickers pre-populated from previous session; per-exercise tonnage % badge
 
