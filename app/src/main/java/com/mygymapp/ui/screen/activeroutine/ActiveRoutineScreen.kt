@@ -24,6 +24,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -49,10 +51,35 @@ import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
 import com.mygymapp.ui.theme.StretchColor
 
+// ---------------------------------------------------------------------------
+// Exercise grouping (mirrors RoutineEditViewModel's segment model)
+// ---------------------------------------------------------------------------
+
+private sealed class ExerciseGroup {
+    data class Single(val exercise: ActiveExerciseUi) : ExerciseGroup()
+    data class Superset(val ex1: ActiveExerciseUi, val ex2: ActiveExerciseUi) : ExerciseGroup()
+}
+
+private fun buildExerciseGroups(exercises: List<ActiveExerciseUi>): List<ExerciseGroup> {
+    val groups = mutableListOf<ExerciseGroup>()
+    var i = 0
+    while (i < exercises.size) {
+        if (exercises[i].supersetWithNext && i + 1 < exercises.size) {
+            groups.add(ExerciseGroup.Superset(exercises[i], exercises[i + 1]))
+            i += 2
+        } else {
+            groups.add(ExerciseGroup.Single(exercises[i]))
+            i++
+        }
+    }
+    return groups
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveRoutineScreen(
     onNavigateToExercise: (sessionId: String, exerciseId: String, isStretch: Boolean) -> Unit,
+    onNavigateToSuperset: (sessionId: String, exerciseId1: String, exerciseId2: String) -> Unit,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     viewModel: ActiveRoutineViewModel = hiltViewModel(),
@@ -86,6 +113,8 @@ fun ActiveRoutineScreen(
         if (uiState.isLoading) {
             FullscreenLoading(padding)
         } else {
+            val groups = remember(uiState.exercises) { buildExerciseGroups(uiState.exercises) }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -104,23 +133,48 @@ fun ActiveRoutineScreen(
                     )
                 }
 
-                // Exercises
-                itemsIndexed(
-                    items = uiState.exercises,
-                    key = { _, ex -> ex.exerciseId },
-                ) { _, exercise ->
-                    ExerciseRow(
-                        exercise = exercise,
-                        onClick = {
-                            if (!exercise.completed) {
-                                onNavigateToExercise(
-                                    uiState.sessionId,
-                                    exercise.exerciseId,
-                                    exercise.type == ExerciseType.STRETCH,
-                                )
-                            }
-                        },
-                    )
+                // Exercise groups (singles and supersets)
+                items(
+                    items = groups,
+                    key = { group ->
+                        when (group) {
+                            is ExerciseGroup.Single -> group.exercise.exerciseId
+                            is ExerciseGroup.Superset -> "${group.ex1.exerciseId}_${group.ex2.exerciseId}"
+                        }
+                    },
+                ) { group ->
+                    when (group) {
+                        is ExerciseGroup.Single -> {
+                            ExerciseRow(
+                                exercise = group.exercise,
+                                onClick = {
+                                    if (!group.exercise.completed) {
+                                        onNavigateToExercise(
+                                            uiState.sessionId,
+                                            group.exercise.exerciseId,
+                                            group.exercise.type == ExerciseType.STRETCH,
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                        is ExerciseGroup.Superset -> {
+                            val bothCompleted = group.ex1.completed && group.ex2.completed
+                            SupersetGroupRow(
+                                ex1 = group.ex1,
+                                ex2 = group.ex2,
+                                onClick = {
+                                    if (!bothCompleted) {
+                                        onNavigateToSuperset(
+                                            uiState.sessionId,
+                                            group.ex1.exerciseId,
+                                            group.ex2.exerciseId,
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
 
                 // Progress section (shown when all completed)
@@ -204,6 +258,76 @@ private fun ExerciseRow(
                     color = color,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SupersetGroupRow(
+    ex1: ActiveExerciseUi,
+    ex2: ActiveExerciseUi,
+    onClick: () -> Unit,
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val bothCompleted = ex1.completed && ex2.completed
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(2.dp, primaryColor),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "SUPERSET",
+                style = MaterialTheme.typography.labelSmall,
+                color = primaryColor,
+            )
+
+            SupersetExerciseEntry(exercise = ex1)
+
+            HorizontalDivider(color = primaryColor.copy(alpha = 0.3f), thickness = 1.dp)
+
+            SupersetExerciseEntry(exercise = ex2)
+        }
+    }
+}
+
+@Composable
+private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Left side: name + sets — dimmed when completed (mirrors ExerciseRow)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .alpha(if (exercise.completed) 0.4f else 1f),
+        ) {
+            Text(
+                text = exercise.exerciseName,
+                style = MaterialTheme.typography.titleSmall,
+                textDecoration = if (exercise.completed) TextDecoration.LineThrough else null,
+            )
+            Text(
+                text = "${exercise.setCount} sets",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            )
+        }
+        // Right side: tonnage % — full brightness (not dimmed)
+        if (exercise.completed && exercise.tonnageChangePct != null) {
+            val color = if (exercise.tonnageChangePct > 0) GitgraphGreen else GitgraphRed
+            Text(
+                text = "%+.1f%%".format(exercise.tonnageChangePct),
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+            )
         }
     }
 }

@@ -46,6 +46,7 @@ data class ActiveExerciseUi(
     val completed: Boolean = false,
     val setCount: Int = 0,
     val tonnageChangePct: Double? = null,
+    val supersetWithNext: Boolean = false,
 )
 
 @HiltViewModel
@@ -77,6 +78,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     type = exercise.type,
                     bodypart = exercise.bodypart,
                     setCount = re.sets,
+                    supersetWithNext = re.supersetWithNext,
                 )
             }
 

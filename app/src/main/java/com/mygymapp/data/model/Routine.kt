@@ -17,4 +17,5 @@ data class RoutineExercise(
     val repRangeMin: Int = 0,
     val repRangeMax: Int = 0,
     val timePerSetSeconds: Int = 0,
+    val supersetWithNext: Boolean = false,
 )

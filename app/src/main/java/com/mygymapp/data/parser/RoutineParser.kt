@@ -34,6 +34,9 @@ object RoutineParser {
             if (ex.timePerSetSeconds > 0) {
                 map["timePerSetSeconds"] = ex.timePerSetSeconds
             }
+            if (ex.supersetWithNext) {
+                map["supersetWithNext"] = true
+            }
             map
         }
 
@@ -60,6 +63,7 @@ object RoutineParser {
                 repRangeMin = (map["repRangeMin"] as? Number)?.toInt() ?: 0,
                 repRangeMax = (map["repRangeMax"] as? Number)?.toInt() ?: 0,
                 timePerSetSeconds = (map["timePerSetSeconds"] as? Number)?.toInt() ?: 0,
+                supersetWithNext = map["supersetWithNext"] as? Boolean ?: false,
             )
         }
     }

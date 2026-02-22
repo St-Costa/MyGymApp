@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +30,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
@@ -66,7 +70,7 @@ import com.mygymapp.ui.theme.StretchColor
 import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
-// Drag-and-drop state
+// Drag-and-drop state (now on segment indices)
 // ---------------------------------------------------------------------------
 
 private data class DragState(
@@ -76,10 +80,8 @@ private data class DragState(
 )
 
 /**
- * How much a non-dragged item at [index] should be visually displaced given
- * that the dragged item is moving from [from] toward [target].
- * Items between the two positions shift by one slot (item height + gap) to
- * make room for the dragged card.
+ * How much a non-dragged segment at [index] should be visually displaced given
+ * that the dragged segment is moving from [from] toward [target].
  */
 private fun calcDisplacement(
     index: Int,
@@ -194,8 +196,9 @@ fun RoutineEditScreen(
 
             ExerciseDragDropList(
                 exercises = uiState.exercises,
-                onMove = viewModel::moveExercise,
+                onMoveSegment = viewModel::moveSegment,
                 onRemove = viewModel::removeExercise,
+                onToggleSuperset = viewModel::toggleSuperset,
                 onSetsChange = viewModel::updateExerciseSets,
                 onRepMinChange = viewModel::updateExerciseRepMin,
                 onRepMaxChange = viewModel::updateExerciseRepMax,
@@ -216,37 +219,39 @@ fun RoutineEditScreen(
 }
 
 // ---------------------------------------------------------------------------
-// Drag-and-drop exercise list
+// Drag-and-drop exercise list (segment-aware)
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun ExerciseDragDropList(
     exercises: List<RoutineExerciseUi>,
-    onMove: (from: Int, to: Int) -> Unit,
+    onMoveSegment: (from: Int, to: Int) -> Unit,
     onRemove: (index: Int) -> Unit,
+    onToggleSuperset: (index: Int) -> Unit,
     onSetsChange: (index: Int, sets: Int) -> Unit,
     onRepMinChange: (index: Int, value: Int) -> Unit,
     onRepMaxChange: (index: Int, value: Int) -> Unit,
     onTimeChange: (index: Int, seconds: Int) -> Unit,
 ) {
     var dragState by remember { mutableStateOf<DragState?>(null) }
-    val itemHeightsPx = remember { mutableStateMapOf<Int, Float>() }
+    val segmentHeightsPx = remember { mutableStateMapOf<Int, Float>() }
     val gapPx = with(LocalDensity.current) { 16.dp.toPx() }
+    val segments = remember(exercises) { buildExerciseSegments(exercises) }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        exercises.forEachIndexed { index, exercise ->
-            val isDragging = dragState?.fromIndex == index
+        segments.forEachIndexed { segIdx, segment ->
+            val isDragging = dragState?.fromIndex == segIdx
             val ds = dragState
             val offsetYPx = when {
                 isDragging -> ds!!.offsetY
                 ds != null -> calcDisplacement(
-                    index = index,
+                    index = segIdx,
                     from = ds.fromIndex,
                     target = ds.targetIndex,
-                    draggedItemHeightPx = itemHeightsPx[ds.fromIndex] ?: 0f,
+                    draggedItemHeightPx = segmentHeightsPx[ds.fromIndex] ?: 0f,
                     gapPx = gapPx,
                 )
                 else -> 0f
@@ -255,39 +260,204 @@ private fun ExerciseDragDropList(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onSizeChanged { itemHeightsPx[index] = it.height.toFloat() }
+                    .onSizeChanged { segmentHeightsPx[segIdx] = it.height.toFloat() }
                     .zIndex(if (isDragging) 1f else 0f)
                     .offset { IntOffset(0, offsetYPx.roundToInt()) },
             ) {
-                RoutineExerciseItem(
-                    exercise = exercise,
-                    isDragging = isDragging,
-                    onDragStart = {
-                        dragState = DragState(index, 0f, index)
-                    },
-                    onDrag = { dy ->
-                        val state = dragState ?: return@RoutineExerciseItem
-                        val newOffset = state.offsetY + dy
-                        val slotHeight = (itemHeightsPx[state.fromIndex] ?: 0f) + gapPx
-                        val delta = if (slotHeight > 0) (newOffset / slotHeight).roundToInt() else 0
-                        val newTarget = (state.fromIndex + delta).coerceIn(0, exercises.size - 1)
-                        dragState = state.copy(offsetY = newOffset, targetIndex = newTarget)
-                    },
-                    onDragEnd = {
-                        val state = dragState
-                        dragState = null
-                        if (state != null && state.fromIndex != state.targetIndex) {
-                            onMove(state.fromIndex, state.targetIndex)
-                        }
-                    },
-                    onDragCancel = { dragState = null },
-                    onRemove = { onRemove(index) },
-                    onSetsChange = { onSetsChange(index, it) },
-                    onRepMinChange = { onRepMinChange(index, it) },
-                    onRepMaxChange = { onRepMaxChange(index, it) },
-                    onTimeChange = { onTimeChange(index, it) },
-                )
+                when (segment) {
+                    is ExerciseSegment.Single -> {
+                        val exIdx = segment.index
+                        // Show superset link button only when the next segment is also a Single
+                        val canLink = segIdx + 1 < segments.size && segments[segIdx + 1] is ExerciseSegment.Single
+                        RoutineExerciseItem(
+                            exercise = exercises[exIdx],
+                            isDragging = isDragging,
+                            onDragStart = { dragState = DragState(segIdx, 0f, segIdx) },
+                            onDrag = { dy ->
+                                val state = dragState ?: return@RoutineExerciseItem
+                                val newOffset = state.offsetY + dy
+                                val slotHeight = (segmentHeightsPx[state.fromIndex] ?: 0f) + gapPx
+                                val delta = if (slotHeight > 0) (newOffset / slotHeight).roundToInt() else 0
+                                val newTarget = (state.fromIndex + delta).coerceIn(0, segments.size - 1)
+                                dragState = state.copy(offsetY = newOffset, targetIndex = newTarget)
+                            },
+                            onDragEnd = {
+                                val state = dragState
+                                dragState = null
+                                if (state != null && state.fromIndex != state.targetIndex) {
+                                    onMoveSegment(state.fromIndex, state.targetIndex)
+                                }
+                            },
+                            onDragCancel = { dragState = null },
+                            onRemove = { onRemove(exIdx) },
+                            onSetsChange = { onSetsChange(exIdx, it) },
+                            onRepMinChange = { onRepMinChange(exIdx, it) },
+                            onRepMaxChange = { onRepMaxChange(exIdx, it) },
+                            onTimeChange = { onTimeChange(exIdx, it) },
+                            showDragHandle = true,
+                            showSupersetButton = canLink,
+                            onToggleSuperset = { onToggleSuperset(exIdx) },
+                        )
+                    }
+
+                    is ExerciseSegment.SupersetPair -> {
+                        SupersetPairContainer(
+                            exercise1 = exercises[segment.index1],
+                            exercise2 = exercises[segment.index2],
+                            isDragging = isDragging,
+                            onDragStart = { dragState = DragState(segIdx, 0f, segIdx) },
+                            onDrag = { dy ->
+                                val state = dragState ?: return@SupersetPairContainer
+                                val newOffset = state.offsetY + dy
+                                val slotHeight = (segmentHeightsPx[state.fromIndex] ?: 0f) + gapPx
+                                val delta = if (slotHeight > 0) (newOffset / slotHeight).roundToInt() else 0
+                                val newTarget = (state.fromIndex + delta).coerceIn(0, segments.size - 1)
+                                dragState = state.copy(offsetY = newOffset, targetIndex = newTarget)
+                            },
+                            onDragEnd = {
+                                val state = dragState
+                                dragState = null
+                                if (state != null && state.fromIndex != state.targetIndex) {
+                                    onMoveSegment(state.fromIndex, state.targetIndex)
+                                }
+                            },
+                            onDragCancel = { dragState = null },
+                            onRemove1 = { onRemove(segment.index1) },
+                            onRemove2 = { onRemove(segment.index2) },
+                            onSetsChange1 = { onSetsChange(segment.index1, it) },
+                            onRepMinChange1 = { onRepMinChange(segment.index1, it) },
+                            onRepMaxChange1 = { onRepMaxChange(segment.index1, it) },
+                            onTimeChange1 = { onTimeChange(segment.index1, it) },
+                            onSetsChange2 = { onSetsChange(segment.index2, it) },
+                            onRepMinChange2 = { onRepMinChange(segment.index2, it) },
+                            onRepMaxChange2 = { onRepMaxChange(segment.index2, it) },
+                            onTimeChange2 = { onTimeChange(segment.index2, it) },
+                            onUnlink = { onToggleSuperset(segment.index1) },
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Superset pair container (purple frame wrapping two exercise cards)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun SupersetPairContainer(
+    exercise1: RoutineExerciseUi,
+    exercise2: RoutineExerciseUi,
+    isDragging: Boolean,
+    onDragStart: () -> Unit,
+    onDrag: (dy: Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    onRemove1: () -> Unit,
+    onRemove2: () -> Unit,
+    onSetsChange1: (Int) -> Unit,
+    onRepMinChange1: (Int) -> Unit,
+    onRepMaxChange1: (Int) -> Unit,
+    onTimeChange1: (Int) -> Unit,
+    onSetsChange2: (Int) -> Unit,
+    onRepMinChange2: (Int) -> Unit,
+    onRepMaxChange2: (Int) -> Unit,
+    onTimeChange2: (Int) -> Unit,
+    onUnlink: () -> Unit,
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(2.dp, primaryColor),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isDragging)
+                MaterialTheme.colorScheme.surfaceVariant
+            else
+                MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isDragging) 10.dp else 1.dp,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Header: drag handle + "SUPERSET" label + unlink button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Drag to reorder",
+                    tint = primaryColor,
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .pointerInput(Unit) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { onDragStart() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    onDrag(dragAmount.y)
+                                },
+                                onDragEnd = { onDragEnd() },
+                                onDragCancel = { onDragCancel() },
+                            )
+                        },
+                )
+                Text(
+                    text = "SUPERSET",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = primaryColor,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onUnlink) {
+                    Icon(
+                        Icons.Default.LinkOff,
+                        contentDescription = "Remove superset",
+                        tint = primaryColor,
+                    )
+                }
+            }
+
+            // Exercise 1 (no drag handle, no superset button)
+            RoutineExerciseItem(
+                exercise = exercise1,
+                isDragging = false,
+                onDragStart = {},
+                onDrag = {},
+                onDragEnd = {},
+                onDragCancel = {},
+                onRemove = onRemove1,
+                onSetsChange = onSetsChange1,
+                onRepMinChange = onRepMinChange1,
+                onRepMaxChange = onRepMaxChange1,
+                onTimeChange = onTimeChange1,
+                showDragHandle = false,
+                showSupersetButton = false,
+            )
+
+            HorizontalDivider(color = primaryColor.copy(alpha = 0.4f), thickness = 1.dp)
+
+            // Exercise 2 (no drag handle, no superset button)
+            RoutineExerciseItem(
+                exercise = exercise2,
+                isDragging = false,
+                onDragStart = {},
+                onDrag = {},
+                onDragEnd = {},
+                onDragCancel = {},
+                onRemove = onRemove2,
+                onSetsChange = onSetsChange2,
+                onRepMinChange = onRepMinChange2,
+                onRepMaxChange = onRepMaxChange2,
+                onTimeChange = onTimeChange2,
+                showDragHandle = false,
+                showSupersetButton = false,
+            )
         }
     }
 }
@@ -309,6 +479,9 @@ private fun RoutineExerciseItem(
     onRepMinChange: (Int) -> Unit,
     onRepMaxChange: (Int) -> Unit,
     onTimeChange: (Int) -> Unit,
+    showDragHandle: Boolean = true,
+    showSupersetButton: Boolean = false,
+    onToggleSuperset: () -> Unit = {},
 ) {
     val borderColor = when (exercise.exerciseType) {
         ExerciseType.FORZA -> ForzaColor
@@ -338,24 +511,26 @@ private fun RoutineExerciseItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = Icons.Default.Menu,
-                    contentDescription = "Drag to reorder",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .pointerInput(Unit) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { onDragStart() },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    onDrag(dragAmount.y)
-                                },
-                                onDragEnd = { onDragEnd() },
-                                onDragCancel = { onDragCancel() },
-                            )
-                        },
-                )
+                if (showDragHandle) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Drag to reorder",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .pointerInput(Unit) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { onDragStart() },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        onDrag(dragAmount.y)
+                                    },
+                                    onDragEnd = { onDragEnd() },
+                                    onDragCancel = { onDragCancel() },
+                                )
+                            },
+                    )
+                }
                 Text(
                     text = exercise.exerciseName,
                     style = MaterialTheme.typography.titleLarge,
@@ -419,6 +594,29 @@ private fun RoutineExerciseItem(
                     onValueChange = onTimeChange,
                     step = 5,
                 )
+            }
+
+            // Superset link button (shown for Single segments that have a next Single)
+            if (showSupersetButton) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onToggleSuperset) {
+                        Icon(
+                            imageVector = Icons.Default.Link,
+                            contentDescription = "Add to superset",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Superset",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
             }
         }
     }

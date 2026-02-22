@@ -32,6 +32,7 @@ snakeyaml-engine = { group = "org.snakeyaml", name = "snakeyaml-engine", version
 androidx-browser = { group = "androidx.browser", name = "browser", version = "1.8.0" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
