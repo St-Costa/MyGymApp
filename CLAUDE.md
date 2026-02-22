@@ -32,15 +32,24 @@ Files stored in app internal storage under `gymdata/`:
 - `exercises/` — Exercise .md files (YAML frontmatter: id, name, type, bodypart, link, created, updated)
 - `routines/` — Routine .md files (YAML frontmatter: id, name, day, enabled, exercises list, created, updated)
 - `history/YYYY/MM/` — Workout session .md files (date-organized for efficient querying)
+- `history/_idx/` — Exercise index: one `{exerciseId}.idx` file per exercise, newline-separated session paths
 - `cache/images/` — Cached images from URLs
 
-File naming: `slugify(name)-shortId.md` for exercises/routines, `YYYY-MM-DD_slug-id.md` for history.
+File naming:
+- Exercises/routines: `slugify(name)-{id}.md` where id has type prefix (`ex-`, `rt-`)
+- History sessions: `YYYY-MM-DD_{routineId}_{sessionId}.md` — routineId embedded for filename-based lookup
 
 ## Key Design Decisions
 - **No database**: All data in .md files, in-memory cache for performance
 - **YAML frontmatter**: Structured data in YAML, free-text notes in markdown body
 - **Pre-computed tonnage**: Stored in session frontmatter for fast gitgraph queries
 - **History by date**: `YYYY/MM/` directories for efficient date-range scans
+- **ID-based session filenames**: `YYYY-MM-DD_{routineId}_{sessionId}.md` — routineId in filename allows routine-session lookup by filename filter (no YAML parse needed)
+- **Exercise index**: `history/_idx/{exerciseId}.idx` maps exerciseId → session file paths; maintained on every save/delete; rebuilt by one-time migration
+- **Typed ID prefixes**: `ex-{8hex}` for exercises, `rt-{8hex}` for routines — visually distinguishable in filenames and logs
+- **Name sync on rename**: ExerciseRepository and RoutineRepository call WorkoutRepository to update all history sessions when a name changes
+- **Auto-prune**: Sessions older than 3 months deleted on startup (MainViewModel.init), with exercise index cleanup
+- **One-time migration**: `migrateOldSessionFiles()` renames old slug-based history files to new ID format and rebuilds exercise index; guarded by `_idx/.migrated` sentinel
 - **Vertical scroll picker**: For one-handed reps/weight input (no keyboard popup)
 - **Auto-save**: Debounced 500ms writes for text fields (no save button)
 - **Stopwatch**: Foreground service with Chronometer notification (status bar) + in-app MM:SS display (always visible, dimmed when stopped)
@@ -135,6 +144,14 @@ What exists:
 - `ActiveRoutineScreen` progress section: filter chips (Totale + per bodypart), chart title with current tonnage, loading spinner
 - `ActiveRoutineViewModel`: per-exercise tonnage change badge (loaded from reloaded session on disk), 12-week history query, fixed `finalizeSession` bug (now reloads from disk before computing tonnage)
 - `WorkoutRepository`: added `getSession(sessionId, date)`, fixed `getLastSessionForRoutine` to sort by `completedAt` (was sorting by filename/UUID → wrong order for same-day sessions)
+
+### [x] Phase 9: History Consistency & ID-Based File Structure — DONE
+- **Typed IDs**: exercises use `ex-{8hex}`, routines use `rt-{8hex}` — generated in their respective repositories
+- **Session filename**: `YYYY-MM-DD_{routineId}_{sessionId}.md` — routineId embedded so sessions for a routine are found by filename filter (no YAML parse)
+- **Exercise index**: `history/_idx/{exerciseId}.idx` — maintained on every `save()`/`delete()`; used by `getSessionsForExercise` and `updateExerciseNameInHistory` for O(targeted) access instead of full scan
+- **Name sync**: `ExerciseRepository.save()` calls `updateExerciseNameInHistory()` on rename; `RoutineRepository.save()` calls `updateRoutineNameInHistory()` — no file rename needed since filenames use IDs
+- **Auto-prune**: `pruneOldSessions(now - 3 months)` runs at startup, cleans exercise index entries for deleted files
+- **One-time migration**: `migrateOldSessionFiles()` renames old `YYYY-MM-DD_{slug}-{id}.md` files to new format and rebuilds exercise index; guarded by `_idx/.migrated` sentinel; runs sequentially before gitgraph load in `MainViewModel.init`
 
 ## Build & Run
 ```bash
