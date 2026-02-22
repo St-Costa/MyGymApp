@@ -187,9 +187,11 @@ class WorkoutRepository @Inject constructor(
             val fileName = sessionFileName(updated)
             File(dir, fileName).writeText(WorkoutParser.toMarkdown(updated))
 
-            // Keep exercise index up to date
+            // Keep exercise index up to date — distinct() avoids redundant file I/O
+            // when the same exercise appears multiple times in one session
             val rel = "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$fileName"
-            updated.exercises.forEach { ex -> addToExerciseIndex(ex.exerciseId, rel) }
+            updated.exercises.map { it.exerciseId }.distinct()
+                .forEach { exerciseId -> addToExerciseIndex(exerciseId, rel) }
 
             updated
         }

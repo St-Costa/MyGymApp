@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.GitgraphGreen
@@ -83,12 +84,7 @@ fun ActiveRoutineScreen(
         },
     ) { padding ->
         if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
+            FullscreenLoading(padding)
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),

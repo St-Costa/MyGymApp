@@ -9,6 +9,7 @@ import com.mygymapp.data.model.Routine
 import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -37,6 +38,7 @@ class MainViewModel @Inject constructor(
     private val workoutRepository: WorkoutRepository,
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
+    private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -47,6 +49,9 @@ class MainViewModel @Inject constructor(
             workoutRepository.migrateOldSessionFiles()
             workoutRepository.pruneOldSessions(LocalDate.now().minusMonths(3))
             loadGitgraphInternal()
+        }
+        viewModelScope.launch {
+            dataChangedSignal.routinesChanged.collect { loadGitgraphInternal() }
         }
     }
 

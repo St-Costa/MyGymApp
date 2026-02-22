@@ -2,33 +2,27 @@ package com.mygymapp.ui.screen.exerciseedit
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,7 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.BodyPartAutocomplete
+import com.mygymapp.ui.components.DeleteConfirmationDialog
 import com.mygymapp.ui.components.MediaPreview
+import com.mygymapp.ui.components.RoundStepButton
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
 
@@ -76,25 +72,14 @@ fun ExerciseEditScreen(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete exercise?") },
-            text = { Text("\"${uiState.name}\" will be permanently deleted.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteDialog = false
-                        viewModel.deleteExercise()
-                    },
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
+        DeleteConfirmationDialog(
+            itemName = uiState.name,
+            itemType = "exercise",
+            onConfirm = {
+                showDeleteDialog = false
+                viewModel.deleteExercise()
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancel")
-                }
-            },
+            onDismiss = { showDeleteDialog = false },
         )
     }
 
@@ -174,27 +159,27 @@ fun ExerciseEditScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        RepRangeStepButton("-") { viewModel.onRepMinChange(uiState.defaultRepRangeMin - 1) }
+                        RoundStepButton("-") { viewModel.onRepMinChange(uiState.defaultRepRangeMin - 1) }
                         Text(
                             text = uiState.defaultRepRangeMin.toString(),
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.width(40.dp),
                             textAlign = TextAlign.Center,
                         )
-                        RepRangeStepButton("+") { viewModel.onRepMinChange(uiState.defaultRepRangeMin + 1) }
+                        RoundStepButton("+") { viewModel.onRepMinChange(uiState.defaultRepRangeMin + 1) }
                         Text(
                             text = "–",
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.padding(horizontal = 2.dp),
                         )
-                        RepRangeStepButton("-") { viewModel.onRepMaxChange(uiState.defaultRepRangeMax - 1) }
+                        RoundStepButton("-") { viewModel.onRepMaxChange(uiState.defaultRepRangeMax - 1) }
                         Text(
                             text = uiState.defaultRepRangeMax.toString(),
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.width(40.dp),
                             textAlign = TextAlign.Center,
                         )
-                        RepRangeStepButton("+") { viewModel.onRepMaxChange(uiState.defaultRepRangeMax + 1) }
+                        RoundStepButton("+") { viewModel.onRepMaxChange(uiState.defaultRepRangeMax + 1) }
                     }
                 }
             }
@@ -230,14 +215,3 @@ fun ExerciseEditScreen(
     }
 }
 
-@Composable
-private fun RepRangeStepButton(text: String, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = CircleShape,
-        contentPadding = PaddingValues(0.dp),
-        modifier = Modifier.size(32.dp),
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium)
-    }
-}

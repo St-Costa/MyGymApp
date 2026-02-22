@@ -3,6 +3,7 @@ package com.mygymapp.ui.screen.routineedit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.Routine
@@ -12,8 +13,11 @@ import com.mygymapp.data.repository.RoutineRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 data class RoutineExerciseUi(
@@ -43,9 +47,12 @@ class RoutineEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val routineRepository: RoutineRepository,
     private val exerciseRepository: ExerciseRepository,
+    private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
 
     private val routineId: String? = savedStateHandle.get<String>("id")?.takeIf { it.isNotBlank() }
+
+    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _uiState = MutableStateFlow(RoutineEditUiState())
     val uiState: StateFlow<RoutineEditUiState> = _uiState
@@ -163,7 +170,7 @@ class RoutineEditViewModel @Inject constructor(
         super.onCleared()
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
-        runBlocking {
+        clearScope.launch {
             val routine = Routine(
                 id = state.id,
                 name = state.name.trim(),
@@ -180,6 +187,8 @@ class RoutineEditViewModel @Inject constructor(
                 },
             )
             routineRepository.save(routine)
+            dataChangedSignal.notifyRoutinesChanged()
+            clearScope.cancel()
         }
     }
 }

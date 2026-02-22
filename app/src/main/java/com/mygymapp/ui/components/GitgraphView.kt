@@ -57,9 +57,9 @@ fun GitgraphView(
         val cellSize: Dp = (maxWidth - spacing * 6) / 7
         // Starting font size for text inside squares: big enough to need shrinking for short
         // strings like "7%", but converges quickly for longer ones like "100%".
-        val squareMaxFontSp = cellSize.value * 0.48f
+        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f }
         // Starting font size for routine name labels below: one word per line.
-        val nameMaxFontSp = cellSize.value * 0.55f
+        val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.55f }
 
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing),

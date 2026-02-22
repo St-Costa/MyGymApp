@@ -28,10 +28,12 @@ class ImageCacheRepository @Inject constructor(
 
         try {
             val directUrl = convertToDirectUrl(imageUrl)
-            val bytes = URL(directUrl).readBytes()
-            cached.writeBytes(bytes)
+            URL(directUrl).openStream().use { input ->
+                cached.outputStream().use { output -> input.copyTo(output) }
+            }
             cached
         } catch (_: Exception) {
+            cached.delete()
             null
         }
     }

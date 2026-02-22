@@ -2,6 +2,7 @@ package com.mygymapp.data.repository
 
 import com.mygymapp.data.model.Routine
 import com.mygymapp.data.parser.RoutineParser
+import com.mygymapp.data.util.slugify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

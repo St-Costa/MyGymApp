@@ -2,6 +2,7 @@ package com.mygymapp.ui.screen.weekview
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.Routine
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -33,6 +34,7 @@ data class WeekViewUiState(
 class WeekViewViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
+    private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WeekViewUiState())
@@ -40,6 +42,9 @@ class WeekViewViewModel @Inject constructor(
 
     init {
         loadWeek()
+        viewModelScope.launch {
+            dataChangedSignal.routinesChanged.collect { loadWeek() }
+        }
     }
 
     fun loadWeek() {
