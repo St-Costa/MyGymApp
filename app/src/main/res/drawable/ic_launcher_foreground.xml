@@ -4,29 +4,42 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!--
+        Dumbbell shape as a single connected path.
+        Viewport: 108×108, center at 54,54.
+        Width: x=20..88 (68dp), Height: y=38..70 (32dp).
+        Plates (outer): 9dp wide, 32dp tall — rounded outer corners r=3.
+        Plates (inner): 8dp wide, 20dp tall.
+        Handle: 34dp wide, 6dp tall.
+    -->
     <path
         android:fillColor="#BB86FC"
-        android:pathData="M34,54 L44,34 L54,54 L64,34 L74,54"
-        android:strokeColor="#BB86FC"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"/>
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M30,54 L78,54"
-        android:strokeColor="#BB86FC"
-        android:strokeWidth="6"
-        android:strokeLineCap="round"/>
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M26,48 L26,60"
-        android:strokeColor="#BB86FC"
-        android:strokeWidth="6"
-        android:strokeLineCap="round"/>
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M82,48 L82,60"
-        android:strokeColor="#BB86FC"
-        android:strokeWidth="6"
-        android:strokeLineCap="round"/>
+        android:pathData="
+            M 23,38
+            L 29,38
+            L 29,44
+            L 37,44
+            L 37,51
+            L 71,51
+            L 71,44
+            L 79,44
+            L 79,38
+            L 85,38
+            Q 88,38 88,41
+            L 88,67
+            Q 88,70 85,70
+            L 79,70
+            L 79,64
+            L 71,64
+            L 71,57
+            L 37,57
+            L 37,64
+            L 29,64
+            L 29,70
+            L 23,70
+            Q 20,70 20,67
+            L 20,41
+            Q 20,38 23,38
+            Z" />
 </vector>
