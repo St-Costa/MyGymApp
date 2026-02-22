@@ -130,20 +130,19 @@ class WorkoutRepository @Inject constructor(
                 "history/${month.year}/${month.monthValue.toString().padStart(2, '0')}"
             )
             if (!dir.exists()) continue
-            val files = dir.listFiles()?.filter { it.extension == "md" }
-                ?.sortedByDescending { it.name } ?: continue
-            for (file in files) {
+            dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
                 try {
                     val session = WorkoutParser.fromMarkdown(file.readText())
-                    if (session.exercises.any { it.exerciseId == exerciseId }) {
+                    if (session.completedAt.isNotBlank() &&
+                        session.exercises.any { it.exerciseId == exerciseId }
+                    ) {
                         sessions.add(session)
-                        if (sessions.size >= maxSessions) return@withContext sessions
                     }
                 } catch (_: Exception) {
                     // Skip
                 }
             }
         }
-        sessions
+        sessions.sortedByDescending { it.completedAt }.take(maxSessions)
     }
 }

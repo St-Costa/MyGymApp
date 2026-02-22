@@ -86,26 +86,24 @@ fun StrengthExerciseScreen(
                 )
 
                 // Sets header
+                val repRangeText = if (uiState.repRangeMin > 0 && uiState.repRangeMax > 0) {
+                    "${uiState.repRangeMin} - ${uiState.repRangeMax}"
+                } else "Reps"
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Set",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.weight(0.8f),
+                        repRangeText,
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.weight(1f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     Text(
-                        "Reps",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.weight(2f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    Text(
-                        "Weight (Kg)",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.weight(2f),
+                        "Kg",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.weight(1f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                 }
@@ -113,51 +111,31 @@ fun StrengthExerciseScreen(
                 HorizontalDivider()
 
                 // Set rows
-                val repRangeText = if (uiState.repRangeMin > 0 && uiState.repRangeMax > 0) {
-                    "${uiState.repRangeMin}-${uiState.repRangeMax}"
-                } else ""
-
                 uiState.sets.forEachIndexed { index, set ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Set number
-                        Text(
-                            "${index + 1}",
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.weight(0.8f),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        // Reps picker (tap only, no scroll)
+                        ScrollPickerInput(
+                            value = set.reps,
+                            onValueChange = { viewModel.updateReps(index, it.toInt()) },
+                            buttonStep = 1.0,
+                            isModified = set.repsModified || set.previousReps == 0,
+                            enableScroll = false,
+                            modifier = Modifier.weight(1f),
                         )
 
-                        // Reps picker
-                        Column(
-                            modifier = Modifier.weight(2f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            ScrollPickerInput(
-                                value = set.reps,
-                                onValueChange = { viewModel.updateReps(index, it.toInt()) },
-                                scrollStep = 5.0,
-                                buttonStep = 1.0,
-                            )
-                            if (repRangeText.isNotBlank()) {
-                                Text(
-                                    text = repRangeText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                                )
-                            }
-                        }
-
-                        // Weight picker
+                        // Weight picker (tap + long-press +10/-10 per second, no scroll)
                         ScrollPickerInput(
                             value = set.weight,
                             onValueChange = { viewModel.updateWeight(index, it.toDouble()) },
-                            scrollStep = 5.0,
                             buttonStep = 1.0,
                             isDecimal = true,
-                            modifier = Modifier.weight(2f),
+                            isModified = set.weightModified || set.previousWeight == 0.0,
+                            enableScroll = false,
+                            longPressRepeatStep = 10.0,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                     if (index < uiState.sets.lastIndex) {
