@@ -207,6 +207,15 @@ fun ExerciseEditScreen(
             )
 
             OutlinedTextField(
+                value = uiState.notes,
+                onValueChange = viewModel::onNotesChange,
+                label = { Text("Notes / Description") },
+                minLines = 3,
+                maxLines = 8,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
                 value = uiState.link,
                 onValueChange = viewModel::onLinkChange,
                 label = { Text("Image / YouTube Link") },
@@ -215,15 +224,6 @@ fun ExerciseEditScreen(
             )
 
             MediaPreview(link = previewLink, showErrorText = true)
-
-            OutlinedTextField(
-                value = uiState.notes,
-                onValueChange = viewModel::onNotesChange,
-                label = { Text("Notes / Description") },
-                minLines = 3,
-                maxLines = 8,
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             Spacer(modifier = Modifier.height(80.dp))
         }
