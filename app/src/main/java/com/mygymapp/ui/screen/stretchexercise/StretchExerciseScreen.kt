@@ -43,6 +43,7 @@ import com.mygymapp.ui.service.StopwatchService
 @Composable
 fun StretchExerciseScreen(
     onBack: () -> Unit,
+    onComplete: () -> Unit,
     viewModel: StretchExerciseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -163,7 +164,7 @@ fun StretchExerciseScreen(
                 Button(
                     onClick = {
                         viewModel.completeExercise()
-                        onBack()
+                        onComplete()
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(

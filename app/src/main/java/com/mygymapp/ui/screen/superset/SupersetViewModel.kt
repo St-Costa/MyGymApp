@@ -11,6 +11,10 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -61,6 +65,8 @@ class SupersetViewModel @Inject constructor(
     val uiState: StateFlow<SupersetUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
+    private var supersetCompleted = false
+    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         viewModelScope.launch {
@@ -112,17 +118,19 @@ class SupersetViewModel @Inject constructor(
                         val cs = currentSet as? ExerciseSet.Strength
                         val ps = prevStrengthSets1.getOrNull(i)
                         val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
+                        val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
+                        val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0
                         SupersetSetUi(
                             exerciseIndex = 0,
                             exerciseName = ex1.name,
                             exerciseType = ex1.type,
                             setIndex = i,
-                            reps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0,
-                            weight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0,
+                            reps = displayReps,
+                            weight = displayWeight,
                             previousReps = ps?.reps ?: 0,
                             previousWeight = ps?.weight ?: 0.0,
-                            repsModified = hasCurrentData,
-                            weightModified = hasCurrentData,
+                            repsModified = hasCurrentData && displayReps != (ps?.reps ?: 0),
+                            weightModified = hasCurrentData && displayWeight != (ps?.weight ?: 0.0),
                         )
                     }
                     ExerciseType.STRETCH -> {
@@ -146,17 +154,19 @@ class SupersetViewModel @Inject constructor(
                         val cs = currentSet as? ExerciseSet.Strength
                         val ps = prevStrengthSets2.getOrNull(i)
                         val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
+                        val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
+                        val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0
                         SupersetSetUi(
                             exerciseIndex = 1,
                             exerciseName = ex2.name,
                             exerciseType = ex2.type,
                             setIndex = i,
-                            reps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0,
-                            weight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0,
+                            reps = displayReps,
+                            weight = displayWeight,
                             previousReps = ps?.reps ?: 0,
                             previousWeight = ps?.weight ?: 0.0,
-                            repsModified = hasCurrentData,
-                            weightModified = hasCurrentData,
+                            repsModified = hasCurrentData && displayReps != (ps?.reps ?: 0),
+                            weightModified = hasCurrentData && displayWeight != (ps?.weight ?: 0.0),
                         )
                     }
                     ExerciseType.STRETCH -> {
@@ -214,40 +224,47 @@ class SupersetViewModel @Inject constructor(
         }
     }
 
+    /** Called when the user taps "Complete Superset". Marks both exercises as completed. */
     fun completeSuperset() {
-        viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            val sets = _uiState.value.sets
+        supersetCompleted = true
+    }
 
-            val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
-            val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
+    override fun onCleared() {
+        // Capture state on the main thread before launching the coroutine
+        val completed = supersetCompleted
+        val sets = _uiState.value.sets
+        val session = currentSession
+        clearScope.launch {
+            if (session != null) {
+                val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
+                val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
 
-            val exercises = session.exercises.map { ex ->
-                when (ex.exerciseId) {
-                    exerciseId1 -> {
-                        val updatedSets = sets1.map { setUi ->
-                            when (setUi.exerciseType) {
-                                ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
-                                ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                val exercises = session.exercises.map { ex ->
+                    when (ex.exerciseId) {
+                        exerciseId1 -> {
+                            val updatedSets = sets1.map { setUi ->
+                                when (setUi.exerciseType) {
+                                    ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                                    ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                                }
                             }
+                            ex.copy(completed = completed, sets = updatedSets)
                         }
-                        ex.copy(completed = true, sets = updatedSets)
-                    }
-                    exerciseId2 -> {
-                        val updatedSets = sets2.map { setUi ->
-                            when (setUi.exerciseType) {
-                                ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
-                                ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                        exerciseId2 -> {
+                            val updatedSets = sets2.map { setUi ->
+                                when (setUi.exerciseType) {
+                                    ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                                    ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                                }
                             }
+                            ex.copy(completed = completed, sets = updatedSets)
                         }
-                        ex.copy(completed = true, sets = updatedSets)
+                        else -> ex
                     }
-                    else -> ex
                 }
+                workoutRepository.save(session.copy(exercises = exercises))
             }
-            val updatedSession = session.copy(exercises = exercises)
-            currentSession = updatedSession
-            workoutRepository.save(updatedSession)
+            clearScope.cancel()
         }
     }
 }

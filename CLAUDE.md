@@ -62,10 +62,11 @@ File naming:
 3. **ExerciseListScreen** — Grouped by body part, orange/blue borders (forza/stretch), picker mode for routine creation
 4. **ExerciseEditScreen** — Create/edit exercise (name, link, notes, bodypart autocomplete, type toggle)
 5. **RoutineListScreen** — List with enable/disable toggle
-6. **RoutineEditScreen** — Name, day, exercise selection + set config
-7. **ActiveRoutineScreen** — Active workout: exercise list, completion state, editable notes, progress after completion
+6. **RoutineEditScreen** — Name, day, exercise selection + set config; superset pairing via chain-link button
+7. **ActiveRoutineScreen** — Active workout: exercise list (singles + superset groups), completion state, editable notes, progress after completion
 8. **StrengthExerciseScreen** — Media, description, sets with scroll picker, previous values, progress chart
-9. **StretchExerciseScreen** — Media, description, stopwatch, sets with checkboxes
+9. **StretchExerciseScreen** — Media, description, stopwatch, sets with checkboxes; takes `onComplete` (separate from `onBack`)
+10. **SupersetScreen** — Interleaved sets for two paired exercises; FORZA pickers pre-populated from previous session; per-exercise tonnage % badge
 
 ## Implementation Progress
 
@@ -143,6 +144,14 @@ What exists:
 - **Performance**: `WorkoutRepository.save()` uses `.distinct()` before exercise index writes; `ImageCacheRepository` streams downloads instead of `readBytes()` (avoids heap spikes); `ExerciseListViewModel.deleteExercise()` and `RoutineListViewModel.toggleEnabled()`/`deleteRoutine()` update state in-memory instead of full reload
 - **Compose**: `remember(key)` memoization for font sizes in `GitgraphView`, rep range text in `StrengthExerciseScreen`, timer string in `StretchExerciseScreen`
 - **Delete dialogs**: `DeleteConfirmationDialog` used in both `ExerciseEditScreen` and `RoutineEditScreen`
+
+### [x] Phase 11: Supersets — DONE
+- `RoutineExercise` gains `supersetWithNext: Boolean = false` (persisted in YAML frontmatter)
+- `RoutineEditScreen`: chain-link (`Link`/`LinkOff`) button on each exercise card; paired exercises wrapped in a primary-color-bordered `SupersetPairContainer` that drags as a unit; segment-based drag-drop via `ExerciseSegment` sealed class (`Single` / `SupersetPair`)
+- `ActiveRoutineScreen`: exercises grouped into `ExerciseGroup.Single` / `ExerciseGroup.Superset`; superset shown as a primary-bordered card with both exercises; routes to `SupersetScreen` via `onNavigateToSuperset`
+- `SupersetScreen` / `SupersetViewModel` (`ui/screen/superset/`): loads both exercises + previous FORZA session sets + rep ranges; builds interleaved set list (ex1_set0 → ex2_set0 → …); FORZA pickers pre-populated from previous session values (`repsModified`/`weightModified` flag pattern same as `StrengthExerciseScreen`); STRETCH sets centered; `completeSuperset()` marks both exercises done and saves to session
+- Completion signal: `SupersetScreen.onComplete` sets `completedSupersetIds = "id1,id2"` on `previousBackStackEntry.savedStateHandle`; `AppNavigation` reads it and calls `markExerciseCompleted` for each ID
+- `material-icons-extended` dependency added (for `Icons.Default.Link` / `Icons.Default.LinkOff`)
 
 ### Remaining Work (future enhancements)
 - [ ] Export/import data

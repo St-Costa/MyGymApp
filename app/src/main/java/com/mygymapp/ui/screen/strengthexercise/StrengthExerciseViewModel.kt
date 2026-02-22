@@ -10,6 +10,10 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -49,18 +53,20 @@ class StrengthExerciseViewModel @Inject constructor(
     val uiState: StateFlow<StrengthExerciseUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
+    private var exerciseCompleted = false
+    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         viewModelScope.launch {
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
-            // Find previous workout data for this exercise
+            // Find previous workout data for this exercise (for showing grey "previous" values)
             val previousSessions = workoutRepository.getSessionsForExercise(exerciseId, 1)
             val previousSets = previousSessions.firstOrNull()?.exercises
                 ?.find { it.exerciseId == exerciseId }?.sets
                 ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
 
-            // Find current session to get set count and rep range
+            // Find current session to get set count, rep range, and any in-progress values
             val sessions = workoutRepository.getSessionsInRange(
                 java.time.LocalDate.now(), java.time.LocalDate.now()
             )
@@ -81,15 +87,20 @@ class StrengthExerciseViewModel @Inject constructor(
                 repMax = routineExercise?.repRangeMax ?: 0
             }
 
+            // Use current session's in-progress values if available, else fall back to previous
+            val currentSets = workoutExercise?.sets?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+            val hasProgress = currentSets.any { it.reps > 0 || it.weight > 0.0 }
+
             val sets = (0 until setCount).map { i ->
                 val prev = previousSets.getOrNull(i)
+                val curr = if (hasProgress) currentSets.getOrNull(i) else null
                 StrengthSetUi(
-                    reps = prev?.reps ?: 0,
-                    weight = prev?.weight ?: 0.0,
+                    reps = curr?.reps ?: prev?.reps ?: 0,
+                    weight = curr?.weight ?: prev?.weight ?: 0.0,
                     previousReps = prev?.reps ?: 0,
                     previousWeight = prev?.weight ?: 0.0,
-                    repsModified = false,
-                    weightModified = false,
+                    repsModified = curr != null && curr.reps != (prev?.reps ?: 0),
+                    weightModified = curr != null && curr.weight != (prev?.weight ?: 0.0),
                 )
             }
 
@@ -123,22 +134,30 @@ class StrengthExerciseViewModel @Inject constructor(
         }
     }
 
-    fun completeExercise(): Boolean {
-        viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            val exercises = session.exercises.map { ex ->
-                if (ex.exerciseId == exerciseId) {
-                    val updatedSets = _uiState.value.sets.map { setUi ->
-                        ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
-                    }
-                    ex.copy(completed = true, sets = updatedSets)
-                } else ex
+    /** Called when the user taps "Complete Exercise". Marks the exercise as completed. */
+    fun completeExercise() {
+        exerciseCompleted = true
+    }
+
+    override fun onCleared() {
+        // Capture state on the main thread before launching the coroutine
+        val completed = exerciseCompleted
+        val sets = _uiState.value.sets
+        val session = currentSession
+        clearScope.launch {
+            if (session != null) {
+                val exercises = session.exercises.map { ex ->
+                    if (ex.exerciseId == exerciseId) {
+                        val updatedSets = sets.map { setUi ->
+                            ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                        }
+                        ex.copy(completed = completed, sets = updatedSets)
+                    } else ex
+                }
+                workoutRepository.save(session.copy(exercises = exercises))
             }
-            val updatedSession = session.copy(exercises = exercises)
-            currentSession = updatedSession
-            workoutRepository.save(updatedSession)
+            clearScope.cancel()
         }
-        return true
     }
 
     private fun updateSet(index: Int, transform: (StrengthSetUi) -> StrengthSetUi) {

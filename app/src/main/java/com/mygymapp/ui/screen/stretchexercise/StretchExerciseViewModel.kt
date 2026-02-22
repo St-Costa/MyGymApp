@@ -9,7 +9,11 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +49,8 @@ class StretchExerciseViewModel @Inject constructor(
 
     private var currentSession: WorkoutSession? = null
     private var timerJob: Job? = null
+    private var exerciseCompleted = false
+    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         viewModelScope.launch {
@@ -60,6 +66,7 @@ class StretchExerciseViewModel @Inject constructor(
             val existingSets = workoutExercise?.sets
                 ?.filterIsInstance<ExerciseSet.Stretch>() ?: emptyList()
 
+            // Restore in-progress set values (including done state) from current session
             val sets = existingSets.map { set ->
                 StretchSetUi(timeSeconds = set.timeSeconds, done = set.done)
             }.ifEmpty {
@@ -114,21 +121,30 @@ class StretchExerciseViewModel @Inject constructor(
         }
     }
 
-    fun completeExercise(): Boolean {
-        viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            val exercises = session.exercises.map { ex ->
-                if (ex.exerciseId == exerciseId) {
-                    val updatedSets = _uiState.value.sets.map { setUi ->
-                        ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
-                    }
-                    ex.copy(completed = true, sets = updatedSets)
-                } else ex
+    /** Called when the user taps "Complete Exercise". Marks the exercise as completed. */
+    fun completeExercise() {
+        exerciseCompleted = true
+    }
+
+    override fun onCleared() {
+        timerJob?.cancel()
+        // Capture state on the main thread before launching the coroutine
+        val completed = exerciseCompleted
+        val sets = _uiState.value.sets
+        val session = currentSession
+        clearScope.launch {
+            if (session != null) {
+                val exercises = session.exercises.map { ex ->
+                    if (ex.exerciseId == exerciseId) {
+                        val updatedSets = sets.map { setUi ->
+                            ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                        }
+                        ex.copy(completed = completed, sets = updatedSets)
+                    } else ex
+                }
+                workoutRepository.save(session.copy(exercises = exercises))
             }
-            val updatedSession = session.copy(exercises = exercises)
-            currentSession = updatedSession
-            workoutRepository.save(updatedSession)
+            clearScope.cancel()
         }
-        return true
     }
 }

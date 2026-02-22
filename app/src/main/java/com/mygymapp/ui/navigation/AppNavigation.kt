@@ -163,7 +163,8 @@ fun AppNavigation(navController: NavHostController) {
         ) { backStackEntry ->
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
             StrengthExerciseScreen(
-                onBack = {
+                onBack = { navController.popBackStack() },
+                onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("completedExerciseId", exerciseId)
@@ -181,7 +182,8 @@ fun AppNavigation(navController: NavHostController) {
         ) { backStackEntry ->
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
             StretchExerciseScreen(
-                onBack = {
+                onBack = { navController.popBackStack() },
+                onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("completedExerciseId", exerciseId)
