@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,7 +45,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -108,6 +111,10 @@ fun RoutineEditScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val navigateBack: () -> Unit = { scope.launch { viewModel.saveNow(); onBack() } }
+    BackHandler { navigateBack() }
 
     LaunchedEffect(uiState.deleted) {
         if (uiState.deleted) onBack()
@@ -130,7 +137,7 @@ fun RoutineEditScreen(
             TopAppBar(
                 title = { Text(if (uiState.isNew) "New Routine" else "Edit Routine") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = navigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

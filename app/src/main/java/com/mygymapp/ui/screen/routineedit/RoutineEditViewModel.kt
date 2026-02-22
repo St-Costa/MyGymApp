@@ -162,12 +162,39 @@ class RoutineEditViewModel @Inject constructor(
         val id = routineId ?: return
         viewModelScope.launch {
             routineRepository.delete(id)
+            dataChangedSignal.notifyRoutinesChanged()
             _uiState.value = _uiState.value.copy(deleted = true)
         }
     }
 
+    // Called from the Screen's back button / BackHandler before popBackStack().
+    private var savedExplicitly = false
+    suspend fun saveNow() {
+        val state = _uiState.value
+        if (state.name.isBlank() || state.deleted) return
+        val routine = Routine(
+            id = state.id,
+            name = state.name.trim(),
+            day = state.day,
+            notes = state.notes.trim(),
+            exercises = state.exercises.map { ex ->
+                RoutineExercise(
+                    exerciseId = ex.exerciseId,
+                    sets = ex.sets,
+                    repRangeMin = ex.repRangeMin,
+                    repRangeMax = ex.repRangeMax,
+                    timePerSetSeconds = ex.timePerSetSeconds,
+                )
+            },
+        )
+        routineRepository.save(routine)
+        dataChangedSignal.notifyRoutinesChanged()
+        savedExplicitly = true
+    }
+
     override fun onCleared() {
         super.onCleared()
+        if (savedExplicitly) return
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {
