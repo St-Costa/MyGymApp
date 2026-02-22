@@ -7,9 +7,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,6 +50,8 @@ fun MainScreen(
             GitgraphView(
                 days = uiState.gitgraphDays,
                 todayIndex = uiState.todayIndex,
+                tonnageChanges = uiState.gitgraphTonnageChanges,
+                lastWeekRoutineNames = uiState.lastWeekRoutineNames,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -72,6 +78,20 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth().height(96.dp),
                 ) {
                     Text("Routines", fontSize = 28.sp)
+                }
+
+                TextButton(
+                    onClick = { viewModel.seedDebugData() },
+                    enabled = !uiState.isSeedingData,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (uiState.isSeedingData) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Seeding...", fontSize = 12.sp)
+                    } else {
+                        Text("Seed Debug Data", fontSize = 12.sp)
+                    }
                 }
             }
         }
