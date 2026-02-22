@@ -15,6 +15,8 @@ object ExerciseParser {
             bodypart = fm["bodypart"]?.toString() ?: "",
             link = fm["link"]?.toString() ?: "",
             notes = doc.body,
+            defaultRepRangeMin = fm["defaultRepRangeMin"]?.toString()?.toIntOrNull() ?: 8,
+            defaultRepRangeMax = fm["defaultRepRangeMax"]?.toString()?.toIntOrNull() ?: 12,
             created = fm["created"]?.toString() ?: "",
             updated = fm["updated"]?.toString() ?: "",
         )
@@ -27,6 +29,8 @@ object ExerciseParser {
             "type" to exercise.type.toFileString(),
             "bodypart" to exercise.bodypart,
             "link" to exercise.link,
+            "defaultRepRangeMin" to exercise.defaultRepRangeMin,
+            "defaultRepRangeMax" to exercise.defaultRepRangeMax,
             "created" to exercise.created,
             "updated" to exercise.updated,
         )
