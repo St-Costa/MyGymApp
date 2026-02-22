@@ -46,6 +46,7 @@ fun MainScreen(
             GitgraphView(
                 days = uiState.gitgraphDays,
                 todayIndex = uiState.todayIndex,
+                modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(modifier = Modifier.weight(1f))
