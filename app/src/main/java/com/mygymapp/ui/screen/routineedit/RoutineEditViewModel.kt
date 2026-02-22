@@ -34,6 +34,7 @@ data class RoutineEditUiState(
     val isNew: Boolean = true,
     val isSaving: Boolean = false,
     val saved: Boolean = false,
+    val deleted: Boolean = false,
 )
 
 val DAYS_OF_WEEK = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -146,6 +147,14 @@ class RoutineEditViewModel @Inject constructor(
         if (index in list.indices) {
             list[index] = transform(list[index])
             _uiState.value = _uiState.value.copy(exercises = list)
+        }
+    }
+
+    fun deleteRoutine() {
+        val id = routineId ?: return
+        viewModelScope.launch {
+            routineRepository.delete(id)
+            _uiState.value = _uiState.value.copy(deleted = true)
         }
     }
 
