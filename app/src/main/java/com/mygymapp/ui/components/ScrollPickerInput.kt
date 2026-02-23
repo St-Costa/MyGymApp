@@ -65,26 +65,36 @@ private fun PickerButton(
 
                     val longPressAction = currentOnLongPressRepeat.value
                     if (longPressAction != null) {
-                        // null = timed out (held ≥ 1s), non-null = released early (tap)
-                        val releasedEarly = withTimeoutOrNull(1000L) {
-                            awaitPointerEventScope { waitForUpOrCancellation() }
-                        } != null
+                        // Distinguish three outcomes:
+                        //   result != null          → finger lifted within 1s (tap)
+                        //   result == null + cancelled → scroll stole the gesture (do nothing)
+                        //   result == null + timeout  → held ≥ 1s (long press)
+                        var gestureCancelled = false
+                        val result = withTimeoutOrNull(1000L) {
+                            awaitPointerEventScope {
+                                val change = waitForUpOrCancellation()
+                                if (change == null) gestureCancelled = true
+                                change
+                            }
+                        }
 
-                        if (releasedEarly) {
-                            currentOnClick.value()
-                        } else {
-                            // Long press: fire immediately, then every 500ms while held
-                            while (true) {
-                                currentOnLongPressRepeat.value?.invoke()
-                                val released = withTimeoutOrNull(500L) {
-                                    awaitPointerEventScope { waitForUpOrCancellation() }
-                                } != null
-                                if (released) break
+                        when {
+                            result != null -> currentOnClick.value()
+                            gestureCancelled -> { /* scroll stole the gesture — do nothing */ }
+                            else -> {
+                                // Long press: fire immediately, then every 500ms while held
+                                while (true) {
+                                    currentOnLongPressRepeat.value?.invoke()
+                                    val released = withTimeoutOrNull(500L) {
+                                        awaitPointerEventScope { waitForUpOrCancellation() }
+                                    } != null
+                                    if (released) break
+                                }
                             }
                         }
                     } else {
-                        awaitPointerEventScope { waitForUpOrCancellation() }
-                        currentOnClick.value()
+                        val change = awaitPointerEventScope { waitForUpOrCancellation() }
+                        if (change != null) currentOnClick.value()
                     }
                 }
             },
