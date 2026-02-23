@@ -134,24 +134,53 @@ class StrengthExerciseViewModel @Inject constructor(
         }
     }
 
-    /** Called when the user taps "Complete Exercise". Marks the exercise as completed. */
+    private val _completionSaved = MutableStateFlow(false)
+    val completionSaved: StateFlow<Boolean> = _completionSaved
+
+    /**
+     * Called when the user taps "Complete Exercise".
+     * Saves set data to disk and then emits [completionSaved] = true so the screen
+     * can navigate back only after the write is guaranteed to be on disk.
+     * This prevents the race condition where ActiveRoutineViewModel reloads the session
+     * before onCleared() has finished writing.
+     */
     fun completeExercise() {
         exerciseCompleted = true
+        val sets = _uiState.value.sets
+        val session = currentSession
+        viewModelScope.launch {
+            if (session != null) {
+                val exercises = session.exercises.map { ex ->
+                    if (ex.exerciseId == exerciseId) {
+                        ex.copy(
+                            completed = true,
+                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
+                        )
+                    } else ex
+                }
+                workoutRepository.save(session.copy(exercises = exercises))
+            }
+            _completionSaved.value = true
+        }
     }
 
     override fun onCleared() {
-        // Capture state on the main thread before launching the coroutine
-        val completed = exerciseCompleted
+        if (exerciseCompleted) {
+            // Already saved via completeExercise() — nothing to do
+            clearScope.cancel()
+            return
+        }
+        // Back-navigation without completing: save current progress as incomplete
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        val updatedSets = sets.map { setUi ->
-                            ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
-                        }
-                        ex.copy(completed = completed, sets = updatedSets)
+                        ex.copy(
+                            completed = false,
+                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
+                        )
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))

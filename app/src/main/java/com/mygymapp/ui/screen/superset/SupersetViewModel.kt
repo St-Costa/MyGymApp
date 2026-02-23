@@ -250,47 +250,72 @@ class SupersetViewModel @Inject constructor(
         }
     }
 
-    /** Called when the user taps "Complete Superset". Marks both exercises as completed. */
+    private val _completionSaved = MutableStateFlow(false)
+    val completionSaved: StateFlow<Boolean> = _completionSaved
+
+    /**
+     * Called when the user taps "Complete Superset".
+     * Saves set data to disk and then emits [completionSaved] = true so the screen
+     * can navigate back only after the write is guaranteed to be on disk.
+     */
     fun completeSuperset() {
         supersetCompleted = true
+        val sets = _uiState.value.sets
+        val session = currentSession
+        viewModelScope.launch {
+            if (session != null) {
+                session.buildUpdatedSession(sets, completed = true)
+                    .let { workoutRepository.save(it) }
+            }
+            _completionSaved.value = true
+        }
     }
 
     override fun onCleared() {
-        // Capture state on the main thread before launching the coroutine
-        val completed = supersetCompleted
+        if (supersetCompleted) {
+            clearScope.cancel()
+            return
+        }
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
             if (session != null) {
-                val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
-                val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
-
-                val exercises = session.exercises.map { ex ->
-                    when (ex.exerciseId) {
-                        exerciseId1 -> {
-                            val updatedSets = sets1.map { setUi ->
-                                when (setUi.exerciseType) {
-                                    ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
-                                    ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
-                                }
-                            }
-                            ex.copy(completed = completed, sets = updatedSets)
-                        }
-                        exerciseId2 -> {
-                            val updatedSets = sets2.map { setUi ->
-                                when (setUi.exerciseType) {
-                                    ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
-                                    ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
-                                }
-                            }
-                            ex.copy(completed = completed, sets = updatedSets)
-                        }
-                        else -> ex
-                    }
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
+                session.buildUpdatedSession(sets, completed = false)
+                    .let { workoutRepository.save(it) }
             }
             clearScope.cancel()
         }
+    }
+
+    private fun WorkoutSession.buildUpdatedSession(
+        sets: List<SupersetSetUi>,
+        completed: Boolean,
+    ): WorkoutSession {
+        val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
+        val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
+        val updatedExercises = exercises.map { ex ->
+            when (ex.exerciseId) {
+                exerciseId1 -> ex.copy(
+                    completed = completed,
+                    sets = sets1.map { setUi ->
+                        when (setUi.exerciseType) {
+                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                            ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                        }
+                    },
+                )
+                exerciseId2 -> ex.copy(
+                    completed = completed,
+                    sets = sets2.map { setUi ->
+                        when (setUi.exerciseType) {
+                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                            ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                        }
+                    },
+                )
+                else -> ex
+            }
+        }
+        return copy(exercises = updatedExercises)
     }
 }

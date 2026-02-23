@@ -121,25 +121,50 @@ class StretchExerciseViewModel @Inject constructor(
         }
     }
 
-    /** Called when the user taps "Complete Exercise". Marks the exercise as completed. */
+    private val _completionSaved = MutableStateFlow(false)
+    val completionSaved: StateFlow<Boolean> = _completionSaved
+
+    /**
+     * Called when the user taps "Complete Exercise".
+     * Saves set data to disk and then emits [completionSaved] = true so the screen
+     * can navigate back only after the write is guaranteed to be on disk.
+     */
     fun completeExercise() {
         exerciseCompleted = true
+        val sets = _uiState.value.sets
+        val session = currentSession
+        viewModelScope.launch {
+            if (session != null) {
+                val exercises = session.exercises.map { ex ->
+                    if (ex.exerciseId == exerciseId) {
+                        ex.copy(
+                            completed = true,
+                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
+                        )
+                    } else ex
+                }
+                workoutRepository.save(session.copy(exercises = exercises))
+            }
+            _completionSaved.value = true
+        }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
-        // Capture state on the main thread before launching the coroutine
-        val completed = exerciseCompleted
+        if (exerciseCompleted) {
+            clearScope.cancel()
+            return
+        }
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        val updatedSets = sets.map { setUi ->
-                            ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
-                        }
-                        ex.copy(completed = completed, sets = updatedSets)
+                        ex.copy(
+                            completed = false,
+                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
+                        )
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))

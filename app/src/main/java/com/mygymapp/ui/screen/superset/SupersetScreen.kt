@@ -27,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -50,6 +51,10 @@ fun SupersetScreen(
     viewModel: SupersetViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val completionSaved by viewModel.completionSaved.collectAsState()
+    LaunchedEffect(completionSaved) {
+        if (completionSaved) onComplete()
+    }
 
     Scaffold(
         topBar = {
@@ -120,25 +125,36 @@ fun SupersetScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.primary, thickness = 1.dp)
 
-                // Interleaved set items
-                uiState.sets.forEachIndexed { listIndex, setUi ->
-                    SupersetSetItem(
-                        setUi = setUi,
-                        repRangeMin = if (setUi.exerciseIndex == 0) uiState.repRangeMin1 else uiState.repRangeMin2,
-                        repRangeMax = if (setUi.exerciseIndex == 0) uiState.repRangeMax1 else uiState.repRangeMax2,
-                        onUpdateReps = { viewModel.updateReps(listIndex, it) },
-                        onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
-                        onToggleDone = { viewModel.toggleSetDone(listIndex) },
-                    )
+                // Interleaved set items grouped in pairs (one card per superset round)
+                uiState.sets.chunked(2).forEachIndexed { roundIndex, roundSets ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            roundSets.forEachIndexed { localIndex, setUi ->
+                                val listIndex = roundIndex * 2 + localIndex
+                                SupersetSetItem(
+                                    setUi = setUi,
+                                    repRangeMin = if (setUi.exerciseIndex == 0) uiState.repRangeMin1 else uiState.repRangeMin2,
+                                    repRangeMax = if (setUi.exerciseIndex == 0) uiState.repRangeMax1 else uiState.repRangeMax2,
+                                    onUpdateReps = { viewModel.updateReps(listIndex, it) },
+                                    onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
+                                    onToggleDone = { viewModel.toggleSetDone(listIndex) },
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
-                    onClick = {
-                        viewModel.completeSuperset()
-                        onComplete()
-                    },
+                    onClick = { viewModel.completeSuperset() },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -263,7 +279,7 @@ private fun SupersetSetItem(
                                 value = setUi.reps,
                                 onValueChange = { onUpdateReps(it.toInt()) },
                                 buttonStep = 1.0,
-                                isModified = setUi.repsModified || setUi.previousReps == 0,
+                                isModified = setUi.repsModified,
                                 enableScroll = false,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -282,7 +298,7 @@ private fun SupersetSetItem(
                                 onValueChange = { onUpdateWeight(it.toDouble()) },
                                 buttonStep = 1.0,
                                 isDecimal = true,
-                                isModified = setUi.weightModified || setUi.previousWeight == 0.0,
+                                isModified = setUi.weightModified,
                                 enableScroll = false,
                                 longPressRepeatStep = 10.0,
                                 modifier = Modifier.fillMaxWidth(),

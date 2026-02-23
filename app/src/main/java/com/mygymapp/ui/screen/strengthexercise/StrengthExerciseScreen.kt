@@ -23,6 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,6 +44,10 @@ fun StrengthExerciseScreen(
     viewModel: StrengthExerciseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val completionSaved by viewModel.completionSaved.collectAsState()
+    LaunchedEffect(completionSaved) {
+        if (completionSaved) onComplete()
+    }
 
     Scaffold(
         topBar = {
@@ -121,7 +126,7 @@ fun StrengthExerciseScreen(
                             value = set.reps,
                             onValueChange = { viewModel.updateReps(index, it.toInt()) },
                             buttonStep = 1.0,
-                            isModified = set.repsModified || set.previousReps == 0,
+                            isModified = set.repsModified,
                             enableScroll = false,
                             modifier = Modifier.weight(1f),
                         )
@@ -132,7 +137,7 @@ fun StrengthExerciseScreen(
                             onValueChange = { viewModel.updateWeight(index, it.toDouble()) },
                             buttonStep = 1.0,
                             isDecimal = true,
-                            isModified = set.weightModified || set.previousWeight == 0.0,
+                            isModified = set.weightModified,
                             enableScroll = false,
                             longPressRepeatStep = 10.0,
                             modifier = Modifier.weight(1f),
@@ -149,10 +154,7 @@ fun StrengthExerciseScreen(
 
                 // Complete button
                 Button(
-                    onClick = {
-                        viewModel.completeExercise()
-                        onComplete()
-                    },
+                    onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
