@@ -46,6 +46,8 @@ data class SupersetUiState(
     val repRangeMax1: Int = 0,
     val repRangeMin2: Int = 0,
     val repRangeMax2: Int = 0,
+    val description1: String = "",
+    val description2: String = "",
     val isLoading: Boolean = true,
 )
 
@@ -199,6 +201,8 @@ class SupersetViewModel @Inject constructor(
                 repRangeMax1 = repMax1,
                 repRangeMin2 = repMin2,
                 repRangeMax2 = repMax2,
+                description1 = ex1.notes,
+                description2 = ex2.notes,
                 isLoading = false,
             )
         }
@@ -221,6 +225,28 @@ class SupersetViewModel @Inject constructor(
         if (listIndex in sets.indices) {
             sets[listIndex] = transform(sets[listIndex])
             _uiState.value = _uiState.value.copy(sets = sets)
+        }
+    }
+
+    fun updateDescription1(text: String) {
+        _uiState.value = _uiState.value.copy(description1 = text)
+    }
+
+    fun saveDescription1(text: String) {
+        viewModelScope.launch {
+            val exercise = _uiState.value.exercise1 ?: return@launch
+            exerciseRepository.save(exercise.copy(notes = text))
+        }
+    }
+
+    fun updateDescription2(text: String) {
+        _uiState.value = _uiState.value.copy(description2 = text)
+    }
+
+    fun saveDescription2(text: String) {
+        viewModelScope.launch {
+            val exercise = _uiState.value.exercise2 ?: return@launch
+            exerciseRepository.save(exercise.copy(notes = text))
         }
     }
 
