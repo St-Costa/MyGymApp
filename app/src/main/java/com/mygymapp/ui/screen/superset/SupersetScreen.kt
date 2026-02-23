@@ -33,8 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
+import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
@@ -97,6 +100,24 @@ fun SupersetScreen(
                     )
                 }
 
+                // Exercise info cards (media + notes)
+                uiState.exercise1?.let { ex ->
+                    ExerciseInfoCard(
+                        exercise = ex,
+                        description = uiState.description1,
+                        onDescriptionChange = viewModel::updateDescription1,
+                        onDescriptionSave = viewModel::saveDescription1,
+                    )
+                }
+                uiState.exercise2?.let { ex ->
+                    ExerciseInfoCard(
+                        exercise = ex,
+                        description = uiState.description2,
+                        onDescriptionChange = viewModel::updateDescription2,
+                        onDescriptionSave = viewModel::saveDescription2,
+                    )
+                }
+
                 HorizontalDivider(color = MaterialTheme.colorScheme.primary, thickness = 1.dp)
 
                 // Interleaved set items
@@ -128,6 +149,43 @@ fun SupersetScreen(
 
                 Spacer(modifier = Modifier.height(80.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun ExerciseInfoCard(
+    exercise: Exercise,
+    description: String,
+    onDescriptionChange: (String) -> Unit,
+    onDescriptionSave: (String) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = exercise.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (exercise.link.isNotBlank()) {
+                MediaPreview(link = exercise.link)
+            }
+            AutoSaveTextField(
+                value = description,
+                onValueChange = onDescriptionChange,
+                onSave = onDescriptionSave,
+                label = "Description",
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4,
+            )
         }
     }
 }
