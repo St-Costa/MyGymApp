@@ -177,6 +177,18 @@ fun ActiveRoutineScreen(
                     }
                 }
 
+                // Register button — shown before progress chart
+                item(key = "register_button") {
+                    Button(
+                        onClick = { viewModel.registerRoutine() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 8.dp),
+                    ) {
+                        Text("Registra routine")
+                    }
+                }
+
                 // Progress section (shown when all completed)
                 if (uiState.allCompleted) {
                     item(key = "progress") {
@@ -190,18 +202,6 @@ fun ActiveRoutineScreen(
                             isLoadingChart = uiState.isLoadingChart,
                             onFilterSelected = { viewModel.selectChartFilter(it) },
                         )
-                    }
-                }
-
-                // Register button — always last, scrollable with content
-                item(key = "register_button") {
-                    Button(
-                        onClick = { viewModel.registerRoutine() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp, bottom = 8.dp),
-                    ) {
-                        Text("Registra routine")
                     }
                 }
             }
