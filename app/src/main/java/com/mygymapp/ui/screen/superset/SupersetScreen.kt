@@ -1,5 +1,6 @@
 package com.mygymapp.ui.screen.superset
 
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,8 +31,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.Exercise
@@ -40,6 +44,7 @@ import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.ScrollPickerInput
+import com.mygymapp.ui.service.StopwatchService
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
 
@@ -52,6 +57,7 @@ fun SupersetScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val completionSaved by viewModel.completionSaved.collectAsState()
+    val context = LocalContext.current
     LaunchedEffect(completionSaved) {
         if (completionSaved) onComplete()
     }
@@ -121,6 +127,44 @@ fun SupersetScreen(
                         onDescriptionChange = viewModel::updateDescription2,
                         onDescriptionSave = viewModel::saveDescription2,
                     )
+                }
+
+                // Single stopwatch shown once if at least one exercise is STRETCH
+                val hasStretch = uiState.exercise1?.type == ExerciseType.STRETCH
+                    || uiState.exercise2?.type == ExerciseType.STRETCH
+                if (hasStretch) {
+                    val formatted = remember(uiState.elapsedSeconds) {
+                        "%02d:%02d".format(uiState.elapsedSeconds / 60, uiState.elapsedSeconds % 60)
+                    }
+                    Text(
+                        text = formatted,
+                        style = MaterialTheme.typography.displaySmall,
+                        textAlign = TextAlign.Center,
+                        color = if (uiState.isStopwatchRunning)
+                            MaterialTheme.colorScheme.secondary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            val wasRunning = uiState.isStopwatchRunning
+                            viewModel.toggleStopwatch()
+                            val svcIntent = Intent(context, StopwatchService::class.java).apply {
+                                action = if (wasRunning) StopwatchService.ACTION_STOP else StopwatchService.ACTION_START
+                            }
+                            if (wasRunning) context.startService(svcIntent) else context.startForegroundService(svcIntent)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uiState.isStopwatchRunning)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.secondary,
+                        ),
+                    ) {
+                        Text(if (uiState.isStopwatchRunning) "Stop Stopwatch" else "Start Stopwatch")
+                    }
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.primary, thickness = 1.dp)

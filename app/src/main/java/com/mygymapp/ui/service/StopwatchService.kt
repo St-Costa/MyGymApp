@@ -26,7 +26,7 @@ import androidx.core.graphics.drawable.IconCompat
 class StopwatchService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "stopwatch_channel_v2"
+        const val CHANNEL_ID = "stopwatch_channel_v3"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.mygymapp.START_STOPWATCH"
         const val ACTION_STOP = "com.mygymapp.STOP_STOPWATCH"
@@ -112,6 +112,7 @@ class StopwatchService : Service() {
                 .setLargeIcon(Icon.createWithBitmap(bitmap))
                 .setContentTitle("Stopwatch")
                 .setContentText(totalTime)
+                .setCategory(Notification.CATEGORY_STOPWATCH)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -129,6 +130,7 @@ class StopwatchService : Service() {
             .setLargeIcon(bitmap)
             .setContentTitle("Stopwatch")
             .setContentText(totalTime)
+            .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -166,11 +168,11 @@ class StopwatchService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             getSystemService(VibratorManager::class.java)
                 .defaultVibrator
-                .vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE))
+                .vibrate(VibrationEffect.createOneShot(2000, 255))
         } else {
             @Suppress("DEPRECATION")
             getSystemService(Vibrator::class.java)
-                .vibrate(VibrationEffect.createOneShot(2000, VibrationEffect.DEFAULT_AMPLITUDE))
+                .vibrate(VibrationEffect.createOneShot(2000, 255))
         }
     }
 
@@ -178,11 +180,12 @@ class StopwatchService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Stopwatch",
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = "Stretch timer stopwatch"
             setShowBadge(false)
             setSound(null, null)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
