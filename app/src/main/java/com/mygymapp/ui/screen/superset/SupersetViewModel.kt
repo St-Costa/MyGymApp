@@ -13,8 +13,10 @@ import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -49,6 +51,8 @@ data class SupersetUiState(
     val description1: String = "",
     val description2: String = "",
     val isLoading: Boolean = true,
+    val isStopwatchRunning: Boolean = false,
+    val elapsedSeconds: Int = 0,
 )
 
 @HiltViewModel
@@ -69,6 +73,7 @@ class SupersetViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
     private var supersetCompleted = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var timerJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -216,6 +221,26 @@ class SupersetViewModel @Inject constructor(
         updateSetAt(listIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true) }
     }
 
+    fun toggleStopwatch() {
+        val wasRunning = _uiState.value.isStopwatchRunning
+        if (wasRunning) {
+            timerJob?.cancel()
+            timerJob = null
+            _uiState.value = _uiState.value.copy(isStopwatchRunning = false)
+        } else {
+            timerJob?.cancel()
+            _uiState.value = _uiState.value.copy(isStopwatchRunning = true, elapsedSeconds = 0)
+            timerJob = viewModelScope.launch {
+                while (true) {
+                    delay(1000)
+                    _uiState.value = _uiState.value.copy(
+                        elapsedSeconds = _uiState.value.elapsedSeconds + 1
+                    )
+                }
+            }
+        }
+    }
+
     fun toggleSetDone(listIndex: Int) {
         updateSetAt(listIndex) { it.copy(done = !it.done) }
     }
@@ -272,6 +297,7 @@ class SupersetViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        timerJob?.cancel()
         if (supersetCompleted) {
             clearScope.cancel()
             return
