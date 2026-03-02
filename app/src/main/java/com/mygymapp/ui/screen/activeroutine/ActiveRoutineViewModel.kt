@@ -242,14 +242,26 @@ class ActiveRoutineViewModel @Inject constructor(
 
             val labelFmt = DateTimeFormatter.ofPattern("d/M")
             val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
-            val sessionTonnage = allSessions.map { it.totalTonnage }
 
-            // Only bodyparts with strength exercises
-            val bodyparts = finalSession.exercises
-                .filter { it.type == ExerciseType.FORZA }
-                .map { it.bodypart }.distinct()
+            // Compare only exercises that are in the current session, so the chart is meaningful
+            // even when routine composition has changed between sessions.
+            val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA }
+            val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
+            val sessionTonnage = allSessions.map { hist ->
+                hist.exercises
+                    .filter { it.exerciseId in currentExerciseIds }
+                    .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
+            }
+
+            // Only bodyparts with strength exercises in the current session
+            val bodyparts = currentForza.map { it.bodypart }.distinct()
             val sessionTonnageByBodypart = bodyparts.associateWith { bp ->
-                allSessions.map { it.tonnageByBodypart[bp] ?: 0.0 }
+                val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
+                allSessions.map { hist ->
+                    hist.exercises
+                        .filter { it.exerciseId in bpIds }
+                        .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
+                }
             }
 
             sessionFinalized = true
