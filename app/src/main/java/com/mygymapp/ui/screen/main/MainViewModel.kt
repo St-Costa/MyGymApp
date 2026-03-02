@@ -100,16 +100,19 @@ class MainViewModel @Inject constructor(
                 ?.filter { it.date < dateStr }
                 ?.maxByOrNull { it.completedAt }
 
+            val (currTonnage, prevTonnage) = if (previous != null)
+                computeCommonTonnage(lastSession, previous)
+            else Pair(lastSession.totalTonnage, 0.0)
+
             val status = if (previous != null) {
-                if (lastSession.totalTonnage >= previous.totalTonnage) DayStatus.IMPROVED
-                else DayStatus.REGRESSED
+                if (currTonnage >= prevTonnage) DayStatus.IMPROVED else DayStatus.REGRESSED
             } else {
                 DayStatus.IMPROVED // first time doing this routine
             }
 
-            val tonnageChange = if (previous != null && previous.totalTonnage > 0) {
-                (lastSession.totalTonnage - previous.totalTonnage) / previous.totalTonnage * 100.0
-            } else null
+            val tonnageChange = if (previous != null && prevTonnage > 0)
+                (currTonnage - prevTonnage) / prevTonnage * 100.0
+            else null
 
             days.add(status)
             gitgraphTonnageChanges.add(tonnageChange)
@@ -124,6 +127,23 @@ class MainViewModel @Inject constructor(
             lastWeekRoutineNames = lastWeekRoutineNames,
             isLoading = false,
         )
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Computes tonnage for each session using only exercises present in BOTH sessions.
+     * This ensures the comparison is fair when routine composition has changed between sessions.
+     * Falls back to totalTonnage if the two sessions share no exercises.
+     */
+    private fun computeCommonTonnage(s1: WorkoutSession, s2: WorkoutSession): Pair<Double, Double> {
+        val commonIds = s1.exercises.map { it.exerciseId }.toSet()
+            .intersect(s2.exercises.map { it.exerciseId }.toSet())
+        if (commonIds.isEmpty()) return Pair(s1.totalTonnage, s2.totalTonnage)
+        fun tonnageFor(s: WorkoutSession): Double = s.exercises
+            .filter { it.exerciseId in commonIds }
+            .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
+        return Pair(tonnageFor(s1), tonnageFor(s2))
     }
 
     // ─── Debug seed ───────────────────────────────────────────────────────────

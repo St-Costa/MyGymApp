@@ -109,8 +109,9 @@ What exists:
   - Each colored square shows the absolute tonnage % change (vs previous session for that routine) in black bold, auto-sized via `AutoShrinkText` (starts at `cellSize * 0.48sp`, shrinks by 0.85× until it fits)
   - Below the last row (current week): routine name split word-per-line (`\n`), font auto-sized to maximize width (`cellSize * 0.55sp` start, min 5sp)
 - `MainViewModel`: computes gitgraph data from last 28 days in a single loop; produces `gitgraphDays` (DayStatus ×28), `gitgraphTonnageChanges` (Double? ×28), `lastWeekRoutineNames` (String? ×7); color based on **last completed session of each day** vs most recent previous session for that same routine (sorted by `completedAt`); tonnage % change computed at query time (not stored), null if no previous or previous tonnage = 0; `seedDebugData()` for debug: deletes current-week sessions, creates 1 FORZA + 1 STRETCH exercise, 1 routine, previous-week baseline sessions + current-week sessions with varied weights
+  - **Common-exercise comparison**: `computeCommonTonnage(s1, s2)` computes tonnage only for exercises present in BOTH sessions (intersection by exerciseId); used for gitgraph status and % — ensures fair comparison when routine composition changes. Falls back to `totalTonnage` if no exercises in common.
 - `WeekViewScreen` with `WeekViewViewModel`: 7 days with assigned enabled routines, current day highlighted (bold + primary color), rest days shown
-- Tonnage calculation in `ActiveRoutineViewModel.finalizeSession()`: sum(reps*weight) per exercise and by bodypart, stored in session file
+- Tonnage calculation in `ActiveRoutineViewModel.finalizeSession()`: sum(reps*weight) per exercise and by bodypart, stored in session file; `sessionTonnage` and `sessionTonnageByBodypart` for the progress chart are computed from historical sessions filtered to **only exercises in the current session** (by exerciseId), so the chart is comparable even when the routine composition has changed
 
 ### [x] Phase 6: Media & Polish — DONE
 - `StopwatchService`: foreground service (`foregroundServiceType="specialUse"`) with dynamic bitmap notification icon
