@@ -123,6 +123,14 @@ class StrengthExerciseViewModel @Inject constructor(
         updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true) }
     }
 
+    fun confirmReps(setIndex: Int) {
+        updateSet(setIndex) { it.copy(repsModified = true) }
+    }
+
+    fun confirmWeight(setIndex: Int) {
+        updateSet(setIndex) { it.copy(weightModified = true) }
+    }
+
     fun updateDescription(text: String) {
         _uiState.value = _uiState.value.copy(description = text)
     }

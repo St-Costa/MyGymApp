@@ -189,6 +189,8 @@ fun SupersetScreen(
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
                                     onToggleDone = { viewModel.toggleSetDone(listIndex) },
+                                    onConfirmReps = { viewModel.confirmReps(listIndex) },
+                                    onConfirmWeight = { viewModel.confirmWeight(listIndex) },
                                 )
                             }
                         }
@@ -276,6 +278,8 @@ private fun SupersetSetItem(
     onUpdateReps: (Int) -> Unit,
     onUpdateWeight: (Double) -> Unit,
     onToggleDone: () -> Unit,
+    onConfirmReps: () -> Unit = {},
+    onConfirmWeight: () -> Unit = {},
 ) {
     val borderColor = when (setUi.exerciseType) {
         ExerciseType.FORZA -> ForzaColor
@@ -325,6 +329,7 @@ private fun SupersetSetItem(
                                 buttonStep = 1.0,
                                 isModified = setUi.repsModified,
                                 enableScroll = false,
+                                onConfirm = onConfirmReps,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -345,6 +350,7 @@ private fun SupersetSetItem(
                                 isModified = setUi.weightModified,
                                 enableScroll = false,
                                 longPressRepeatStep = 10.0,
+                                onConfirm = onConfirmWeight,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }

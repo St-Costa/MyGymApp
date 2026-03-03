@@ -221,6 +221,14 @@ class SupersetViewModel @Inject constructor(
         updateSetAt(listIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true) }
     }
 
+    fun confirmReps(listIndex: Int) {
+        updateSetAt(listIndex) { it.copy(repsModified = true) }
+    }
+
+    fun confirmWeight(listIndex: Int) {
+        updateSetAt(listIndex) { it.copy(weightModified = true) }
+    }
+
     fun toggleStopwatch() {
         val wasRunning = _uiState.value.isStopwatchRunning
         if (wasRunning) {
