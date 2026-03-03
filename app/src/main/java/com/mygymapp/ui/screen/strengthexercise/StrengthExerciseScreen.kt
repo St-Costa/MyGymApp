@@ -128,6 +128,7 @@ fun StrengthExerciseScreen(
                             buttonStep = 1.0,
                             isModified = set.repsModified,
                             enableScroll = false,
+                            onConfirm = { viewModel.confirmReps(index) },
                             modifier = Modifier.weight(1f),
                         )
 
@@ -140,6 +141,7 @@ fun StrengthExerciseScreen(
                             isModified = set.weightModified,
                             enableScroll = false,
                             longPressRepeatStep = 10.0,
+                            onConfirm = { viewModel.confirmWeight(index) },
                             modifier = Modifier.weight(1f),
                         )
                     }

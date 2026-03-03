@@ -1,6 +1,7 @@
 package com.mygymapp.ui.components
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -115,6 +116,7 @@ fun ScrollPickerInput(
     isModified: Boolean = true,
     enableScroll: Boolean = false,
     longPressRepeatStep: Double = 0.0,
+    onConfirm: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
@@ -172,7 +174,9 @@ fun ScrollPickerInput(
             color = if (isModified) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
             textAlign = TextAlign.Center,
-            modifier = Modifier.width(56.dp),
+            modifier = Modifier
+                .width(56.dp)
+                .then(if (onConfirm != null) Modifier.clickable { onConfirm() } else Modifier),
         )
 
         PickerButton(
