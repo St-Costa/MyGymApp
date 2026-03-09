@@ -29,4 +29,7 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String, exerciseId1: String, exerciseId2: String): String =
             "workout/$sessionId/superset/$exerciseId1/$exerciseId2"
     }
+    data object SessionProgress : Screen("session/{sessionId}/{date}") {
+        fun createRoute(sessionId: String, date: String): String = "session/$sessionId/$date"
+    }
 }
