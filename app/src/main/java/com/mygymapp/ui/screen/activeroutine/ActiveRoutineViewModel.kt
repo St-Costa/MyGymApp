@@ -238,7 +238,7 @@ class ActiveRoutineViewModel @Inject constructor(
             val today = LocalDate.now()
             val startDate = today.with(DayOfWeek.MONDAY).minusWeeks(11)
             val allSessions = workoutRepository.getSessionsInRange(startDate, today)
-                .filter { it.routineId == routineId }  // already sorted by date ascending
+                .filter { it.routineId == routineId && it.completedAt.isNotBlank() }  // exclude abandoned sessions
 
             val labelFmt = DateTimeFormatter.ofPattern("d/M")
             val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
