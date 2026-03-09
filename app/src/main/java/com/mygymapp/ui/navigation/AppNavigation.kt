@@ -19,6 +19,7 @@ import com.mygymapp.ui.screen.activeroutine.ActiveRoutineScreen
 import com.mygymapp.ui.screen.strengthexercise.StrengthExerciseScreen
 import com.mygymapp.ui.screen.stretchexercise.StretchExerciseScreen
 import com.mygymapp.ui.screen.superset.SupersetScreen
+import com.mygymapp.ui.screen.sessionprogress.SessionProgressScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -31,6 +32,9 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToWeekView = { navController.navigate(Screen.WeekView.route) },
                 onNavigateToExercises = { navController.navigate(Screen.ExerciseList.route) },
                 onNavigateToRoutines = { navController.navigate(Screen.RoutineList.route) },
+                onNavigateToSessionProgress = { sessionId, date ->
+                    navController.navigate(Screen.SessionProgress.createRoute(sessionId, date))
+                },
             )
         }
 
@@ -224,6 +228,18 @@ fun AppNavigation(navController: NavHostController) {
                         ?.set("pickedExerciseId", exerciseId)
                     navController.popBackStack()
                 },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = Screen.SessionProgress.route,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType },
+                navArgument("date") { type = NavType.StringType },
+            ),
+        ) {
+            SessionProgressScreen(
                 onBack = { navController.popBackStack() },
             )
         }

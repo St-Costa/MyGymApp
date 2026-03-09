@@ -2,6 +2,7 @@ package com.mygymapp.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -46,6 +47,8 @@ fun GitgraphView(
     todayIndex: Int,
     tonnageChanges: List<Double?> = emptyList(),      // 28 values, one per square
     lastWeekRoutineNames: List<String?> = emptyList(), // 7 values, last row only
+    // Called when user taps a last-row cell that has a session; col = 0..6 (Mon–Sun)
+    onLastRowCellClick: ((col: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = 6.dp
@@ -95,6 +98,8 @@ fun GitgraphView(
                         }
                         val isToday = index == todayIndex
                         val change = tonnageChanges.getOrNull(index)
+                        val isLastRow = row == 3
+                        val hasSession = status != DayStatus.NONE
 
                         Box(
                             contentAlignment = Alignment.Center,
@@ -104,6 +109,11 @@ fun GitgraphView(
                                 .background(color)
                                 .then(
                                     if (isToday) Modifier.border(2.dp, Color.White, shape)
+                                    else Modifier
+                                )
+                                .then(
+                                    if (isLastRow && hasSession && onLastRowCellClick != null)
+                                        Modifier.clickable { onLastRowCellClick(col) }
                                     else Modifier
                                 ),
                         ) {

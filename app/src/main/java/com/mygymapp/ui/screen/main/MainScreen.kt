@@ -38,6 +38,7 @@ fun MainScreen(
     onNavigateToWeekView: () -> Unit,
     onNavigateToExercises: () -> Unit,
     onNavigateToRoutines: () -> Unit,
+    onNavigateToSessionProgress: (sessionId: String, date: String) -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -94,6 +95,13 @@ fun MainScreen(
                 todayIndex = uiState.todayIndex,
                 tonnageChanges = uiState.gitgraphTonnageChanges,
                 lastWeekRoutineNames = uiState.lastWeekRoutineNames,
+                onLastRowCellClick = { col ->
+                    val sessionId = uiState.lastWeekSessionIds.getOrNull(col)
+                    val date = uiState.lastWeekSessionDates.getOrNull(col)
+                    if (sessionId != null && date != null) {
+                        onNavigateToSessionProgress(sessionId, date)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 

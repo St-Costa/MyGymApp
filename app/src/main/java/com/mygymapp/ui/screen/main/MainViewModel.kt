@@ -29,6 +29,9 @@ data class MainUiState(
     val gitgraphTonnageChanges: List<Double?> = List(28) { null },
     // Routine name for each day of the current week (7 values, last row only)
     val lastWeekRoutineNames: List<String?> = List(7) { null },
+    // Session ID + date for each day of the current week (null = no session that day)
+    val lastWeekSessionIds: List<String?> = List(7) { null },
+    val lastWeekSessionDates: List<String?> = List(7) { null },
     val isLoading: Boolean = true,
     val isSeedingData: Boolean = false,
 )
@@ -71,6 +74,8 @@ class MainViewModel @Inject constructor(
         val days = mutableListOf<DayStatus>()
         val gitgraphTonnageChanges = mutableListOf<Double?>()
         val lastWeekRoutineNames = mutableListOf<String?>()
+        val lastWeekSessionIds = mutableListOf<String?>()
+        val lastWeekSessionDates = mutableListOf<String?>()
 
         for (dayOffset in 0 until 28) {
             val date = startDate.plusDays(dayOffset.toLong())
@@ -88,6 +93,8 @@ class MainViewModel @Inject constructor(
 
             if (dayOffset >= 21) {
                 lastWeekRoutineNames.add(lastSession?.routineName)
+                lastWeekSessionIds.add(lastSession?.id)
+                lastWeekSessionDates.add(if (lastSession != null) dateStr else null)
             }
 
             if (lastSession == null) {
@@ -125,6 +132,8 @@ class MainViewModel @Inject constructor(
             todayIndex = todayIndex,
             gitgraphTonnageChanges = gitgraphTonnageChanges,
             lastWeekRoutineNames = lastWeekRoutineNames,
+            lastWeekSessionIds = lastWeekSessionIds,
+            lastWeekSessionDates = lastWeekSessionDates,
             isLoading = false,
         )
     }
