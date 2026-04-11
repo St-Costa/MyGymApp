@@ -85,7 +85,6 @@ fun StrengthExerciseScreen(
                     label = "Description",
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
-                    maxLines = 4,
                 )
 
                 // Sets header
