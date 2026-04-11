@@ -129,7 +129,6 @@ fun ActiveRoutineScreen(
                         label = "Notes",
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
-                        maxLines = 4,
                     )
                 }
 

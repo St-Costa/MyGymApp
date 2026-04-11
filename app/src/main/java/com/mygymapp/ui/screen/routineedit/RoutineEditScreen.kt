@@ -185,7 +185,6 @@ fun RoutineEditScreen(
                 onValueChange = viewModel::onNotesChange,
                 label = { Text("Notes") },
                 minLines = 2,
-                maxLines = 4,
                 modifier = Modifier.fillMaxWidth(),
             )
 

@@ -246,7 +246,6 @@ private fun ExerciseInfoCard(
                 label = "Description",
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
-                maxLines = 4,
             )
         }
     }

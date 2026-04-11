@@ -19,7 +19,6 @@ fun AutoSaveTextField(
     label: String,
     modifier: Modifier = Modifier,
     minLines: Int = 3,
-    maxLines: Int = 8,
     debounceMs: Long = 500L,
 ) {
     var localValue by remember(value) { mutableStateOf(value) }
@@ -41,7 +40,6 @@ fun AutoSaveTextField(
         },
         label = { Text(label) },
         minLines = minLines,
-        maxLines = maxLines,
         modifier = modifier,
     )
 }

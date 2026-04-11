@@ -204,7 +204,6 @@ fun ExerciseEditScreen(
                 onValueChange = viewModel::onNotesChange,
                 label = { Text("Notes / Description") },
                 minLines = 3,
-                maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
             )
 
