@@ -34,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.ConnectionState
+import com.mygymapp.data.polar.Readiness
 import com.mygymapp.ui.components.ScrollPickerInput
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -386,6 +388,101 @@ private fun ColumnScope.ConnectedContent(
     }
 
     Spacer(modifier = Modifier.height(12.dp))
+
+    // HRV Readiness
+    val readiness = uiState.readiness
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (readiness.readiness == Readiness.MEASURING) {
+                Text(
+                    "HRV Readiness",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Lie still... ${readiness.secondsRemaining}s",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                LinearProgressIndicator(
+                    progress = { 1f - readiness.secondsRemaining / 60f },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            } else {
+                val readinessColor = when (readiness.readiness) {
+                    Readiness.DELOAD_RECOMMENDED -> Color(0xFFEF5350)
+                    Readiness.LIGHT_DAY -> Color(0xFFFFCA28)
+                    Readiness.NORMAL -> Color(0xFF66BB6A)
+                    Readiness.GOOD -> Color(0xFF4CAF50)
+                    Readiness.PEAK -> Color(0xFF2196F3)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val readinessLabel = when (readiness.readiness) {
+                    Readiness.DELOAD_RECOMMENDED -> "DELOAD"
+                    Readiness.LIGHT_DAY -> "LIGHT DAY"
+                    Readiness.NORMAL -> "NORMAL"
+                    Readiness.GOOD -> "GOOD"
+                    Readiness.PEAK -> "PEAK"
+                    Readiness.NO_BASELINE -> "BASELINE ${if (readiness.lnRmssd > 0) "(collecting)" else ""}"
+                    else -> ""
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text("Readiness", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            readinessLabel,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = readinessColor,
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "Resting HR: ${readiness.restingHr}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (readiness.lnRmssd > 0) {
+                            Text(
+                                "LnRMSSD: %.1f".format(readiness.lnRmssd),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (uiState.vo2max != null) {
+                            Text(
+                                "VO2max: %.1f".format(uiState.vo2max),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (readiness.recommendation.isNotBlank()) {
+                    Text(
+                        readiness.recommendation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
 
     // Battery + device info
     Row(

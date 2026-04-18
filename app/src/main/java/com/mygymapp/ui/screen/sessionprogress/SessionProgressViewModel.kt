@@ -21,10 +21,15 @@ data class SessionProgressUiState(
     val totalTonnage: Double = 0.0,
     val sessionCalories: Double = 0.0,
     val sessionTrimp: Double = 0.0,
+    val vo2max: Double = 0.0,
     val sessionTonnage: List<Double> = emptyList(),
     val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
     val sessionLabels: List<String> = emptyList(),
     val selectedChartFilter: String = "Totale",
+    val allSessionCalories: List<Double> = emptyList(),
+    val allSessionTrimp: List<Double> = emptyList(),
+    val allSessionVo2max: List<Double> = emptyList(),
+    val allSessionLabels: List<String> = emptyList(),
 )
 
 @HiltViewModel
@@ -75,16 +80,26 @@ class SessionProgressViewModel @Inject constructor(
             }
         }
 
+        // Cross-routine data: ALL completed sessions for kcal/TRIMP/VO2max
+        val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, LocalDate.parse(date))
+            .filter { it.completedAt.isNotBlank() }
+        val allLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
+
         _uiState.value = SessionProgressUiState(
             isLoading = false,
             routineName = session.routineName,
             totalTonnage = session.totalTonnage,
             sessionCalories = session.sessionCalories,
             sessionTrimp = session.sessionTrimp,
+            vo2max = session.vo2max,
             sessionTonnage = sessionTonnage,
             sessionTonnageByBodypart = sessionTonnageByBodypart,
             sessionLabels = sessionLabels,
             selectedChartFilter = "Totale",
+            allSessionCalories = allCompletedSessions.map { it.sessionCalories },
+            allSessionTrimp = allCompletedSessions.map { it.sessionTrimp },
+            allSessionVo2max = allCompletedSessions.map { it.vo2max },
+            allSessionLabels = allLabels,
         )
     }
 

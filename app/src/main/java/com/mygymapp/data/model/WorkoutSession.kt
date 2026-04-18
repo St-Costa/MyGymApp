@@ -10,6 +10,7 @@ data class WorkoutSession(
     val tonnageByBodypart: Map<String, Double> = emptyMap(),
     val sessionCalories: Double = 0.0,
     val sessionTrimp: Double = 0.0,
+    val vo2max: Double = 0.0,
     val exercises: List<WorkoutExercise> = emptyList(),
     val notes: String = "",
 )

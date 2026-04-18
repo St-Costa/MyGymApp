@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
+import com.mygymapp.data.polar.ReadinessResult
 import com.mygymapp.data.polar.UserProfile
 import com.mygymapp.data.polar.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +23,8 @@ data class HeartRateUiState(
     val connectedDeviceId: String? = null,
     val sessionCalories: Double = 0.0,
     val sessionTrimp: Double = 0.0,
+    val readiness: ReadinessResult = ReadinessResult(),
+    val vo2max: Double? = null,
     val profile: UserProfile = UserProfile(),
 )
 
@@ -52,6 +55,8 @@ class HeartRateViewModel @Inject constructor(
                 polarManager.isScanning,
                 polarManager.sessionCalories,
                 polarManager.sessionTrimp,
+                polarManager.readinessResult,
+                polarManager.vo2max,
             ) { values ->
                 val conn = values[0] as ConnectionState
                 val hr = values[1] as Int?
@@ -61,6 +66,8 @@ class HeartRateViewModel @Inject constructor(
                 val scanning = values[4] as Boolean
                 val calories = values[5] as Double
                 val trimp = values[6] as Double
+                val readiness = values[7] as ReadinessResult
+                val vo2 = values[8] as Double?
 
                 _uiState.value.copy(
                     connectionState = conn,
@@ -77,6 +84,8 @@ class HeartRateViewModel @Inject constructor(
                     connectedDeviceId = polarManager.connectedDeviceId,
                     sessionCalories = calories,
                     sessionTrimp = trimp,
+                    readiness = readiness,
+                    vo2max = vo2,
                 )
             }.collect { _uiState.value = it }
         }
