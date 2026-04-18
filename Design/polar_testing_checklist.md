@@ -8,6 +8,21 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] HR continua a funzionare a schermo spento (foreground service)
 - [ ] Disconnessione pulita (notifica sparisce, stato si resetta)
 
+## HRV Readiness (appena connesso)
+- [ ] Appena connetti il Polar appare il countdown "Lie still... 60s" con barra di progresso
+- [ ] Dopo 60s mostra il risultato: DELOAD / LIGHT DAY / NORMAL / GOOD / PEAK
+- [ ] Mostra Resting HR e LnRMSSD
+- [ ] Mostra raccomandazione testuale
+- [ ] Primi 7 giorni: mostra "Collecting baseline (X/7 days)"
+- [ ] Il resting HR misurato nei 60s e' ragionevole (tipico: 50-80 BPM)
+
+## VO2max
+- [ ] Mostrato nella schermata Heart Rate dopo i 60s di readiness
+- [ ] Valore ragionevole (tipico: 30-55 ml/kg/min per persona media)
+- [ ] Mostrato nella sezione progress dopo "Registra routine"
+- [ ] Mostrato in SessionProgressScreen (tap su gitgraph)
+- [ ] Salvato correttamente (appare anche riaprendo la sessione)
+
 ## HeartRateBar negli esercizi
 - [ ] Appare in StrengthExerciseScreen (sopra i set, sotto le note)
 - [ ] Appare in StretchExerciseScreen
@@ -26,16 +41,19 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 
 ## ActiveRoutineScreen
 - [ ] HeartRateBar visibile sopra "Registra routine"
-- [ ] Dopo "Registra routine": kcal e TRIMP mostrati nella sezione progress
+- [ ] Dopo "Registra routine": kcal, TRIMP e VO2max mostrati nella sezione progress
 - [ ] I valori kcal/TRIMP sono ragionevoli (non zero, non assurdi)
+
+## Grafici progress (filter chips)
+- [ ] Chip "Totale" e bodypart: mostrano tonnage della STESSA routine (come prima)
+- [ ] Chip "kcal": grafico storico calorie di TUTTE le routine
+- [ ] Chip "TRIMP": grafico storico TRIMP di TUTTE le routine
+- [ ] Chip "VO2max": grafico storico VO2max di TUTTE le routine (solo sessioni con valore > 0)
+- [ ] Stessi chip funzionano anche in SessionProgressScreen (tap su gitgraph)
 
 ## Profilo utente
 - [ ] Eta/peso/sesso salvati e mantenuti tra le sessioni (non si resettano)
 - [ ] HRmax calcolato correttamente (208 - 0.7 * eta)
-
-## SessionProgress (tap su giorno nel gitgraph)
-- [ ] kcal e TRIMP della sessione visibili
-- [ ] Valori corretti (corrispondono a quelli visti durante l'allenamento)
 
 ## Calorie - sanity check
 - [ ] Sessione di ~60 min: atteso ~200-500 kcal (resistance training)

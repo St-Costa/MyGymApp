@@ -11,7 +11,9 @@ import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
+import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,24 @@ import javax.inject.Singleton
 
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 enum class RecoveryState { RECOVERING, ALMOST_READY, READY }
+
+enum class Readiness {
+    MEASURING,          // 60s measurement in progress
+    DELOAD_RECOMMENDED, // LnRMSSD very low
+    LIGHT_DAY,          // LnRMSSD moderately low
+    NORMAL,             // within baseline
+    GOOD,               // above baseline
+    PEAK,               // unusually high
+    NO_BASELINE,        // fewer than 7 days of data
+}
+
+data class ReadinessResult(
+    val readiness: Readiness = Readiness.MEASURING,
+    val lnRmssd: Double = 0.0,
+    val restingHr: Int = 0,
+    val secondsRemaining: Int = 60,
+    val recommendation: String = "",
+)
 
 @Singleton
 class PolarManager @Inject constructor(
@@ -64,14 +84,27 @@ class PolarManager @Inject constructor(
     private val _sessionTrimp = MutableStateFlow(0.0)
     val sessionTrimp: StateFlow<Double> = _sessionTrimp
 
+    private val _readinessResult = MutableStateFlow(ReadinessResult())
+    val readinessResult: StateFlow<ReadinessResult> = _readinessResult
+
+    private val _vo2max = MutableStateFlow<Double?>(null)
+    val vo2max: StateFlow<Double?> = _vo2max
+
     var connectedDeviceId: String? = null
         private set
 
     // User profile for calorie/TRIMP calculations
     private var userProfile = profileRepo.get()
+    private val profileRepository = profileRepo
 
     // Calorie/TRIMP tracking
     private var lastHrTimestamp = 0L
+
+    // HRV Readiness measurement
+    private var readinessMeasuring = false
+    private var readinessStartTime = 0L
+    private val readinessRR = mutableListOf<Int>()
+    private var readinessMinHr = 200
 
     // Recovery tracking
     private var peakHrAfterSet: Int = 0
@@ -107,6 +140,7 @@ class PolarManager @Inject constructor(
                 _sessionCalories.value = 0.0
                 _sessionTrimp.value = 0.0
                 lastHrTimestamp = System.currentTimeMillis()
+                startReadinessMeasurement()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
             }
 
@@ -226,11 +260,31 @@ class PolarManager @Inject constructor(
                             restingHr = lowestObservedHr
                         }
 
-                        // Process RR intervals for recovery
+                        // Process RR intervals
                         for (rr in sample.rrsMs) {
                             if (rr in 300..2000) {
+                                // Recovery buffer
                                 if (recentRR.size >= RR_BUFFER_SIZE) recentRR.removeFirst()
                                 recentRR.addLast(rr)
+                                // Readiness measurement
+                                if (readinessMeasuring) {
+                                    readinessRR.add(rr)
+                                }
+                            }
+                        }
+
+                        // Readiness measurement: collect for 60s then compute
+                        if (readinessMeasuring) {
+                            if (sample.hr in 30..199 && sample.hr < readinessMinHr) {
+                                readinessMinHr = sample.hr
+                            }
+                            val elapsed = ((System.currentTimeMillis() - readinessStartTime) / 1000).toInt()
+                            val remaining = (60 - elapsed).coerceAtLeast(0)
+                            _readinessResult.value = _readinessResult.value.copy(
+                                secondsRemaining = remaining,
+                            )
+                            if (elapsed >= 60) {
+                                finishReadinessMeasurement()
                             }
                         }
 
@@ -341,6 +395,121 @@ class PolarManager @Inject constructor(
 
     fun updateUserProfile(profile: UserProfile) {
         userProfile = profile
+    }
+
+    private fun startReadinessMeasurement() {
+        readinessMeasuring = true
+        readinessStartTime = System.currentTimeMillis()
+        readinessRR.clear()
+        readinessMinHr = 200
+        _readinessResult.value = ReadinessResult(
+            readiness = Readiness.MEASURING,
+            secondsRemaining = 60,
+        )
+        _vo2max.value = null
+        Log.d(TAG, "Readiness measurement started")
+    }
+
+    private fun finishReadinessMeasurement() {
+        readinessMeasuring = false
+
+        // Filter artifacts from collected RR
+        val cleanRR = filterArtifacts(readinessRR)
+
+        if (cleanRR.size < 20) {
+            _readinessResult.value = ReadinessResult(
+                readiness = Readiness.NO_BASELINE,
+                restingHr = readinessMinHr.takeIf { it < 200 } ?: 0,
+                secondsRemaining = 0,
+                recommendation = "Not enough clean data. Try again staying still.",
+            )
+            return
+        }
+
+        // Calculate LnRMSSD
+        val rmssdVal = calculateRMSSD(cleanRR)
+        val lnRmssd = if (rmssdVal > 0) ln(rmssdVal) else 0.0
+
+        // Use readiness min HR as resting HR
+        val measuredRestingHr = readinessMinHr.takeIf { it < 200 } ?: 70
+        restingHr = measuredRestingHr
+        lowestObservedHr = measuredRestingHr
+
+        // Calculate VO2max (Uth formula)
+        val hrMax = userProfile.hrMax
+        val vo2 = if (measuredRestingHr > 0) 15.3 * (hrMax.toDouble() / measuredRestingHr) else null
+        _vo2max.value = vo2
+
+        // Load baseline from SharedPreferences (last 7 LnRMSSD values)
+        val baseline = loadLnRmssdBaseline()
+        saveLnRmssdToBaseline(lnRmssd)
+
+        val readiness: Readiness
+        val recommendation: String
+
+        if (baseline.size < 7) {
+            readiness = Readiness.NO_BASELINE
+            recommendation = "Collecting baseline data (${baseline.size + 1}/7 days). LnRMSSD: %.1f".format(lnRmssd)
+        } else {
+            val mean = baseline.average()
+            val sd = sqrt(baseline.map { (it - mean).pow(2) }.average())
+            val zScore = if (sd > 0) (lnRmssd - mean) / sd else 0.0
+
+            readiness = when {
+                zScore < -1.5 -> Readiness.DELOAD_RECOMMENDED
+                zScore < -1.0 -> Readiness.LIGHT_DAY
+                zScore < 1.0 -> Readiness.NORMAL
+                zScore > 1.5 -> Readiness.PEAK
+                else -> Readiness.GOOD
+            }
+            recommendation = when (readiness) {
+                Readiness.DELOAD_RECOMMENDED ->
+                    "HRV significantly below baseline. Consider rest or light session."
+                Readiness.LIGHT_DAY ->
+                    "HRV moderately suppressed. Reduce volume or intensity by 20%."
+                Readiness.NORMAL ->
+                    "HRV within normal range. Proceed with planned workout."
+                Readiness.GOOD ->
+                    "HRV above baseline. Good day to push intensity."
+                Readiness.PEAK ->
+                    "HRV unusually high. Consider testing a PR."
+                else -> ""
+            }
+        }
+
+        _readinessResult.value = ReadinessResult(
+            readiness = readiness,
+            lnRmssd = lnRmssd,
+            restingHr = measuredRestingHr,
+            secondsRemaining = 0,
+            recommendation = recommendation,
+        )
+
+        Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr, VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
+    }
+
+    private fun filterArtifacts(rrIntervals: List<Int>): List<Int> {
+        val filtered = rrIntervals.filter { it in 300..2000 }
+        if (filtered.size < 3) return filtered
+        val sorted = filtered.sorted()
+        val median = sorted[sorted.size / 2]
+        return filtered.filter { abs(it - median) < median * 0.20 }
+    }
+
+    private fun loadLnRmssdBaseline(): List<Double> {
+        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
+        val csv = prefs.getString("lnrmssd_values", "") ?: ""
+        if (csv.isBlank()) return emptyList()
+        return csv.split(",").mapNotNull { it.toDoubleOrNull() }
+    }
+
+    private fun saveLnRmssdToBaseline(lnRmssd: Double) {
+        val existing = loadLnRmssdBaseline().toMutableList()
+        existing.add(lnRmssd)
+        // Keep last 14 days
+        while (existing.size > 14) existing.removeFirst()
+        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
+        prefs.edit().putString("lnrmssd_values", existing.joinToString(",")).apply()
     }
 
     private fun calculateRMSSD(rrIntervals: List<Int>): Double {

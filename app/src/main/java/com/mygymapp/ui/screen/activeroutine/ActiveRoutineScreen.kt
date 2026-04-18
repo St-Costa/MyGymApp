@@ -203,9 +203,14 @@ fun ActiveRoutineScreen(
                             previousTonnage = uiState.previousTonnage,
                             sessionCalories = uiState.sessionCalories,
                             sessionTrimp = uiState.sessionTrimp,
+                            vo2max = uiState.vo2max,
                             sessionTonnage = uiState.sessionTonnage,
                             sessionTonnageByBodypart = uiState.sessionTonnageByBodypart,
                             sessionLabels = uiState.sessionLabels,
+                            allSessionCalories = uiState.allSessionCalories,
+                            allSessionTrimp = uiState.allSessionTrimp,
+                            allSessionVo2max = uiState.allSessionVo2max,
+                            allSessionLabels = uiState.allSessionLabels,
                             selectedFilter = uiState.selectedChartFilter,
                             isLoadingChart = uiState.isLoadingChart,
                             onFilterSelected = { viewModel.selectChartFilter(it) },
@@ -346,14 +351,19 @@ private fun ProgressSection(
     previousTonnage: Double?,
     sessionCalories: Double,
     sessionTrimp: Double,
+    vo2max: Double,
     sessionTonnage: List<Double>,
     sessionTonnageByBodypart: Map<String, List<Double>>,
     sessionLabels: List<String>,
+    allSessionCalories: List<Double>,
+    allSessionTrimp: List<Double>,
+    allSessionVo2max: List<Double>,
+    allSessionLabels: List<String>,
     selectedFilter: String,
     isLoadingChart: Boolean,
     onFilterSelected: (String) -> Unit,
 ) {
-    // Calories + TRIMP summary
+    // Calories + TRIMP + VO2max summary
     if (sessionCalories > 0 || sessionTrimp > 0) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -383,6 +393,15 @@ private fun ProgressSection(
                     )
                     Text("TRIMP", style = MaterialTheme.typography.bodySmall)
                 }
+                if (vo2max > 0) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "%.1f".format(vo2max),
+                            style = MaterialTheme.typography.headlineMedium,
+                        )
+                        Text("VO2max", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
     }
@@ -405,8 +424,9 @@ private fun ProgressSection(
                     CircularProgressIndicator()
                 }
             } else if (sessionTonnage.isNotEmpty()) {
-                // Filter chips
-                val filters = listOf("Totale") + sessionTonnageByBodypart.keys.toList()
+                val crossRoutineFilters = listOf("kcal", "TRIMP", "VO2max")
+                // Filter chips: routine-specific tonnage + cross-routine metrics
+                val filters = listOf("Totale") + sessionTonnageByBodypart.keys.toList() + crossRoutineFilters
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(filters) { filter ->
                         FilterChip(
@@ -417,23 +437,57 @@ private fun ProgressSection(
                     }
                 }
 
-                // Chart title: current session's tonnage for the selected filter
-                val chartData = if (selectedFilter == "Totale") {
-                    sessionTonnage
-                } else {
-                    sessionTonnageByBodypart[selectedFilter] ?: sessionTonnage
+                val isCrossRoutine = selectedFilter in crossRoutineFilters
+                val chartData: List<Double>
+                val chartLabels: List<String>
+                val chartTitle: String
+
+                when (selectedFilter) {
+                    "kcal" -> {
+                        chartData = allSessionCalories
+                        chartLabels = allSessionLabels
+                        val current = chartData.lastOrNull() ?: 0.0
+                        chartTitle = "kcal: ${current.toInt()} (all routines)"
+                    }
+                    "TRIMP" -> {
+                        chartData = allSessionTrimp
+                        chartLabels = allSessionLabels
+                        val current = chartData.lastOrNull() ?: 0.0
+                        chartTitle = "TRIMP: ${current.toInt()} (all routines)"
+                    }
+                    "VO2max" -> {
+                        chartData = allSessionVo2max.filter { it > 0 }
+                        chartLabels = allSessionLabels.zip(allSessionVo2max)
+                            .filter { it.second > 0 }.map { it.first }
+                        val current = chartData.lastOrNull() ?: 0.0
+                        chartTitle = "VO2max: %.1f (all routines)".format(current)
+                    }
+                    "Totale" -> {
+                        chartData = sessionTonnage
+                        chartLabels = sessionLabels
+                        val current = chartData.lastOrNull() ?: 0.0
+                        chartTitle = "Totale: %.1f kg".format(current)
+                    }
+                    else -> {
+                        chartData = sessionTonnageByBodypart[selectedFilter] ?: sessionTonnage
+                        chartLabels = sessionLabels
+                        val current = chartData.lastOrNull() ?: 0.0
+                        chartTitle = "$selectedFilter: %.1f kg".format(current)
+                    }
                 }
-                val currentValue = chartData.lastOrNull() ?: 0.0
+
                 Text(
-                    text = "$selectedFilter: %.1f kg".format(currentValue),
+                    text = chartTitle,
                     style = MaterialTheme.typography.titleMedium,
                 )
 
-                TonnageLineChart(
-                    data = chartData,
-                    labels = sessionLabels,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (chartData.isNotEmpty()) {
+                    TonnageLineChart(
+                        data = chartData,
+                        labels = chartLabels,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }

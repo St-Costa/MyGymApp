@@ -96,6 +96,15 @@ fun SessionProgressScreen(
                             )
                             Text("TRIMP", style = MaterialTheme.typography.bodySmall)
                         }
+                        if (uiState.vo2max > 0) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "%.1f".format(uiState.vo2max),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                )
+                                Text("VO2max", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
                 }
             }
@@ -118,7 +127,8 @@ fun SessionProgressScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        val filters = listOf("Totale") + uiState.sessionTonnageByBodypart.keys.toList()
+                        val crossRoutineFilters = listOf("kcal", "TRIMP", "VO2max")
+                        val filters = listOf("Totale") + uiState.sessionTonnageByBodypart.keys.toList() + crossRoutineFilters
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(filters) { filter ->
                                 FilterChip(
@@ -129,23 +139,51 @@ fun SessionProgressScreen(
                             }
                         }
 
-                        val chartData = if (uiState.selectedChartFilter == "Totale") {
-                            uiState.sessionTonnage
-                        } else {
-                            uiState.sessionTonnageByBodypart[uiState.selectedChartFilter]
-                                ?: uiState.sessionTonnage
+                        val chartData: List<Double>
+                        val chartLabels: List<String>
+                        val chartTitle: String
+
+                        when (uiState.selectedChartFilter) {
+                            "kcal" -> {
+                                chartData = uiState.allSessionCalories
+                                chartLabels = uiState.allSessionLabels
+                                chartTitle = "kcal: ${(chartData.lastOrNull() ?: 0.0).toInt()} (all routines)"
+                            }
+                            "TRIMP" -> {
+                                chartData = uiState.allSessionTrimp
+                                chartLabels = uiState.allSessionLabels
+                                chartTitle = "TRIMP: ${(chartData.lastOrNull() ?: 0.0).toInt()} (all routines)"
+                            }
+                            "VO2max" -> {
+                                chartData = uiState.allSessionVo2max.filter { it > 0 }
+                                chartLabels = uiState.allSessionLabels.zip(uiState.allSessionVo2max)
+                                    .filter { it.second > 0 }.map { it.first }
+                                chartTitle = "VO2max: ${"%.1f".format(chartData.lastOrNull() ?: 0.0)} (all routines)"
+                            }
+                            "Totale" -> {
+                                chartData = uiState.sessionTonnage
+                                chartLabels = uiState.sessionLabels
+                                chartTitle = "Totale: ${"%.1f".format(chartData.lastOrNull() ?: 0.0)} kg"
+                            }
+                            else -> {
+                                chartData = uiState.sessionTonnageByBodypart[uiState.selectedChartFilter] ?: uiState.sessionTonnage
+                                chartLabels = uiState.sessionLabels
+                                chartTitle = "${uiState.selectedChartFilter}: ${"%.1f".format(chartData.lastOrNull() ?: 0.0)} kg"
+                            }
                         }
-                        val currentValue = chartData.lastOrNull() ?: 0.0
+
                         Text(
-                            text = "${uiState.selectedChartFilter}: %.1f kg".format(currentValue),
+                            text = chartTitle,
                             style = MaterialTheme.typography.titleMedium,
                         )
 
-                        TonnageLineChart(
-                            data = chartData,
-                            labels = uiState.sessionLabels,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        if (chartData.isNotEmpty()) {
+                            TonnageLineChart(
+                                data = chartData,
+                                labels = chartLabels,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }

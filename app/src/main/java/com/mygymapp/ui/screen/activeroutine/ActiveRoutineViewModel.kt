@@ -32,6 +32,7 @@ data class ActiveRoutineUiState(
     val previousTonnage: Double? = null,
     val sessionCalories: Double = 0.0,
     val sessionTrimp: Double = 0.0,
+    val vo2max: Double = 0.0,
     // Chart: one point per completed session (last 12 weeks), oldest first
     val sessionTonnage: List<Double> = emptyList(),
     val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
@@ -39,6 +40,11 @@ data class ActiveRoutineUiState(
     val selectedChartFilter: String = "Totale",
     val isLoadingChart: Boolean = false,
     val sessionRegistered: Boolean = false,
+    // Cross-routine charts (all sessions, not filtered by routine)
+    val allSessionCalories: List<Double> = emptyList(),
+    val allSessionTrimp: List<Double> = emptyList(),
+    val allSessionVo2max: List<Double> = emptyList(),
+    val allSessionLabels: List<String> = emptyList(),
 )
 
 data class ActiveExerciseUi(
@@ -236,6 +242,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 tonnageByBodypart = tonnageByBodypart,
                 sessionCalories = polarManager.sessionCalories.value,
                 sessionTrimp = polarManager.sessionTrimp.value,
+                vo2max = polarManager.vo2max.value ?: 0.0,
             )
             currentSession = finalSession
             workoutRepository.save(finalSession)
@@ -270,14 +277,27 @@ class ActiveRoutineViewModel @Inject constructor(
                 }
             }
 
+            // Cross-routine data: ALL completed sessions for kcal/TRIMP/VO2max charts
+            val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, today)
+                .filter { it.completedAt.isNotBlank() }
+            val allLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
+            val allCalories = allCompletedSessions.map { it.sessionCalories }
+            val allTrimp = allCompletedSessions.map { it.sessionTrimp }
+            val allVo2 = allCompletedSessions.map { it.vo2max }
+
             sessionFinalized = true
             _uiState.value = _uiState.value.copy(
                 totalTonnage = totalTonnage,
                 sessionCalories = finalSession.sessionCalories,
                 sessionTrimp = finalSession.sessionTrimp,
+                vo2max = finalSession.vo2max,
                 sessionTonnage = sessionTonnage,
                 sessionTonnageByBodypart = sessionTonnageByBodypart,
                 sessionLabels = sessionLabels,
+                allSessionCalories = allCalories,
+                allSessionTrimp = allTrimp,
+                allSessionVo2max = allVo2,
+                allSessionLabels = allLabels,
                 selectedChartFilter = "Totale",
                 isLoadingChart = false,
             )

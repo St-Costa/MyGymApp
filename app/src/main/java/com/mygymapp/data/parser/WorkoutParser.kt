@@ -20,6 +20,7 @@ object WorkoutParser {
             tonnageByBodypart = parseTonnageMap(fm["tonnageByBodypart"]),
             sessionCalories = (fm["sessionCalories"] as? Number)?.toDouble() ?: 0.0,
             sessionTrimp = (fm["sessionTrimp"] as? Number)?.toDouble() ?: 0.0,
+            vo2max = (fm["vo2max"] as? Number)?.toDouble() ?: 0.0,
             exercises = parseExercises(fm["exercises"]),
             notes = doc.body,
         )
@@ -59,6 +60,7 @@ object WorkoutParser {
             "tonnageByBodypart" to session.tonnageByBodypart,
             "sessionCalories" to session.sessionCalories,
             "sessionTrimp" to session.sessionTrimp,
+            "vo2max" to session.vo2max,
             "exercises" to exerciseList,
         )
         return MarkdownParser.serialize(frontmatter, session.notes)
