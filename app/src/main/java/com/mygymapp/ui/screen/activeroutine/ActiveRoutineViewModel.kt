@@ -7,6 +7,7 @@ import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -29,6 +30,8 @@ data class ActiveRoutineUiState(
     val allCompleted: Boolean = false,
     val totalTonnage: Double = 0.0,
     val previousTonnage: Double? = null,
+    val sessionCalories: Double = 0.0,
+    val sessionTrimp: Double = 0.0,
     // Chart: one point per completed session (last 12 weeks), oldest first
     val sessionTonnage: List<Double> = emptyList(),
     val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
@@ -55,6 +58,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val exerciseRepository: ExerciseRepository,
     private val workoutRepository: WorkoutRepository,
+    private val polarManager: PolarManager,
 ) : ViewModel() {
 
     private val routineId: String = savedStateHandle["routineId"] ?: ""
@@ -230,6 +234,8 @@ class ActiveRoutineViewModel @Inject constructor(
             val finalSession = updated.copy(
                 totalTonnage = totalTonnage,
                 tonnageByBodypart = tonnageByBodypart,
+                sessionCalories = polarManager.sessionCalories.value,
+                sessionTrimp = polarManager.sessionTrimp.value,
             )
             currentSession = finalSession
             workoutRepository.save(finalSession)
@@ -267,6 +273,8 @@ class ActiveRoutineViewModel @Inject constructor(
             sessionFinalized = true
             _uiState.value = _uiState.value.copy(
                 totalTonnage = totalTonnage,
+                sessionCalories = finalSession.sessionCalories,
+                sessionTrimp = finalSession.sessionTrimp,
                 sessionTonnage = sessionTonnage,
                 sessionTonnageByBodypart = sessionTonnageByBodypart,
                 sessionLabels = sessionLabels,

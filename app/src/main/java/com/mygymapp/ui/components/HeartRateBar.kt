@@ -33,6 +33,13 @@ import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.RecoveryState
 
+fun trimpColor(trimp: Double): Color = when {
+    trimp < 50 -> Color(0xFF66BB6A)   // green
+    trimp < 100 -> Color(0xFFFFCA28)  // yellow
+    trimp < 200 -> Color(0xFFFF9800)  // orange
+    else -> Color(0xFFEF5350)         // red
+}
+
 private val RedLight = Color(0xFFEF5350)
 private val YellowLight = Color(0xFFFFCA28)
 private val GreenLight = Color(0xFF66BB6A)
@@ -51,6 +58,8 @@ fun HeartRateBar(
     val connectionState by polarManager.connectionState.collectAsState()
     val heartRate by polarManager.heartRate.collectAsState()
     val recoveryState by polarManager.recoveryState.collectAsState()
+    val calories by polarManager.sessionCalories.collectAsState()
+    val trimp by polarManager.sessionTrimp.collectAsState()
 
     if (connectionState != ConnectionState.CONNECTED) return
 
@@ -86,6 +95,36 @@ fun HeartRateBar(
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.alignByBaseline(),
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Calories
+        Text(
+            text = "${calories.toInt()}",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFFF9800),
+        )
+        Text(
+            text = "kcal",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        // TRIMP
+        Text(
+            text = "${trimp.toInt()}",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = trimpColor(trimp),
+        )
+        Text(
+            text = "T",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(modifier = Modifier.weight(1f))

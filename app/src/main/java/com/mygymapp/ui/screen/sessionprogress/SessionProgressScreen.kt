@@ -3,6 +3,7 @@ package com.mygymapp.ui.screen.sessionprogress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.TonnageLineChart
+import com.mygymapp.ui.components.trimpColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +66,40 @@ fun SessionProgressScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Calories + TRIMP summary (if recorded)
+            if (uiState.sessionCalories > 0 || uiState.sessionTrimp > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${uiState.sessionCalories.toInt()}",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = androidx.compose.ui.graphics.Color(0xFFFF9800),
+                            )
+                            Text("kcal", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "${uiState.sessionTrimp.toInt()}",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = trimpColor(uiState.sessionTrimp),
+                            )
+                            Text("TRIMP", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
             if (uiState.sessionTonnage.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

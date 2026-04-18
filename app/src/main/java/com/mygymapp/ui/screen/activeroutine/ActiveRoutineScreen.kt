@@ -45,7 +45,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
+import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.TonnageLineChart
+import com.mygymapp.ui.components.trimpColor
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
@@ -176,6 +178,11 @@ fun ActiveRoutineScreen(
                     }
                 }
 
+                // Heart rate bar (live BPM + kcal + TRIMP + semaphore)
+                item(key = "hr_bar") {
+                    HeartRateBar()
+                }
+
                 // Register button — shown before progress chart
                 item(key = "register_button") {
                     Button(
@@ -194,6 +201,8 @@ fun ActiveRoutineScreen(
                         ProgressSection(
                             totalTonnage = uiState.totalTonnage,
                             previousTonnage = uiState.previousTonnage,
+                            sessionCalories = uiState.sessionCalories,
+                            sessionTrimp = uiState.sessionTrimp,
                             sessionTonnage = uiState.sessionTonnage,
                             sessionTonnageByBodypart = uiState.sessionTonnageByBodypart,
                             sessionLabels = uiState.sessionLabels,
@@ -335,6 +344,8 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
 private fun ProgressSection(
     totalTonnage: Double,
     previousTonnage: Double?,
+    sessionCalories: Double,
+    sessionTrimp: Double,
     sessionTonnage: List<Double>,
     sessionTonnageByBodypart: Map<String, List<Double>>,
     sessionLabels: List<String>,
@@ -342,8 +353,42 @@ private fun ProgressSection(
     isLoadingChart: Boolean,
     onFilterSelected: (String) -> Unit,
 ) {
+    // Calories + TRIMP summary
+    if (sessionCalories > 0 || sessionTrimp > 0) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "${sessionCalories.toInt()}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = androidx.compose.ui.graphics.Color(0xFFFF9800),
+                    )
+                    Text("kcal", style = MaterialTheme.typography.bodySmall)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "${sessionTrimp.toInt()}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = trimpColor(sessionTrimp),
+                    )
+                    Text("TRIMP", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+
     Card(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
