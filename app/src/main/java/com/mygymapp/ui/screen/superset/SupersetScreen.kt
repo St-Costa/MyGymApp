@@ -42,6 +42,7 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
+import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.service.StopwatchService
@@ -128,6 +129,9 @@ fun SupersetScreen(
                         onDescriptionSave = viewModel::saveDescription2,
                     )
                 }
+
+                // Heart rate + recovery semaphore
+                HeartRateBar()
 
                 // Single stopwatch shown once if at least one exercise is STRETCH
                 val hasStretch = uiState.exercise1?.type == ExerciseType.STRETCH
