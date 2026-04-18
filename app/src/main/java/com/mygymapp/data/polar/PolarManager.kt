@@ -8,6 +8,7 @@ import com.polar.sdk.api.PolarBleApiDefaultImpl
 import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarHrData
 import com.polar.androidcommunications.api.ble.model.DisInfo
+import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +65,7 @@ class PolarManager @Inject constructor(
                 Log.d(TAG, "Connected: ${polarDeviceInfo.deviceId}")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 _connectionState.value = ConnectionState.CONNECTED
+                PolarStreamingService.start(context, polarDeviceInfo.name)
             }
 
             override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
@@ -79,6 +81,7 @@ class PolarManager @Inject constructor(
                 _batteryLevel.value = null
                 hrDisposable?.dispose()
                 hrDisposable = null
+                PolarStreamingService.stop(context)
             }
 
             override fun bleSdkFeatureReady(
@@ -154,12 +157,14 @@ class PolarManager @Inject constructor(
         val deviceId = connectedDeviceId ?: return
         hrDisposable?.dispose()
         hrDisposable = null
+        PolarStreamingService.stop(context)
         api.disconnectFromDevice(deviceId)
     }
 
     fun shutdown() {
         scanDisposable?.dispose()
         hrDisposable?.dispose()
+        PolarStreamingService.stop(context)
         api.shutDown()
     }
 
@@ -171,6 +176,7 @@ class PolarManager @Inject constructor(
                     val sample = hrData.samples.lastOrNull()
                     if (sample != null) {
                         _heartRate.value = sample.hr
+                        PolarStreamingService.updateHr(context, sample.hr)
                     }
                 },
                 { error ->
