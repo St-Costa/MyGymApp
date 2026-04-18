@@ -11,6 +11,7 @@ import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
+import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ enum class RecoveryState { RECOVERING, ALMOST_READY, READY }
 @Singleton
 class PolarManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    profileRepo: UserProfileRepository,
 ) {
     companion object {
         private const val TAG = "PolarManager"
@@ -56,8 +58,20 @@ class PolarManager @Inject constructor(
     private val _rmssd = MutableStateFlow<Double?>(null)
     val rmssd: StateFlow<Double?> = _rmssd
 
+    private val _sessionCalories = MutableStateFlow(0.0)
+    val sessionCalories: StateFlow<Double> = _sessionCalories
+
+    private val _sessionTrimp = MutableStateFlow(0.0)
+    val sessionTrimp: StateFlow<Double> = _sessionTrimp
+
     var connectedDeviceId: String? = null
         private set
+
+    // User profile for calorie/TRIMP calculations
+    private var userProfile = profileRepo.get()
+
+    // Calorie/TRIMP tracking
+    private var lastHrTimestamp = 0L
 
     // Recovery tracking
     private var peakHrAfterSet: Int = 0
@@ -90,6 +104,9 @@ class PolarManager @Inject constructor(
                 Log.d(TAG, "Connected: ${polarDeviceInfo.deviceId}")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 _connectionState.value = ConnectionState.CONNECTED
+                _sessionCalories.value = 0.0
+                _sessionTrimp.value = 0.0
+                lastHrTimestamp = System.currentTimeMillis()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
             }
 
@@ -221,6 +238,9 @@ class PolarManager @Inject constructor(
                         detectPeakAndTriggerRecovery(sample.hr)
 
                         updateRecoveryState(sample.hr)
+
+                        // Accumulate calories and TRIMP
+                        accumulateCaloriesAndTrimp(sample.hr)
                     }
                 },
                 { error ->
@@ -289,6 +309,38 @@ class PolarManager @Inject constructor(
         if (state == RecoveryState.READY) {
             isRecovering = false
         }
+    }
+
+    private fun accumulateCaloriesAndTrimp(hr: Int) {
+        val now = System.currentTimeMillis()
+        val elapsedMin = (now - lastHrTimestamp) / 60000.0
+        lastHrTimestamp = now
+
+        // Clamp to reasonable interval (skip if >10s gap, e.g. reconnection)
+        if (elapsedMin <= 0 || elapsedMin > 0.2) return
+
+        val p = userProfile
+
+        // Keytel et al. (2005) calorie formula (kcal/min)
+        val kcalPerMin = if (p.isMale) {
+            (-55.0969 + 0.6309 * hr + 0.1988 * p.weightKg + 0.2017 * p.age) / 4.184
+        } else {
+            (-20.4022 + 0.4472 * hr - 0.1263 * p.weightKg + 0.074 * p.age) / 4.184
+        }
+        if (kcalPerMin > 0) {
+            _sessionCalories.value += kcalPerMin * elapsedMin
+        }
+
+        // Banister TRIMP: duration × HRR fraction × exponential weighting
+        val hrr = (hr - restingHr).toDouble() / (p.hrMax - restingHr)
+        val clampedHrr = hrr.coerceIn(0.0, 1.0)
+        val genderExp = if (p.isMale) 1.92 else 1.67
+        val trimpContribution = elapsedMin * clampedHrr * 0.64 * exp(genderExp * clampedHrr)
+        _sessionTrimp.value += trimpContribution
+    }
+
+    fun updateUserProfile(profile: UserProfile) {
+        userProfile = profile
     }
 
     private fun calculateRMSSD(rrIntervals: List<Int>): Double {

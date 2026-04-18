@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
+import com.mygymapp.data.polar.UserProfile
+import com.mygymapp.data.polar.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +20,9 @@ data class HeartRateUiState(
     val discoveredDevices: List<DiscoveredDevice> = emptyList(),
     val isScanning: Boolean = false,
     val connectedDeviceId: String? = null,
+    val sessionCalories: Double = 0.0,
+    val sessionTrimp: Double = 0.0,
+    val profile: UserProfile = UserProfile(),
 )
 
 data class DiscoveredDevice(
@@ -29,12 +34,15 @@ data class DiscoveredDevice(
 @HiltViewModel
 class HeartRateViewModel @Inject constructor(
     private val polarManager: PolarManager,
+    private val profileRepo: UserProfileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HeartRateUiState())
     val uiState: StateFlow<HeartRateUiState> = _uiState
 
     init {
+        _uiState.value = _uiState.value.copy(profile = profileRepo.get())
+
         viewModelScope.launch {
             combine(
                 polarManager.connectionState,
@@ -42,8 +50,19 @@ class HeartRateViewModel @Inject constructor(
                 polarManager.batteryLevel,
                 polarManager.discoveredDevices,
                 polarManager.isScanning,
-            ) { conn, hr, battery, devices, scanning ->
-                HeartRateUiState(
+                polarManager.sessionCalories,
+                polarManager.sessionTrimp,
+            ) { values ->
+                val conn = values[0] as ConnectionState
+                val hr = values[1] as Int?
+                val battery = values[2] as Int?
+                @Suppress("UNCHECKED_CAST")
+                val devices = values[3] as List<com.polar.sdk.api.model.PolarDeviceInfo>
+                val scanning = values[4] as Boolean
+                val calories = values[5] as Double
+                val trimp = values[6] as Double
+
+                _uiState.value.copy(
                     connectionState = conn,
                     heartRate = hr,
                     batteryLevel = battery,
@@ -56,6 +75,8 @@ class HeartRateViewModel @Inject constructor(
                     },
                     isScanning = scanning,
                     connectedDeviceId = polarManager.connectedDeviceId,
+                    sessionCalories = calories,
+                    sessionTrimp = trimp,
                 )
             }.collect { _uiState.value = it }
         }
@@ -65,4 +86,25 @@ class HeartRateViewModel @Inject constructor(
     fun stopScan() = polarManager.stopScan()
     fun connectToDevice(deviceId: String) = polarManager.connectToDevice(deviceId)
     fun disconnect() = polarManager.disconnect()
+
+    fun updateAge(age: Int) {
+        val profile = _uiState.value.profile.copy(age = age)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
+        polarManager.updateUserProfile(profile)
+    }
+
+    fun updateWeight(weight: Double) {
+        val profile = _uiState.value.profile.copy(weightKg = weight)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
+        polarManager.updateUserProfile(profile)
+    }
+
+    fun updateGender(isMale: Boolean) {
+        val profile = _uiState.value.profile.copy(isMale = isMale)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
+        polarManager.updateUserProfile(profile)
+    }
 }

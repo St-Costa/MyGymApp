@@ -16,19 +16,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.ConnectionState
+import com.mygymapp.ui.components.ScrollPickerInput
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,7 +107,8 @@ fun HeartRateScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             when (uiState.connectionState) {
@@ -115,11 +121,10 @@ fun HeartRateScreen(
                     )
                 }
                 ConnectionState.CONNECTING -> {
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.height(48.dp))
                     CircularProgressIndicator(modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Connecting...", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.weight(1f))
                 }
                 ConnectionState.CONNECTED -> {
                     ConnectedContent(
@@ -128,8 +133,87 @@ fun HeartRateScreen(
                     )
                 }
             }
+
+            // Profile section (always visible)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            ProfileSection(
+                profile = uiState.profile,
+                onAgeChange = { viewModel.updateAge(it) },
+                onWeightChange = { viewModel.updateWeight(it) },
+                onGenderChange = { viewModel.updateGender(it) },
+            )
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
+
+@Composable
+private fun ProfileSection(
+    profile: com.mygymapp.data.polar.UserProfile,
+    onAgeChange: (Int) -> Unit,
+    onWeightChange: (Double) -> Unit,
+    onGenderChange: (Boolean) -> Unit,
+) {
+    Text(
+        "Profile",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+
+    // Gender chips
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = profile.isMale,
+            onClick = { onGenderChange(true) },
+            label = { Text("Male") },
+        )
+        FilterChip(
+            selected = !profile.isMale,
+            onClick = { onGenderChange(false) },
+            label = { Text("Female") },
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    // Age and Weight pickers
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Age", style = MaterialTheme.typography.bodySmall)
+            ScrollPickerInput(
+                value = profile.age,
+                onValueChange = { onAgeChange(it.toInt()) },
+                buttonStep = 1.0,
+                isModified = true,
+                modifier = Modifier.width(120.dp),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Weight (kg)", style = MaterialTheme.typography.bodySmall)
+            ScrollPickerInput(
+                value = profile.weightKg,
+                onValueChange = { onWeightChange(it.toDouble()) },
+                buttonStep = 1.0,
+                isDecimal = true,
+                isModified = true,
+                modifier = Modifier.width(120.dp),
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        "HRmax: ${profile.hrMax} BPM (Tanaka formula)",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -175,10 +259,10 @@ private fun ColumnScope.DisconnectedContent(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(8.dp))
-        LazyColumn(
+        Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(uiState.discoveredDevices, key = { it.deviceId }) { device ->
+            for (device in uiState.discoveredDevices) {
                 DeviceCard(
                     device = device,
                     onClick = { onConnectDevice(device.deviceId) },
@@ -237,58 +321,110 @@ private fun ColumnScope.ConnectedContent(
     uiState: HeartRateUiState,
     onDisconnect: () -> Unit,
 ) {
-    Spacer(modifier = Modifier.weight(1f))
-
+    // HR display
     Icon(
         Icons.Default.Favorite,
         contentDescription = null,
-        modifier = Modifier.size(64.dp),
+        modifier = Modifier.size(48.dp),
         tint = Color.Red,
     )
-    Spacer(modifier = Modifier.height(8.dp))
-
     Text(
         text = "${uiState.heartRate ?: "--"}",
-        fontSize = 96.sp,
+        fontSize = 72.sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,
     )
     Text(
         "BPM",
-        style = MaterialTheme.typography.titleLarge,
+        style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(16.dp))
 
-    if (uiState.batteryLevel != null) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    // Session stats: calories + TRIMP
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
-                Icons.Default.BatteryFull,
+                Icons.Default.LocalFireDepartment,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+                tint = Color(0xFFFF9800),
             )
-            Spacer(modifier = Modifier.width(4.dp))
             Text(
-                "${uiState.batteryLevel}%",
-                style = MaterialTheme.typography.bodyMedium,
+                "${uiState.sessionCalories.toInt()}",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "kcal",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "TRIMP",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "${uiState.sessionTrimp.toInt()}",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = com.mygymapp.ui.components.trimpColor(uiState.sessionTrimp),
+            )
+            Text(
+                trimpIntensityLabel(uiState.sessionTrimp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 
-    Text(
-        "Connected to ${uiState.connectedDeviceId ?: "device"}",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Spacer(modifier = Modifier.height(12.dp))
+
+    // Battery + device info
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            "Connected to ${uiState.connectedDeviceId ?: "device"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (uiState.batteryLevel != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.BatteryFull,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "${uiState.batteryLevel}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 
     Spacer(modifier = Modifier.weight(1f))
 
     OutlinedButton(onClick = onDisconnect) {
         Text("Disconnect")
     }
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(16.dp))
+}
+
+private fun trimpIntensityLabel(trimp: Double): String = when {
+    trimp < 50 -> "light"
+    trimp < 100 -> "moderate"
+    trimp < 200 -> "hard"
+    else -> "very hard"
 }

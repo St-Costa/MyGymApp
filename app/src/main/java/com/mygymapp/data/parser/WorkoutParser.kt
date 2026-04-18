@@ -18,6 +18,8 @@ object WorkoutParser {
             completedAt = fm["completedAt"]?.toString() ?: "",
             totalTonnage = (fm["totalTonnage"] as? Number)?.toDouble() ?: 0.0,
             tonnageByBodypart = parseTonnageMap(fm["tonnageByBodypart"]),
+            sessionCalories = (fm["sessionCalories"] as? Number)?.toDouble() ?: 0.0,
+            sessionTrimp = (fm["sessionTrimp"] as? Number)?.toDouble() ?: 0.0,
             exercises = parseExercises(fm["exercises"]),
             notes = doc.body,
         )
@@ -55,6 +57,8 @@ object WorkoutParser {
             "completedAt" to session.completedAt,
             "totalTonnage" to session.totalTonnage,
             "tonnageByBodypart" to session.tonnageByBodypart,
+            "sessionCalories" to session.sessionCalories,
+            "sessionTrimp" to session.sessionTrimp,
             "exercises" to exerciseList,
         )
         return MarkdownParser.serialize(frontmatter, session.notes)
