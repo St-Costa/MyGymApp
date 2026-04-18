@@ -20,6 +20,7 @@ import com.mygymapp.ui.screen.strengthexercise.StrengthExerciseScreen
 import com.mygymapp.ui.screen.stretchexercise.StretchExerciseScreen
 import com.mygymapp.ui.screen.superset.SupersetScreen
 import com.mygymapp.ui.screen.sessionprogress.SessionProgressScreen
+import com.mygymapp.ui.screen.heartrate.HeartRateScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -32,6 +33,7 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToWeekView = { navController.navigate(Screen.WeekView.route) },
                 onNavigateToExercises = { navController.navigate(Screen.ExerciseList.route) },
                 onNavigateToRoutines = { navController.navigate(Screen.RoutineList.route) },
+                onNavigateToHeartRate = { navController.navigate(Screen.HeartRate.route) },
                 onNavigateToSessionProgress = { sessionId, date ->
                     navController.navigate(Screen.SessionProgress.createRoute(sessionId, date))
                 },
@@ -213,6 +215,12 @@ fun AppNavigation(navController: NavHostController) {
                         ?.set("completedSupersetIds", "$exerciseId1,$exerciseId2")
                     navController.popBackStack()
                 },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Screen.HeartRate.route) {
+            HeartRateScreen(
                 onBack = { navController.popBackStack() },
             )
         }

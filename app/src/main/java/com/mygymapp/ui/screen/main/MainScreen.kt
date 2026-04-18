@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,6 +39,7 @@ fun MainScreen(
     onNavigateToWeekView: () -> Unit,
     onNavigateToExercises: () -> Unit,
     onNavigateToRoutines: () -> Unit,
+    onNavigateToHeartRate: () -> Unit,
     onNavigateToSessionProgress: (sessionId: String, date: String) -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
@@ -128,6 +130,14 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth().height(96.dp),
                 ) {
                     Text("Routines", fontSize = 28.sp)
+                }
+                Button(
+                    onClick = onNavigateToHeartRate,
+                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                ) {
+                    Icon(Icons.Default.FavoriteBorder, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Heart Rate", fontSize = 28.sp)
                 }
             }
             Spacer(modifier = Modifier.height(72.dp))
