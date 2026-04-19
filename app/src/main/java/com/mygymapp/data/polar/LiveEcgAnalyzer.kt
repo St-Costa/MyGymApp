@@ -145,11 +145,19 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
                 }
             }
         }
-        // Any beat outside ±20% of median (and not yet flagged) is uneven
-        if (abs(rrMs - localMedian) > localMedian * 0.20) {
-            // Only mark current as uneven if it's bigger than median (smaller ones
-            // might still become PREMATURE when next beat arrives)
-            if (rrMs > localMedian) {
+        // Any beat outside ±20% of median is a candidate "uneven", but we only
+        // confirm it when TWO consecutive RRs deviate in the same direction —
+        // this filters respiratory sinus arrhythmia at rest and isolated
+        // single-sample artifacts while still catching real patterns
+        // (bigeminy, couplets, sustained arrhythmias).
+        val currentCandidate = abs(rrMs - localMedian) > localMedian * 0.20 && rrMs > localMedian
+        if (currentCandidate && prevIdx >= 0 && irregularityFlags[prevIdx] == Irreg.NONE) {
+            val prev = rrIntervals[prevIdx]
+            val prevDeviation = prev - localMedian
+            val curDeviation = rrMs - localMedian
+            // Both on the "long" side of the median
+            if (prevDeviation > localMedian * 0.20 && curDeviation > localMedian * 0.20) {
+                irregularityFlags[prevIdx] = Irreg.UNEVEN
                 irregularityFlags[i] = Irreg.UNEVEN
             }
         }
