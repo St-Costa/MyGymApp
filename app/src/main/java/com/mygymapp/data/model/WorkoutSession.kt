@@ -19,6 +19,7 @@ data class WorkoutSession(
     val ecgPacCount: Int = 0,
     val ecgPauseCount: Int = 0,
     val ecgIrregularBeats: Int = 0,
+    val cardiacDriftBpmMin: Double = 0.0,
     val exercises: List<WorkoutExercise> = emptyList(),
     val notes: String = "",
 )

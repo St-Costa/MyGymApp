@@ -28,6 +28,7 @@ object WorkoutParser {
             ecgPacCount = (fm["ecgPacCount"] as? Number)?.toInt() ?: 0,
             ecgPauseCount = (fm["ecgPauseCount"] as? Number)?.toInt() ?: 0,
             ecgIrregularBeats = (fm["ecgIrregularBeats"] as? Number)?.toInt() ?: 0,
+            cardiacDriftBpmMin = (fm["cardiacDriftBpmMin"] as? Number)?.toDouble() ?: 0.0,
             exercises = parseExercises(fm["exercises"]),
             notes = doc.body,
         )
@@ -75,6 +76,7 @@ object WorkoutParser {
             "ecgPacCount" to session.ecgPacCount,
             "ecgPauseCount" to session.ecgPauseCount,
             "ecgIrregularBeats" to session.ecgIrregularBeats,
+            "cardiacDriftBpmMin" to session.cardiacDriftBpmMin,
             "exercises" to exerciseList,
         )
         return MarkdownParser.serialize(frontmatter, session.notes)

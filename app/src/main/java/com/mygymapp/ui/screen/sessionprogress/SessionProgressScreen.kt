@@ -109,8 +109,8 @@ fun SessionProgressScreen(
                 }
             }
 
-            // ECG analysis card
-            if (uiState.ecgBeats > 0) {
+            // ECG analysis + cardiac drift card
+            if (uiState.ecgBeats > 0 || uiState.cardiacDriftBpmMin != 0.0) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -127,25 +127,41 @@ fun SessionProgressScreen(
                             "ECG Analysis",
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        Text(
-                            "${uiState.ecgBeats} beats • avg ${uiState.ecgAvgHr.toInt()} BPM • RMSSD ${"%.0f".format(uiState.ecgSessionRmssd)} ms",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        val anomalies = uiState.ecgPacCount + uiState.ecgPauseCount + uiState.ecgIrregularBeats
-                        if (anomalies > 0) {
+                        if (uiState.ecgBeats > 0) {
                             Text(
-                                "PAC: ${uiState.ecgPacCount} • Pauses: ${uiState.ecgPauseCount} • Irregular: ${uiState.ecgIrregularBeats}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                "${uiState.ecgBeats} beats • avg ${uiState.ecgAvgHr.toInt()} BPM • RMSSD ${"%.0f".format(uiState.ecgSessionRmssd)} ms",
+                                style = MaterialTheme.typography.bodyMedium,
                             )
+                            val anomalies = uiState.ecgPacCount + uiState.ecgPauseCount + uiState.ecgIrregularBeats
+                            if (anomalies > 0) {
+                                Text(
+                                    "PAC: ${uiState.ecgPacCount} • Pauses: ${uiState.ecgPauseCount} • Irregular: ${uiState.ecgIrregularBeats}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    "Not diagnostic — consult a physician if persistent.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            } else {
+                                Text(
+                                    "No anomalies detected.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (uiState.cardiacDriftBpmMin != 0.0) {
+                            val drift = uiState.cardiacDriftBpmMin
+                            val driftLabel = when {
+                                drift > 1.0 -> "high — consider hydration/heat"
+                                drift > 0.5 -> "moderate — mild dehydration likely"
+                                drift > -0.5 -> "normal"
+                                else -> "negative (HR dropped)"
+                            }
                             Text(
-                                "Not diagnostic — consult a physician if persistent.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Text(
-                                "No anomalies detected.",
+                                "Cardiac drift: ${"%+.2f".format(drift)} BPM/min ($driftLabel)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

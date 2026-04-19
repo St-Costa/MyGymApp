@@ -36,6 +36,7 @@ data class SessionProgressUiState(
     val ecgPacCount: Int = 0,
     val ecgPauseCount: Int = 0,
     val ecgIrregularBeats: Int = 0,
+    val cardiacDriftBpmMin: Double = 0.0,
 )
 
 @HiltViewModel
@@ -112,6 +113,7 @@ class SessionProgressViewModel @Inject constructor(
             ecgPacCount = session.ecgPacCount,
             ecgPauseCount = session.ecgPauseCount,
             ecgIrregularBeats = session.ecgIrregularBeats,
+            cardiacDriftBpmMin = session.cardiacDriftBpmMin,
         )
     }
 
