@@ -93,6 +93,11 @@ class PolarManager @Inject constructor(
     private val hrSeries = mutableListOf<Pair<Long, Int>>() // (elapsedMs, hr)
     private var hrSeriesStart = 0L
 
+    // Heart Rate Recovery tracking: each entry is (peakHr, peakTimestampMs).
+    // At ~60s after each peak we record the delta = peakHr - currentHr.
+    private val pendingHrrPeaks = mutableListOf<Pair<Int, Long>>()
+    private val hrrDeltas = mutableListOf<Int>()
+
     // Live ECG waveform + analyzer (exposed while an active session is running)
     private val liveAnalyzer = LiveEcgAnalyzer(sampleRate = 130)
     private val waveformBuffer = ArrayDeque<Int>() // last ~4s of ECG samples (µV)
@@ -390,10 +395,24 @@ class PolarManager @Inject constructor(
                 recentRR.clear()
                 _recoveryState.value = RecoveryState.RECOVERING
                 _rmssd.value = null
+                // Queue this peak for HRR measurement at +60s
+                pendingHrrPeaks.add(peakHr to System.currentTimeMillis())
                 Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
             }
         }
         hrWasRising = isRising
+
+        // Check if any queued peak has reached +60s → record the delta
+        val now = System.currentTimeMillis()
+        val iter = pendingHrrPeaks.iterator()
+        while (iter.hasNext()) {
+            val (peakHr, peakTs) = iter.next()
+            if (now - peakTs >= 60_000) {
+                val delta = peakHr - hr
+                if (delta in 0..120) hrrDeltas.add(delta)
+                iter.remove()
+            }
+        }
     }
 
     private fun updateRecoveryState(hr: Int) {
@@ -465,7 +484,15 @@ class PolarManager @Inject constructor(
         hrSeriesActive = true
         lastDriftComputeMs = 0L
         _liveCardiacDrift.value = 0.0
+        pendingHrrPeaks.clear()
+        hrrDeltas.clear()
     }
+
+    /** Average HR recovery (BPM) 60s after each detected peak during the session. */
+    fun averageHrr60s(): Double = if (hrrDeltas.isNotEmpty()) hrrDeltas.average() else 0.0
+
+    /** Resting HR observed during the readiness measurement (or fallback to lowest seen). */
+    fun sessionRestingHr(): Int = restingHr
 
     fun stopHrSeriesCapture() {
         hrSeriesActive = false

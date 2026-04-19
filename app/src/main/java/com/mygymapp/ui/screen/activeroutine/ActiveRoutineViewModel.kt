@@ -218,7 +218,11 @@ class ActiveRoutineViewModel @Inject constructor(
                 val drift = polarManager.cardiacDriftBpmPerMinute()
                 val today = LocalDate.parse(session.date)
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
-                var updated = reloaded.copy(cardiacDriftBpmMin = drift)
+                var updated = reloaded.copy(
+                    cardiacDriftBpmMin = drift,
+                    hrr60s = polarManager.averageHrr60s(),
+                    restingHr = polarManager.sessionRestingHr(),
+                )
                 if (ecgResult != null && ecgResult.hasAnything) {
                     updated = updated.copy(
                         ecgBeats = ecgResult.beatsDetected,
@@ -228,6 +232,12 @@ class ActiveRoutineViewModel @Inject constructor(
                         ecgPacCount = ecgResult.pacCount,
                         ecgPauseCount = ecgResult.pauseCount,
                         ecgIrregularBeats = ecgResult.irregularBeats,
+                        sdnn = ecgResult.sdnn,
+                        pnn50 = ecgResult.pnn50,
+                        poincareSd1 = ecgResult.poincareSd1,
+                        poincareSd2 = ecgResult.poincareSd2,
+                        poincareRatio = ecgResult.poincareRatio,
+                        afibSuspicionEpisodes = ecgResult.afibSuspicionEpisodes,
                     )
                 }
                 workoutRepository.save(updated)

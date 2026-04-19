@@ -20,6 +20,15 @@ data class WorkoutSession(
     val ecgPauseCount: Int = 0,
     val ecgIrregularBeats: Int = 0,
     val cardiacDriftBpmMin: Double = 0.0,
+    // Extended HRV + recovery + screening
+    val restingHr: Int = 0,             // from readiness 60s
+    val hrr60s: Double = 0.0,           // average HR drop 60s after peaks (BPM)
+    val sdnn: Double = 0.0,             // overall HRV (ms)
+    val pnn50: Double = 0.0,            // % of RR pairs with >50ms diff
+    val poincareSd1: Double = 0.0,      // short-term (vagal) scatter (ms)
+    val poincareSd2: Double = 0.0,      // long-term scatter (ms)
+    val poincareRatio: Double = 0.0,    // SD2/SD1 sympathovagal balance
+    val afibSuspicionEpisodes: Int = 0, // sustained irregular segments
     val exercises: List<WorkoutExercise> = emptyList(),
     val notes: String = "",
 )

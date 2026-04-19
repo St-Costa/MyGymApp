@@ -18,6 +18,12 @@ data class EcgAnalysisResult(
     val pacCount: Int,
     val pauseCount: Int,
     val irregularBeats: Int,
+    val sdnn: Double,
+    val pnn50: Double,
+    val poincareSd1: Double,
+    val poincareSd2: Double,
+    val poincareRatio: Double,
+    val afibSuspicionEpisodes: Int,
 ) {
     val hasAnything: Boolean get() = beatsDetected > 0
 }
@@ -105,6 +111,50 @@ class EcgAnalyzer @Inject constructor() {
             }
         }
 
+        // SDNN — overall HRV
+        val meanRR = rrIntervals.average()
+        val sdnn = sqrt(rrIntervals.map { (it - meanRR).pow(2) }.average())
+
+        // pNN50 — % of consecutive RR pairs differing by >50ms
+        val pairs = rrIntervals.zipWithNext()
+        val nn50 = pairs.count { (a, b) -> abs(a - b) > 50 }
+        val pnn50 = if (pairs.isNotEmpty()) (nn50.toDouble() / pairs.size) * 100.0 else 0.0
+
+        // Poincare SD1 / SD2
+        val sd1 = sqrt(0.5) * sqrt(pairs.map { (a, b) -> (b - a).toDouble().pow(2) }.average())
+        val sd2Squared = 2 * sdnn.pow(2) - 0.5 * pairs.map { (a, b) -> (b - a).toDouble().pow(2) }.average()
+        val sd2 = if (sd2Squared > 0) sqrt(sd2Squared) else 0.0
+        val poincareRatio = if (sd1 > 0) sd2 / sd1 else 0.0
+
+        // AFib screening: sustained RR irregularity without repetitive pattern.
+        // Sliding window of 30 consecutive RR intervals; high coefficient of variation
+        // + low autocorrelation at lag 1 suggests AFib-like rhythm.
+        var afibEpisodes = 0
+        val windowLen = 30
+        if (rrIntervals.size >= windowLen) {
+            var inEpisode = false
+            var i = 0
+            while (i + windowLen <= rrIntervals.size) {
+                val w = rrIntervals.subList(i, i + windowLen)
+                val wMean = w.average()
+                val wSd = sqrt(w.map { (it - wMean).pow(2) }.average())
+                val cv = if (wMean > 0) wSd / wMean else 0.0
+                // Lag-1 autocorrelation: in AFib it's near 0 (random), in sinus near positive
+                val wPairs = w.zipWithNext()
+                val covariance = wPairs.map { (a, b) -> (a - wMean) * (b - wMean) }.average()
+                val autoCorr = if (wSd > 0) covariance / (wSd * wSd) else 0.0
+
+                val irregularWindow = cv > 0.12 && abs(autoCorr) < 0.20
+                if (irregularWindow && !inEpisode) {
+                    afibEpisodes++
+                    inEpisode = true
+                } else if (!irregularWindow) {
+                    inEpisode = false
+                }
+                i += windowLen / 2 // 50% overlap
+            }
+        }
+
         return EcgAnalysisResult(
             beatsDetected = peaks.size,
             durationSeconds = durationSec,
@@ -113,6 +163,12 @@ class EcgAnalyzer @Inject constructor() {
             pacCount = pacCount,
             pauseCount = pauseCount,
             irregularBeats = irregularBeats,
+            sdnn = sdnn,
+            pnn50 = pnn50,
+            poincareSd1 = sd1,
+            poincareSd2 = sd2,
+            poincareRatio = poincareRatio,
+            afibSuspicionEpisodes = afibEpisodes,
         )
     }
 

@@ -99,6 +99,20 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] Il **drift** salvato coincide con quello mostrato live (o molto simile)
 - [ ] Le **irregolarita'** totali sono simili a quelle live (accetta ±10% di differenza, gli algoritmi streaming vs batch hanno piccole differenze)
 
+## Extended ECG metrics (post-session, stealth)
+- [ ] **Resting HR**: valore salvato ragionevole (50-80 BPM tipico). Dovrebbe coincidere con il min dei 60s di readiness
+- [ ] **HRR (1 min)**: valore BPM — atteso 15-35 BPM per persona allenata. Label "low/ok/good/excellent" sensata
+  - [ ] < 12 = "low", 12-20 = "ok", 20-30 = "good", > 30 = "excellent"
+- [ ] **SDNN**: in ms, tipico 30-80 durante sessione mista
+- [ ] **pNN50**: %, tipico 5-30% a seconda dell'intensita'
+- [ ] **Poincare SD1/SD2/ratio**: SD1 vicino a RMSSD/√2, SD2 > SD1, ratio 1-4 (rest) o piu' alto sotto sforzo
+- [ ] **AFib screening**: a sessione regolare = 0 episodi. Se compare qualche episodio isolato puo' essere falso positivo (PAC frequenti, movimento); se persistente in piu' sessioni → attenzione
+
+## Sanity check tra sessioni
+- [ ] Stessi parametri con sessione simile danno valori simili (variabilita' 10-30% normale)
+- [ ] Resting HR stabile ±5 BPM tra giorni (senza malattia/stress)
+- [ ] Se HRR cala brutalmente su piu' sessioni → segnalare (possibile sovrallenamento)
+
 ## Bug o problemi
 - [ ] Crash? Quando e cosa stavi facendo
 - [ ] UI rotta? Screenshot se possibile

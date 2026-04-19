@@ -17,6 +17,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.FullscreenLoading
@@ -162,6 +164,58 @@ fun SessionProgressScreen(
                             }
                             Text(
                                 "Cardiac drift: ${"%+.2f".format(drift)} BPM/min ($driftLabel)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        if (uiState.restingHr > 0 || uiState.hrr60s > 0) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                            if (uiState.restingHr > 0) {
+                                Text(
+                                    "Resting HR: ${uiState.restingHr} BPM",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            if (uiState.hrr60s > 0) {
+                                val hrrLabel = when {
+                                    uiState.hrr60s < 12 -> "low — poor recovery"
+                                    uiState.hrr60s < 20 -> "ok"
+                                    uiState.hrr60s < 30 -> "good"
+                                    else -> "excellent"
+                                }
+                                Text(
+                                    "HRR (1 min): ${uiState.hrr60s.toInt()} BPM ($hrrLabel)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+
+                        if (uiState.sdnn > 0 || uiState.pnn50 > 0) {
+                            Text(
+                                "HRV: SDNN ${uiState.sdnn.toInt()} ms · pNN50 ${"%.1f".format(uiState.pnn50)}%",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+
+                        if (uiState.poincareSd1 > 0) {
+                            Text(
+                                "Poincare: SD1 ${uiState.poincareSd1.toInt()} · SD2 ${uiState.poincareSd2.toInt()} · ratio ${"%.2f".format(uiState.poincareRatio)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+
+                        if (uiState.afibSuspicionEpisodes > 0) {
+                            Text(
+                                "AFib screening: ${uiState.afibSuspicionEpisodes} suspicious episode(s)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFEF5350),
+                            )
+                            Text(
+                                "Not diagnostic — consult a physician if recurring.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
