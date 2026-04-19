@@ -21,6 +21,13 @@ object WorkoutParser {
             sessionCalories = (fm["sessionCalories"] as? Number)?.toDouble() ?: 0.0,
             sessionTrimp = (fm["sessionTrimp"] as? Number)?.toDouble() ?: 0.0,
             vo2max = (fm["vo2max"] as? Number)?.toDouble() ?: 0.0,
+            ecgBeats = (fm["ecgBeats"] as? Number)?.toInt() ?: 0,
+            ecgDurationSec = (fm["ecgDurationSec"] as? Number)?.toDouble() ?: 0.0,
+            ecgAvgHr = (fm["ecgAvgHr"] as? Number)?.toDouble() ?: 0.0,
+            ecgSessionRmssd = (fm["ecgSessionRmssd"] as? Number)?.toDouble() ?: 0.0,
+            ecgPacCount = (fm["ecgPacCount"] as? Number)?.toInt() ?: 0,
+            ecgPauseCount = (fm["ecgPauseCount"] as? Number)?.toInt() ?: 0,
+            ecgIrregularBeats = (fm["ecgIrregularBeats"] as? Number)?.toInt() ?: 0,
             exercises = parseExercises(fm["exercises"]),
             notes = doc.body,
         )
@@ -61,6 +68,13 @@ object WorkoutParser {
             "sessionCalories" to session.sessionCalories,
             "sessionTrimp" to session.sessionTrimp,
             "vo2max" to session.vo2max,
+            "ecgBeats" to session.ecgBeats,
+            "ecgDurationSec" to session.ecgDurationSec,
+            "ecgAvgHr" to session.ecgAvgHr,
+            "ecgSessionRmssd" to session.ecgSessionRmssd,
+            "ecgPacCount" to session.ecgPacCount,
+            "ecgPauseCount" to session.ecgPauseCount,
+            "ecgIrregularBeats" to session.ecgIrregularBeats,
             "exercises" to exerciseList,
         )
         return MarkdownParser.serialize(frontmatter, session.notes)

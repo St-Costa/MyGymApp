@@ -208,9 +208,29 @@ class ActiveRoutineViewModel @Inject constructor(
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
                 finalizeSession(reloaded)
             }
-            // Stop ECG recording. Analysis (Step B) will consume the file and delete it.
-            // For now we just stop; the file is left on disk for the analysis phase.
+            // Stop ECG streaming, then run post-session analysis and persist results.
             polarManager.stopEcgRecording()
+            val session = currentSession
+            if (session != null) {
+                val result = polarManager.analyzeSessionEcg(session.id)
+                if (result != null && result.hasAnything) {
+                    val today = LocalDate.parse(session.date)
+                    val reloaded = workoutRepository.getSession(session.id, today) ?: session
+                    val withEcg = reloaded.copy(
+                        ecgBeats = result.beatsDetected,
+                        ecgDurationSec = result.durationSeconds,
+                        ecgAvgHr = result.avgHr,
+                        ecgSessionRmssd = result.sessionRmssd,
+                        ecgPacCount = result.pacCount,
+                        ecgPauseCount = result.pauseCount,
+                        ecgIrregularBeats = result.irregularBeats,
+                    )
+                    workoutRepository.save(withEcg)
+                    currentSession = withEcg
+                }
+                // ECG raw file is ephemeral: delete after analysis
+                polarManager.deleteEcgFile(session.id)
+            }
             _uiState.value = _uiState.value.copy(sessionRegistered = true)
         }
     }

@@ -30,6 +30,12 @@ data class SessionProgressUiState(
     val allSessionTrimp: List<Double> = emptyList(),
     val allSessionVo2max: List<Double> = emptyList(),
     val allSessionLabels: List<String> = emptyList(),
+    val ecgBeats: Int = 0,
+    val ecgAvgHr: Double = 0.0,
+    val ecgSessionRmssd: Double = 0.0,
+    val ecgPacCount: Int = 0,
+    val ecgPauseCount: Int = 0,
+    val ecgIrregularBeats: Int = 0,
 )
 
 @HiltViewModel
@@ -100,6 +106,12 @@ class SessionProgressViewModel @Inject constructor(
             allSessionTrimp = allCompletedSessions.map { it.sessionTrimp },
             allSessionVo2max = allCompletedSessions.map { it.vo2max },
             allSessionLabels = allLabels,
+            ecgBeats = session.ecgBeats,
+            ecgAvgHr = session.ecgAvgHr,
+            ecgSessionRmssd = session.ecgSessionRmssd,
+            ecgPacCount = session.ecgPacCount,
+            ecgPauseCount = session.ecgPauseCount,
+            ecgIrregularBeats = session.ecgIrregularBeats,
         )
     }
 
