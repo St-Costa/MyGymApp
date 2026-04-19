@@ -63,31 +63,45 @@ class EcgAnalyzer @Inject constructor() {
         val diffs = rrIntervals.zipWithNext { a, b -> (b - a).toDouble().pow(2) }
         val rmssd = sqrt(diffs.average())
 
-        // Arrhythmia markers: sliding window of local median
+        // Arrhythmia markers: sliding window of local median.
+        // Uneven requires TWO consecutive RRs deviating in the same direction,
+        // to filter respiratory sinus arrhythmia and single-sample artifacts.
         var pacCount = 0
         var pauseCount = 0
         var irregularBeats = 0
         val windowSize = 10
+        var uncountedConsecutive = false
         for (i in rrIntervals.indices) {
             val rr = rrIntervals[i]
             if (rr > 2000) {
                 pauseCount++
+                uncountedConsecutive = false
                 continue
             }
             val start = (i - windowSize / 2).coerceAtLeast(0)
             val end = (start + windowSize).coerceAtMost(rrIntervals.size)
-            if (end - start < 5) continue
+            if (end - start < 5) { uncountedConsecutive = false; continue }
             val localMedian = rrIntervals.subList(start, end).sorted().let { it[it.size / 2] }
 
             if (rr < localMedian * 0.85) {
                 val next = rrIntervals.getOrNull(i + 1)
                 if (next != null && next > localMedian * 1.10) {
                     pacCount++
+                    uncountedConsecutive = false
                 } else {
-                    irregularBeats++
+                    // Single short RR without compensatory pause — skip (not confirmed)
+                    uncountedConsecutive = false
                 }
-            } else if (abs(rr - localMedian) > localMedian * 0.20) {
-                irregularBeats++
+            } else if (abs(rr - localMedian) > localMedian * 0.20 && rr > localMedian) {
+                if (uncountedConsecutive) {
+                    // Confirm both the previous and current beat
+                    irregularBeats += 2
+                    uncountedConsecutive = false
+                } else {
+                    uncountedConsecutive = true
+                }
+            } else {
+                uncountedConsecutive = false
             }
         }
 
