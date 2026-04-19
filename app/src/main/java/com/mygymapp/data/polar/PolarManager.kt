@@ -5,8 +5,10 @@ import android.util.Log
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
 import com.polar.sdk.api.PolarBleApiDefaultImpl
+import com.polar.sdk.api.model.EcgSample
 import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarHrData
+import com.polar.sdk.api.model.PolarSensorSetting
 import com.polar.androidcommunications.api.ble.model.DisInfo
 import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -47,6 +49,7 @@ data class ReadinessResult(
 class PolarManager @Inject constructor(
     @ApplicationContext private val context: Context,
     profileRepo: UserProfileRepository,
+    private val ecgRecorder: EcgRecorder,
 ) {
     companion object {
         private const val TAG = "PolarManager"
@@ -119,6 +122,11 @@ class PolarManager @Inject constructor(
 
     private var scanDisposable: Disposable? = null
     private var hrDisposable: Disposable? = null
+    private var ecgDisposable: Disposable? = null
+
+    // ECG streaming state
+    private var streamingFeatureReady = false
+    private var pendingEcgSessionId: String? = null
 
     private val api: PolarBleApi = PolarBleApiDefaultImpl.defaultImplementation(
         context,
@@ -126,6 +134,7 @@ class PolarManager @Inject constructor(
             PolarBleApi.PolarBleSdkFeature.FEATURE_HR,
             PolarBleApi.PolarBleSdkFeature.FEATURE_BATTERY_INFO,
             PolarBleApi.PolarBleSdkFeature.FEATURE_DEVICE_INFO,
+            PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING,
         )
     ).also { api ->
         api.setApiCallback(object : PolarBleApiCallback() {
@@ -157,6 +166,11 @@ class PolarManager @Inject constructor(
                 _batteryLevel.value = null
                 hrDisposable?.dispose()
                 hrDisposable = null
+                ecgDisposable?.dispose()
+                ecgDisposable = null
+                ecgRecorder.stop()
+                streamingFeatureReady = false
+                pendingEcgSessionId = null
                 PolarStreamingService.stop(context)
             }
 
@@ -168,6 +182,14 @@ class PolarManager @Inject constructor(
                 when (feature) {
                     PolarBleApi.PolarBleSdkFeature.FEATURE_HR -> {
                         startHrStreaming(identifier)
+                    }
+                    PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING -> {
+                        streamingFeatureReady = true
+                        // If a session requested ECG before feature was ready, start now
+                        pendingEcgSessionId?.let { sessionId ->
+                            pendingEcgSessionId = null
+                            startEcgStreamingInternal(identifier, sessionId)
+                        }
                     }
                     else -> {}
                 }
@@ -233,6 +255,9 @@ class PolarManager @Inject constructor(
         val deviceId = connectedDeviceId ?: return
         hrDisposable?.dispose()
         hrDisposable = null
+        ecgDisposable?.dispose()
+        ecgDisposable = null
+        ecgRecorder.stop()
         PolarStreamingService.stop(context)
         api.disconnectFromDevice(deviceId)
     }
@@ -240,6 +265,8 @@ class PolarManager @Inject constructor(
     fun shutdown() {
         scanDisposable?.dispose()
         hrDisposable?.dispose()
+        ecgDisposable?.dispose()
+        ecgRecorder.stop()
         PolarStreamingService.stop(context)
         api.shutDown()
     }
@@ -395,6 +422,58 @@ class PolarManager @Inject constructor(
 
     fun updateUserProfile(profile: UserProfile) {
         userProfile = profile
+    }
+
+    /** Start raw ECG recording for [sessionId]. No-op if not connected. */
+    fun startEcgRecording(sessionId: String) {
+        val deviceId = connectedDeviceId ?: run {
+            Log.d(TAG, "ECG start requested but not connected; queued")
+            pendingEcgSessionId = sessionId
+            return
+        }
+        if (streamingFeatureReady) {
+            startEcgStreamingInternal(deviceId, sessionId)
+        } else {
+            pendingEcgSessionId = sessionId
+            Log.d(TAG, "ECG start queued: streaming feature not yet ready")
+        }
+    }
+
+    fun stopEcgRecording() {
+        ecgDisposable?.dispose()
+        ecgDisposable = null
+        ecgRecorder.stop()
+        pendingEcgSessionId = null
+    }
+
+    /** Delete the recorded ECG file for a session. Called after analysis. */
+    fun deleteEcgFile(sessionId: String) {
+        ecgRecorder.delete(sessionId)
+    }
+
+    private fun startEcgStreamingInternal(deviceId: String, sessionId: String) {
+        ecgDisposable?.dispose()
+        // Request the supported ECG settings and then start streaming at max (130Hz on H10)
+        ecgDisposable = api.requestStreamSettings(deviceId, PolarBleApi.PolarDeviceDataType.ECG)
+            .map { it.maxSettings() }
+            .flatMapPublisher { settings: PolarSensorSetting ->
+                ecgRecorder.start(sessionId, sampleRate = 130, startTimestampNs = System.nanoTime())
+                Log.d(TAG, "ECG streaming started for session $sessionId")
+                api.startEcgStreaming(deviceId, settings)
+            }
+            .subscribe(
+                { ecgData ->
+                    for (sample in ecgData.samples) {
+                        if (sample is EcgSample) {
+                            ecgRecorder.writeSample(sample.voltage)
+                        }
+                    }
+                },
+                { error ->
+                    Log.e(TAG, "ECG streaming error: $error")
+                    ecgRecorder.stop()
+                }
+            )
     }
 
     private fun startReadinessMeasurement() {

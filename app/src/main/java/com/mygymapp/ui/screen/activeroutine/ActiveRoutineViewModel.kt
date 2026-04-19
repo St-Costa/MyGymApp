@@ -132,6 +132,9 @@ class ActiveRoutineViewModel @Inject constructor(
             val saved = workoutRepository.save(session)
             currentSession = saved
 
+            // Start ECG recording for this session (no-op if Polar not connected)
+            polarManager.startEcgRecording(saved.id)
+
             _uiState.value = ActiveRoutineUiState(
                 routineName = routine.name,
                 notes = routine.notes,
@@ -205,6 +208,9 @@ class ActiveRoutineViewModel @Inject constructor(
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
                 finalizeSession(reloaded)
             }
+            // Stop ECG recording. Analysis (Step B) will consume the file and delete it.
+            // For now we just stop; the file is left on disk for the analysis phase.
+            polarManager.stopEcgRecording()
             _uiState.value = _uiState.value.copy(sessionRegistered = true)
         }
     }
@@ -212,6 +218,8 @@ class ActiveRoutineViewModel @Inject constructor(
     fun abandonSession() {
         viewModelScope.launch {
             val session = currentSession ?: return@launch
+            polarManager.stopEcgRecording()
+            polarManager.deleteEcgFile(session.id)
             workoutRepository.delete(session)
         }
     }
