@@ -113,6 +113,43 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] Resting HR stabile ±5 BPM tra giorni (senza malattia/stress)
 - [ ] Se HRR cala brutalmente su piu' sessioni → segnalare (possibile sovrallenamento)
 
+## Cardio Trend (schermata Heart Rate, sopra il profilo)
+- [ ] All'apertura compare la card "📊 Cardio trend · last 4 weeks"
+- [ ] Conteggio sessioni e durata media corretti (confronta col numero di sessioni completate negli ultimi 28 giorni)
+- [ ] Se hai < 2 sessioni recenti mostra "Not enough data yet"
+- [ ] Griglia 2×3 con 6 metriche visibili:
+  - [ ] Resting HR
+  - [ ] HRR (1 min)
+  - [ ] VO2max
+  - [ ] RMSSD
+  - [ ] SDNN
+  - [ ] Cardiac drift
+  - [ ] SD2/SD1 ratio (7ª, compare in basso)
+- [ ] Ogni cella mostra: nome, pallino semaforo, mini-sparkline, valore attuale + unita', delta + freccia
+- [ ] Sparkline ha il colore del pallino semaforo (verde/giallo/rosso)
+- [ ] Freccia direzione coerente col delta (↑ se positivo, ↓ se negativo, → se flat)
+
+## Semaforo sensato per ogni metrica (logica direzionale)
+- [ ] Resting HR: verde se in calo, rosso se sale > 10% e/o > 85 BPM assoluti
+- [ ] HRR: verde se sale, rosso se < 12 BPM assoluti
+- [ ] VO2max: verde se sale, giallo/rosso se cala > 10%
+- [ ] RMSSD / SDNN: verde se sale o stabile, giallo/rosso se cala > 10%
+- [ ] Cardiac drift: verde se < 0.5 stabile, rosso se > 1.0
+- [ ] SD2/SD1 ratio: verde se 1.5-4.5, giallo/rosso se fuori
+
+## Sezione Ritmo (contatori 30 giorni)
+- [ ] AFib episodes: 0 = verde, 1-2 giallo, >2 rosso
+- [ ] Pauses: 0 = verde, 1-2 giallo, >2 rosso
+- [ ] Premature: ≤20 verde, 21-60 giallo, >60 rosso
+- [ ] Uneven: ≤30 verde, 31-100 giallo, >100 rosso
+
+## Alerts (conditional — appaiono solo se scatta il trigger)
+- [ ] AFib > 0 episodi → alert "consult a physician if recurring"
+- [ ] Pauses > 2 in 4 settimane → alert "uncommon, mention to doctor"
+- [ ] Resting HR up ≥ 5 BPM vs baseline con ≥3 sessioni per lato → alert "possible fatigue or illness"
+- [ ] HRR media recente < 12 → alert "poor recovery trend"
+- [ ] < 4 sessioni totali → alert "trends not yet reliable"
+
 ## Bug o problemi
 - [ ] Crash? Quando e cosa stavi facendo
 - [ ] UI rotta? Screenshot se possibile
