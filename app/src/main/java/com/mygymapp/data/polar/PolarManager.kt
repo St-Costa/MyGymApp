@@ -88,6 +88,11 @@ class PolarManager @Inject constructor(
     private val _sessionTrimp = MutableStateFlow(0.0)
     val sessionTrimp: StateFlow<Double> = _sessionTrimp
 
+    // HR time series for cardiac drift (capture during active session)
+    private var hrSeriesActive = false
+    private val hrSeries = mutableListOf<Pair<Long, Int>>() // (elapsedMs, hr)
+    private var hrSeriesStart = 0L
+
     private val _readinessResult = MutableStateFlow(ReadinessResult())
     val readinessResult: StateFlow<ReadinessResult> = _readinessResult
 
@@ -282,6 +287,12 @@ class PolarManager @Inject constructor(
                         _heartRate.value = sample.hr
                         PolarStreamingService.updateHr(context, sample.hr)
 
+                        // Capture HR series for cardiac drift analysis
+                        if (hrSeriesActive) {
+                            val elapsed = System.currentTimeMillis() - hrSeriesStart
+                            hrSeries.add(elapsed to sample.hr)
+                        }
+
                         // Track lowest observed HR as resting estimate
                         if (sample.hr in 30..199 && sample.hr < lowestObservedHr) {
                             lowestObservedHr = sample.hr
@@ -423,6 +434,42 @@ class PolarManager @Inject constructor(
 
     fun updateUserProfile(profile: UserProfile) {
         userProfile = profile
+    }
+
+    /** Start capturing the HR time series for the duration of a session. */
+    fun startHrSeriesCapture() {
+        hrSeries.clear()
+        hrSeriesStart = System.currentTimeMillis()
+        hrSeriesActive = true
+    }
+
+    fun stopHrSeriesCapture() {
+        hrSeriesActive = false
+    }
+
+    /**
+     * Cardiac drift rate in BPM/min over the captured HR series.
+     * Requires ≥5 minutes of data, otherwise returns 0.
+     * Positive value = HR drifted upward (possible dehydration/heat).
+     */
+    fun cardiacDriftBpmPerMinute(): Double {
+        val data = hrSeries.toList()
+        if (data.size < 60) return 0.0
+        val totalMinutes = data.last().first / 60000.0
+        if (totalMinutes < 5.0) return 0.0
+        // Linear regression slope (HR vs minutes)
+        val xs = data.map { it.first / 60000.0 }
+        val ys = data.map { it.second.toDouble() }
+        val meanX = xs.average()
+        val meanY = ys.average()
+        var num = 0.0
+        var den = 0.0
+        for (i in xs.indices) {
+            val dx = xs[i] - meanX
+            num += dx * (ys[i] - meanY)
+            den += dx * dx
+        }
+        return if (den > 0) num / den else 0.0
     }
 
     /** Start raw ECG recording for [sessionId]. No-op if not connected. */

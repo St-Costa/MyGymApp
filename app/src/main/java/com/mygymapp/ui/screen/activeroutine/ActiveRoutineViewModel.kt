@@ -132,8 +132,9 @@ class ActiveRoutineViewModel @Inject constructor(
             val saved = workoutRepository.save(session)
             currentSession = saved
 
-            // Start ECG recording for this session (no-op if Polar not connected)
+            // Start ECG recording + HR series capture (no-op if Polar not connected)
             polarManager.startEcgRecording(saved.id)
+            polarManager.startHrSeriesCapture()
 
             _uiState.value = ActiveRoutineUiState(
                 routineName = routine.name,
@@ -208,26 +209,29 @@ class ActiveRoutineViewModel @Inject constructor(
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
                 finalizeSession(reloaded)
             }
-            // Stop ECG streaming, then run post-session analysis and persist results.
+            // Stop ECG streaming + HR capture, then run post-session analyses.
             polarManager.stopEcgRecording()
+            polarManager.stopHrSeriesCapture()
             val session = currentSession
             if (session != null) {
-                val result = polarManager.analyzeSessionEcg(session.id)
-                if (result != null && result.hasAnything) {
-                    val today = LocalDate.parse(session.date)
-                    val reloaded = workoutRepository.getSession(session.id, today) ?: session
-                    val withEcg = reloaded.copy(
-                        ecgBeats = result.beatsDetected,
-                        ecgDurationSec = result.durationSeconds,
-                        ecgAvgHr = result.avgHr,
-                        ecgSessionRmssd = result.sessionRmssd,
-                        ecgPacCount = result.pacCount,
-                        ecgPauseCount = result.pauseCount,
-                        ecgIrregularBeats = result.irregularBeats,
+                val ecgResult = polarManager.analyzeSessionEcg(session.id)
+                val drift = polarManager.cardiacDriftBpmPerMinute()
+                val today = LocalDate.parse(session.date)
+                val reloaded = workoutRepository.getSession(session.id, today) ?: session
+                var updated = reloaded.copy(cardiacDriftBpmMin = drift)
+                if (ecgResult != null && ecgResult.hasAnything) {
+                    updated = updated.copy(
+                        ecgBeats = ecgResult.beatsDetected,
+                        ecgDurationSec = ecgResult.durationSeconds,
+                        ecgAvgHr = ecgResult.avgHr,
+                        ecgSessionRmssd = ecgResult.sessionRmssd,
+                        ecgPacCount = ecgResult.pacCount,
+                        ecgPauseCount = ecgResult.pauseCount,
+                        ecgIrregularBeats = ecgResult.irregularBeats,
                     )
-                    workoutRepository.save(withEcg)
-                    currentSession = withEcg
                 }
+                workoutRepository.save(updated)
+                currentSession = updated
                 // ECG raw file is ephemeral: delete after analysis
                 polarManager.deleteEcgFile(session.id)
             }
@@ -239,6 +243,7 @@ class ActiveRoutineViewModel @Inject constructor(
         viewModelScope.launch {
             val session = currentSession ?: return@launch
             polarManager.stopEcgRecording()
+            polarManager.stopHrSeriesCapture()
             polarManager.deleteEcgFile(session.id)
             workoutRepository.delete(session)
         }
