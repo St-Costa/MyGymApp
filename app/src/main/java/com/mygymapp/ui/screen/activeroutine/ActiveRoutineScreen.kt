@@ -46,6 +46,7 @@ import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
+import com.mygymapp.ui.components.LiveEcgCard
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.components.trimpColor
 import com.mygymapp.ui.theme.ForzaColor
@@ -181,6 +182,11 @@ fun ActiveRoutineScreen(
                 // Heart rate bar (live BPM + kcal + TRIMP + semaphore)
                 item(key = "hr_bar") {
                     HeartRateBar()
+                }
+
+                // Live ECG card (between HR bar and register button, per user spec)
+                item(key = "live_ecg") {
+                    LiveEcgCard()
                 }
 
                 // Register button — shown before progress chart

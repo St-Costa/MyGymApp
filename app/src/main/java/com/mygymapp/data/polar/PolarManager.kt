@@ -93,6 +93,22 @@ class PolarManager @Inject constructor(
     private val hrSeries = mutableListOf<Pair<Long, Int>>() // (elapsedMs, hr)
     private var hrSeriesStart = 0L
 
+    // Live ECG waveform + analyzer (exposed while an active session is running)
+    private val liveAnalyzer = LiveEcgAnalyzer(sampleRate = 130)
+    private val waveformBuffer = ArrayDeque<Int>() // last ~4s of ECG samples (µV)
+    private val waveformCapacity = 130 * 4
+    private var samplesSinceLastEmit = 0
+
+    private val _ecgWaveform = MutableStateFlow<IntArray>(IntArray(0))
+    val ecgWaveform: StateFlow<IntArray> = _ecgWaveform
+
+    private val _liveEcgSnapshot = MutableStateFlow(LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0))
+    val liveEcgSnapshot: StateFlow<LiveEcgAnalyzer.Snapshot> = _liveEcgSnapshot
+
+    private val _liveCardiacDrift = MutableStateFlow(0.0)
+    val liveCardiacDrift: StateFlow<Double> = _liveCardiacDrift
+    private var lastDriftComputeMs = 0L
+
     private val _readinessResult = MutableStateFlow(ReadinessResult())
     val readinessResult: StateFlow<ReadinessResult> = _readinessResult
 
@@ -289,8 +305,14 @@ class PolarManager @Inject constructor(
 
                         // Capture HR series for cardiac drift analysis
                         if (hrSeriesActive) {
-                            val elapsed = System.currentTimeMillis() - hrSeriesStart
+                            val now = System.currentTimeMillis()
+                            val elapsed = now - hrSeriesStart
                             hrSeries.add(elapsed to sample.hr)
+                            // Recompute live drift every ~30s
+                            if (now - lastDriftComputeMs >= 30_000) {
+                                lastDriftComputeMs = now
+                                _liveCardiacDrift.value = cardiacDriftBpmPerMinute()
+                            }
                         }
 
                         // Track lowest observed HR as resting estimate
@@ -441,6 +463,8 @@ class PolarManager @Inject constructor(
         hrSeries.clear()
         hrSeriesStart = System.currentTimeMillis()
         hrSeriesActive = true
+        lastDriftComputeMs = 0L
+        _liveCardiacDrift.value = 0.0
     }
 
     fun stopHrSeriesCapture() {
@@ -510,6 +534,13 @@ class PolarManager @Inject constructor(
 
     private fun startEcgStreamingInternal(deviceId: String, sessionId: String) {
         ecgDisposable?.dispose()
+        // Reset live analyzer + waveform for a fresh session
+        liveAnalyzer.reset()
+        waveformBuffer.clear()
+        _ecgWaveform.value = IntArray(0)
+        _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0)
+        samplesSinceLastEmit = 0
+
         // Request the supported ECG settings and then start streaming at max (130Hz on H10)
         ecgDisposable = api.requestStreamSettings(deviceId, PolarBleApi.PolarDeviceDataType.ECG)
             .map { it.maxSettings() }
@@ -522,8 +553,20 @@ class PolarManager @Inject constructor(
                 { ecgData ->
                     for (sample in ecgData.samples) {
                         if (sample is EcgSample) {
-                            ecgRecorder.writeSample(sample.voltage)
+                            val v = sample.voltage
+                            ecgRecorder.writeSample(v)
+                            liveAnalyzer.onSample(v)
+                            // Waveform buffer
+                            waveformBuffer.addLast(v)
+                            if (waveformBuffer.size > waveformCapacity) waveformBuffer.removeFirst()
+                            samplesSinceLastEmit++
                         }
+                    }
+                    // Emit waveform + snapshot ~2x per second (every 65 samples @130Hz)
+                    if (samplesSinceLastEmit >= 65) {
+                        _ecgWaveform.value = waveformBuffer.toIntArray()
+                        _liveEcgSnapshot.value = liveAnalyzer.snapshot()
+                        samplesSinceLastEmit = 0
                     }
                 },
                 { error ->
