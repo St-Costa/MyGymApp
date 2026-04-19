@@ -11,6 +11,14 @@ data class WorkoutSession(
     val sessionCalories: Double = 0.0,
     val sessionTrimp: Double = 0.0,
     val vo2max: Double = 0.0,
+    // ECG-derived metrics (post-session analysis, Step B)
+    val ecgBeats: Int = 0,
+    val ecgDurationSec: Double = 0.0,
+    val ecgAvgHr: Double = 0.0,
+    val ecgSessionRmssd: Double = 0.0,
+    val ecgPacCount: Int = 0,
+    val ecgPauseCount: Int = 0,
+    val ecgIrregularBeats: Int = 0,
     val exercises: List<WorkoutExercise> = emptyList(),
     val notes: String = "",
 )

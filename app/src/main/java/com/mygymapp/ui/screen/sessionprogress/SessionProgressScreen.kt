@@ -109,6 +109,51 @@ fun SessionProgressScreen(
                 }
             }
 
+            // ECG analysis card
+            if (uiState.ecgBeats > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            "ECG Analysis",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "${uiState.ecgBeats} beats • avg ${uiState.ecgAvgHr.toInt()} BPM • RMSSD ${"%.0f".format(uiState.ecgSessionRmssd)} ms",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        val anomalies = uiState.ecgPacCount + uiState.ecgPauseCount + uiState.ecgIrregularBeats
+                        if (anomalies > 0) {
+                            Text(
+                                "PAC: ${uiState.ecgPacCount} • Pauses: ${uiState.ecgPauseCount} • Irregular: ${uiState.ecgIrregularBeats}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Not diagnostic — consult a physician if persistent.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Text(
+                                "No anomalies detected.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
             if (uiState.sessionTonnage.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

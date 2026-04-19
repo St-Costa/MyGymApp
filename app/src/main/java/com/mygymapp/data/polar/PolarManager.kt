@@ -50,6 +50,7 @@ class PolarManager @Inject constructor(
     @ApplicationContext private val context: Context,
     profileRepo: UserProfileRepository,
     private val ecgRecorder: EcgRecorder,
+    private val ecgAnalyzer: EcgAnalyzer,
 ) {
     companion object {
         private const val TAG = "PolarManager"
@@ -449,6 +450,15 @@ class PolarManager @Inject constructor(
     /** Delete the recorded ECG file for a session. Called after analysis. */
     fun deleteEcgFile(sessionId: String) {
         ecgRecorder.delete(sessionId)
+    }
+
+    /**
+     * Run post-session ECG analysis on the recorded file.
+     * Returns null if no file or file too short. Caller should delete the file.
+     */
+    fun analyzeSessionEcg(sessionId: String): EcgAnalysisResult? {
+        val file = ecgRecorder.fileFor(sessionId)
+        return ecgAnalyzer.analyze(file)
     }
 
     private fun startEcgStreamingInternal(deviceId: String, sessionId: String) {
