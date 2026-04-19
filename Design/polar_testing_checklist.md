@@ -65,6 +65,18 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] Sessione intensa: atteso ~130-250
 - [ ] Se fuori range, segnalarlo
 
+## ECG recording + post-session analysis (7.8 + 7.9)
+- [ ] Durante la routine: nessun crash dovuto allo stream ECG (funziona in background a schermo spento)
+- [ ] Su "Registra routine": nessun ritardo eccessivo (l'analisi Pan-Tompkins dura poco, ma un minuto ok)
+- [ ] Il file ECG viene cancellato dopo l'analisi (controlla `/data/data/com.mygymapp/files/gymdata/ecg/` vuoto dopo la registrazione)
+- [ ] SessionProgressScreen mostra la card "ECG Analysis":
+  - [ ] beats detected ragionevole (frequenza media × minuti)
+  - [ ] avg BPM coerente con quello visto durante la sessione
+  - [ ] RMSSD visualizzato (tipicamente 10-50 ms durante sforzo)
+  - [ ] PAC / Pauses / Irregular: se 0 mostra "No anomalies detected", altrimenti li elenca con disclaimer
+- [ ] Cardiac drift: dopo ≥5 minuti mostra il valore BPM/min con label (normal / moderate / high)
+- [ ] Valore realistico (normale < 0.5, moderato 0.5-1.0, alto > 1.0)
+
 ## Bug o problemi
 - [ ] Crash? Quando e cosa stavi facendo
 - [ ] UI rotta? Screenshot se possibile
