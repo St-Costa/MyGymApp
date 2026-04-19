@@ -98,6 +98,10 @@ class PolarManager @Inject constructor(
     private val pendingHrrPeaks = mutableListOf<Pair<Int, Long>>()
     private val hrrDeltas = mutableListOf<Int>()
 
+    /** Last computed HRR (BPM dropped 60s after the most recent peak). null = no peak yet. */
+    private val _liveHrrLast = MutableStateFlow<Int?>(null)
+    val liveHrrLast: StateFlow<Int?> = _liveHrrLast
+
     // Live ECG waveform + analyzer (exposed while an active session is running)
     private val liveAnalyzer = LiveEcgAnalyzer(sampleRate = 130)
     private val waveformBuffer = ArrayDeque<Int>() // last ~4s of ECG samples (µV)
@@ -409,7 +413,10 @@ class PolarManager @Inject constructor(
             val (peakHr, peakTs) = iter.next()
             if (now - peakTs >= 60_000) {
                 val delta = peakHr - hr
-                if (delta in 0..120) hrrDeltas.add(delta)
+                if (delta in 0..120) {
+                    hrrDeltas.add(delta)
+                    _liveHrrLast.value = delta
+                }
                 iter.remove()
             }
         }
@@ -486,6 +493,7 @@ class PolarManager @Inject constructor(
         _liveCardiacDrift.value = 0.0
         pendingHrrPeaks.clear()
         hrrDeltas.clear()
+        _liveHrrLast.value = null
     }
 
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */
