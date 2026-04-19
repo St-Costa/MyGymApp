@@ -55,6 +55,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.Readiness
+import com.mygymapp.ui.components.CardioTrendSection
 import com.mygymapp.ui.components.ScrollPickerInput
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -135,6 +136,10 @@ fun HeartRateScreen(
                     )
                 }
             }
+
+            // Cardio trend (last 4 weeks)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            CardioTrendSection(report = uiState.cardioTrend)
 
             // Profile section (always visible)
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))

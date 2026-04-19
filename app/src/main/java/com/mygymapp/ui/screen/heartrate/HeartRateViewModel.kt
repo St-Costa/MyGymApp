@@ -7,6 +7,8 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.ReadinessResult
 import com.mygymapp.data.polar.UserProfile
 import com.mygymapp.data.polar.UserProfileRepository
+import com.mygymapp.data.repository.CardioTrendLoader
+import com.mygymapp.data.repository.CardioTrendReport
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +28,7 @@ data class HeartRateUiState(
     val readiness: ReadinessResult = ReadinessResult(),
     val vo2max: Double? = null,
     val profile: UserProfile = UserProfile(),
+    val cardioTrend: CardioTrendReport = CardioTrendReport(),
 )
 
 data class DiscoveredDevice(
@@ -38,6 +41,7 @@ data class DiscoveredDevice(
 class HeartRateViewModel @Inject constructor(
     private val polarManager: PolarManager,
     private val profileRepo: UserProfileRepository,
+    private val cardioTrendLoader: CardioTrendLoader,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HeartRateUiState())
@@ -45,6 +49,11 @@ class HeartRateViewModel @Inject constructor(
 
     init {
         _uiState.value = _uiState.value.copy(profile = profileRepo.get())
+
+        viewModelScope.launch {
+            val report = cardioTrendLoader.load()
+            _uiState.value = _uiState.value.copy(cardioTrend = report)
+        }
 
         viewModelScope.launch {
             combine(
