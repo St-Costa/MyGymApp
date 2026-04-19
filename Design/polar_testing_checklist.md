@@ -77,6 +77,28 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] Cardiac drift: dopo ≥5 minuti mostra il valore BPM/min con label (normal / moderate / high)
 - [ ] Valore realistico (normale < 0.5, moderato 0.5-1.0, alto > 1.0)
 
+## Live ECG card (ActiveRoutineScreen)
+- [ ] La waveform ECG scorre fluida (no scatti o frame persi)
+- [ ] Dopo ~2 secondi di streaming iniziano a comparire i beats contati
+- [ ] **Regular %** a riposo tra 97-100% con elettrodi ben bagnati
+- [ ] **Regular %** durante sforzo resta > 95% (sotto sforzo intenso puo' scendere un po')
+- [ ] Pallino Regular%:
+  - [ ] Verde se >= 98%
+  - [ ] Giallo se 95-98%
+  - [ ] Rosso se < 95%
+- [ ] **Uneven**: a riposo resta basso (con la regola "2 consecutivi" dovrebbe essere vicino a 0 in condizioni normali)
+- [ ] Se vedi molti Uneven a riposo: probabile segnale sporco (elettrodi asciutti, fascia non aderente)
+- [ ] **Premature**: se ne compare qualcuno a riposo isolato, e' normale (extrasistoli benigne)
+- [ ] **Pauses**: a riposo dovrebbero essere 0 (pause > 2s sono rare)
+- [ ] **Drift** live: dopo 5 minuti inizia a mostrare un valore BPM/min con pallino colorato
+  - [ ] Pallino grigio prima dei 5 minuti ("waiting")
+  - [ ] Verde / giallo / rosso in base alla pendenza
+
+## Comparazione valori live vs post-sessione
+- [ ] Quando tappi "Registra routine", il numero di **beats** finale coincide circa con quello live
+- [ ] Il **drift** salvato coincide con quello mostrato live (o molto simile)
+- [ ] Le **irregolarita'** totali sono simili a quelle live (accetta ±10% di differenza, gli algoritmi streaming vs batch hanno piccole differenze)
+
 ## Bug o problemi
 - [ ] Crash? Quando e cosa stavi facendo
 - [ ] UI rotta? Screenshot se possibile
