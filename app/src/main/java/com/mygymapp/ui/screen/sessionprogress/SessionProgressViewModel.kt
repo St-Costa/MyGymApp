@@ -37,6 +37,14 @@ data class SessionProgressUiState(
     val ecgPauseCount: Int = 0,
     val ecgIrregularBeats: Int = 0,
     val cardiacDriftBpmMin: Double = 0.0,
+    val restingHr: Int = 0,
+    val hrr60s: Double = 0.0,
+    val sdnn: Double = 0.0,
+    val pnn50: Double = 0.0,
+    val poincareSd1: Double = 0.0,
+    val poincareSd2: Double = 0.0,
+    val poincareRatio: Double = 0.0,
+    val afibSuspicionEpisodes: Int = 0,
 )
 
 @HiltViewModel
@@ -114,6 +122,14 @@ class SessionProgressViewModel @Inject constructor(
             ecgPauseCount = session.ecgPauseCount,
             ecgIrregularBeats = session.ecgIrregularBeats,
             cardiacDriftBpmMin = session.cardiacDriftBpmMin,
+            restingHr = session.restingHr,
+            hrr60s = session.hrr60s,
+            sdnn = session.sdnn,
+            pnn50 = session.pnn50,
+            poincareSd1 = session.poincareSd1,
+            poincareSd2 = session.poincareSd2,
+            poincareRatio = session.poincareRatio,
+            afibSuspicionEpisodes = session.afibSuspicionEpisodes,
         )
     }
 
