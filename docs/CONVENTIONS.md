@@ -78,6 +78,25 @@ Do not collapse them into one callback — the side effects are different.
 
 [AutoSaveTextField](../app/src/main/java/com/mygymapp/ui/components/AutoSaveTextField.kt) debounces writes by 500 ms. If the composable leaves composition mid-debounce (user taps back quickly), the pending save would be lost. A `DisposableEffect(Unit) { onDispose { pendingSave?.let(currentOnSave) } }` flushes it. `rememberUpdatedState(onSave)` prevents capturing a stale callback.
 
+## Cache invalidation
+
+When a repository caches a derived value, the cache must be invalidated wherever the underlying data changes. Two concrete cases in this codebase:
+
+- [`ExerciseRepository.getBodyparts()`](../app/src/main/java/com/mygymapp/data/repository/ExerciseRepository.kt) caches the sorted-distinct bodypart list. `save()` and `delete()` clear `bodypartsCache` before returning. If you add a new write path (e.g. bulk import), clear it there too.
+- Image caches: no invalidation. `cache/images/` is keyed by `sha256(url)` so new URLs get new files; editing an URL that already existed keeps the old cached image forever. That is intentional — content behind a URL rarely changes and the workaround (clear app storage) is acceptable for a personal project.
+
+## Exercise index batching
+
+`WorkoutRepository` updates `history/_idx/{exerciseId}.idx` through an internal `ExerciseIndexBatch`: writes are collected in a `Map<exerciseId, Set<relPath>>` and flushed in one pass via `flushExerciseIndexBatch()`. Both `save()` and `migrateOldSessionFiles()` use this batch — each `.idx` is read+written at most once, even if the same exercise appears many times. If you add a new call site that mutates the index (rebuild, selective re-index, etc.), use the same pattern instead of calling `addToExerciseIndex()` per occurrence.
+
+## Shared grouping for supersets
+
+Both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups` produce a list of "pair or single" items using the same rule: if `supersetWithNext` is true on element *i* and *i+1* exists, emit a pair; otherwise emit a single. The logic is one place now — [`ui/util/SupersetGrouping.kt`](../app/src/main/java/com/mygymapp/ui/util/SupersetGrouping.kt) — parametrized on domain-specific sealed classes. Don't re-implement this loop.
+
+## Exercise type color
+
+Use `ExerciseType.accentColor()` from [`theme/Color.kt`](../app/src/main/java/com/mygymapp/ui/theme/Color.kt) to resolve FORZA → `ForzaColor`, STRETCH → `StretchColor`. Don't write the `when` block inline.
+
 ## Typed ID prefixes
 
 - Exercises: `ex-{8hex}`

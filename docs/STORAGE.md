@@ -162,7 +162,7 @@ For exercise-based lookups, `history/_idx/{exerciseId}.idx` maps each exercise t
 2025/04/2025-04-08_rt-b2c3d4e5_5e6f7a8b.md
 ```
 
-Maintained transactionally by [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt) on every `save()` / `delete()`. Stale entries (pointing at deleted files) are silently filtered out at read time, then cleaned up on the next prune.
+Maintained transactionally by [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt) on every `save()` / `delete()`. Updates are accumulated in an in-memory `Map<exerciseId, Set<relPath>>` and flushed in a single pass, so each `.idx` file is read and written at most once per save or migration — regardless of how many times the same exercise appears. Stale entries (pointing at deleted files) are silently filtered out at read time, then cleaned up on the next prune.
 
 ### Migration
 
