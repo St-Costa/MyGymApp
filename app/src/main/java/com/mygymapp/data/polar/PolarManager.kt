@@ -158,6 +158,8 @@ class PolarManager @Inject constructor(
     // ECG streaming state
     private var streamingFeatureReady = false
     private var pendingEcgSessionId: String? = null
+    private var activeEcgSessionId: String? = null
+    private val ecgRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private val api: PolarBleApi = PolarBleApiDefaultImpl.defaultImplementation(
         context,
@@ -199,9 +201,12 @@ class PolarManager @Inject constructor(
                 hrDisposable = null
                 ecgDisposable?.dispose()
                 ecgDisposable = null
+                ecgRestartHandler.removeCallbacksAndMessages(null)
                 ecgRecorder.stop()
                 streamingFeatureReady = false
-                pendingEcgSessionId = null
+                // Keep activeEcgSessionId so that a reconnect resumes ECG for the same session.
+                // Mirror it into pendingEcgSessionId so the feature-ready callback will restart.
+                activeEcgSessionId?.let { pendingEcgSessionId = it }
                 PolarStreamingService.stop(context)
             }
 
@@ -288,7 +293,10 @@ class PolarManager @Inject constructor(
         hrDisposable = null
         ecgDisposable?.dispose()
         ecgDisposable = null
+        ecgRestartHandler.removeCallbacksAndMessages(null)
         ecgRecorder.stop()
+        activeEcgSessionId = null
+        pendingEcgSessionId = null
         PolarStreamingService.stop(context)
         api.disconnectFromDevice(deviceId)
     }
@@ -297,7 +305,10 @@ class PolarManager @Inject constructor(
         scanDisposable?.dispose()
         hrDisposable?.dispose()
         ecgDisposable?.dispose()
+        ecgRestartHandler.removeCallbacksAndMessages(null)
         ecgRecorder.stop()
+        activeEcgSessionId = null
+        pendingEcgSessionId = null
         PolarStreamingService.stop(context)
         api.shutDown()
     }
@@ -549,8 +560,10 @@ class PolarManager @Inject constructor(
     fun stopEcgRecording() {
         ecgDisposable?.dispose()
         ecgDisposable = null
+        ecgRestartHandler.removeCallbacksAndMessages(null)
         ecgRecorder.stop()
         pendingEcgSessionId = null
+        activeEcgSessionId = null
     }
 
     /** Delete the recorded ECG file for a session. Called after analysis. */
@@ -575,6 +588,8 @@ class PolarManager @Inject constructor(
         _ecgWaveform.value = IntArray(0)
         _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0)
         samplesSinceLastEmit = 0
+        // Remember which session this ECG belongs to, so we can auto-restart on error
+        activeEcgSessionId = sessionId
 
         // Request the supported ECG settings and then start streaming at max (130Hz on H10)
         ecgDisposable = api.requestStreamSettings(deviceId, PolarBleApi.PolarDeviceDataType.ECG)
@@ -597,16 +612,29 @@ class PolarManager @Inject constructor(
                             samplesSinceLastEmit++
                         }
                     }
-                    // Emit waveform + snapshot ~2x per second (every 65 samples @130Hz)
-                    if (samplesSinceLastEmit >= 65) {
-                        _ecgWaveform.value = waveformBuffer.toIntArray()
-                        _liveEcgSnapshot.value = liveAnalyzer.snapshot()
-                        samplesSinceLastEmit = 0
-                    }
+                    // Emit waveform + snapshot on every block so the UI stays fresh
+                    // even when BLE delivers small batches infrequently (e.g. screen off).
+                    _ecgWaveform.value = waveformBuffer.toIntArray()
+                    _liveEcgSnapshot.value = liveAnalyzer.snapshot()
+                    samplesSinceLastEmit = 0
                 },
                 { error ->
-                    Log.e(TAG, "ECG streaming error: $error")
+                    Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
                     ecgRecorder.stop()
+                    // Try to restart if we're still connected and still have an active session.
+                    val pendingId = activeEcgSessionId
+                    val currentDeviceId = connectedDeviceId
+                    if (pendingId != null && currentDeviceId != null && streamingFeatureReady) {
+                        ecgRestartHandler.postDelayed({
+                            if (connectedDeviceId == currentDeviceId &&
+                                streamingFeatureReady &&
+                                activeEcgSessionId == pendingId
+                            ) {
+                                Log.d(TAG, "Restarting ECG stream after error")
+                                startEcgStreamingInternal(currentDeviceId, pendingId)
+                            }
+                        }, 2000)
+                    }
                 }
             )
     }

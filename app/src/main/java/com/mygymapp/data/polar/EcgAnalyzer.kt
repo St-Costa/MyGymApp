@@ -203,8 +203,11 @@ class EcgAnalyzer @Inject constructor() {
         if (n < sampleRate * 2) return emptyList()
 
         // Step 1: crude bandpass via (low-pass 15Hz then high-pass 5Hz) implemented as moving averages
-        val lp = movingAverage(voltages.map { it.toDouble() }.toDoubleArray(), (sampleRate / 15).coerceAtLeast(2))
-        val hp = DoubleArray(n) { lp[it] - movingAverage(lp, sampleRate / 5)[it] }
+        val asDouble = DoubleArray(n) { voltages[it].toDouble() }
+        val lp = movingAverage(asDouble, (sampleRate / 15).coerceAtLeast(2))
+        // Pre-compute the long MA ONCE (previous code called it inside the lambda → O(n²))
+        val lpLongMa = movingAverage(lp, sampleRate / 5)
+        val hp = DoubleArray(n) { lp[it] - lpLongMa[it] }
 
         // Step 2: derivative
         val deriv = DoubleArray(n) { i ->

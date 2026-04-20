@@ -11,10 +11,13 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -214,8 +217,20 @@ class ActiveRoutineViewModel @Inject constructor(
             polarManager.stopHrSeriesCapture()
             val session = currentSession
             if (session != null) {
-                val ecgResult = polarManager.analyzeSessionEcg(session.id)
-                val drift = polarManager.cardiacDriftBpmPerMinute()
+                // Heavy analysis (Pan-Tompkins on the whole file) runs on IO and is
+                // guarded — a failure here must NOT crash the register flow.
+                val ecgResult = try {
+                    withContext(Dispatchers.IO) { polarManager.analyzeSessionEcg(session.id) }
+                } catch (e: Throwable) {
+                    Log.e("ActiveRoutineVM", "ECG analysis failed: ${e.message}", e)
+                    null
+                }
+                val drift = try {
+                    polarManager.cardiacDriftBpmPerMinute()
+                } catch (e: Throwable) {
+                    Log.e("ActiveRoutineVM", "Drift compute failed", e)
+                    0.0
+                }
                 val today = LocalDate.parse(session.date)
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
                 var updated = reloaded.copy(
@@ -240,10 +255,14 @@ class ActiveRoutineViewModel @Inject constructor(
                         afibSuspicionEpisodes = ecgResult.afibSuspicionEpisodes,
                     )
                 }
-                workoutRepository.save(updated)
-                currentSession = updated
+                try {
+                    workoutRepository.save(updated)
+                    currentSession = updated
+                } catch (e: Throwable) {
+                    Log.e("ActiveRoutineVM", "Save session failed", e)
+                }
                 // ECG raw file is ephemeral: delete after analysis
-                polarManager.deleteEcgFile(session.id)
+                try { polarManager.deleteEcgFile(session.id) } catch (_: Throwable) {}
             }
             _uiState.value = _uiState.value.copy(sessionRegistered = true)
         }
