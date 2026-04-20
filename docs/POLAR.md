@@ -128,7 +128,7 @@ PolarManager watches a rolling window for automatic peak detection:
 
 ### Cardiac drift
 
-`startHrSeriesCapture()` is called by `ActiveRoutineViewModel.init` and appends every HR sample as `(elapsedMs, hr)`. Every 30 s, a linear regression on the series gives BPM/minute (positive = drift up, a proxy for dehydration / early fatigue). Requires ≥5 min and ≥60 samples before the regression runs.
+`startHrSeriesCapture()` is called by `ActiveRoutineViewModel.init` and appends every HR sample as `(elapsedMs, hr)` into an `ArrayDeque` capped at `HR_SERIES_MAX_ENTRIES = 28 800` (~8 h at 1 Hz). The cap is a safety net against lifecycle bugs that would otherwise let the series grow unbounded — real sessions are orders of magnitude shorter. Every 30 s, a linear regression on the series gives BPM/minute (positive = drift up, a proxy for dehydration / early fatigue). Requires ≥5 min and ≥60 samples before the regression runs.
 
 ### Calories & TRIMP
 

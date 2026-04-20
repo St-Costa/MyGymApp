@@ -103,21 +103,33 @@ The `ExerciseEditViewModel` and `RoutineEditViewModel` auto-save in `onCleared()
 | `SupersetPairContainer` | Primary-bordered wrapper for paired exercises in edit/active |
 | `CommonComposables` | `FullscreenLoading`, `EmptyStateBox`, `DeleteConfirmationDialog`, `RoundStepButton` |
 
+Shared utilities in `ui/util/`:
+
+| Helper | Role |
+|---|---|
+| `groupSupersets` (in [SupersetGrouping.kt](../app/src/main/java/com/mygymapp/ui/util/SupersetGrouping.kt)) | Generic inline function that walks a list left-to-right, pairing each element with the next one when a predicate matches. Used by both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups` (which produce different sealed classes from the same grouping logic). |
+
+Shared theme extensions (`theme/`):
+
+| Helper | Role |
+|---|---|
+| `ExerciseType.accentColor()` | Returns `ForzaColor` / `StretchColor` for a given type — replaces hand-written `when` blocks in `ExerciseCard` and `ActiveRoutineScreen`. |
+
 ## Repositories
 
 | Repository | Scope | Notes |
 |---|---|---|
 | `FileManager` | Directory layout | Owns `filesDir/gymdata` + subdirs |
-| `ExerciseRepository` | Exercises CRUD | In-memory cache + mutex; `ex-{8hex}` IDs; updates history on rename |
+| `ExerciseRepository` | Exercises CRUD | In-memory cache + mutex; `ex-{8hex}` IDs; updates history on rename; `getBodyparts()` memoizes the sorted-distinct list and invalidates on save/delete |
 | `RoutineRepository` | Routines CRUD | Like Exercise; `rt-{8hex}` IDs |
-| `WorkoutRepository` | Session history | See [STORAGE.md](STORAGE.md#workout-history-and-exercise-index) for index structure |
+| `WorkoutRepository` | Session history | See [STORAGE.md](STORAGE.md#workout-history-and-exercise-index) for index structure. Exercise-index updates are batched per save/migration so each `.idx` file is read + written at most once per operation. |
 | `ImageCacheRepository` | URL → local file | SHA-256 hash, Google Drive URL rewrite |
 | `CardioTrendLoader` | 4-week cardio aggregates | Used by HeartRate and SessionProgress screens |
 | `UserProfileRepository` | Age / weight / sex | SharedPreferences; needed for calorie & TRIMP formulas |
 
 ## Services
 
-- **`StopwatchService`** — foreground, `specialUse` type. Running timer notification with per-minute color cycle and dynamic bitmap icon. Vibrates every 30s.
+- **`StopwatchService`** — foreground, `specialUse` type. Running timer notification with per-minute color cycle and dynamic bitmap icon. Vibrates every 30s. A single `Bitmap`/`Paint`/`Canvas` is reused across every tick to avoid per-second allocations.
 - **`PolarStreamingService`** — foreground, `connectedDevice` type. Keeps the BLE connection + HR visible in the status bar while the screen is off.
 
 ## Threading & concurrency
