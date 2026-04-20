@@ -67,6 +67,8 @@ class StopwatchService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                // Idempotent: clear any previously scheduled tick before restarting
+                handler.removeCallbacks(tickRunnable)
                 startElapsedRealtime = SystemClock.elapsedRealtime()
                 startWallClockTime = System.currentTimeMillis()
                 lastVibrationAt = -1

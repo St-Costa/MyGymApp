@@ -134,19 +134,22 @@ class ExerciseEditViewModel @Inject constructor(
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {
-            val exercise = Exercise(
-                id = state.id,
-                name = state.name.trim(),
-                type = state.type,
-                bodypart = state.bodypart.trim(),
-                link = state.link.trim(),
-                notes = state.notes.trim(),
-                defaultRepRangeMin = state.defaultRepRangeMin,
-                defaultRepRangeMax = state.defaultRepRangeMax,
-            )
-            exerciseRepository.save(exercise)
-            dataChangedSignal.notifyExercisesChanged()
-            clearScope.cancel()
+            try {
+                val exercise = Exercise(
+                    id = state.id,
+                    name = state.name.trim(),
+                    type = state.type,
+                    bodypart = state.bodypart.trim(),
+                    link = state.link.trim(),
+                    notes = state.notes.trim(),
+                    defaultRepRangeMin = state.defaultRepRangeMin,
+                    defaultRepRangeMax = state.defaultRepRangeMax,
+                )
+                exerciseRepository.save(exercise)
+                dataChangedSignal.notifyExercisesChanged()
+            } finally {
+                clearScope.cancel()
+            }
         }
     }
 }
