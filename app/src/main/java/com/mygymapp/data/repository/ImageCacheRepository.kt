@@ -11,6 +11,9 @@ import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private val GOOGLE_DRIVE_FILE_ID = Regex("drive\\.google\\.com/file/d/([^/]+)")
+private val GOOGLE_DRIVE_OPEN_ID = Regex("drive\\.google\\.com/open\\?id=([^&]+)")
+
 @Singleton
 class ImageCacheRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -56,19 +59,13 @@ class ImageCacheRepository @Inject constructor(
 
     private fun convertToDirectUrl(url: String): String {
         // Google Drive: convert sharing link to direct download
-        val driveMatch = Regex("drive\\.google\\.com/file/d/([^/]+)").find(url)
-        if (driveMatch != null) {
-            val fileId = driveMatch.groupValues[1]
-            return "https://drive.google.com/uc?export=download&id=$fileId"
+        GOOGLE_DRIVE_FILE_ID.find(url)?.let { match ->
+            return "https://drive.google.com/uc?export=download&id=${match.groupValues[1]}"
         }
-
         // Google Drive open link
-        val driveOpen = Regex("drive\\.google\\.com/open\\?id=([^&]+)").find(url)
-        if (driveOpen != null) {
-            val fileId = driveOpen.groupValues[1]
-            return "https://drive.google.com/uc?export=download&id=$fileId"
+        GOOGLE_DRIVE_OPEN_ID.find(url)?.let { match ->
+            return "https://drive.google.com/uc?export=download&id=${match.groupValues[1]}"
         }
-
         return url
     }
 

@@ -46,6 +46,19 @@ class StopwatchService : Service() {
     private var startWallClockTime = 0L
     private var lastVibrationAt = -1
 
+    // Reused across every tick to avoid per-second allocations during a stretch workout.
+    private val timerBitmap: Bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
+    private val timerCanvas = Canvas(timerBitmap)
+    private val timerBgRect = RectF(0f, 0f, 96f, 96f)
+    private val timerBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val timerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        textSize = 72f
+    }
+    private val timerTextY = 96f / 2f - (timerTextPaint.ascent() + timerTextPaint.descent()) / 2f
+
     private val tickRunnable = object : Runnable {
         override fun run() {
             val elapsed = ((SystemClock.elapsedRealtime() - startElapsedRealtime) / 1000).toInt()
@@ -144,26 +157,10 @@ class StopwatchService : Service() {
     }
 
     private fun createTimerBitmap(seconds: Int, bgColor: Int): Bitmap {
-        val size = 96
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
-        canvas.drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), 12f, 12f, bgPaint)
-
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.BLACK
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            textSize = 72f
-        }
-
-        val cx = size / 2f
-        val cy = size / 2f
-        val y = cy - (textPaint.ascent() + textPaint.descent()) / 2f
-        canvas.drawText("%02d".format(seconds), cx, y, textPaint)
-
-        return bitmap
+        timerBgPaint.color = bgColor
+        timerCanvas.drawRoundRect(timerBgRect, 12f, 12f, timerBgPaint)
+        timerCanvas.drawText("%02d".format(seconds), 48f, timerTextY, timerTextPaint)
+        return timerBitmap
     }
 
     private fun vibrate() {

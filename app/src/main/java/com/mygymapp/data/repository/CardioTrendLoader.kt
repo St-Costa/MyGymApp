@@ -65,8 +65,7 @@ class CardioTrendLoader @Inject constructor(
 
         // split: recent = last 14 days, baseline = 14..28 days ago
         val cutoff = reference.minusDays(14)
-        val recent = sessions.filter { LocalDate.parse(it.date) > cutoff }
-        val baseline = sessions.filter { LocalDate.parse(it.date) <= cutoff }
+        val (recent, baseline) = sessions.partition { LocalDate.parse(it.date) > cutoff }
 
         val hasEnough = recent.size >= 2  // need at least 2 recent sessions to show anything
 

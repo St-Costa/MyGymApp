@@ -66,6 +66,35 @@ class WorkoutRepository @Inject constructor(
     }
 
     /**
+     * Accumulates (exerciseId, relPath) pairs in-memory so that each .idx file is read
+     * and written at most once, regardless of how many times it is touched during
+     * migration or rebuild. Must be called with [mutex] held.
+     */
+    private class ExerciseIndexBatch {
+        val perFile = HashMap<String, MutableSet<String>>() // exerciseId -> relPaths
+        fun add(exerciseId: String, relPath: String) {
+            perFile.getOrPut(exerciseId) { mutableSetOf() }.add(relPath)
+        }
+    }
+
+    private fun flushExerciseIndexBatch(batch: ExerciseIndexBatch) {
+        if (batch.perFile.isEmpty()) return
+        val dir = indexDir().also { it.mkdirs() }
+        for ((exerciseId, newPaths) in batch.perFile) {
+            val idxFile = File(dir, "$exerciseId.idx")
+            val merged = if (idxFile.exists())
+                idxFile.readLines().filter { it.isNotBlank() }.toMutableSet()
+            else
+                mutableSetOf()
+            val before = merged.size
+            merged.addAll(newPaths)
+            if (merged.size != before) {
+                idxFile.writeText(merged.joinToString("\n"))
+            }
+        }
+    }
+
+    /**
      * Removes [relPath] from the index for [exerciseId].
      * Must be called with [mutex] held.
      */
@@ -139,6 +168,7 @@ class WorkoutRepository @Inject constructor(
             // Rebuild index from scratch
             idxDir.listFiles()?.filter { it.extension == "idx" }?.forEach { it.delete() }
 
+            val batch = ExerciseIndexBatch()
             val historyRoot = File(fileManager.root, "history")
             if (historyRoot.exists()) {
                 historyRoot.listFiles()?.forEach { yearDir ->
@@ -161,13 +191,14 @@ class WorkoutRepository @Inject constructor(
                                 }
                                 val rel = "${yearDir.name}/${monthDir.name}/${currentFile.name}"
                                 session.exercises.forEach { ex ->
-                                    addToExerciseIndex(ex.exerciseId, rel)
+                                    batch.add(ex.exerciseId, rel)
                                 }
                             } catch (_: Exception) { /* Skip malformed */ }
                         }
                     }
                 }
             }
+            flushExerciseIndexBatch(batch)
             sentinel.createNewFile()
         }
     }
@@ -187,11 +218,11 @@ class WorkoutRepository @Inject constructor(
             val fileName = sessionFileName(updated)
             File(dir, fileName).writeText(WorkoutParser.toMarkdown(updated))
 
-            // Keep exercise index up to date — distinct() avoids redundant file I/O
-            // when the same exercise appears multiple times in one session
+            // Keep exercise index up to date — one read+write per distinct exerciseId
             val rel = "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$fileName"
-            updated.exercises.map { it.exerciseId }.distinct()
-                .forEach { exerciseId -> addToExerciseIndex(exerciseId, rel) }
+            val batch = ExerciseIndexBatch()
+            updated.exercises.forEach { ex -> batch.add(ex.exerciseId, rel) }
+            flushExerciseIndexBatch(batch)
 
             updated
         }

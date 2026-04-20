@@ -41,12 +41,18 @@ BLE subsystem under `data/polar/`: `PolarManager` facade, `EcgRecorder`, `EcgAna
 ## Phase 13 — Data safety hardening
 `AutoSaveTextField` flushes pending save in `DisposableEffect.onDispose`. `clearScope.cancel()` moved to `finally` inside `launch` in edit ViewModels. `StopwatchService.ACTION_START` made idempotent. `ImageCacheRepository` uses `HttpURLConnection` with 10s/15s timeouts. Polar `Disposable` lifecycle already disposed before reassignment (verified).
 
+## Phase 14 — Performance pass
+- `StopwatchService`: reuse a single `Bitmap`/`Paint`/`Canvas` across every notification tick instead of allocating 96×96 ARGB + Paint objects each second (~37 KB/s GC pressure eliminated during stretch workouts).
+- `WorkoutRepository`: batch exercise-index writes via an in-memory `Map<exerciseId, Set<relPath>>` that is flushed once per save and once per migration pass. With N distinct exercises per session, drops 2N syscalls to 2 for the duration of the batch.
+- `slugify()` and `ImageCacheRepository.convertToDirectUrl()`: top-level `private val` regex instances instead of constructing per call.
+- `CardioTrendLoader`: single `partition { LocalDate.parse(...) }` replaces the two-pass filter, halving `LocalDate.parse` calls.
+- `PolarManager.hrSeries`: `ArrayDeque` capped at 28 800 entries (~8 h @ 1 Hz) to bound memory under lifecycle bugs.
+- `ExerciseRepository.getBodyparts()`: memoized result invalidated on `save()` / `delete()`.
+- `ui/util/SupersetGrouping.kt`: shared `groupSupersets` helper consumed by `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups`.
+- `ExerciseType.accentColor()` extension in `theme/Color.kt` replaces two inline `when` blocks in `ExerciseCard` and `ActiveRoutineScreen`.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
 - R8 / ProGuard minify for release with `-keep` rules for Polar SDK + RxJava
-- Batch exercise-index writes per session (one .idx write instead of N)
-- Bitmap reuse in `StopwatchService` notification
-- Regex cache (`slugify`, Google Drive URL detection)
-- Cap `PolarManager.hrSeries` growth
 - Consolidate `cache/images/` and `image_cache/` under Coil

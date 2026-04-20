@@ -10,6 +10,7 @@ import com.mygymapp.data.model.Routine
 import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
+import com.mygymapp.ui.util.groupSupersets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,20 +58,13 @@ sealed class ExerciseSegment {
     }
 }
 
-fun buildExerciseSegments(exercises: List<RoutineExerciseUi>): List<ExerciseSegment> {
-    val segments = mutableListOf<ExerciseSegment>()
-    var i = 0
-    while (i < exercises.size) {
-        if (exercises[i].supersetWithNext && i + 1 < exercises.size) {
-            segments.add(ExerciseSegment.SupersetPair(i, i + 1))
-            i += 2
-        } else {
-            segments.add(ExerciseSegment.Single(i))
-            i++
-        }
-    }
-    return segments
-}
+fun buildExerciseSegments(exercises: List<RoutineExerciseUi>): List<ExerciseSegment> =
+    groupSupersets(
+        items = exercises,
+        isPairedWithNext = { it.supersetWithNext },
+        single = { i -> ExerciseSegment.Single(i) },
+        pair = { i, j -> ExerciseSegment.SupersetPair(i, j) },
+    )
 
 @HiltViewModel
 class RoutineEditViewModel @Inject constructor(

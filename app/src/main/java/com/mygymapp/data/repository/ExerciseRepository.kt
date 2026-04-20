@@ -23,6 +23,8 @@ class ExerciseRepository @Inject constructor(
     private val mutex = Mutex()
     private var loaded = false
 
+    @Volatile private var bodypartsCache: List<String>? = null
+
     private fun exercisesDir(): File = fileManager.getDir("exercises")
 
     suspend fun getAll(): List<Exercise> = withContext(Dispatchers.IO) {
@@ -64,6 +66,7 @@ class ExerciseRepository @Inject constructor(
 
             file.writeText(ExerciseParser.toMarkdown(updated))
             cache[updated.id] = updated
+            bodypartsCache = null
             updated
         }
         if (nameChanged) {
@@ -77,11 +80,15 @@ class ExerciseRepository @Inject constructor(
             val exercise = cache.remove(id) ?: return@withLock
             val fileName = slugify(exercise.name, exercise.id)
             File(exercisesDir(), "$fileName.md").delete()
+            bodypartsCache = null
         }
     }
 
     suspend fun getBodyparts(): List<String> {
-        return getAll().map { it.bodypart }.distinct().sorted()
+        bodypartsCache?.let { return it }
+        val computed = getAll().map { it.bodypart }.distinct().sorted()
+        bodypartsCache = computed
+        return computed
     }
 
     private suspend fun ensureLoaded() {
