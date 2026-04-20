@@ -34,7 +34,8 @@ com.mygymapp/
 │   ├── components/          — Reusable composables
 │   ├── navigation/          — Screen sealed class + AppNavigation NavHost
 │   ├── screen/              — One package per screen (Screen composable + ViewModel)
-│   └── theme/               — Dark Material3 (Color, Type, Theme)
+│   ├── theme/               — Dark Material3 (Color, Type, Theme) + `ExerciseType.accentColor()`
+│   └── util/                — Cross-screen helpers (e.g. `groupSupersets`)
 └── ui/service/              — StopwatchService, PolarStreamingService (foreground)
 ```
 
