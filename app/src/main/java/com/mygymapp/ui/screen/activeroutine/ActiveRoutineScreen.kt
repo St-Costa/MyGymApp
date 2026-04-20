@@ -49,10 +49,10 @@ import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.LiveEcgCard
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.components.trimpColor
-import com.mygymapp.ui.theme.ForzaColor
+import com.mygymapp.ui.theme.accentColor
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
-import com.mygymapp.ui.theme.StretchColor
+import com.mygymapp.ui.util.groupSupersets
 
 // ---------------------------------------------------------------------------
 // Exercise grouping (mirrors RoutineEditViewModel's segment model)
@@ -63,20 +63,13 @@ private sealed class ExerciseGroup {
     data class Superset(val ex1: ActiveExerciseUi, val ex2: ActiveExerciseUi) : ExerciseGroup()
 }
 
-private fun buildExerciseGroups(exercises: List<ActiveExerciseUi>): List<ExerciseGroup> {
-    val groups = mutableListOf<ExerciseGroup>()
-    var i = 0
-    while (i < exercises.size) {
-        if (exercises[i].supersetWithNext && i + 1 < exercises.size) {
-            groups.add(ExerciseGroup.Superset(exercises[i], exercises[i + 1]))
-            i += 2
-        } else {
-            groups.add(ExerciseGroup.Single(exercises[i]))
-            i++
-        }
-    }
-    return groups
-}
+private fun buildExerciseGroups(exercises: List<ActiveExerciseUi>): List<ExerciseGroup> =
+    groupSupersets(
+        items = exercises,
+        isPairedWithNext = { it.supersetWithNext },
+        single = { i -> ExerciseGroup.Single(exercises[i]) },
+        pair = { i, j -> ExerciseGroup.Superset(exercises[i], exercises[j]) },
+    )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -233,10 +226,7 @@ private fun ExerciseRow(
     exercise: ActiveExerciseUi,
     onClick: () -> Unit,
 ) {
-    val borderColor = when (exercise.type) {
-        ExerciseType.FORZA -> ForzaColor
-        ExerciseType.STRETCH -> StretchColor
-    }
+    val borderColor = exercise.type.accentColor()
 
     Card(
         onClick = onClick,

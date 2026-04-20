@@ -59,6 +59,9 @@ class PolarManager @Inject constructor(
         private const val HR_RECOVERY_THRESHOLD = 0.70f
         private const val HR_WINDOW_SIZE = 8 // ~8 seconds of HR samples
         private const val PEAK_MIN_RISE_BPM = 15 // HR must rise at least this much above resting to count as effort
+        // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
+        // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
+        private const val HR_SERIES_MAX_ENTRIES = 28800
     }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -90,7 +93,7 @@ class PolarManager @Inject constructor(
 
     // HR time series for cardiac drift (capture during active session)
     private var hrSeriesActive = false
-    private val hrSeries = mutableListOf<Pair<Long, Int>>() // (elapsedMs, hr)
+    private val hrSeries = ArrayDeque<Pair<Long, Int>>() // (elapsedMs, hr), capped at HR_SERIES_MAX_ENTRIES
     private var hrSeriesStart = 0L
 
     // Heart Rate Recovery tracking: each entry is (peakHr, peakTimestampMs).
@@ -327,7 +330,8 @@ class PolarManager @Inject constructor(
                         if (hrSeriesActive) {
                             val now = System.currentTimeMillis()
                             val elapsed = now - hrSeriesStart
-                            hrSeries.add(elapsed to sample.hr)
+                            if (hrSeries.size >= HR_SERIES_MAX_ENTRIES) hrSeries.removeFirst()
+                            hrSeries.addLast(elapsed to sample.hr)
                             // Recompute live drift every ~30s
                             if (now - lastDriftComputeMs >= 30_000) {
                                 lastDriftComputeMs = now
