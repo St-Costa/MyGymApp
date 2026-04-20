@@ -5,6 +5,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -28,8 +29,16 @@ class ImageCacheRepository @Inject constructor(
 
         try {
             val directUrl = convertToDirectUrl(imageUrl)
-            URL(directUrl).openStream().use { input ->
-                cached.outputStream().use { output -> input.copyTo(output) }
+            val conn = (URL(directUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 15_000
+            }
+            try {
+                conn.inputStream.use { input ->
+                    cached.outputStream().use { output -> input.copyTo(output) }
+                }
+            } finally {
+                conn.disconnect()
             }
             cached
         } catch (_: Exception) {

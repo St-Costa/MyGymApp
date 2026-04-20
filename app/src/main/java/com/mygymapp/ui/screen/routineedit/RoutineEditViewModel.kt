@@ -248,10 +248,13 @@ class RoutineEditViewModel @Inject constructor(
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {
-            val routine = buildRoutine(state)
-            routineRepository.save(routine)
-            dataChangedSignal.notifyRoutinesChanged()
-            clearScope.cancel()
+            try {
+                val routine = buildRoutine(state)
+                routineRepository.save(routine)
+                dataChangedSignal.notifyRoutinesChanged()
+            } finally {
+                clearScope.cancel()
+            }
         }
     }
 
