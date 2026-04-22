@@ -85,7 +85,9 @@ class PolarStreamingService : Service() {
                 stopSelf()
             }
         }
-        return START_NOT_STICKY
+        // START_STICKY so the OS re-creates the service if it kills it under
+        // memory pressure (the app reconnects the Polar on restart).
+        return START_STICKY
     }
 
     override fun onDestroy() {

@@ -44,6 +44,7 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         val irregularities: Int get() = premature + pauses + uneven
     }
 
+    @Synchronized
     fun reset() {
         lpBuf.clear(); lpSum = 0.0
         hpBuf.clear(); hpSum = 0.0
@@ -60,6 +61,7 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
     /**
      * Process one raw ECG sample. Returns true if a new R-peak was detected.
      */
+    @Synchronized
     fun onSample(voltage: Int): Boolean {
         val x = voltage.toDouble()
         sampleIndex++
@@ -96,16 +98,30 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
             return false
         }
 
+        // Decay the observed max toward the current integrated value so that a
+        // rare artifact spike doesn't permanently elevate the threshold. Over
+        // ~10 s (1300 samples @130Hz) the max fades by ~50% if no new spike.
+        observedMaxIntegrated *= MAX_DECAY_PER_SAMPLE
         if (integrated > observedMaxIntegrated) observedMaxIntegrated = integrated
+
+        // Search-back: if no peak has been detected for >1.5s, the threshold
+        // is probably stuck too high. Lower it aggressively so the next real
+        // QRS can trip it.
+        val samplesSinceLastPeak = sampleIndex - lastPeakIndex
+        if (samplesSinceLastPeak > sampleRate * 3 / 2) {
+            threshold *= SEARCHBACK_DECAY_PER_SAMPLE
+            // Never let threshold drop below a small fraction of the recent max
+            val floor = observedMaxIntegrated * 0.05
+            if (threshold < floor) threshold = floor
+        }
 
         // Peak detection with refractory period
         val isPeak = integrated > threshold &&
-                sampleIndex - lastPeakIndex > refractoryPeriod
+                samplesSinceLastPeak > refractoryPeriod
         if (isPeak) {
-            val rrSamples = sampleIndex - lastPeakIndex
-            val rrMs = (rrSamples.toDouble() / sampleRate * 1000.0).toInt()
+            val rrMs = (samplesSinceLastPeak.toDouble() / sampleRate * 1000.0).toInt()
             lastPeakIndex = sampleIndex
-            // Adapt threshold toward current peak
+            // Adapt threshold toward current peak. Target = 40% of integrated at peak.
             threshold = 0.75 * threshold + 0.25 * integrated * 0.4
             if (rrMs in 300..2500) {
                 recordRr(rrMs)
@@ -113,6 +129,15 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
             return true
         }
         return false
+    }
+
+    companion object {
+        // ~0.99947 per sample → ~half-life of 10s at 130Hz. Prevents a single
+        // artifact from permanently raising the max-tracked integrated value.
+        private const val MAX_DECAY_PER_SAMPLE = 0.99947
+        // Aggressive multiplicative decay applied only when the detector is
+        // stuck (no peak for >1.5s). ~0.99 per sample → halves in ~70 samples.
+        private const val SEARCHBACK_DECAY_PER_SAMPLE = 0.99
     }
 
     private fun recordRr(rrMs: Int) {
@@ -163,6 +188,7 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         }
     }
 
+    @Synchronized
     fun snapshot(): Snapshot {
         val beats = rrIntervals.size
         val pauses = irregularityFlags.count { it == Irreg.PAUSE }
