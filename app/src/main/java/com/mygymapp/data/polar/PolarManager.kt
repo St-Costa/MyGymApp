@@ -105,6 +105,10 @@ class PolarManager @Inject constructor(
     private val _liveHrrLast = MutableStateFlow<Int?>(null)
     val liveHrrLast: StateFlow<Int?> = _liveHrrLast
 
+    // HRR queueing: we want one HRR measurement per set (not gated by the
+    // "fully recovered" state, which during intense training may never occur).
+    private var lastQueuedPeakAtMs = 0L
+
     // Live ECG waveform + analyzer (exposed while an active session is running)
     private val liveAnalyzer = LiveEcgAnalyzer(sampleRate = 130)
     private val waveformBuffer = ArrayDeque<Int>() // last ~4s of ECG samples (µV)
@@ -163,6 +167,12 @@ class PolarManager @Inject constructor(
     private var pendingEcgSessionId: String? = null
     private var activeEcgSessionId: String? = null
     private val ecgRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val hrRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // Watchdog: timestamps of the most recent sample of each kind
+    @Volatile private var lastEcgSampleAtMs = 0L
+    @Volatile private var lastHrSampleAtMs = 0L
 
     private val api: PolarBleApi = PolarBleApiDefaultImpl.defaultImplementation(
         context,
@@ -185,7 +195,10 @@ class PolarManager @Inject constructor(
                 _sessionCalories.value = 0.0
                 _sessionTrimp.value = 0.0
                 lastHrTimestamp = System.currentTimeMillis()
+                lastHrSampleAtMs = 0L
+                lastEcgSampleAtMs = 0L
                 startReadinessMeasurement()
+                startDataWatchdog()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
             }
 
@@ -205,6 +218,8 @@ class PolarManager @Inject constructor(
                 ecgDisposable?.dispose()
                 ecgDisposable = null
                 ecgRestartHandler.removeCallbacksAndMessages(null)
+                hrRestartHandler.removeCallbacksAndMessages(null)
+                stopDataWatchdog()
                 ecgRecorder.stop()
                 streamingFeatureReady = false
                 // Keep activeEcgSessionId so that a reconnect resumes ECG for the same session.
@@ -297,6 +312,8 @@ class PolarManager @Inject constructor(
         ecgDisposable?.dispose()
         ecgDisposable = null
         ecgRestartHandler.removeCallbacksAndMessages(null)
+        hrRestartHandler.removeCallbacksAndMessages(null)
+        stopDataWatchdog()
         ecgRecorder.stop()
         activeEcgSessionId = null
         pendingEcgSessionId = null
@@ -309,6 +326,8 @@ class PolarManager @Inject constructor(
         hrDisposable?.dispose()
         ecgDisposable?.dispose()
         ecgRestartHandler.removeCallbacksAndMessages(null)
+        hrRestartHandler.removeCallbacksAndMessages(null)
+        stopDataWatchdog()
         ecgRecorder.stop()
         activeEcgSessionId = null
         pendingEcgSessionId = null
@@ -318,9 +337,15 @@ class PolarManager @Inject constructor(
 
     private fun startHrStreaming(deviceId: String) {
         hrDisposable?.dispose()
+        hrRestartHandler.removeCallbacksAndMessages(null)
         hrDisposable = api.startHrStreaming(deviceId)
+            .doOnComplete {
+                Log.w(TAG, "HR stream completed (no more samples) — scheduling restart in 2s")
+                scheduleHrRestart(deviceId)
+            }
             .subscribe(
                 { hrData ->
+                    lastHrSampleAtMs = System.currentTimeMillis()
                     val sample = hrData.samples.lastOrNull()
                     if (sample != null) {
                         _heartRate.value = sample.hr
@@ -383,10 +408,21 @@ class PolarManager @Inject constructor(
                     }
                 },
                 { error ->
-                    Log.e(TAG, "HR streaming error: $error")
+                    Log.e(TAG, "HR streaming error: $error — scheduling restart in 2s")
                     _heartRate.value = null
+                    scheduleHrRestart(deviceId)
                 }
             )
+    }
+
+    private fun scheduleHrRestart(deviceId: String) {
+        hrRestartHandler.removeCallbacksAndMessages(null)
+        hrRestartHandler.postDelayed({
+            if (connectedDeviceId == deviceId) {
+                Log.d(TAG, "Restarting HR stream after drop")
+                startHrStreaming(deviceId)
+            }
+        }, 2000)
     }
 
     /**
@@ -406,17 +442,26 @@ class PolarManager @Inject constructor(
         val isRising = secondHalf > firstHalf + 1.0 // rising if second half > first half by >1 BPM
 
         // Peak detected: was rising, now falling, and HR is well above resting
-        if (hrWasRising && !isRising && !isRecovering) {
+        if (hrWasRising && !isRising) {
             val peakHr = hrWindow.max()
             if (peakHr - restingHr >= PEAK_MIN_RISE_BPM) {
-                peakHrAfterSet = peakHr
-                isRecovering = true
-                recentRR.clear()
-                _recoveryState.value = RecoveryState.RECOVERING
-                _rmssd.value = null
-                // Queue this peak for HRR measurement at +60s
-                pendingHrrPeaks.add(peakHr to System.currentTimeMillis())
-                Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
+                val now = System.currentTimeMillis()
+                // Recovery-state peak: only one active at a time (semaphore logic)
+                if (!isRecovering) {
+                    peakHrAfterSet = peakHr
+                    isRecovering = true
+                    recentRR.clear()
+                    _recoveryState.value = RecoveryState.RECOVERING
+                    _rmssd.value = null
+                    Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
+                }
+                // HRR queue: independent from recovery flag. Debounce by 60s
+                // so multiple consecutive peaks in the same set don't all queue,
+                // but each real set still gets an HRR measurement.
+                if (now - lastQueuedPeakAtMs > 60_000) {
+                    pendingHrrPeaks.add(peakHr to now)
+                    lastQueuedPeakAtMs = now
+                }
             }
         }
         hrWasRising = isRising
@@ -509,6 +554,7 @@ class PolarManager @Inject constructor(
         pendingHrrPeaks.clear()
         hrrDeltas.clear()
         _liveHrrLast.value = null
+        lastQueuedPeakAtMs = 0L
     }
 
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */
@@ -603,8 +649,13 @@ class PolarManager @Inject constructor(
                 Log.d(TAG, "ECG streaming started for session $sessionId")
                 api.startEcgStreaming(deviceId, settings)
             }
+            .doOnComplete {
+                Log.w(TAG, "ECG stream completed — scheduling restart in 2s")
+                scheduleEcgRestart(deviceId, sessionId)
+            }
             .subscribe(
                 { ecgData ->
+                    lastEcgSampleAtMs = System.currentTimeMillis()
                     for (sample in ecgData.samples) {
                         if (sample is EcgSample) {
                             val v = sample.voltage
@@ -625,22 +676,64 @@ class PolarManager @Inject constructor(
                 { error ->
                     Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
                     ecgRecorder.stop()
-                    // Try to restart if we're still connected and still have an active session.
-                    val pendingId = activeEcgSessionId
-                    val currentDeviceId = connectedDeviceId
-                    if (pendingId != null && currentDeviceId != null && streamingFeatureReady) {
-                        ecgRestartHandler.postDelayed({
-                            if (connectedDeviceId == currentDeviceId &&
-                                streamingFeatureReady &&
-                                activeEcgSessionId == pendingId
-                            ) {
-                                Log.d(TAG, "Restarting ECG stream after error")
-                                startEcgStreamingInternal(currentDeviceId, pendingId)
-                            }
-                        }, 2000)
-                    }
+                    scheduleEcgRestart(deviceId, sessionId)
                 }
             )
+    }
+
+    private fun scheduleEcgRestart(deviceId: String, sessionId: String) {
+        ecgRestartHandler.removeCallbacksAndMessages(null)
+        ecgRestartHandler.postDelayed({
+            if (connectedDeviceId == deviceId &&
+                streamingFeatureReady &&
+                activeEcgSessionId == sessionId
+            ) {
+                Log.d(TAG, "Restarting ECG stream for session $sessionId")
+                startEcgStreamingInternal(deviceId, sessionId)
+            }
+        }, 2000)
+    }
+
+    /**
+     * Periodic data-presence watchdog. Fires every 5s while the Polar is connected.
+     * Forces a stream restart if no sample has arrived in a while — catches cases
+     * where the Flowable neither errors nor completes, just stops delivering.
+     */
+    private val watchdogRunnable = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            val deviceId = connectedDeviceId
+            if (deviceId != null) {
+                // HR: if running and no sample for >15s, restart
+                if (hrDisposable != null && lastHrSampleAtMs > 0 &&
+                    now - lastHrSampleAtMs > 15_000
+                ) {
+                    Log.w(TAG, "HR watchdog: no sample for ${(now - lastHrSampleAtMs) / 1000}s — restarting")
+                    lastHrSampleAtMs = 0L
+                    startHrStreaming(deviceId)
+                }
+                // ECG: if an active session is recording and no sample for >10s, restart
+                val activeSession = activeEcgSessionId
+                if (activeSession != null && streamingFeatureReady &&
+                    ecgDisposable != null && lastEcgSampleAtMs > 0 &&
+                    now - lastEcgSampleAtMs > 10_000
+                ) {
+                    Log.w(TAG, "ECG watchdog: no sample for ${(now - lastEcgSampleAtMs) / 1000}s — restarting")
+                    lastEcgSampleAtMs = 0L
+                    startEcgStreamingInternal(deviceId, activeSession)
+                }
+            }
+            watchdogHandler.postDelayed(this, 5_000)
+        }
+    }
+
+    private fun startDataWatchdog() {
+        watchdogHandler.removeCallbacks(watchdogRunnable)
+        watchdogHandler.postDelayed(watchdogRunnable, 5_000)
+    }
+
+    private fun stopDataWatchdog() {
+        watchdogHandler.removeCallbacks(watchdogRunnable)
     }
 
     private fun startReadinessMeasurement() {
