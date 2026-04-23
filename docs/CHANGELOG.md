@@ -54,6 +54,16 @@ BLE subsystem under `data/polar/`: `PolarManager` facade, `EcgRecorder`, `EcgAna
 ## Phase 15 — VO2max HRrest baseline
 - `PolarManager.finishReadinessMeasurement`: VO2max now divides by the minimum HRrest of the last 7 readings (stored as `hrrest_values` in `SharedPreferences("hrv_baseline")`, rolling window) instead of the single session's minimum HR. Falls back to today's value when the baseline has fewer readings. Removes most of the day-to-day noise (caffeine, sleep, stress) so the Uth output stabilises at ~±1–2 ml/kg/min session-over-session. HRmax still from Tanaka.
 
+## Phase 16 — Session data hygiene
+Audit of on-device `gymdata/` revealed 21/76 sessions were "ghost" shells (opened but never filled — `completedAt: ""`, all sets at 0), plus ~500 KB of orphan `.ecg` raw files from the same shells, plus YAML noise from full-precision floats and always-written zero ECG/HRV fields.
+
+- **Ghost prevention** (`ActiveRoutineViewModel.onCleared`): when the user leaves the active routine without any completed exercise or any set with real data (`reps>0 ∨ weight>0 ∨ done=true`), the shell session file + its `.ecg` are deleted and the Polar stream is stopped. Uses the standard `clearScope` pattern.
+- **Boot-time cleanup** (`WorkoutRepository.cleanupGhostSessions()` + `cleanupOrphanEcgFiles()`, wired in `MainViewModel.init`): one-shot scrub of pre-existing shells and of `.ecg` files whose `sessionId` has no matching `history/.../*.md`.
+- **ECG-analysis preservation** (`ActiveRoutineViewModel.registerRoutine`): the raw `.ecg` is now deleted only when `ecgResult.hasAnything == true`. Failed analyses (file too short, <2 peaks, <5 valid RR) keep the file so it can be re-inspected. Added `PolarManager.ecgFileSize()` + structured logs in both `EcgAnalyzer` and the VM for post-mortem diagnosis.
+- **Lifecycle fix**: `onCleared` always calls `stopEcgRecording()` + `stopHrSeriesCapture()` even for finalized-but-unregistered sessions, so the Polar stream no longer keeps writing indefinitely when the user backs out between `finalizeSession` and `registerRoutine`.
+- **YAML compaction** (`WorkoutParser.toMarkdown`, `MarkdownParser.formatValue`): Double/Float values rounded to 2 decimals at serialization (`vo2max: 46.14` instead of `46.142857142857146`); ECG/HRV/recovery fields (`ecgBeats`, `sdnn`, `pnn50`, `poincareSd{1,2,Ratio}`, `afib*`, `restingHr`, `hrr60s`, `cardiacDriftBpmMin`, …) omitted from frontmatter when zero; `tonnageByBodypart` filtered to non-zero entries only.
+- **Rep-range invariant** (`ExerciseEditViewModel` + `RoutineEditViewModel`): symmetric clamp — raising min above max pulls max up, lowering max below min pulls min down — so `min > max` can no longer be persisted. One-shot migration (`ExerciseRepository.fixInvalidRepRanges()` + `RoutineRepository.fixInvalidRepRanges()`, guarded by `.reprange_fixed` sentinel) repairs any existing `min > max` by setting `max = min`.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

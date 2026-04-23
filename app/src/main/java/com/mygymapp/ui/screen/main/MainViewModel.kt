@@ -51,6 +51,12 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             workoutRepository.migrateOldSessionFiles()
             workoutRepository.pruneOldSessions(LocalDate.now().minusMonths(3))
+            // Scrub sessions the user opened but never filled in, and their orphan ECG raws.
+            workoutRepository.cleanupGhostSessions()
+            workoutRepository.cleanupOrphanEcgFiles()
+            // Repair exercises/routines where repRangeMin > repRangeMax was persisted.
+            exerciseRepository.fixInvalidRepRanges()
+            routineRepository.fixInvalidRepRanges()
             loadGitgraphInternal()
         }
         viewModelScope.launch {

@@ -197,11 +197,21 @@ class RoutineEditViewModel @Inject constructor(
     }
 
     fun updateExerciseRepMin(index: Int, value: Int) {
-        updateExercise(index) { it.copy(repRangeMin = value.coerceAtLeast(1)) }
+        updateExercise(index) {
+            val newMin = value.coerceAtLeast(1)
+            // Keep max >= min: if user raises min above max, pull max up with it.
+            val newMax = if (newMin > it.repRangeMax) newMin else it.repRangeMax
+            it.copy(repRangeMin = newMin, repRangeMax = newMax)
+        }
     }
 
     fun updateExerciseRepMax(index: Int, value: Int) {
-        updateExercise(index) { it.copy(repRangeMax = value.coerceAtLeast(1)) }
+        updateExercise(index) {
+            val newMax = value.coerceAtLeast(1)
+            // Symmetric: if user drops max below min, pull min down with it.
+            val newMin = if (newMax < it.repRangeMin) newMax else it.repRangeMin
+            it.copy(repRangeMin = newMin, repRangeMax = newMax)
+        }
     }
 
     fun updateExerciseTime(index: Int, seconds: Int) {
