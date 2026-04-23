@@ -787,9 +787,16 @@ class PolarManager @Inject constructor(
         restingHr = measuredRestingHr
         lowestObservedHr = measuredRestingHr
 
+        // Persist today's resting HR and derive the 7-day baseline.
+        // VO2max uses the min of the last 7 valid readings to reduce day-to-day
+        // noise (caffeine, sleep, stress). Falls back to today's value if fewer.
+        saveHrRestToBaseline(measuredRestingHr)
+        val hrRestBaseline = loadHrRestBaseline()
+        val hrRestForVo2 = hrRestBaseline.minOrNull() ?: measuredRestingHr
+
         // Calculate VO2max (Uth formula)
         val hrMax = userProfile.hrMax
-        val vo2 = if (measuredRestingHr > 0) 15.3 * (hrMax.toDouble() / measuredRestingHr) else null
+        val vo2 = if (hrRestForVo2 > 0) 15.3 * (hrMax.toDouble() / hrRestForVo2) else null
         _vo2max.value = vo2
 
         // Load baseline from SharedPreferences (last 7 LnRMSSD values)
@@ -837,7 +844,7 @@ class PolarManager @Inject constructor(
             recommendation = recommendation,
         )
 
-        Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr, VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
+        Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
     }
 
     private fun filterArtifacts(rrIntervals: List<Int>): List<Int> {
@@ -862,6 +869,22 @@ class PolarManager @Inject constructor(
         while (existing.size > 14) existing.removeFirst()
         val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
         prefs.edit().putString("lnrmssd_values", existing.joinToString(",")).apply()
+    }
+
+    private fun loadHrRestBaseline(): List<Int> {
+        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
+        val csv = prefs.getString("hrrest_values", "") ?: ""
+        if (csv.isBlank()) return emptyList()
+        return csv.split(",").mapNotNull { it.toIntOrNull() }
+    }
+
+    private fun saveHrRestToBaseline(hrRest: Int) {
+        val existing = loadHrRestBaseline().toMutableList()
+        existing.add(hrRest)
+        // Keep last 7 readings (rolling window used for VO2max)
+        while (existing.size > 7) existing.removeFirst()
+        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
+        prefs.edit().putString("hrrest_values", existing.joinToString(",")).apply()
     }
 
     private fun calculateRMSSD(rrIntervals: List<Int>): Double {
