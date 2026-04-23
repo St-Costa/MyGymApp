@@ -45,22 +45,37 @@ class EcgAnalyzer @Inject constructor() {
     }
 
     fun analyze(file: File): EcgAnalysisResult? {
-        if (!file.exists() || file.length() < 32) return null
-
-        val (sampleRate, voltages) = readFile(file) ?: return null
-        if (voltages.size < sampleRate * 5) {
-            Log.d(TAG, "ECG too short for analysis (${voltages.size} samples)")
+        if (!file.exists()) {
+            Log.w(TAG, "ECG analysis: file does not exist: ${file.absolutePath}")
+            return null
+        }
+        if (file.length() < 32) {
+            Log.w(TAG, "ECG analysis: file too small (${file.length()} bytes), header only")
             return null
         }
 
+        val (sampleRate, voltages) = readFile(file) ?: return null
+        if (voltages.size < sampleRate * 5) {
+            Log.w(TAG, "ECG too short for analysis (${voltages.size} samples, ${voltages.size.toDouble() / sampleRate}s)")
+            return null
+        }
+        Log.i(TAG, "ECG analyze: ${voltages.size} samples (${voltages.size.toDouble() / sampleRate}s @${sampleRate}Hz)")
+
         val peaks = panTompkinsDetect(voltages, sampleRate)
-        if (peaks.size < 2) return null
+        if (peaks.size < 2) {
+            Log.w(TAG, "ECG analyze: only ${peaks.size} peaks detected")
+            return null
+        }
 
         val rrIntervals = peaks.zipWithNext { a, b ->
             ((b - a).toDouble() / sampleRate * 1000.0).toInt()
         }.filter { it in 300..2500 }
 
-        if (rrIntervals.size < 5) return null
+        if (rrIntervals.size < 5) {
+            Log.w(TAG, "ECG analyze: only ${rrIntervals.size} valid RR intervals out of ${peaks.size} peaks")
+            return null
+        }
+        Log.i(TAG, "ECG analyze: ${peaks.size} peaks → ${rrIntervals.size} valid RR intervals")
 
         val durationSec = voltages.size.toDouble() / sampleRate
         val avgHr = 60000.0 / rrIntervals.average()

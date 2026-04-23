@@ -33,6 +33,8 @@ Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementat
 - **`completionSaved` pattern**: exercise screens never call `onComplete()` from a button — flow through `_completionSaved` so disk writes land before navigation reads them. See [CONVENTIONS.md](docs/CONVENTIONS.md#completionsaved-pattern).
 - **Polar facade**: everything flows through `@Singleton PolarManager`. Screens observe its StateFlows — they do not own Rx disposables.
 - **Two image caches**: `cache/images/` (ImageCacheRepository, persistent) and `image_cache/` (Coil LRU, 100 MB). Not interchangeable.
+- **Ghost-session guard**: `ActiveRoutineViewModel.onCleared()` + `WorkoutRepository.cleanupGhostSessions()`. Shell sessions (no data, no completed exercises) and their `.ecg` files get deleted both on back-out and at boot. See [CONVENTIONS.md](docs/CONVENTIONS.md#ghost-session-prevention).
+- **ECG raw kept on analysis failure**: `registerRoutine` deletes `ecg/{id}.ecg` only when `ecgResult.hasAnything`. See [CONVENTIONS.md](docs/CONVENTIONS.md#ecg-analysis-keep-the-raw-file-on-failure).
 
 ## Gotchas (the short list)
 

@@ -91,11 +91,19 @@ class ExerciseEditViewModel @Inject constructor(
     }
 
     fun onRepMinChange(value: Int) {
-        _uiState.value = _uiState.value.copy(defaultRepRangeMin = value.coerceAtLeast(1))
+        val newMin = value.coerceAtLeast(1)
+        val state = _uiState.value
+        // Keep max >= min: if user raises min above max, pull max up with it.
+        val newMax = if (newMin > state.defaultRepRangeMax) newMin else state.defaultRepRangeMax
+        _uiState.value = state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
     }
 
     fun onRepMaxChange(value: Int) {
-        _uiState.value = _uiState.value.copy(defaultRepRangeMax = value.coerceAtLeast(1))
+        val newMax = value.coerceAtLeast(1)
+        val state = _uiState.value
+        // Symmetric: if user drops max below min, pull min down with it.
+        val newMin = if (newMax < state.defaultRepRangeMin) newMax else state.defaultRepRangeMin
+        _uiState.value = state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
     }
 
     fun deleteExercise() {

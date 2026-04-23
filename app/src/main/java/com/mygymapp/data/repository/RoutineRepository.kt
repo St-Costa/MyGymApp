@@ -84,6 +84,38 @@ class RoutineRepository @Inject constructor(
         }
     }
 
+    /**
+     * One-shot migration: fixes any [RoutineExercise] whose `repRangeMin > repRangeMax`
+     * by setting `max = min`. Guarded by a sentinel. Returns count of fixed routines.
+     */
+    suspend fun fixInvalidRepRanges(): Int = withContext(Dispatchers.IO) {
+        val sentinel = File(routinesDir(), ".reprange_fixed")
+        if (sentinel.exists()) return@withContext 0
+        ensureLoaded()
+        var fixedRoutines = 0
+        mutex.withLock {
+            cache.values.toList().forEach { routine ->
+                val needsFix = routine.exercises.any { it.repRangeMin > it.repRangeMax && it.repRangeMax > 0 }
+                if (needsFix) {
+                    val updatedExercises = routine.exercises.map { ex ->
+                        if (ex.repRangeMin > ex.repRangeMax && ex.repRangeMax > 0) {
+                            ex.copy(repRangeMax = ex.repRangeMin)
+                        } else ex
+                    }
+                    val updated = routine.copy(exercises = updatedExercises)
+                    val fileName = slugify(updated.name, updated.id)
+                    val file = File(routinesDir(), "$fileName.md")
+                    file.writeText(RoutineParser.toMarkdown(updated))
+                    cache[updated.id] = updated
+                    fixedRoutines++
+                }
+            }
+            routinesDir().mkdirs()
+            sentinel.createNewFile()
+        }
+        fixedRoutines
+    }
+
     private suspend fun ensureLoaded() {
         if (loaded) return
         mutex.withLock {

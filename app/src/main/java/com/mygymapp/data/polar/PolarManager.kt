@@ -636,11 +636,17 @@ class PolarManager @Inject constructor(
 
     /**
      * Run post-session ECG analysis on the recorded file.
-     * Returns null if no file or file too short. Caller should delete the file.
+     * Returns null if no file or file too short.
      */
     fun analyzeSessionEcg(sessionId: String): EcgAnalysisResult? {
         val file = ecgRecorder.fileFor(sessionId)
         return ecgAnalyzer.analyze(file)
+    }
+
+    /** File size in bytes of the raw ECG for [sessionId], or 0 if missing. */
+    fun ecgFileSize(sessionId: String): Long {
+        val file = ecgRecorder.fileFor(sessionId)
+        return if (file.exists()) file.length() else 0L
     }
 
     private fun startEcgStreamingInternal(deviceId: String, sessionId: String) {

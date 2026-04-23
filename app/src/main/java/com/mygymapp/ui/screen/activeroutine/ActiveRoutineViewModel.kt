@@ -13,7 +13,10 @@ import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -78,6 +81,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
     private var previousTonnageByExercise: Map<String, Double> = emptyMap()
     private var sessionFinalized = false
+    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         viewModelScope.launch {
@@ -219,12 +223,15 @@ class ActiveRoutineViewModel @Inject constructor(
             if (session != null) {
                 // Heavy analysis (Pan-Tompkins on the whole file) runs on IO and is
                 // guarded — a failure here must NOT crash the register flow.
+                val ecgFileSize = polarManager.ecgFileSize(session.id)
+                Log.i("ActiveRoutineVM", "ECG file for ${session.id}: $ecgFileSize bytes")
                 val ecgResult = try {
                     withContext(Dispatchers.IO) { polarManager.analyzeSessionEcg(session.id) }
                 } catch (e: Throwable) {
                     Log.e("ActiveRoutineVM", "ECG analysis failed: ${e.message}", e)
                     null
                 }
+                Log.i("ActiveRoutineVM", "ECG analysis result: ecgResult=$ecgResult")
                 val drift = try {
                     polarManager.cardiacDriftBpmPerMinute()
                 } catch (e: Throwable) {
@@ -261,8 +268,13 @@ class ActiveRoutineViewModel @Inject constructor(
                 } catch (e: Throwable) {
                     Log.e("ActiveRoutineVM", "Save session failed", e)
                 }
-                // ECG raw file is ephemeral: delete after analysis
-                try { polarManager.deleteEcgFile(session.id) } catch (_: Throwable) {}
+                // Only delete the raw ECG file when analysis succeeded. If it failed,
+                // keep the file so the session can be re-analyzed or inspected offline.
+                if (ecgResult != null && ecgResult.hasAnything) {
+                    try { polarManager.deleteEcgFile(session.id) } catch (_: Throwable) {}
+                } else {
+                    Log.w("ActiveRoutineVM", "Keeping ECG file for ${session.id}: analysis produced no metrics")
+                }
             }
             _uiState.value = _uiState.value.copy(sessionRegistered = true)
         }
@@ -301,7 +313,7 @@ class ActiveRoutineViewModel @Inject constructor(
             }
             val finalSession = updated.copy(
                 totalTonnage = totalTonnage,
-                tonnageByBodypart = tonnageByBodypart,
+                tonnageByBodypart = tonnageByBodypart.filterValues { it > 0.0 },
                 sessionCalories = polarManager.sessionCalories.value,
                 sessionTrimp = polarManager.sessionTrimp.value,
                 vo2max = polarManager.vo2max.value ?: 0.0,
@@ -363,6 +375,46 @@ class ActiveRoutineViewModel @Inject constructor(
                 selectedChartFilter = "Totale",
                 isLoadingChart = false,
             )
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        val session = currentSession
+        if (session == null) {
+            clearScope.cancel()
+            return
+        }
+        // Always stop the live ECG/HR capture if the user leaves without registering —
+        // otherwise the Polar stream keeps running and writing to the .ecg file until
+        // the device disconnects.
+        val needsGhostCleanup = !sessionFinalized
+        clearScope.launch {
+            try {
+                polarManager.stopEcgRecording()
+                polarManager.stopHrSeriesCapture()
+                if (needsGhostCleanup) {
+                    val today = LocalDate.parse(session.date)
+                    val reloaded = workoutRepository.getSession(session.id, today) ?: session
+                    val hasCompleted = reloaded.exercises.any { it.completed }
+                    val hasRealSetData = reloaded.exercises.any { ex ->
+                        ex.sets.any { set ->
+                            when (set) {
+                                is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
+                                is ExerciseSet.Stretch -> set.done
+                            }
+                        }
+                    }
+                    if (reloaded.completedAt.isBlank() && !hasCompleted && !hasRealSetData) {
+                        polarManager.deleteEcgFile(session.id)
+                        workoutRepository.delete(reloaded)
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e("ActiveRoutineVM", "Session cleanup failed", e)
+            } finally {
+                clearScope.cancel()
+            }
         }
     }
 }

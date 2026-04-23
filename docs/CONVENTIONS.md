@@ -136,6 +136,40 @@ They are not interchangeable. See [STORAGE.md](STORAGE.md#root-layout).
 
 Don't name a private property `fooBar` and a function `getFooBar()` — Kotlin generates a getter `getFooBar()` for the property that clashes with the function. Use a distinct name.
 
+## Ghost session prevention
+
+Entering an active routine creates the `.md` file eagerly (so `StrengthExerciseViewModel` can locate the session by `sessionId`). If the user backs out before filling any data, the empty shell would be persisted — prior to Phase 16 this left 21/76 sessions as ghosts on disk.
+
+`ActiveRoutineViewModel.onCleared()` reloads the session and deletes it if **all** hold:
+- `completedAt.isBlank()`
+- no exercise has `completed == true`
+- every set is empty (`reps == 0 && weight == 0` for strength, `done == false` for stretch)
+
+The same ruleset lives server-side in `WorkoutRepository.cleanupGhostSessions()`, called at boot from `MainViewModel.init`, so shells created by older builds (or by a process killed before `onCleared`) still get scrubbed. `cleanupOrphanEcgFiles()` runs right after and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md`.
+
+**Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
+
+## ECG analysis: keep the raw file on failure
+
+`ActiveRoutineViewModel.registerRoutine()` runs `analyzeSessionEcg` and then deletes the raw `.ecg`. Delete ONLY when `ecgResult != null && ecgResult.hasAnything` (i.e. ≥1 beat detected). On failure (file too short, too few peaks, too few valid RR intervals) the `.ecg` is preserved so it can be inspected offline. `EcgAnalyzer.analyze()` emits structured logs (`file too small`, `only N peaks`, `only N valid RR intervals`, or the success line `N peaks → M valid RR intervals`) to pinpoint the cause.
+
+## YAML compaction in session frontmatter
+
+Two rules applied in `WorkoutParser.toMarkdown` + `MarkdownParser.formatValue`:
+
+1. **2-decimal rounding for Doubles/Floats** at serialization. Store full precision in memory, write a readable value to disk. Applies uniformly — set `weight: 14.0` stays `14.0`, `vo2max: 46.142857142857146` becomes `46.14`.
+2. **Omit-zero for ECG/HRV/recovery fields** (`ecgBeats`, `ecgDurationSec`, `ecgAvgHr`, `ecgSessionRmssd`, `ecgPacCount`, `ecgPauseCount`, `ecgIrregularBeats`, `cardiacDriftBpmMin`, `restingHr`, `hrr60s`, `sdnn`, `pnn50`, `poincareSd1`, `poincareSd2`, `poincareRatio`, `afibSuspicionEpisodes`): not serialized when zero. `tonnageByBodypart` also drops zero-valued entries.
+
+The reader (`WorkoutParser.fromMarkdown`) defaults missing numeric fields to 0 via `as? Number ?: 0.0`, so older files stay readable and newly omitted fields round-trip cleanly.
+
+## Rep-range invariant
+
+`repRangeMin > repRangeMax` used to slip through. Editors now symmetric-clamp:
+- raising min above max pulls max up with it,
+- lowering max below min pulls min down with it.
+
+Applies in both `ExerciseEditViewModel.onRepMin/MaxChange` and `RoutineEditViewModel.updateExerciseRepMin/Max`. One-shot boot migration (`fixInvalidRepRanges` in `ExerciseRepository` and `RoutineRepository`, guarded by `.reprange_fixed` sentinel files in `exercises/` and `routines/`) repairs any pre-existing `min > max` by setting `max = min`.
+
 ## Gradle wrapper
 
 `gradle/wrapper/gradle-wrapper.jar` was copied from `~/.gradle/caches/` — there is no global Gradle installed on this machine. If the jar ever goes missing, pull it from a cached distribution rather than running `gradle wrapper` (which requires Gradle to be installed in the first place).
