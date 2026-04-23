@@ -51,6 +51,9 @@ BLE subsystem under `data/polar/`: `PolarManager` facade, `EcgRecorder`, `EcgAna
 - `ui/util/SupersetGrouping.kt`: shared `groupSupersets` helper consumed by `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups`.
 - `ExerciseType.accentColor()` extension in `theme/Color.kt` replaces two inline `when` blocks in `ExerciseCard` and `ActiveRoutineScreen`.
 
+## Phase 15 — VO2max HRrest baseline
+- `PolarManager.finishReadinessMeasurement`: VO2max now divides by the minimum HRrest of the last 7 readings (stored as `hrrest_values` in `SharedPreferences("hrv_baseline")`, rolling window) instead of the single session's minimum HR. Falls back to today's value when the baseline has fewer readings. Removes most of the day-to-day noise (caffeine, sleep, stress) so the Uth output stabilises at ~±1–2 ml/kg/min session-over-session. HRmax still from Tanaka.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

@@ -76,7 +76,8 @@ connectToDevice(id)  ─► SDK callback deviceConnected()
    - Today's LnRMSSD is appended to the rolling 14-day baseline stored in `SharedPreferences("hrv_baseline")`.
    - Z-score vs baseline → one of `DELOAD_RECOMMENDED` / `LIGHT_DAY` / `NORMAL` / `GOOD` / `PEAK`.
    - First 7 days show `NO_BASELINE` until enough data exists.
-4. VO2max is estimated from HRmax/HRrest via the Uth-Sørensen-Overgaard formula and emitted to `_vo2max`.
+4. Today's HRrest is appended to a rolling 7-reading baseline in `SharedPreferences("hrv_baseline")` under key `hrrest_values`.
+5. VO2max is estimated via the Uth-Sørensen-Overgaard formula using `HRmax` (Tanaka) and `min(HRrest)` over the last 7 readings (falls back to today's value when the baseline is shorter). Using the 7-reading minimum reduces day-to-day noise (caffeine, sleep, stress) vs. picking a single session's value.
 
 Formula details and references in [polar/implementation-guide.md](polar/implementation-guide.md).
 
