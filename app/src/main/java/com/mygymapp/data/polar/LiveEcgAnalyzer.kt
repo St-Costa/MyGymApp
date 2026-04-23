@@ -44,6 +44,20 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         val irregularities: Int get() = premature + pauses + uneven
     }
 
+    /**
+     * Uneven beats are only counted when the heart rate is in a relatively
+     * relaxed range (< 70% of HRmax). During intense effort, physiological
+     * RR variability from heavy breathing, valsalva and muscle artefacts
+     * generates false positives that aren't clinically meaningful.
+     * When disabled (activeSetInProgress == true), candidate uneven beats
+     * are simply not flagged.
+     */
+    @Synchronized
+    fun setUnevenGate(active: Boolean) {
+        suppressUneven = active
+    }
+    private var suppressUneven: Boolean = false
+
     @Synchronized
     fun reset() {
         lpBuf.clear(); lpSum = 0.0
@@ -175,6 +189,10 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         // this filters respiratory sinus arrhythmia at rest and isolated
         // single-sample artifacts while still catching real patterns
         // (bigeminy, couplets, sustained arrhythmias).
+        // Additionally, during active high-intensity effort (suppressUneven==true)
+        // we don't flag uneven beats at all — the variability under load is
+        // dominated by physiology, not arrhythmia.
+        if (suppressUneven) return
         val currentCandidate = abs(rrMs - localMedian) > localMedian * 0.20 && rrMs > localMedian
         if (currentCandidate && prevIdx >= 0 && irregularityFlags[prevIdx] == Irreg.NONE) {
             val prev = rrIntervals[prevIdx]

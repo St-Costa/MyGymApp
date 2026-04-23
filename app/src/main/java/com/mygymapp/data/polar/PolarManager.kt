@@ -58,7 +58,11 @@ class PolarManager @Inject constructor(
         private const val RMSSD_READY_THRESHOLD = 20.0
         private const val HR_RECOVERY_THRESHOLD = 0.70f
         private const val HR_WINDOW_SIZE = 8 // ~8 seconds of HR samples
-        private const val PEAK_MIN_RISE_BPM = 15 // HR must rise at least this much above resting to count as effort
+        private const val PEAK_MIN_RISE_BPM = 15 // HR must rise at least this much above resting to count as effort (recovery semaphore)
+        // HRR-specific thresholds — stricter, to ensure only real "set" peaks count
+        private const val HRR_PEAK_MIN_RISE_BPM = 25
+        private const val HRR_PEAK_MIN_HRMAX_FRACTION = 0.6f
+        private const val HRR_QUEUE_DEBOUNCE_MS = 90_000L
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
@@ -370,6 +374,12 @@ class PolarManager @Inject constructor(
                             restingHr = lowestObservedHr
                         }
 
+                        // Gate Uneven detection: only count when HR is in a relaxed
+                        // range (< 70% HRmax). During intense effort the RR variability
+                        // is dominated by physiology, not arrhythmia.
+                        val hrMaxFrac = sample.hr.toFloat() / userProfile.hrMax.coerceAtLeast(1)
+                        liveAnalyzer.setUnevenGate(active = hrMaxFrac >= 0.70f)
+
                         // Process RR intervals
                         for (rr in sample.rrsMs) {
                             if (rr in 300..2000) {
@@ -455,10 +465,13 @@ class PolarManager @Inject constructor(
                     _rmssd.value = null
                     Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
                 }
-                // HRR queue: independent from recovery flag. Debounce by 60s
-                // so multiple consecutive peaks in the same set don't all queue,
-                // but each real set still gets an HRR measurement.
-                if (now - lastQueuedPeakAtMs > 60_000) {
+                // HRR queue: independent from recovery flag. Stricter criteria
+                // than the recovery semaphore to avoid false positives from
+                // light activity (walking, stair climbing).
+                val hrMax = userProfile.hrMax
+                val meetsHrrThresholds = peakHr - restingHr >= HRR_PEAK_MIN_RISE_BPM &&
+                        peakHr >= hrMax * HRR_PEAK_MIN_HRMAX_FRACTION
+                if (meetsHrrThresholds && now - lastQueuedPeakAtMs > HRR_QUEUE_DEBOUNCE_MS) {
                     pendingHrrPeaks.add(peakHr to now)
                     lastQueuedPeakAtMs = now
                 }

@@ -49,7 +49,8 @@ fun LiveEcgCard(
     val waveform by polarManager.ecgWaveform.collectAsState()
     val snapshot by polarManager.liveEcgSnapshot.collectAsState()
     val drift by polarManager.liveCardiacDrift.collectAsState()
-    val hrrLast by polarManager.liveHrrLast.collectAsState()
+    // HRR intentionally not shown live — it's more meaningful aggregated
+    // post-session and in the 4-week trend card.
 
     if (connectionState != ConnectionState.CONNECTED) return
 
@@ -126,27 +127,6 @@ fun LiveEcgCard(
                 }
             }
 
-            // HRR (Heart Rate Recovery) with semaphore + emoji
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SemaphoreDot(color = hrrColor(hrrLast))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (hrrLast == null) "HRR last: —"
-                    else "HRR last: $hrrLast BPM",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                val hrrEmoji = hrrEmoji(hrrLast)
-                if (hrrEmoji.isNotEmpty()) {
-                    Text(
-                        text = hrrEmoji,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
         }
     }
 }
@@ -158,20 +138,6 @@ private fun driftEmoji(bpmPerMin: Double): String = when {
     else -> "🥵"
 }
 
-private fun hrrColor(hrr: Int?): Color = when {
-    hrr == null -> Color(0xFF3A3A3A)
-    hrr < 12 -> SemaphoreRed
-    hrr < 20 -> SemaphoreYellow
-    else -> SemaphoreGreen
-}
-
-private fun hrrEmoji(hrr: Int?): String = when {
-    hrr == null -> ""
-    hrr < 12 -> "😵"
-    hrr < 20 -> "🫠"
-    hrr >= 30 -> "💪"
-    else -> ""
-}
 
 @Composable
 private fun SemaphoreDot(color: Color) {
