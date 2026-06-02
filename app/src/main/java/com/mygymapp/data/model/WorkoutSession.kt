@@ -40,4 +40,6 @@ data class WorkoutExercise(
     val type: ExerciseType,
     val completed: Boolean = false,
     val sets: List<ExerciseSet> = emptyList(),
+    /** Warmup or fixed-daily exercise: still recorded, but excluded from all tonnage math. */
+    val excludeFromTonnage: Boolean = false,
 )

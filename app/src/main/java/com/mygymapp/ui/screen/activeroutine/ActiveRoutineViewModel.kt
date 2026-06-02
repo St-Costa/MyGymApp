@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
+import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.polar.PolarManager
@@ -53,6 +55,9 @@ data class ActiveRoutineUiState(
     val allSessionLabels: List<String> = emptyList(),
 )
 
+/** Section an exercise belongs to within a running session. */
+enum class SessionExerciseCategory { WARMUP, DAILY, NORMAL }
+
 data class ActiveExerciseUi(
     val exerciseId: String,
     val exerciseName: String,
@@ -62,6 +67,8 @@ data class ActiveExerciseUi(
     val setCount: Int = 0,
     val tonnageChangePct: Double? = null,
     val supersetWithNext: Boolean = false,
+    val excludeFromTonnage: Boolean = false,
+    val category: SessionExerciseCategory = SessionExerciseCategory.NORMAL,
 )
 
 @HiltViewModel
@@ -86,8 +93,33 @@ class ActiveRoutineViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val routine = routineRepository.getById(routineId) ?: return@launch
+            // The "Fixed daily exercise" container is a template, not a startable workout.
+            if (routineId == FIXED_DAILY_ROUTINE_ID) {
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                return@launch
+            }
 
-            val exercises = routine.exercises.mapNotNull { re ->
+            // Build the session in order: warmup -> fixed-daily -> normal.
+            // Warmup and fixed-daily exercises are excluded from tonnage (but not cardio).
+            val warmup = routine.exercises.filter { it.isWarmup }
+            val normal = routine.exercises.filterNot { it.isWarmup }
+            val routineExerciseIds = routine.exercises.map { it.exerciseId }.toSet()
+            // Skip a fixed-daily exercise already present in the routine (duplicates unsupported).
+            val fixed = (routineRepository.getById(FIXED_DAILY_ROUTINE_ID)?.exercises ?: emptyList())
+                .filterNot { it.exerciseId in routineExerciseIds }
+
+            // Clear the superset link on each section's last item so no pair spans a boundary.
+            fun List<RoutineExercise>.clearTailLink(): List<RoutineExercise> =
+                mapIndexed { i, re -> if (i == lastIndex) re.copy(supersetWithNext = false) else re }
+
+            // (RoutineExercise, section) in execution order. Non-normal sections are excluded
+            // from tonnage.
+            val ordered: List<Pair<RoutineExercise, SessionExerciseCategory>> =
+                warmup.clearTailLink().map { it to SessionExerciseCategory.WARMUP } +
+                    fixed.clearTailLink().map { it to SessionExerciseCategory.DAILY } +
+                    normal.clearTailLink().map { it to SessionExerciseCategory.NORMAL }
+
+            val exercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
                 ActiveExerciseUi(
                     exerciseId = exercise.id,
@@ -96,14 +128,17 @@ class ActiveRoutineViewModel @Inject constructor(
                     bodypart = exercise.bodypart,
                     setCount = re.sets,
                     supersetWithNext = re.supersetWithNext,
+                    excludeFromTonnage = category != SessionExerciseCategory.NORMAL,
+                    category = category,
                 )
             }
 
             // Load previous session BEFORE saving the current one, so we don't find ourselves
             val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
 
-            // Pre-compute per-exercise tonnage from previous session
+            // Pre-compute per-exercise tonnage from previous session (excluded ones don't count)
             previousTonnageByExercise = previousSession?.exercises
+                ?.filterNot { it.excludeFromTonnage }
                 ?.associate { ex ->
                     ex.exerciseId to ex.sets
                         .filterIsInstance<ExerciseSet.Strength>()
@@ -111,7 +146,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 } ?: emptyMap()
 
             // Create and save the workout session
-            val workoutExercises = routine.exercises.mapNotNull { re ->
+            val workoutExercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
                 val sets = (1..re.sets).map { _ ->
                     when (exercise.type) {
@@ -125,6 +160,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     bodypart = exercise.bodypart,
                     type = exercise.type,
                     sets = sets,
+                    excludeFromTonnage = category != SessionExerciseCategory.NORMAL,
                 )
             }
 
@@ -176,7 +212,8 @@ class ActiveRoutineViewModel @Inject constructor(
                 if (ex.exerciseId == exerciseId) {
                     ex.copy(
                         completed = true,
-                        tonnageChangePct = if (ex.type == ExerciseType.FORZA) changePct else null,
+                        // No tonnage comparison for warmup/fixed-daily exercises.
+                        tonnageChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage) changePct else null,
                     )
                 } else ex
             }
@@ -301,6 +338,8 @@ class ActiveRoutineViewModel @Inject constructor(
             var totalTonnage = 0.0
             val tonnageByBodypart = mutableMapOf<String, Double>()
             for (ex in updated.exercises) {
+                // Warmup + fixed-daily exercises never contribute to tonnage.
+                if (ex.excludeFromTonnage) continue
                 var exTonnage = 0.0
                 for (set in ex.sets) {
                     if (set is ExerciseSet.Strength) {
@@ -332,11 +371,11 @@ class ActiveRoutineViewModel @Inject constructor(
 
             // Compare only exercises that are in the current session, so the chart is meaningful
             // even when routine composition has changed between sessions.
-            val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA }
+            val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
             val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
             val sessionTonnage = allSessions.map { hist ->
                 hist.exercises
-                    .filter { it.exerciseId in currentExerciseIds }
+                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
                     .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
             }
 
@@ -346,7 +385,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
                 allSessions.map { hist ->
                     hist.exercises
-                        .filter { it.exerciseId in bpIds }
+                        .filter { it.exerciseId in bpIds && !it.excludeFromTonnage }
                         .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
                 }
             }

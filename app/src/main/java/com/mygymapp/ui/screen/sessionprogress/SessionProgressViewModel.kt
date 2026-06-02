@@ -77,11 +77,11 @@ class SessionProgressViewModel @Inject constructor(
         val labelFmt = DateTimeFormatter.ofPattern("d/M")
         val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
-        val currentForza = session.exercises.filter { it.type == ExerciseType.FORZA }
+        val currentForza = session.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
         val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
         val sessionTonnage = allSessions.map { hist ->
             hist.exercises
-                .filter { it.exerciseId in currentExerciseIds }
+                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
                 .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
         }
 
@@ -90,7 +90,7 @@ class SessionProgressViewModel @Inject constructor(
             val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
             allSessions.map { hist ->
                 hist.exercises
-                    .filter { it.exerciseId in bpIds }
+                    .filter { it.exerciseId in bpIds && !it.excludeFromTonnage }
                     .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
             }
         }

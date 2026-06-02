@@ -152,11 +152,12 @@ class MainViewModel @Inject constructor(
      * Falls back to totalTonnage if the two sessions share no exercises.
      */
     private fun computeCommonTonnage(s1: WorkoutSession, s2: WorkoutSession): Pair<Double, Double> {
-        val commonIds = s1.exercises.map { it.exerciseId }.toSet()
-            .intersect(s2.exercises.map { it.exerciseId }.toSet())
+        // Warmup + fixed-daily exercises never contribute to tonnage comparisons.
+        val commonIds = s1.exercises.filterNot { it.excludeFromTonnage }.map { it.exerciseId }.toSet()
+            .intersect(s2.exercises.filterNot { it.excludeFromTonnage }.map { it.exerciseId }.toSet())
         if (commonIds.isEmpty()) return Pair(s1.totalTonnage, s2.totalTonnage)
         fun tonnageFor(s: WorkoutSession): Double = s.exercises
-            .filter { it.exerciseId in commonIds }
+            .filter { it.exerciseId in commonIds && !it.excludeFromTonnage }
             .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
         return Pair(tonnageFor(s1), tonnageFor(s2))
     }

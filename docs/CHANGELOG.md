@@ -64,6 +64,15 @@ Audit of on-device `gymdata/` revealed 21/76 sessions were "ghost" shells (opene
 - **YAML compaction** (`WorkoutParser.toMarkdown`, `MarkdownParser.formatValue`): Double/Float values rounded to 2 decimals at serialization (`vo2max: 46.14` instead of `46.142857142857146`); ECG/HRV/recovery fields (`ecgBeats`, `sdnn`, `pnn50`, `poincareSd{1,2,Ratio}`, `afib*`, `restingHr`, `hrr60s`, `cardiacDriftBpmMin`, …) omitted from frontmatter when zero; `tonnageByBodypart` filtered to non-zero entries only.
 - **Rep-range invariant** (`ExerciseEditViewModel` + `RoutineEditViewModel`): symmetric clamp — raising min above max pulls max up, lowering max below min pulls min down — so `min > max` can no longer be persisted. One-shot migration (`ExerciseRepository.fixInvalidRepRanges()` + `RoutineRepository.fixInvalidRepRanges()`, guarded by `.reprange_fixed` sentinel) repairs any existing `min > max` by setting `max = min`.
 
+## Phase 17 — Fixed daily exercises + warmup distinction
+
+Two related additions to routine/session modelling, both excluded from tonnage but fully counted by the (session-global) cardio metrics.
+
+- **Fixed daily exercise container**: a reserved, non-deletable / non-disableable routine (`id: rt-fixeddaily`, `day: ""`) auto-seeded by `RoutineRepository.ensureFixedDailyRoutine()` inside `ensureLoaded()`. The user edits its exercise list like any routine; those exercises are injected at the start of every session. It's pinned to the top of the routine list, hidden from the week view (no day) and guarded against being started. See [CONVENTIONS.md](CONVENTIONS.md#fixed-daily-exercise-container).
+- **Warmup vs normal per routine**: new `RoutineExercise.isWarmup` flag, persisted as the contiguous leading prefix of the exercise list. The routine editor renders a positional divider line (↑/↓ controls moving it by whole segments, snapped to boundaries so a superset never splits) above which exercises are warmup. The container's editor shows no line.
+- **Tonnage exclusion**: new `WorkoutExercise.excludeFromTonnage`, resolved at session-build time (warmup + fixed-daily) and persisted per exercise. `ActiveRoutineViewModel` builds the session in `warmup → fixed-daily → normal` order (clearing superset links at each section boundary, and skipping a fixed-daily exercise already present in the routine since the detail flow keys by `exerciseId`). Every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, plus the per-exercise/historical comparisons — filters `!excludeFromTonnage`. New boolean fields are omitted from YAML when false, so existing files migrate as all-normal/all-counted.
+- **Session UI**: `ActiveExerciseUi.category` (WARMUP/DAILY/NORMAL) drives section headers in `ActiveRoutineScreen` (`SessionSectionHeader`) — shown only when the session mixes categories. Excluded sections are muted, the WORKOUT header is highlighted; exercise cards are otherwise unchanged so the headers don't clash with the type-color borders or the superset frame.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

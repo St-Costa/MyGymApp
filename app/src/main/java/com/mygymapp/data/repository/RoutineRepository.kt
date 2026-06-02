@@ -1,5 +1,7 @@
 package com.mygymapp.data.repository
 
+import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
+import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_NAME
 import com.mygymapp.data.model.Routine
 import com.mygymapp.data.parser.RoutineParser
 import com.mygymapp.data.util.slugify
@@ -27,7 +29,10 @@ class RoutineRepository @Inject constructor(
 
     suspend fun getAll(): List<Routine> = withContext(Dispatchers.IO) {
         ensureLoaded()
-        cache.values.toList().sortedBy { it.name.lowercase() }
+        cache.values.toList().sortedWith(
+            compareByDescending<Routine> { it.id == FIXED_DAILY_ROUTINE_ID }
+                .thenBy { it.name.lowercase() },
+        )
     }
 
     suspend fun getById(id: String): Routine? = withContext(Dispatchers.IO) {
@@ -77,6 +82,7 @@ class RoutineRepository @Inject constructor(
     }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
+        if (id == FIXED_DAILY_ROUTINE_ID) return@withContext
         mutex.withLock {
             val routine = cache.remove(id) ?: return@withLock
             val fileName = slugify(routine.name, routine.id)
@@ -133,7 +139,31 @@ class RoutineRepository @Inject constructor(
                     }
                 }
             }
+            ensureFixedDailyRoutine()
             loaded = true
         }
+    }
+
+    /**
+     * Ensures the reserved "Fixed daily exercise" container routine always exists. Created
+     * once (empty) on first launch and persisted; reloaded from disk on later boots. Must be
+     * called while holding [mutex], after the directory scan.
+     */
+    private fun ensureFixedDailyRoutine() {
+        if (cache.containsKey(FIXED_DAILY_ROUTINE_ID)) return
+        val now = LocalDateTime.now().toString()
+        val routine = Routine(
+            id = FIXED_DAILY_ROUTINE_ID,
+            name = FIXED_DAILY_ROUTINE_NAME,
+            day = "",
+            enabled = true,
+            exercises = emptyList(),
+            created = now,
+            updated = now,
+        )
+        val dir = routinesDir().apply { mkdirs() }
+        File(dir, "${slugify(routine.name, routine.id)}.md")
+            .writeText(RoutineParser.toMarkdown(routine))
+        cache[routine.id] = routine
     }
 }

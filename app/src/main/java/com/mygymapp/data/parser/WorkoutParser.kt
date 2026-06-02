@@ -62,8 +62,10 @@ object WorkoutParser {
                 "bodypart" to ex.bodypart,
                 "type" to ex.type.toFileString(),
                 "completed" to ex.completed,
-                "sets" to sets,
-            )
+            ).apply {
+                if (ex.excludeFromTonnage) put("excludeFromTonnage", true)
+                put("sets", sets)
+            }
         }
 
         val frontmatter = linkedMapOf<String, Any?>(
@@ -119,6 +121,7 @@ object WorkoutParser {
                 type = type,
                 completed = map["completed"] as? Boolean ?: false,
                 sets = parseSets(map["sets"], type),
+                excludeFromTonnage = map["excludeFromTonnage"] as? Boolean ?: false,
             )
         }
     }

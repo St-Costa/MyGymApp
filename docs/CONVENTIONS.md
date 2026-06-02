@@ -119,7 +119,22 @@ Every `startScan` / `startHrStreaming` / `startEcgStreamingInternal` begins with
 
 ## Common-exercise tonnage
 
-Gitgraph / session comparisons don't use `totalTonnage` directly. They use `computeCommonTonnage(s1, s2)` which restricts to exercises present in *both* sessions. Otherwise adding a new exercise to a routine reads as a sudden tonnage jump. Falls back to `totalTonnage` only when there is no overlap.
+Gitgraph / session comparisons don't use `totalTonnage` directly. They use `computeCommonTonnage(s1, s2)` which restricts to exercises present in *both* sessions. Otherwise adding a new exercise to a routine reads as a sudden tonnage jump. Falls back to `totalTonnage` only when there is no overlap. All tonnage readers also filter `!excludeFromTonnage` (see below).
+
+## Fixed daily exercise container
+
+A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: ""` — represents exercises performed every day. Constants live in [Routine.kt](../app/src/main/java/com/mygymapp/data/model/Routine.kt) (`FIXED_DAILY_ROUTINE_ID` / `FIXED_DAILY_ROUTINE_NAME`).
+
+- **Seeded, not created by the user**: `RoutineRepository.ensureFixedDailyRoutine()` runs inside `ensureLoaded()` (after the directory scan, under the mutex). Idempotent — once written it's reloaded from disk.
+- **Non-deletable / non-disableable**: `delete()` early-returns for the reserved id; `getAll()` pins it first via `compareByDescending { it.id == FIXED_DAILY_ROUTINE_ID }`. The list screen hides the enabled switch (shows a lock), the edit screen hides the day picker + delete and makes the name read-only. `RoutineListViewModel` has defensive guards too.
+- **Container only, not startable**: it has no `day` so WeekView (the only start path) never lists it; `ActiveRoutineViewModel.init` also early-returns for the reserved id.
+- **Injected into every session**: `ActiveRoutineViewModel.init` builds the session as `warmup → fixed-daily → normal`, skipping a fixed-daily exercise whose `exerciseId` already appears in the started routine (the exercise-detail flow keys by `exerciseId`, so duplicate ids in one session are unsupported).
+
+## Warmup exercises & `excludeFromTonnage`
+
+`RoutineExercise.isWarmup` marks the contiguous **leading prefix** of a routine's exercise list as warmup. The editor models this as a positional `warmupCount` (number of exercises above a divider line) snapped to segment boundaries so a superset pair is never split; `buildRoutine` writes `isWarmup = index < warmupCount`.
+
+Warmup **and** fixed-daily exercises are excluded from tonnage. The exclusion is resolved when the session is built and persisted per-exercise as `WorkoutExercise.excludeFromTonnage`, so every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, and the active-session previous/historical comparisons — just filters `!excludeFromTonnage`. Cardio metrics are session-global (PolarManager) and intentionally still include these exercises.
 
 ## Image caches — two of them
 

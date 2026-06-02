@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
 import com.mygymapp.data.model.Routine
 import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.repository.ExerciseRepository
@@ -40,6 +41,10 @@ data class RoutineEditUiState(
     val exercises: List<RoutineExerciseUi> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
+    /** True for the reserved "Fixed daily exercise" container (no warmup line, locked name/day). */
+    val isFixedDaily: Boolean = false,
+    /** Number of leading exercises above the warmup line (positional divider). */
+    val warmupCount: Int = 0,
 )
 
 val DAYS_OF_WEEK = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -106,6 +111,9 @@ class RoutineEditViewModel @Inject constructor(
                         notes = routine.notes,
                         exercises = exerciseUis,
                         isNew = false,
+                        isFixedDaily = routine.id == FIXED_DAILY_ROUTINE_ID,
+                        // Warmup exercises are persisted as the leading prefix of the list.
+                        warmupCount = routine.exercises.takeWhile { it.isWarmup }.size,
                     )
                 }
             }
@@ -151,12 +159,60 @@ class RoutineEditViewModel @Inject constructor(
                 list[index - 1] = list[index - 1].copy(supersetWithNext = false)
             }
             list.removeAt(index)
-            _uiState.value = _uiState.value.copy(exercises = list)
+            // Removing an exercise above the line shifts the line up by one.
+            val warmupCount = _uiState.value.warmupCount
+            val newWarmup = if (index < warmupCount) warmupCount - 1 else warmupCount
+            _uiState.value = _uiState.value.copy(exercises = list, warmupCount = newWarmup)
         }
     }
 
     fun toggleSuperset(index: Int) {
+        // Never link the last warmup exercise with the first normal exercise across the line.
+        if (index + 1 == _uiState.value.warmupCount) return
         updateExercise(index) { it.copy(supersetWithNext = !it.supersetWithNext) }
+    }
+
+    /** Pushes the first normal segment up into the warmup section (moves the line down). */
+    fun moveWarmupLineDown() {
+        val state = _uiState.value
+        val segments = buildExerciseSegments(state.exercises)
+        var acc = 0
+        for (seg in segments) {
+            val size = seg.indices().size
+            if (acc == state.warmupCount) {
+                _uiState.value = state.copy(warmupCount = acc + size)
+                return
+            }
+            acc += size
+        }
+    }
+
+    /** Pulls the last warmup segment back into the normal section (moves the line up). */
+    fun moveWarmupLineUp() {
+        val state = _uiState.value
+        val segments = buildExerciseSegments(state.exercises)
+        var acc = 0
+        for (seg in segments) {
+            val size = seg.indices().size
+            if (acc + size == state.warmupCount) {
+                _uiState.value = state.copy(warmupCount = acc)
+                return
+            }
+            acc += size
+        }
+    }
+
+    /** Snaps [warmupCount] to the nearest segment boundary so it never splits a superset pair. */
+    private fun snapWarmupToBoundary(exercises: List<RoutineExerciseUi>, warmupCount: Int): Int {
+        val segments = buildExerciseSegments(exercises)
+        var acc = 0
+        for (seg in segments) {
+            val size = seg.indices().size
+            if (warmupCount <= acc) return acc
+            if (warmupCount < acc + size) return acc // inside a pair → snap before it
+            acc += size
+        }
+        return acc
     }
 
     fun moveSegment(fromSegIdx: Int, toSegIdx: Int) {
@@ -189,7 +245,10 @@ class RoutineEditViewModel @Inject constructor(
             mutable.add((insertAt + i).coerceIn(0, mutable.size), ex)
         }
 
-        _uiState.value = _uiState.value.copy(exercises = mutable)
+        // The warmup line is positional: dragging a segment across it changes which exercises
+        // are warmup. Re-snap to a segment boundary so a pair is never split by the line.
+        val snapped = snapWarmupToBoundary(mutable, _uiState.value.warmupCount)
+        _uiState.value = _uiState.value.copy(exercises = mutable, warmupCount = snapped)
     }
 
     fun updateExerciseSets(index: Int, sets: Int) {
@@ -267,7 +326,7 @@ class RoutineEditViewModel @Inject constructor(
         name = state.name.trim(),
         day = state.day,
         notes = state.notes.trim(),
-        exercises = state.exercises.map { ex ->
+        exercises = state.exercises.mapIndexed { index, ex ->
             RoutineExercise(
                 exerciseId = ex.exerciseId,
                 sets = ex.sets,
@@ -275,6 +334,8 @@ class RoutineEditViewModel @Inject constructor(
                 repRangeMax = ex.repRangeMax,
                 timePerSetSeconds = ex.timePerSetSeconds,
                 supersetWithNext = ex.supersetWithNext,
+                // The container has no warmup concept; otherwise the leading prefix is warmup.
+                isWarmup = !state.isFixedDaily && index < state.warmupCount,
             )
         },
     )
