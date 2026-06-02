@@ -67,6 +67,7 @@ exercises:
     repRangeMax: 10
     timePerSetSeconds: 60
     supersetWithNext: false
+    isWarmup: true              # omitted when false
   - exerciseId: ex-b2c3d4e5
     sets: 3
     ...
@@ -78,6 +79,10 @@ Free-text routine notes
 ```
 
 `supersetWithNext: true` pairs an exercise with the following one — see [ARCHITECTURE.md](ARCHITECTURE.md) screen list for the superset UI.
+
+`isWarmup: true` marks an exercise as warmup (the contiguous leading prefix of the list). Warmup exercises are excluded from tonnage. In the routine editor a positional divider line separates warmup (above) from normal (below). See [CONVENTIONS.md](CONVENTIONS.md#fixed-daily-exercise-container).
+
+**Fixed daily exercise container**: a reserved routine `id: rt-fixeddaily` (name `Fixed daily exercise`, `day: ""`) is auto-seeded on first load and is non-deletable / non-disableable. Its exercises are injected at the start of every session (excluded from tonnage). See [CONVENTIONS.md](CONVENTIONS.md#fixed-daily-exercise-container).
 
 ### Workout session (`history/YYYY/MM/YYYY-MM-DD_{routineId}_{sessionId}.md`)
 
@@ -117,6 +122,7 @@ exercises:
     exerciseName: Bench Press   # denormalized
     type: FORZA
     bodypart: chest
+    excludeFromTonnage: true    # omitted when false; set for warmup + fixed-daily exercises
     sets:
       - reps: 8
         weight: 80.0
@@ -127,6 +133,8 @@ exercises:
 
 Session notes
 ```
+
+`excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected.
 
 ### Raw ECG (`ecg/{sessionId}.ecg`)
 

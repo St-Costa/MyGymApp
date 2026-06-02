@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -71,6 +72,41 @@ private fun buildExerciseGroups(exercises: List<ActiveExerciseUi>): List<Exercis
         pair = { i, j -> ExerciseGroup.Superset(exercises[i], exercises[j]) },
     )
 
+// A superset pair never spans a category boundary, so the first exercise's category is the group's.
+private fun ExerciseGroup.category(): SessionExerciseCategory = when (this) {
+    is ExerciseGroup.Single -> exercise.category
+    is ExerciseGroup.Superset -> ex1.category
+}
+
+@Composable
+private fun SessionSectionHeader(
+    category: SessionExerciseCategory,
+    modifier: Modifier = Modifier,
+) {
+    // Excluded sections (warmup/daily) are muted; the counted workout section is highlighted.
+    val label: String
+    val color: androidx.compose.ui.graphics.Color
+    when (category) {
+        SessionExerciseCategory.WARMUP -> {
+            label = "WARMUP"; color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        }
+        SessionExerciseCategory.DAILY -> {
+            label = "DAILY"; color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        }
+        SessionExerciseCategory.NORMAL -> {
+            label = "WORKOUT"; color = MaterialTheme.colorScheme.primary
+        }
+    }
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = color)
+        Spacer(Modifier.width(8.dp))
+        HorizontalDivider(color = color.copy(alpha = 0.4f), modifier = Modifier.weight(1f))
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveRoutineScreen(
@@ -128,46 +164,58 @@ fun ActiveRoutineScreen(
                     )
                 }
 
-                // Exercise groups (singles and supersets)
-                items(
+                // Exercise groups (singles and supersets), with section headers when the
+                // session mixes warmup / daily / workout exercises.
+                val hasSections = groups.any { it.category() != SessionExerciseCategory.NORMAL }
+                itemsIndexed(
                     items = groups,
-                    key = { group ->
+                    key = { _, group ->
                         when (group) {
                             is ExerciseGroup.Single -> group.exercise.exerciseId
                             is ExerciseGroup.Superset -> "${group.ex1.exerciseId}_${group.ex2.exerciseId}"
                         }
                     },
-                ) { group ->
-                    when (group) {
-                        is ExerciseGroup.Single -> {
-                            ExerciseRow(
-                                exercise = group.exercise,
-                                onClick = {
-                                    if (!group.exercise.completed) {
-                                        onNavigateToExercise(
-                                            uiState.sessionId,
-                                            group.exercise.exerciseId,
-                                            group.exercise.type == ExerciseType.STRETCH,
-                                        )
-                                    }
-                                },
+                ) { index, group ->
+                    val showHeader = hasSections &&
+                        (index == 0 || groups[index - 1].category() != group.category())
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (showHeader) {
+                            SessionSectionHeader(
+                                category = group.category(),
+                                modifier = if (index == 0) Modifier else Modifier.padding(top = 8.dp),
                             )
                         }
-                        is ExerciseGroup.Superset -> {
-                            val bothCompleted = group.ex1.completed && group.ex2.completed
-                            SupersetGroupRow(
-                                ex1 = group.ex1,
-                                ex2 = group.ex2,
-                                onClick = {
-                                    if (!bothCompleted) {
-                                        onNavigateToSuperset(
-                                            uiState.sessionId,
-                                            group.ex1.exerciseId,
-                                            group.ex2.exerciseId,
-                                        )
-                                    }
-                                },
-                            )
+                        when (group) {
+                            is ExerciseGroup.Single -> {
+                                ExerciseRow(
+                                    exercise = group.exercise,
+                                    onClick = {
+                                        if (!group.exercise.completed) {
+                                            onNavigateToExercise(
+                                                uiState.sessionId,
+                                                group.exercise.exerciseId,
+                                                group.exercise.type == ExerciseType.STRETCH,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                            is ExerciseGroup.Superset -> {
+                                val bothCompleted = group.ex1.completed && group.ex2.completed
+                                SupersetGroupRow(
+                                    ex1 = group.ex1,
+                                    ex2 = group.ex2,
+                                    onClick = {
+                                        if (!bothCompleted) {
+                                            onNavigateToSuperset(
+                                                uiState.sessionId,
+                                                group.ex1.exerciseId,
+                                                group.ex2.exerciseId,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
                         }
                     }
                 }
