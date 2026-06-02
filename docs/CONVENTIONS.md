@@ -164,6 +164,16 @@ The same ruleset lives server-side in `WorkoutRepository.cleanupGhostSessions()`
 
 **Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
 
+## Polar foreground service + reconnection
+
+`PolarStreamingService` is a foreground service (type `CONNECTED_DEVICE`) that keeps the BLE connection alive when the screen is off between sets — Android **requires** an FGS to show an ongoing notification, so it can't be removed while keeping a reliable background connection. The ongoing notification lives on channel `polar_hr_channel_min` at `IMPORTANCE_MIN` (no status-bar icon, collapsed, silent). A channel's importance is immutable after creation, so the id is versioned (`_min` suffix) and the legacy `polar_hr_channel` is deleted in `createNotificationChannel()`.
+
+Disconnect handling in `PolarManager`:
+- A `userInitiatedDisconnect` flag distinguishes `disconnect()`/`shutdown()` from an unexpected BLE drop. `lastConnectedDeviceId` is remembered for reconnection.
+- On an **involuntary drop during an active session** (`!userInitiatedDisconnect && hrSeriesActive`): the FGS is kept alive (notification → "Reconnecting…"), a **high-importance heads-up alert with sound** fires on the separate `polar_hr_alert` channel (`notifyDisconnected`), and `scheduleReconnect()` retries `connectToDevice` every 10s until it returns or the user disconnects. Outside a session a drop is a quiet stop (no alert/retry — usually the user removing the strap).
+- Session counters reset at **session start** (`startHrSeriesCapture`), NOT on `deviceConnected` — otherwise a mid-session reconnect would wipe accumulated `sessionCalories`/`sessionTrimp` (this is what produced the 14 kcal session on a yesterday's drop). The 60s readiness measurement is likewise skipped on a mid-session reconnect (`if (!hrSeriesActive)`).
+- `stopHrSeriesCapture()` cancels reconnection and clears the alert; the disconnect alert is cleared on the next `deviceConnected`.
+
 ## ECG analysis: keep the raw file on failure
 
 `ActiveRoutineViewModel.registerRoutine()` runs `analyzeSessionEcg` and then deletes the raw `.ecg`. Delete ONLY when `ecgResult != null && ecgResult.hasAnything` (i.e. ≥1 beat detected). On failure (file too short, too few peaks, too few valid RR intervals) the `.ecg` is preserved so it can be inspected offline. `EcgAnalyzer.analyze()` emits structured logs (`file too small`, `only N peaks`, `only N valid RR intervals`, or the success line `N peaks → M valid RR intervals`) to pinpoint the cause.

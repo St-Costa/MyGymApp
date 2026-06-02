@@ -1,6 +1,12 @@
 package com.mygymapp.data.polar
 
 import android.content.Context
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import com.polar.sdk.api.PolarBleApi
 import com.polar.sdk.api.PolarBleApiCallback
@@ -173,6 +179,12 @@ class PolarManager @Inject constructor(
     private val ecgRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val hrRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val reconnectHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    // Reconnection: distinguish a user-initiated disconnect from an unexpected BLE drop,
+    // and remember the last device so we can reconnect to it automatically.
+    private var lastConnectedDeviceId: String? = null
+    @Volatile private var userInitiatedDisconnect = false
 
     // Watchdog: timestamps of the most recent sample of each kind
     @Volatile private var lastEcgSampleAtMs = 0L
@@ -195,15 +207,23 @@ class PolarManager @Inject constructor(
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
                 Log.d(TAG, "Connected: ${polarDeviceInfo.deviceId}")
                 connectedDeviceId = polarDeviceInfo.deviceId
+                lastConnectedDeviceId = polarDeviceInfo.deviceId
+                userInitiatedDisconnect = false
+                reconnectHandler.removeCallbacksAndMessages(null)
                 _connectionState.value = ConnectionState.CONNECTED
-                _sessionCalories.value = 0.0
-                _sessionTrimp.value = 0.0
                 lastHrTimestamp = System.currentTimeMillis()
                 lastHrSampleAtMs = 0L
                 lastEcgSampleAtMs = 0L
-                startReadinessMeasurement()
+                // Run the 60s readiness measurement only on the FIRST connect, not on a
+                // mid-session reconnect (which would re-measure readiness and reset its beep).
+                if (!hrSeriesActive) {
+                    _sessionCalories.value = 0.0
+                    _sessionTrimp.value = 0.0
+                    startReadinessMeasurement()
+                }
                 startDataWatchdog()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
+                PolarStreamingService.clearDisconnectAlert(context)
             }
 
             override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
@@ -212,9 +232,9 @@ class PolarManager @Inject constructor(
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "Disconnected: ${polarDeviceInfo.deviceId}")
+                val involuntary = !userInitiatedDisconnect
+                Log.d(TAG, "Disconnected: ${polarDeviceInfo.deviceId} (involuntary=$involuntary)")
                 connectedDeviceId = null
-                _connectionState.value = ConnectionState.DISCONNECTED
                 _heartRate.value = null
                 _batteryLevel.value = null
                 hrDisposable?.dispose()
@@ -229,7 +249,21 @@ class PolarManager @Inject constructor(
                 // Keep activeEcgSessionId so that a reconnect resumes ECG for the same session.
                 // Mirror it into pendingEcgSessionId so the feature-ready callback will restart.
                 activeEcgSessionId?.let { pendingEcgSessionId = it }
-                PolarStreamingService.stop(context)
+
+                if (involuntary && hrSeriesActive) {
+                    // Unexpected drop DURING a session (lost skin contact / out of range /
+                    // interference). Keep the foreground service alive so the OS lets the BLE
+                    // stack reconnect in the background, alert the user with sound, and retry
+                    // until it comes back. Outside a session a drop is usually the user taking
+                    // off the strap, so we fall through to a quiet stop (no alert, no retry).
+                    _connectionState.value = ConnectionState.CONNECTING
+                    PolarStreamingService.setReconnecting(context)
+                    PolarStreamingService.notifyDisconnected(context, polarDeviceInfo.name)
+                    scheduleReconnect()
+                } else {
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    PolarStreamingService.stop(context)
+                }
             }
 
             override fun bleSdkFeatureReady(
@@ -310,7 +344,11 @@ class PolarManager @Inject constructor(
     }
 
     fun disconnect() {
-        val deviceId = connectedDeviceId ?: return
+        // User-initiated: suppress the auto-reconnect path even if we're mid-reconnect
+        // (connectedDeviceId is null while reconnecting).
+        userInitiatedDisconnect = true
+        reconnectHandler.removeCallbacksAndMessages(null)
+        val deviceId = connectedDeviceId ?: lastConnectedDeviceId
         hrDisposable?.dispose()
         hrDisposable = null
         ecgDisposable?.dispose()
@@ -322,10 +360,43 @@ class PolarManager @Inject constructor(
         activeEcgSessionId = null
         pendingEcgSessionId = null
         PolarStreamingService.stop(context)
-        api.disconnectFromDevice(deviceId)
+        PolarStreamingService.clearDisconnectAlert(context)
+        _connectionState.value = ConnectionState.DISCONNECTED
+        connectedDeviceId = null
+        lastConnectedDeviceId = null
+        if (deviceId != null) {
+            try {
+                api.disconnectFromDevice(deviceId)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Disconnect failed: $t")
+            }
+        }
+    }
+
+    /**
+     * Periodically retry connecting to [lastConnectedDeviceId] after an unexpected drop.
+     * Stops as soon as the device reconnects or the user disconnects.
+     */
+    private fun scheduleReconnect() {
+        val id = lastConnectedDeviceId ?: return
+        reconnectHandler.removeCallbacksAndMessages(null)
+        reconnectHandler.postDelayed(object : Runnable {
+            override fun run() {
+                if (userInitiatedDisconnect || connectedDeviceId != null) return
+                Log.d(TAG, "Auto-reconnect attempt to $id")
+                try {
+                    api.connectToDevice(id)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Reconnect attempt failed: $t")
+                }
+                reconnectHandler.postDelayed(this, 10_000)
+            }
+        }, 3_000)
     }
 
     fun shutdown() {
+        userInitiatedDisconnect = true
+        reconnectHandler.removeCallbacksAndMessages(null)
         scanDisposable?.dispose()
         hrDisposable?.dispose()
         ecgDisposable?.dispose()
@@ -559,6 +630,10 @@ class PolarManager @Inject constructor(
 
     /** Start capturing the HR time series for the duration of a session. */
     fun startHrSeriesCapture() {
+        // Reset the session counters here (session start) rather than on connect, so a
+        // mid-session reconnect doesn't wipe the accumulated calories/TRIMP.
+        _sessionCalories.value = 0.0
+        _sessionTrimp.value = 0.0
         hrSeries.clear()
         hrSeriesStart = System.currentTimeMillis()
         hrSeriesActive = true
@@ -578,6 +653,14 @@ class PolarManager @Inject constructor(
 
     fun stopHrSeriesCapture() {
         hrSeriesActive = false
+        // Session over: stop chasing a reconnection and clear any disconnect alert. If we were
+        // still mid-reconnect (no device), tear down the now-pointless foreground service.
+        reconnectHandler.removeCallbacksAndMessages(null)
+        PolarStreamingService.clearDisconnectAlert(context)
+        if (connectedDeviceId == null) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+            PolarStreamingService.stop(context)
+        }
     }
 
     /**
@@ -770,6 +853,7 @@ class PolarManager @Inject constructor(
 
     private fun finishReadinessMeasurement() {
         readinessMeasuring = false
+        signalReadinessComplete()
 
         // Filter artifacts from collected RR
         val cleanRR = filterArtifacts(readinessRR)
@@ -851,6 +935,30 @@ class PolarManager @Inject constructor(
         )
 
         Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
+    }
+
+    /** Short vibration + beep, fired when the 60s post-connection readiness window ends. */
+    private fun signalReadinessComplete() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.getSystemService(VibratorManager::class.java)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Vibrator::class.java)
+            }
+            vibrator?.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
+        } catch (t: Throwable) {
+            Log.w(TAG, "Readiness vibration failed: $t")
+        }
+        try {
+            val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 200)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                tone.release()
+            }, 300)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Readiness beep failed: $t")
+        }
     }
 
     private fun filterArtifacts(rrIntervals: List<Int>): List<Int> {

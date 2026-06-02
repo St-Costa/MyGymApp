@@ -73,6 +73,14 @@ Two related additions to routine/session modelling, both excluded from tonnage b
 - **Tonnage exclusion**: new `WorkoutExercise.excludeFromTonnage`, resolved at session-build time (warmup + fixed-daily) and persisted per exercise. `ActiveRoutineViewModel` builds the session in `warmup → fixed-daily → normal` order (clearing superset links at each section boundary, and skipping a fixed-daily exercise already present in the routine since the detail flow keys by `exerciseId`). Every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, plus the per-exercise/historical comparisons — filters `!excludeFromTonnage`. New boolean fields are omitted from YAML when false, so existing files migrate as all-normal/all-counted.
 - **Session UI**: `ActiveExerciseUi.category` (WARMUP/DAILY/NORMAL) drives section headers in `ActiveRoutineScreen` (`SessionSectionHeader`) — shown only when the session mixes categories. Excluded sections are muted, the WORKOUT header is highlighted; exercise cards are otherwise unchanged so the headers don't clash with the type-color borders or the superset frame.
 
+## Phase 18 — Polar reconnection + notification UX
+
+Diagnosed from a real session (2026-06-01, LEG): real tonnage but `sessionCalories: 14.88` — the H10 dropped early and never came back, freezing the cardio metrics. Root cause: `deviceDisconnected` tore everything down and stopped the foreground service without ever attempting to reconnect, and stopping the FGS removed the OS's permission to keep BLE alive in the background.
+
+- **Auto-reconnect** (`PolarManager`): a `userInitiatedDisconnect` flag + `lastConnectedDeviceId` distinguish a manual disconnect from an unexpected drop. On an involuntary drop *during a session* the FGS is kept alive, a disconnect alert fires, and `scheduleReconnect()` retries `connectToDevice` every 10s until it returns. Outside a session the drop is a quiet stop. Reconnection is cancelled when the session ends.
+- **Calorie/TRIMP reset moved to session start** (`startHrSeriesCapture`) instead of `deviceConnected`, so a mid-session reconnect no longer wipes the accumulated counters. Readiness measurement is skipped on a mid-session reconnect.
+- **Notification UX** (`PolarStreamingService`): the ongoing FGS notification is downgraded to `IMPORTANCE_MIN` (no status-bar icon, collapsed, silent) on a new channel id `polar_hr_channel_min` (importance is immutable once a channel exists; the legacy channel is deleted). A separate high-importance `polar_hr_alert` channel fires a heads-up **pop-up with sound** only when the sensor disconnects mid-session, cleared on reconnect. Removing the FGS entirely was rejected — it's what keeps the connection alive when the screen locks between sets.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
