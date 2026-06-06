@@ -314,6 +314,12 @@ private fun ExerciseRow(
                     style = MaterialTheme.typography.titleSmall,
                     color = color,
                 )
+            } else if (exercise.completed && exercise.isFirstTimeTonnage) {
+                Text(
+                    text = "primo dato",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                )
             }
         }
     }
@@ -384,6 +390,12 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
                 text = "%+.1f%%".format(exercise.tonnageChangePct),
                 style = MaterialTheme.typography.labelSmall,
                 color = color,
+            )
+        } else if (exercise.completed && exercise.isFirstTimeTonnage) {
+            Text(
+                text = "primo dato",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
         }
     }

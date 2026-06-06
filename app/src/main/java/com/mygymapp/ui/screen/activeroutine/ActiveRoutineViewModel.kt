@@ -67,6 +67,7 @@ data class ActiveExerciseUi(
     val completed: Boolean = false,
     val setCount: Int = 0,
     val tonnageChangePct: Double? = null,
+    val isFirstTimeTonnage: Boolean = false,
     val supersetWithNext: Boolean = false,
     val excludeFromTonnage: Boolean = false,
     val category: SessionExerciseCategory = SessionExerciseCategory.NORMAL,
@@ -151,6 +152,16 @@ class ActiveRoutineViewModel @Inject constructor(
                         .sumOf { it.reps * it.weight }
                 } ?: emptyMap()
 
+            // Compute previous tonnage using only exercises common to the current session,
+            // so it matches the chart (which also filters to current exercise IDs).
+            val currentNormalExIds = ordered
+                .filter { (_, cat) -> cat == SessionExerciseCategory.NORMAL }
+                .map { (re, _) -> re.exerciseId }
+                .toSet()
+            val commonPreviousTonnage: Double? = previousSession?.exercises
+                ?.filter { it.exerciseId in currentNormalExIds && !it.excludeFromTonnage }
+                ?.sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
+
             // Create and save the workout session
             val workoutExercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
@@ -193,7 +204,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 exercises = exercises,
                 sessionId = saved.id,
                 isLoading = false,
-                previousTonnage = previousSession?.totalTonnage,
+                previousTonnage = commonPreviousTonnage,
             )
         }
     }
@@ -215,6 +226,11 @@ class ActiveRoutineViewModel @Inject constructor(
             val changePct: Double? = if (prevExTonnage != null && prevExTonnage > 0) {
                 ((currentExTonnage - prevExTonnage) / prevExTonnage) * 100.0
             } else null
+            // True when the exercise was in the previous session but with no data entered —
+            // distinct from "exercise is new to this routine" (where the key is absent).
+            val isFirstTime = previousTonnageByExercise.containsKey(exerciseId) &&
+                (prevExTonnage == null || prevExTonnage == 0.0) &&
+                currentExTonnage > 0
 
             val updatedExercises = _uiState.value.exercises.map { ex ->
                 if (ex.exerciseId == exerciseId) {
@@ -222,6 +238,7 @@ class ActiveRoutineViewModel @Inject constructor(
                         completed = true,
                         // No tonnage comparison for warmup/fixed-daily exercises.
                         tonnageChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage) changePct else null,
+                        isFirstTimeTonnage = ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && isFirstTime,
                     )
                 } else ex
             }
@@ -231,7 +248,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 allCompleted = allCompleted,
             )
 
-            if (allCompleted) {
+            if (allCompleted && !sessionFinalized) {
                 finalizeSession(reloaded)
             }
         }
