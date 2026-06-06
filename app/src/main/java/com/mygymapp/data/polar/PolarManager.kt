@@ -16,6 +16,7 @@ import com.polar.sdk.api.model.PolarDeviceInfo
 import com.polar.sdk.api.model.PolarHrData
 import com.polar.sdk.api.model.PolarSensorSetting
 import com.polar.androidcommunications.api.ble.model.DisInfo
+import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
@@ -57,6 +58,7 @@ class PolarManager @Inject constructor(
     profileRepo: UserProfileRepository,
     private val ecgRecorder: EcgRecorder,
     private val ecgAnalyzer: EcgAnalyzer,
+    private val appLogger: AppLogger,
 ) {
     companion object {
         private const val TAG = "PolarManager"
@@ -185,10 +187,13 @@ class PolarManager @Inject constructor(
     // and remember the last device so we can reconnect to it automatically.
     private var lastConnectedDeviceId: String? = null
     @Volatile private var userInitiatedDisconnect = false
+    private var reconnectStartAtMs = 0L
 
     // Watchdog: timestamps of the most recent sample of each kind
     @Volatile private var lastEcgSampleAtMs = 0L
     @Volatile private var lastHrSampleAtMs = 0L
+    // When the current ECG stream was kicked off — used to detect silent "no data" hangs.
+    @Volatile private var ecgStreamStartedAt = 0L
 
     private val api: PolarBleApi = PolarBleApiDefaultImpl.defaultImplementation(
         context,
@@ -202,13 +207,37 @@ class PolarManager @Inject constructor(
         api.setApiCallback(object : PolarBleApiCallback() {
             override fun blePowerStateChanged(powered: Boolean) {
                 Log.d(TAG, "BLE power: $powered")
+                if (!powered) {
+                    appLogger.w(TAG, "BLE powered off — tearing down foreground service and reconnect loop")
+                    // Bluetooth disabled — reconnect is impossible; tear everything down immediately
+                    // so the foreground-service notification doesn't linger.
+                    userInitiatedDisconnect = true
+                    reconnectStartAtMs = 0L
+                    reconnectHandler.removeCallbacksAndMessages(null)
+                    hrDisposable?.dispose(); hrDisposable = null
+                    ecgDisposable?.dispose(); ecgDisposable = null
+                    ecgRestartHandler.removeCallbacksAndMessages(null)
+                    hrRestartHandler.removeCallbacksAndMessages(null)
+                    stopDataWatchdog()
+                    ecgRecorder.stop()
+                    streamingFeatureReady = false
+                    connectedDeviceId = null
+                    lastConnectedDeviceId = null
+                    _heartRate.value = null
+                    _batteryLevel.value = null
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    PolarStreamingService.stop(context)
+                    PolarStreamingService.clearDisconnectAlert(context)
+                }
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
                 Log.d(TAG, "Connected: ${polarDeviceInfo.deviceId}")
+                appLogger.i(TAG, "Connected: ${polarDeviceInfo.deviceId} (${polarDeviceInfo.name}) midSession=$hrSeriesActive")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 lastConnectedDeviceId = polarDeviceInfo.deviceId
                 userInitiatedDisconnect = false
+                reconnectStartAtMs = 0L
                 reconnectHandler.removeCallbacksAndMessages(null)
                 _connectionState.value = ConnectionState.CONNECTED
                 lastHrTimestamp = System.currentTimeMillis()
@@ -234,6 +263,7 @@ class PolarManager @Inject constructor(
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
                 val involuntary = !userInitiatedDisconnect
                 Log.d(TAG, "Disconnected: ${polarDeviceInfo.deviceId} (involuntary=$involuntary)")
+                appLogger.w(TAG, "Disconnected: ${polarDeviceInfo.deviceId} involuntary=$involuntary midSession=$hrSeriesActive")
                 connectedDeviceId = null
                 _heartRate.value = null
                 _batteryLevel.value = null
@@ -277,6 +307,7 @@ class PolarManager @Inject constructor(
                     }
                     PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING -> {
                         streamingFeatureReady = true
+                        appLogger.i(TAG, "ONLINE_STREAMING feature ready on $identifier pendingEcg=$pendingEcgSessionId")
                         // If a session requested ECG before feature was ready, start now
                         pendingEcgSessionId?.let { sessionId ->
                             pendingEcgSessionId = null
@@ -347,6 +378,7 @@ class PolarManager @Inject constructor(
         // User-initiated: suppress the auto-reconnect path even if we're mid-reconnect
         // (connectedDeviceId is null while reconnecting).
         userInitiatedDisconnect = true
+        reconnectStartAtMs = 0L
         reconnectHandler.removeCallbacksAndMessages(null)
         val deviceId = connectedDeviceId ?: lastConnectedDeviceId
         hrDisposable?.dispose()
@@ -375,15 +407,28 @@ class PolarManager @Inject constructor(
 
     /**
      * Periodically retry connecting to [lastConnectedDeviceId] after an unexpected drop.
-     * Stops as soon as the device reconnects or the user disconnects.
+     * Stops as soon as the device reconnects, the user disconnects, or 5 minutes elapse.
      */
     private fun scheduleReconnect() {
         val id = lastConnectedDeviceId ?: return
+        if (reconnectStartAtMs == 0L) reconnectStartAtMs = System.currentTimeMillis()
         reconnectHandler.removeCallbacksAndMessages(null)
         reconnectHandler.postDelayed(object : Runnable {
             override fun run() {
                 if (userInitiatedDisconnect || connectedDeviceId != null) return
+                // Give up after 5 minutes — the device is likely off or too far away.
+                if (System.currentTimeMillis() - reconnectStartAtMs > 5 * 60_000L) {
+                    Log.w(TAG, "Reconnect timed out after 5 min — stopping service")
+                    appLogger.w(TAG, "Reconnect timed out after 5 min for $id — stopping service")
+                    reconnectStartAtMs = 0L
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    hrSeriesActive = false
+                    PolarStreamingService.stop(context)
+                    PolarStreamingService.clearDisconnectAlert(context)
+                    return
+                }
                 Log.d(TAG, "Auto-reconnect attempt to $id")
+                appLogger.i(TAG, "Auto-reconnect attempt to $id (elapsed ${(System.currentTimeMillis() - reconnectStartAtMs) / 1000}s)")
                 try {
                     api.connectToDevice(id)
                 } catch (t: Throwable) {
@@ -490,6 +535,7 @@ class PolarManager @Inject constructor(
                 },
                 { error ->
                     Log.e(TAG, "HR streaming error: $error — scheduling restart in 2s")
+                    appLogger.e(TAG, "HR streaming error: $error")
                     _heartRate.value = null
                     scheduleHrRestart(deviceId)
                 }
@@ -710,6 +756,8 @@ class PolarManager @Inject constructor(
         ecgRecorder.stop()
         pendingEcgSessionId = null
         activeEcgSessionId = null
+        ecgStreamStartedAt = 0L
+        lastEcgSampleAtMs = 0L
     }
 
     /** Delete the recorded ECG file for a session. Called after analysis. */
@@ -740,19 +788,24 @@ class PolarManager @Inject constructor(
         _ecgWaveform.value = IntArray(0)
         _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0)
         samplesSinceLastEmit = 0
+        lastEcgSampleAtMs = 0L
+        ecgStreamStartedAt = System.currentTimeMillis()
         // Remember which session this ECG belongs to, so we can auto-restart on error
         activeEcgSessionId = sessionId
 
         // Request the supported ECG settings and then start streaming at max (130Hz on H10)
+        appLogger.i(TAG, "ECG start requested: session=$sessionId device=$deviceId")
         ecgDisposable = api.requestStreamSettings(deviceId, PolarBleApi.PolarDeviceDataType.ECG)
             .map { it.maxSettings() }
             .flatMapPublisher { settings: PolarSensorSetting ->
                 ecgRecorder.start(sessionId, sampleRate = 130, startTimestampNs = System.nanoTime())
                 Log.d(TAG, "ECG streaming started for session $sessionId")
+                appLogger.i(TAG, "ECG streaming started: session=$sessionId settings=${settings.settings}")
                 api.startEcgStreaming(deviceId, settings)
             }
             .doOnComplete {
                 Log.w(TAG, "ECG stream completed — scheduling restart in 2s")
+                appLogger.w(TAG, "ECG stream completed unexpectedly for session=$sessionId — restarting")
                 scheduleEcgRestart(deviceId, sessionId)
             }
             .subscribe(
@@ -777,6 +830,7 @@ class PolarManager @Inject constructor(
                 },
                 { error ->
                     Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
+                    appLogger.e(TAG, "ECG streaming error for session=$sessionId: $error")
                     ecgRecorder.stop()
                     scheduleEcgRestart(deviceId, sessionId)
                 }
@@ -791,7 +845,10 @@ class PolarManager @Inject constructor(
                 activeEcgSessionId == sessionId
             ) {
                 Log.d(TAG, "Restarting ECG stream for session $sessionId")
+                appLogger.w(TAG, "ECG stream restart for session=$sessionId")
                 startEcgStreamingInternal(deviceId, sessionId)
+            } else {
+                appLogger.w(TAG, "ECG restart skipped: connected=${connectedDeviceId == deviceId} featureReady=$streamingFeatureReady activeSession=${activeEcgSessionId == sessionId}")
             }
         }, 2000)
     }
@@ -814,15 +871,27 @@ class PolarManager @Inject constructor(
                     lastHrSampleAtMs = 0L
                     startHrStreaming(deviceId)
                 }
-                // ECG: if an active session is recording and no sample for >10s, restart
+                // ECG: restart if (a) samples were flowing but stopped, OR
+                // (b) stream was started but never delivered a first sample within 15s
+                // (silent hang — the watchdog previously missed this case).
                 val activeSession = activeEcgSessionId
-                if (activeSession != null && streamingFeatureReady &&
-                    ecgDisposable != null && lastEcgSampleAtMs > 0 &&
-                    now - lastEcgSampleAtMs > 10_000
-                ) {
-                    Log.w(TAG, "ECG watchdog: no sample for ${(now - lastEcgSampleAtMs) / 1000}s — restarting")
-                    lastEcgSampleAtMs = 0L
-                    startEcgStreamingInternal(deviceId, activeSession)
+                if (activeSession != null && streamingFeatureReady && ecgDisposable != null) {
+                    val noFirstSample = lastEcgSampleAtMs == 0L &&
+                        ecgStreamStartedAt > 0 &&
+                        now - ecgStreamStartedAt > 15_000
+                    val sampleTimeout = lastEcgSampleAtMs > 0 &&
+                        now - lastEcgSampleAtMs > 10_000
+                    if (noFirstSample || sampleTimeout) {
+                        val reason = if (noFirstSample)
+                            "no first sample after ${(now - ecgStreamStartedAt) / 1000}s"
+                        else
+                            "no sample for ${(now - lastEcgSampleAtMs) / 1000}s"
+                        Log.w(TAG, "ECG watchdog: $reason — restarting")
+                        appLogger.w(TAG, "ECG watchdog triggered ($reason) for session=$activeSession — restarting stream")
+                        ecgStreamStartedAt = 0L
+                        lastEcgSampleAtMs = 0L
+                        startEcgStreamingInternal(deviceId, activeSession)
+                    }
                 }
             }
             watchdogHandler.postDelayed(this, 5_000)
@@ -935,6 +1004,7 @@ class PolarManager @Inject constructor(
         )
 
         Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
+        appLogger.i(TAG, "Readiness: $readiness lnRMSSD=${"%.2f".format(lnRmssd)} restingHr=$measuredRestingHr vo2max=${vo2?.let { "%.1f".format(it) } ?: "n/a"} rrSamples=${cleanRR.size}")
     }
 
     /** Short vibration + beep, fired when the 60s post-connection readiness window ends. */

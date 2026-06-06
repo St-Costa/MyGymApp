@@ -13,6 +13,7 @@ import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.components.DayStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +43,12 @@ class MainViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
     private val dataChangedSignal: DataChangedSignal,
+    private val appLogger: AppLogger,
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "MainViewModel"
+    }
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState
@@ -52,8 +58,9 @@ class MainViewModel @Inject constructor(
             workoutRepository.migrateOldSessionFiles()
             workoutRepository.pruneOldSessions(LocalDate.now().minusMonths(3))
             // Scrub sessions the user opened but never filled in, and their orphan ECG raws.
-            workoutRepository.cleanupGhostSessions()
-            workoutRepository.cleanupOrphanEcgFiles()
+            val ghostsDeleted = workoutRepository.cleanupGhostSessions()
+            val orphansDeleted = workoutRepository.cleanupOrphanEcgFiles()
+            appLogger.i(TAG, "Boot cleanup: ghosts=$ghostsDeleted orphanEcg=$orphansDeleted")
             // Repair exercises/routines where repRangeMin > repRangeMax was persisted.
             exerciseRepository.fixInvalidRepRanges()
             routineRepository.fixInvalidRepRanges()

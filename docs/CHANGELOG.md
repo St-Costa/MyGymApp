@@ -81,6 +81,25 @@ Diagnosed from a real session (2026-06-01, LEG): real tonnage but `sessionCalori
 - **Calorie/TRIMP reset moved to session start** (`startHrSeriesCapture`) instead of `deviceConnected`, so a mid-session reconnect no longer wipes the accumulated counters. Readiness measurement is skipped on a mid-session reconnect.
 - **Notification UX** (`PolarStreamingService`): the ongoing FGS notification is downgraded to `IMPORTANCE_MIN` (no status-bar icon, collapsed, silent) on a new channel id `polar_hr_channel_min` (importance is immutable once a channel exists; the legacy channel is deleted). A separate high-importance `polar_hr_alert` channel fires a heads-up **pop-up with sound** only when the sensor disconnects mid-session, cleared on reconnect. Removing the FGS entirely was rejected — it's what keeps the connection alive when the screen locks between sets.
 
+## Phase 19 — Polar notification + ECG reliability fixes
+
+Two bugs found from a real session (2026-06-06):
+
+- **Notification linger after H10 power-off** (`PolarManager`): when Bluetooth was disabled at the OS level, `blePowerStateChanged(false)` previously only logged the event. The foreground service notification remained visible until the BLE stack fully terminated. Fixed: `blePowerStateChanged(false)` now performs an immediate full teardown — stops the reconnect loop, disposes all streams, stops the foreground service, and resets connection state — mirroring a user-initiated disconnect. Additionally, `scheduleReconnect` now tracks `reconnectStartAtMs` and gives up after 5 minutes, calling `PolarStreamingService.stop()` and clearing `hrSeriesActive`. This bounds the scenario where the user leaves the app mid-session with the H10 off.
+
+- **ECG watchdog blindspot** (`PolarManager`): the watchdog that restarts ECG streaming had a hidden condition `lastEcgSampleAtMs > 0` — it only fired once at least one ECG sample had been received. If `startEcgStreaming` was called but the H10 silently sent no data (SDK hang, PMD service not fully settled), the watchdog never triggered and ECG was stuck with a 20-byte header for the whole session. Fixed: added `ecgStreamStartedAt` timestamp, set at every `startEcgStreamingInternal` call. Watchdog now also triggers when `ecgStreamStartedAt > 0 && no sample in 15s`, logging a distinct "no first sample" message. `stopEcgRecording` resets both timestamps.
+
+## Phase 20 — Persistent event log
+
+`AppLogger` (`data/util/AppLogger.kt`), Hilt `@Singleton`, scrive in `filesDir/gymdata/logs/app.log` in aggiunta a logcat (non lo sostituisce). Formato: `2026-06-06 09:31:22 I Tag: messaggio`. All'avvio, pota le righe con data < oggi-10gg, poi appende.
+
+Punti loggati:
+- **PolarManager**: BLE power off, device connected/disconnected (con `involuntary` + `midSession`), ONLINE_STREAMING feature ready, ECG start request + streaming started + error + completed unexpectedly, ECG restart eseguito/saltato (con motivo), ECG watchdog trigger (con tipo: "no first sample" o "sample timeout"), HR streaming error, auto-reconnect attempt (con elapsed), reconnect timeout, readiness result (label + lnRMSSD + restingHr + vo2max + rrSamples).
+- **ActiveRoutineViewModel**: sessione creata (id + routine + exercise count), ECG+HR capture started (con polar device id), ECG file size, analisi ECG (hasAnything + beats + durationSec + rmssd + pacs + pauses), sessione registrata (tonnage + kcal + trimp), sessione abbandonata, ghost session eliminata da `onCleared`, `onCleared` senza registrazione.
+- **MainViewModel**: boot cleanup (ghosts + orphan ECG eliminati).
+
+Lettura: `adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
