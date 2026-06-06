@@ -14,6 +14,7 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import android.util.Log
+import com.mygymapp.data.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,12 @@ class ActiveRoutineViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val workoutRepository: WorkoutRepository,
     private val polarManager: PolarManager,
+    private val appLogger: AppLogger,
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "ActiveRoutineVM"
+    }
 
     private val routineId: String = savedStateHandle["routineId"] ?: ""
 
@@ -175,9 +181,11 @@ class ActiveRoutineViewModel @Inject constructor(
             val saved = workoutRepository.save(session)
             currentSession = saved
 
+            appLogger.i(TAG, "Session created: id=${saved.id} routine='${routine.name}' exercises=${workoutExercises.size}")
             // Start ECG recording + HR series capture (no-op if Polar not connected)
             polarManager.startEcgRecording(saved.id)
             polarManager.startHrSeriesCapture()
+            appLogger.i(TAG, "ECG + HR series capture started for session=${saved.id} polar=${polarManager.connectedDeviceId ?: "not connected"}")
 
             _uiState.value = ActiveRoutineUiState(
                 routineName = routine.name,
@@ -261,14 +269,21 @@ class ActiveRoutineViewModel @Inject constructor(
                 // Heavy analysis (Pan-Tompkins on the whole file) runs on IO and is
                 // guarded — a failure here must NOT crash the register flow.
                 val ecgFileSize = polarManager.ecgFileSize(session.id)
-                Log.i("ActiveRoutineVM", "ECG file for ${session.id}: $ecgFileSize bytes")
+                Log.i(TAG, "ECG file for ${session.id}: $ecgFileSize bytes")
+                appLogger.i(TAG, "ECG file size for ${session.id}: $ecgFileSize bytes")
                 val ecgResult = try {
                     withContext(Dispatchers.IO) { polarManager.analyzeSessionEcg(session.id) }
                 } catch (e: Throwable) {
-                    Log.e("ActiveRoutineVM", "ECG analysis failed: ${e.message}", e)
+                    Log.e(TAG, "ECG analysis failed: ${e.message}", e)
+                    appLogger.e(TAG, "ECG analysis exception for ${session.id}: ${e.message}")
                     null
                 }
-                Log.i("ActiveRoutineVM", "ECG analysis result: ecgResult=$ecgResult")
+                Log.i(TAG, "ECG analysis result: ecgResult=$ecgResult")
+                if (ecgResult == null) {
+                    appLogger.w(TAG, "ECG analysis: no result for ${session.id} (file too short or exception)")
+                } else {
+                    appLogger.i(TAG, "ECG analysis: hasAnything=${ecgResult.hasAnything} beats=${ecgResult.beatsDetected} durationSec=${ecgResult.durationSeconds} rmssd=${"%.1f".format(ecgResult.sessionRmssd)} pacs=${ecgResult.pacCount} pauses=${ecgResult.pauseCount}")
+                }
                 val drift = try {
                     polarManager.cardiacDriftBpmPerMinute()
                 } catch (e: Throwable) {
@@ -310,9 +325,11 @@ class ActiveRoutineViewModel @Inject constructor(
                 if (ecgResult != null && ecgResult.hasAnything) {
                     try { polarManager.deleteEcgFile(session.id) } catch (_: Throwable) {}
                 } else {
-                    Log.w("ActiveRoutineVM", "Keeping ECG file for ${session.id}: analysis produced no metrics")
+                    Log.w(TAG, "Keeping ECG file for ${session.id}: analysis produced no metrics")
+                    appLogger.w(TAG, "ECG file kept (no metrics) for ${session.id}")
                 }
             }
+            appLogger.i(TAG, "Session registered: id=${session?.id} tonnage=${session?.totalTonnage} kcal=${"%.1f".format(session?.sessionCalories ?: 0.0)} trimp=${"%.1f".format(session?.sessionTrimp ?: 0.0)}")
             _uiState.value = _uiState.value.copy(sessionRegistered = true)
         }
     }
@@ -320,6 +337,7 @@ class ActiveRoutineViewModel @Inject constructor(
     fun abandonSession() {
         viewModelScope.launch {
             val session = currentSession ?: return@launch
+            appLogger.w(TAG, "Session abandoned by user: id=${session.id}")
             polarManager.stopEcgRecording()
             polarManager.stopHrSeriesCapture()
             polarManager.deleteEcgFile(session.id)
@@ -428,6 +446,9 @@ class ActiveRoutineViewModel @Inject constructor(
         // otherwise the Polar stream keeps running and writing to the .ecg file until
         // the device disconnects.
         val needsGhostCleanup = !sessionFinalized
+        if (needsGhostCleanup) {
+            appLogger.w(TAG, "onCleared without registration: id=${session.id} — stopping streams, checking ghost cleanup")
+        }
         clearScope.launch {
             try {
                 polarManager.stopEcgRecording()
@@ -445,12 +466,13 @@ class ActiveRoutineViewModel @Inject constructor(
                         }
                     }
                     if (reloaded.completedAt.isBlank() && !hasCompleted && !hasRealSetData) {
+                        appLogger.w(TAG, "Ghost session deleted on exit: id=${session.id}")
                         polarManager.deleteEcgFile(session.id)
                         workoutRepository.delete(reloaded)
                     }
                 }
             } catch (e: Throwable) {
-                Log.e("ActiveRoutineVM", "Session cleanup failed", e)
+                Log.e(TAG, "Session cleanup failed", e)
             } finally {
                 clearScope.cancel()
             }
