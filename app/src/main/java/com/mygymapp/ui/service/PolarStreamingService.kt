@@ -110,7 +110,13 @@ class PolarStreamingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        if (intent == null || intent.action == null) {
+            // OS restarted us via START_STICKY with no context — no active session to serve.
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        when (intent.action) {
             ACTION_START -> {
                 deviceName = intent.getStringExtra(EXTRA_DEVICE) ?: "Polar H10"
                 currentHr = null
@@ -146,9 +152,7 @@ class PolarStreamingService : Service() {
                 stopSelf()
             }
         }
-        // START_STICKY so the OS re-creates the service if it kills it under
-        // memory pressure (the app reconnects the Polar on restart).
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
