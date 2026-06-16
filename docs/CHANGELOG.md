@@ -100,6 +100,10 @@ Punti loggati:
 
 Lettura: `adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`
 
+## Phase 21 — Polar teardown on app swipe-away
+
+`PolarStreamingService` ora è `@AndroidEntryPoint` e inietta `PolarManager`. Override di `onTaskRemoved`: quando l'utente rimuove l'app dai recenti, il foreground service sopravvivrebbe lasciando la notifica HR appesa e il Polar connesso. Ora forza `polarManager.disconnect()` (chiude gli stream, sgancia il link BLE, rimuove la notifica) e poi `stopForeground` + `stopSelf`. `android:stopWithTask` resta al default `false`, così `onTaskRemoved` viene effettivamente consegnato.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
