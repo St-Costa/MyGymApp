@@ -10,8 +10,14 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.mygymapp.data.polar.PolarManager
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class PolarStreamingService : Service() {
+
+    @Inject lateinit var polarManager: PolarManager
 
     companion object {
         // v2 suffix: a channel's importance is fixed once created, so we need a fresh id to
@@ -156,6 +162,18 @@ class PolarStreamingService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * The user swiped the app away from recents. A foreground service survives this, so without
+     * an explicit teardown the HR notification lingers and the Polar stays connected. Force a
+     * full disconnect (disposes streams, drops the BLE link, clears the notification).
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        polarManager.disconnect()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
 
     private fun buildNotification(): Notification {
         val title = when {
