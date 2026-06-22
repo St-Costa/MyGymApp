@@ -54,6 +54,8 @@ data class ActiveRoutineUiState(
     val allSessionTrimp: List<Double> = emptyList(),
     val allSessionVo2max: List<Double> = emptyList(),
     val allSessionLabels: List<String> = emptyList(),
+    // True when the current week is a configured powerlifting week (shows overlay on open).
+    val isPowerliftingWeek: Boolean = false,
 )
 
 /** Section an exercise belongs to within a running session. */
@@ -81,6 +83,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private val workoutRepository: WorkoutRepository,
     private val polarManager: PolarManager,
     private val appLogger: AppLogger,
+    private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
 ) : ViewModel() {
 
     companion object {
@@ -100,6 +103,9 @@ class ActiveRoutineViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val routine = routineRepository.getById(routineId) ?: return@launch
+            _uiState.value = _uiState.value.copy(
+                isPowerliftingWeek = powerliftingScheduleRepository.isPowerliftingWeek(),
+            )
             // The "Fixed daily exercise" container is a template, not a startable workout.
             if (routineId == FIXED_DAILY_ROUTINE_ID) {
                 _uiState.value = _uiState.value.copy(isLoading = false)

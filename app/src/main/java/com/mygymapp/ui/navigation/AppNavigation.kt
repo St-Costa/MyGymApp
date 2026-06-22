@@ -21,6 +21,7 @@ import com.mygymapp.ui.screen.stretchexercise.StretchExerciseScreen
 import com.mygymapp.ui.screen.superset.SupersetScreen
 import com.mygymapp.ui.screen.sessionprogress.SessionProgressScreen
 import com.mygymapp.ui.screen.heartrate.HeartRateScreen
+import com.mygymapp.ui.screen.options.OptionsScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -34,6 +35,7 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToExercises = { navController.navigate(Screen.ExerciseList.route) },
                 onNavigateToRoutines = { navController.navigate(Screen.RoutineList.route) },
                 onNavigateToHeartRate = { navController.navigate(Screen.HeartRate.route) },
+                onNavigateToOptions = { navController.navigate(Screen.Options.route) },
                 onNavigateToSessionProgress = { sessionId, date ->
                     navController.navigate(Screen.SessionProgress.createRoute(sessionId, date))
                 },
@@ -221,6 +223,12 @@ fun AppNavigation(navController: NavHostController) {
 
         composable(Screen.HeartRate.route) {
             HeartRateScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Screen.Options.route) {
+            OptionsScreen(
                 onBack = { navController.popBackStack() },
             )
         }

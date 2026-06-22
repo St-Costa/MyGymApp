@@ -1,0 +1,320 @@
+package com.mygymapp.ui.screen.options
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.ui.screen.main.MainViewModel
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OptionsScreen(
+    onBack: () -> Unit,
+    viewModel: OptionsViewModel = hiltViewModel(),
+    mainViewModel: MainViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val mainState by mainViewModel.uiState.collectAsState()
+    var showSeedDialog by remember { mutableStateOf(false) }
+
+    if (showSeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showSeedDialog = false },
+            title = { Text("Inserisci dati di debugging") },
+            text = { Text("Questo cancellerà le sessioni della settimana corrente e rigenererà dati di debug. Continuare?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSeedDialog = false
+                    mainViewModel.seedDebugData()
+                }) { Text("Conferma") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSeedDialog = false }) { Text("Annulla") }
+            },
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Opzioni") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            DebugSection(
+                isSeeding = mainState.isSeedingData,
+                onSeedClick = { showSeedDialog = true },
+            )
+            PowerliftingSection(
+                anchorMonday = uiState.anchorMonday,
+                intervalWeeks = uiState.intervalWeeks,
+                onSelectWeek = viewModel::selectWeek,
+                onSetInterval = viewModel::setInterval,
+                onClear = viewModel::clearSchedule,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Dati di debugging", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Il pulsante qui sotto inserisce dati di debugging. Premendolo comparirà " +
+                    "l'avviso sulla cancellazione degli altri dati della settimana corrente.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = onSeedClick,
+                enabled = !isSeeding,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (isSeeding) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Inserisci dati di debugging")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PowerliftingSection(
+    anchorMonday: LocalDate?,
+    intervalWeeks: Int,
+    onSelectWeek: (LocalDate) -> Unit,
+    onSetInterval: (Int) -> Unit,
+    onClear: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Settimana powerlifting", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Seleziona una settimana e un intervallo. A partire da quella settimana, ogni " +
+                    "X settimane, quando apri una sessione comparirà l'avviso \"SETTIMANA " +
+                    "POWERLIFTING\". Es: ogni 4 settimane = 3 senza avviso, 1 con avviso.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            WeekCalendar(
+                anchorMonday = anchorMonday,
+                onSelectWeek = onSelectWeek,
+            )
+
+            IntervalSelector(intervalWeeks = intervalWeeks, onSetInterval = onSetInterval)
+
+            if (anchorMonday != null) {
+                OutlinedButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
+                    Text("Disattiva avviso powerlifting")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekCalendar(
+    anchorMonday: LocalDate?,
+    onSelectWeek: (LocalDate) -> Unit,
+) {
+    val today = remember { LocalDate.now() }
+    var displayedMonth by remember { mutableStateOf(YearMonth.from(today)) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Month header with navigation arrows
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            IconButton(onClick = { displayedMonth = displayedMonth.minusMonths(1) }) {
+                Icon(Icons.Default.ChevronLeft, contentDescription = "Mese precedente")
+            }
+            val monthName = displayedMonth.month
+                .getDisplayName(TextStyle.FULL, Locale.getDefault())
+                .replaceFirstChar { it.uppercase() }
+            Text(
+                "$monthName ${displayedMonth.year}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            IconButton(onClick = { displayedMonth = displayedMonth.plusMonths(1) }) {
+                Icon(Icons.Default.ChevronRight, contentDescription = "Mese successivo")
+            }
+        }
+
+        // Weekday headers (Mon..Sun)
+        Row(modifier = Modifier.fillMaxWidth()) {
+            val labels = listOf("L", "M", "M", "G", "V", "S", "D")
+            labels.forEach { label ->
+                Text(
+                    label,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Day grid, drawn one week (row) at a time so the whole week can be highlighted.
+        val firstOfMonth = displayedMonth.atDay(1)
+        // Monday of the week containing the 1st.
+        val gridStart = firstOfMonth.minusDays((firstOfMonth.dayOfWeek.value - 1).toLong())
+        val weekRows = 6
+        for (week in 0 until weekRows) {
+            val rowMonday = gridStart.plusWeeks(week.toLong())
+            // Stop drawing once the row is entirely past the displayed month.
+            if (YearMonth.from(rowMonday).isAfter(displayedMonth) &&
+                YearMonth.from(rowMonday.plusDays(6)).isAfter(displayedMonth)
+            ) break
+
+            val isSelectedWeek = anchorMonday != null && rowMonday == anchorMonday
+            val rowBg = if (isSelectedWeek) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(rowBg)
+                    .clickable { onSelectWeek(rowMonday) },
+            ) {
+                for (dow in 0 until 7) {
+                    val date = rowMonday.plusDays(dow.toLong())
+                    val inMonth = YearMonth.from(date) == displayedMonth
+                    val isToday = date == today
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val todayRing = if (isToday && !isSelectedWeek) {
+                            Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                        } else Modifier
+                        Box(modifier = todayRing, contentAlignment = Alignment.Center) {
+                            Text(
+                                "${date.dayOfMonth}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                                color = when {
+                                    isSelectedWeek -> MaterialTheme.colorScheme.onPrimary
+                                    inMonth -> MaterialTheme.colorScheme.onSurface
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntervalSelector(intervalWeeks: Int, onSetInterval: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text("Ogni", style = MaterialTheme.typography.bodyLarge)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = { onSetInterval(intervalWeeks - 1) },
+                enabled = intervalWeeks > 1,
+            ) {
+                Icon(Icons.Default.ChevronLeft, contentDescription = "Diminuisci")
+            }
+            Text(
+                "$intervalWeeks",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+            IconButton(onClick = { onSetInterval(intervalWeeks + 1) }) {
+                Icon(Icons.Default.ChevronRight, contentDescription = "Aumenta")
+            }
+        }
+        Text("settimane", style = MaterialTheme.typography.bodyLarge)
+    }
+}

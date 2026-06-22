@@ -2,6 +2,8 @@ package com.mygymapp.ui.screen.activeroutine
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -126,6 +130,12 @@ fun ActiveRoutineScreen(
         viewModel.abandonSession()
         onBack()
     }
+
+    // "SETTIMANA POWERLIFTING" notice: shown above everything when this is a
+    // configured powerlifting week, until the user dismisses it for this open.
+    var powerliftingDismissed by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
 
     Scaffold(
         topBar = {
@@ -263,6 +273,53 @@ fun ActiveRoutineScreen(
                             onFilterSelected = { viewModel.selectChartFilter(it) },
                         )
                     }
+                }
+            }
+        }
+    }
+
+    if (uiState.isPowerliftingWeek && !powerliftingDismissed) {
+        PowerliftingWeekOverlay(onDismiss = { powerliftingDismissed = true })
+    }
+
+    } // Box
+}
+
+@Composable
+private fun PowerliftingWeekOverlay(onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.75f))
+            .clickable(enabled = false) {},
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(32.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                Text(
+                    "SETTIMANA POWERLIFTING",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                Button(
+                    onClick = onDismiss,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
+                    Text("Ho capito")
                 }
             }
         }

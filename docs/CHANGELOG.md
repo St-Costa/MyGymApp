@@ -104,6 +104,19 @@ Lettura: `adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`
 
 `PolarStreamingService` ora è `@AndroidEntryPoint` e inietta `PolarManager`. Override di `onTaskRemoved`: quando l'utente rimuove l'app dai recenti, il foreground service sopravvivrebbe lasciando la notifica HR appesa e il Polar connesso. Ora forza `polarManager.disconnect()` (chiude gli stream, sgancia il link BLE, rimuove la notifica) e poi `stopForeground` + `stopSelf`. `android:stopWithTask` resta al default `false`, così `onTaskRemoved` viene effettivamente consegnato.
 
+## Phase 22 — Schermata Opzioni + settimane powerlifting
+
+Il FAB ingranaggio della Home non apre più direttamente il dialog "seed debug data": ora naviga a una nuova **`OptionsScreen`** (`ui/screen/options/`, route `Screen.Options`). La schermata ha due sezioni:
+
+- **Dati di debugging**: testo esplicativo + pulsante che apre l'avviso di cancellazione e lancia `MainViewModel.seedDebugData()`. La logica seed resta in `MainViewModel` (condiviso via `hiltViewModel()`); il dialog è stato spostato qui da `MainScreen`.
+- **Settimana powerlifting**: calendario mensile (frecce avanti/indietro, apre sul mese corrente evidenziando oggi) dove si seleziona una settimana — l'intera riga si illumina con il primary brand. Sotto, selettore "ogni X settimane".
+
+Persistenza in `data/PowerliftingScheduleRepository.kt` (`@Singleton`, SharedPreferences `powerlifting_schedule`): salva il lunedì-ancora + intervallo. `isPowerliftingWeek(date)` calcola via `floorMod(weeksBetween(anchor, monday), interval)`. L'ancora è essa stessa powerlifting; intervallo 4 = 3 settimane normali + 1 powerlifting.
+
+Effetti:
+- **ActiveRoutineViewModel/Screen**: all'apertura di una sessione in una settimana powerlifting compare un overlay modale "SETTIMANA POWERLIFTING" sopra tutto (Box wrapper attorno allo Scaffold), con pulsante "Ho capito". Riappare a ogni apertura sessione.
+- **GitgraphView**: nuovo parametro `powerliftingWeeks: List<Boolean>` (4 valori, uno per riga-settimana). Le settimane powerlifting hanno un bordo viola brand attorno all'intera riga (poco padding, non i singoli giorni). `MainViewModel` calcola i flag per le 4 righe del gitgraph.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
