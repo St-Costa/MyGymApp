@@ -33,6 +33,8 @@ data class MainUiState(
     // Session ID + date for each day of the current week (null = no session that day)
     val lastWeekSessionIds: List<String?> = List(7) { null },
     val lastWeekSessionDates: List<String?> = List(7) { null },
+    // One flag per gitgraph week-row (4): true = powerlifting week
+    val powerliftingWeeks: List<Boolean> = List(4) { false },
     val isLoading: Boolean = true,
     val isSeedingData: Boolean = false,
 )
@@ -44,6 +46,7 @@ class MainViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val dataChangedSignal: DataChangedSignal,
     private val appLogger: AppLogger,
+    private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
 ) : ViewModel() {
 
     companion object {
@@ -140,6 +143,11 @@ class MainViewModel @Inject constructor(
 
         val todayIndex = 3 * 7 + (todayDow - 1)
 
+        // One flag per week-row: the row's Monday is startDate + week*7.
+        val powerliftingWeeks = (0 until 4).map { week ->
+            powerliftingScheduleRepository.isPowerliftingWeek(startDate.plusWeeks(week.toLong()))
+        }
+
         _uiState.value = MainUiState(
             gitgraphDays = days,
             todayIndex = todayIndex,
@@ -147,6 +155,7 @@ class MainViewModel @Inject constructor(
             lastWeekRoutineNames = lastWeekRoutineNames,
             lastWeekSessionIds = lastWeekSessionIds,
             lastWeekSessionDates = lastWeekSessionDates,
+            powerliftingWeeks = powerliftingWeeks,
             isLoading = false,
         )
     }
