@@ -115,29 +115,29 @@ fun MainScreen(
             ) {
                 Button(
                     onClick = onNavigateToWeekView,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Text("Week View", fontSize = 28.sp)
+                    Text("Week View", fontSize = 22.sp)
                 }
                 Button(
                     onClick = onNavigateToExercises,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Text("Exercises", fontSize = 28.sp)
+                    Text("Exercises", fontSize = 22.sp)
                 }
                 Button(
                     onClick = onNavigateToRoutines,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Text("Routines", fontSize = 28.sp)
+                    Text("Routines", fontSize = 22.sp)
                 }
                 Button(
                     onClick = onNavigateToHeartRate,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
                     Icon(Icons.Default.FavoriteBorder, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Heart Rate", fontSize = 28.sp)
+                    Text("Heart Rate", fontSize = 22.sp)
                 }
             }
             Spacer(modifier = Modifier.height(72.dp))
