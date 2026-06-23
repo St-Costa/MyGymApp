@@ -117,6 +117,11 @@ Effetti:
 - **ActiveRoutineViewModel/Screen**: all'apertura di una sessione in una settimana powerlifting compare un overlay modale "SETTIMANA POWERLIFTING" sopra tutto (Box wrapper attorno allo Scaffold), con pulsante "Ho capito". Riappare a ogni apertura sessione.
 - **GitgraphView**: nuovo parametro `powerliftingWeeks: List<Boolean>` (4 valori, uno per riga-settimana). Le settimane powerlifting hanno un bordo viola brand attorno all'intera riga (poco padding, non i singoli giorni). `MainViewModel` calcola i flag per le 4 righe del gitgraph.
 
+## Phase 23 — Fix overlay powerlifting + progresso esercizi daily
+
+- **Overlay powerlifting**: l'overlay "SETTIMANA POWERLIFTING" ora compare solo a sessione caricata (`!uiState.isLoading`). Prima `isPowerliftingWeek` veniva impostato all'inizio della init mentre `isLoading` era ancora true, così l'overlay lampeggiava e si chiudeva da solo appena la sessione finiva di caricare, prima che l'utente lo vedesse.
+- **Esercizi daily — rep range e progresso**: gli esercizi fixed-daily non mostravano rep range né valori "precedenti". Nuovo campo `WorkoutExercise.isDaily` (serializzato in YAML, omesso se false). `ActiveRoutineViewModel` lo imposta quando `category == DAILY`. `StrengthExerciseViewModel` e `SupersetViewModel` ora: (1) leggono il rep range dalla routine `FIXED_DAILY_ROUTINE_ID` quando l'esercizio è daily, invece che dalla routine della sessione; (2) confrontano il progresso solo con sessioni passate in cui lo stesso esercizio aveva lo *stesso* stato daily — un es. daily contro precedenti sessioni daily, un es. normale contro precedenti sessioni normali, così lo stesso esercizio può cambiare ruolo tra i giorni senza contaminare le due storie. Il grafico di fine sessione era già escluso (filtra `!excludeFromTonnage`).
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

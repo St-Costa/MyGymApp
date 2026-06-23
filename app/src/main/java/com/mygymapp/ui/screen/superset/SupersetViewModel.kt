@@ -87,31 +87,42 @@ class SupersetViewModel @Inject constructor(
 
             val workoutEx1 = session?.exercises?.find { it.exerciseId == exerciseId1 }
             val workoutEx2 = session?.exercises?.find { it.exerciseId == exerciseId2 }
+            val isDaily1 = workoutEx1?.isDaily ?: false
+            val isDaily2 = workoutEx2?.isDaily ?: false
 
-            // Previous FORZA sets for showing defaults
-            val prevStrengthSets1 = if (ex1.type == ExerciseType.FORZA) {
-                workoutRepository.getSessionsForExercise(exerciseId1, 1)
-                    .firstOrNull()?.exercises
-                    ?.find { it.exerciseId == exerciseId1 }?.sets
+            // Previous FORZA sets for showing defaults. Compare like-with-like on daily-status:
+            // daily progress only against prior daily sessions, normal only against prior normal.
+            suspend fun previousStrengthSets(exId: String, daily: Boolean): List<ExerciseSet.Strength> =
+                workoutRepository.getSessionsForExercise(exId, 30)
+                    .firstOrNull { prev ->
+                        prev.exercises.any { it.exerciseId == exId && it.isDaily == daily }
+                    }
+                    ?.exercises
+                    ?.find { it.exerciseId == exId }?.sets
                     ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+
+            val prevStrengthSets1 = if (ex1.type == ExerciseType.FORZA) {
+                previousStrengthSets(exerciseId1, isDaily1)
             } else emptyList()
 
             val prevStrengthSets2 = if (ex2.type == ExerciseType.FORZA) {
-                workoutRepository.getSessionsForExercise(exerciseId2, 1)
-                    .firstOrNull()?.exercises
-                    ?.find { it.exerciseId == exerciseId2 }?.sets
-                    ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+                previousStrengthSets(exerciseId2, isDaily2)
             } else emptyList()
 
-            // Rep ranges from routine
+            // Rep ranges from the owning routine. Daily exercises live in the fixed-daily routine.
             var repMin1 = 0; var repMax1 = 0
             var repMin2 = 0; var repMax2 = 0
-            val routineId = session?.routineId ?: ""
-            if (routineId.isNotBlank()) {
-                val routine = routineRepository.getById(routineId)
-                val re1 = routine?.exercises?.find { it.exerciseId == exerciseId1 }
-                val re2 = routine?.exercises?.find { it.exerciseId == exerciseId2 }
+            val sessionRoutineId = session?.routineId ?: ""
+            val routineId1 =
+                if (isDaily1) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else sessionRoutineId
+            val routineId2 =
+                if (isDaily2) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else sessionRoutineId
+            if (routineId1.isNotBlank()) {
+                val re1 = routineRepository.getById(routineId1)?.exercises?.find { it.exerciseId == exerciseId1 }
                 repMin1 = re1?.repRangeMin ?: 0; repMax1 = re1?.repRangeMax ?: 0
+            }
+            if (routineId2.isNotBlank()) {
+                val re2 = routineRepository.getById(routineId2)?.exercises?.find { it.exerciseId == exerciseId2 }
                 repMin2 = re2?.repRangeMin ?: 0; repMax2 = re2?.repRangeMax ?: 0
             }
 

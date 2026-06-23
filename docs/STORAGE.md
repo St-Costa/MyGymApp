@@ -123,6 +123,7 @@ exercises:
     type: FORZA
     bodypart: chest
     excludeFromTonnage: true    # omitted when false; set for warmup + fixed-daily exercises
+    isDaily: true               # omitted when false; set only for fixed-daily exercises
     sets:
       - reps: 8
         weight: 80.0
@@ -135,6 +136,8 @@ Session notes
 ```
 
 `excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected.
+
+`isDaily: true` marks an exercise performed as a fixed-daily exercise in this session. Exercise screens use it so daily progress (grey "previous" values) is compared only against prior sessions where the same exercise was *also* daily, and normal progress only against prior normal sessions — the same exercise can swing between the two roles across days without contaminating either history.
 
 ### Raw ECG (`ecg/{sessionId}.ecg`)
 

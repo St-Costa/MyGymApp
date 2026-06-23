@@ -64,6 +64,7 @@ object WorkoutParser {
                 "completed" to ex.completed,
             ).apply {
                 if (ex.excludeFromTonnage) put("excludeFromTonnage", true)
+                if (ex.isDaily) put("isDaily", true)
                 put("sets", sets)
             }
         }
@@ -122,6 +123,7 @@ object WorkoutParser {
                 completed = map["completed"] as? Boolean ?: false,
                 sets = parseSets(map["sets"], type),
                 excludeFromTonnage = map["excludeFromTonnage"] as? Boolean ?: false,
+                isDaily = map["isDaily"] as? Boolean ?: false,
             )
         }
     }
