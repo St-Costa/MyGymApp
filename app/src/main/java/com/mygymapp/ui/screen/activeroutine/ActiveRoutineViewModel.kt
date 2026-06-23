@@ -212,6 +212,8 @@ class ActiveRoutineViewModel @Inject constructor(
                 sessionId = saved.id,
                 isLoading = false,
                 previousTonnage = commonPreviousTonnage,
+                // Preserve the flag set above — recreating the state from scratch would reset it.
+                isPowerliftingWeek = _uiState.value.isPowerliftingWeek,
             )
         }
     }
