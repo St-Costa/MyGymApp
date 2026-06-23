@@ -42,4 +42,10 @@ data class WorkoutExercise(
     val sets: List<ExerciseSet> = emptyList(),
     /** Warmup or fixed-daily exercise: still recorded, but excluded from all tonnage math. */
     val excludeFromTonnage: Boolean = false,
+    /**
+     * True when this exercise was performed as a fixed-daily exercise in this session.
+     * Used so daily progress is compared only against prior sessions where it was also
+     * daily (and normal progress only against prior normal sessions).
+     */
+    val isDaily: Boolean = false,
 )

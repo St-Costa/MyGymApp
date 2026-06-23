@@ -184,6 +184,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     type = exercise.type,
                     sets = sets,
                     excludeFromTonnage = category != SessionExerciseCategory.NORMAL,
+                    isDaily = category == SessionExerciseCategory.DAILY,
                 )
             }
 

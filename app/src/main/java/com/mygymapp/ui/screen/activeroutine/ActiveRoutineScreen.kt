@@ -278,7 +278,9 @@ fun ActiveRoutineScreen(
         }
     }
 
-    if (uiState.isPowerliftingWeek && !powerliftingDismissed) {
+    // Only after the session has finished loading, so the popup appears on top of
+    // the loaded session and isn't flashed-then-closed while loading completes.
+    if (!uiState.isLoading && uiState.isPowerliftingWeek && !powerliftingDismissed) {
         PowerliftingWeekOverlay(onDismiss = { powerliftingDismissed = true })
     }
 

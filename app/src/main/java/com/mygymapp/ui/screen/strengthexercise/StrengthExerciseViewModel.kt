@@ -60,13 +60,7 @@ class StrengthExerciseViewModel @Inject constructor(
         viewModelScope.launch {
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
-            // Find previous workout data for this exercise (for showing grey "previous" values)
-            val previousSessions = workoutRepository.getSessionsForExercise(exerciseId, 1)
-            val previousSets = previousSessions.firstOrNull()?.exercises
-                ?.find { it.exerciseId == exerciseId }?.sets
-                ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
-
-            // Find current session to get set count, rep range, and any in-progress values
+            // Find current session to get set count, rep range, daily-status, and in-progress values
             val sessions = workoutRepository.getSessionsInRange(
                 java.time.LocalDate.now(), java.time.LocalDate.now()
             )
@@ -75,13 +69,28 @@ class StrengthExerciseViewModel @Inject constructor(
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
             val setCount = workoutExercise?.sets?.size ?: 3
+            // Whether this exercise is being performed as a fixed-daily exercise in this session.
+            val isDaily = workoutExercise?.isDaily ?: false
 
-            // Get rep range from routine
+            // Find previous workout data for this exercise (for showing grey "previous" values).
+            // Progress must compare like-with-like: a daily exercise only against prior sessions
+            // where it was also daily, and a normal exercise only against prior normal sessions.
+            val previousSets = workoutRepository.getSessionsForExercise(exerciseId, 30)
+                .firstOrNull { prev ->
+                    prev.exercises.any { it.exerciseId == exerciseId && it.isDaily == isDaily }
+                }
+                ?.exercises
+                ?.find { it.exerciseId == exerciseId }?.sets
+                ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+
+            // Get rep range from the owning routine. Daily exercises live in the fixed-daily
+            // routine, not the session's routine, so look them up there.
             var repMin = 0
             var repMax = 0
-            val routineId = session?.routineId ?: ""
-            if (routineId.isNotBlank()) {
-                val routine = routineRepository.getById(routineId)
+            val rangeRoutineId =
+                if (isDaily) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else session?.routineId ?: ""
+            if (rangeRoutineId.isNotBlank()) {
+                val routine = routineRepository.getById(rangeRoutineId)
                 val routineExercise = routine?.exercises?.find { it.exerciseId == exerciseId }
                 repMin = routineExercise?.repRangeMin ?: 0
                 repMax = routineExercise?.repRangeMax ?: 0
