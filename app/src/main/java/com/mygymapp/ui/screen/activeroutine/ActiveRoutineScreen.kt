@@ -131,10 +131,6 @@ fun ActiveRoutineScreen(
         onBack()
     }
 
-    // "SETTIMANA POWERLIFTING" notice: shown above everything when this is a
-    // configured powerlifting week, until the user dismisses it for this open.
-    var powerliftingDismissed by remember { mutableStateOf(false) }
-
     Box(modifier = Modifier.fillMaxSize()) {
 
     Scaffold(
@@ -280,8 +276,8 @@ fun ActiveRoutineScreen(
 
     // Only after the session has finished loading, so the popup appears on top of
     // the loaded session and isn't flashed-then-closed while loading completes.
-    if (!uiState.isLoading && uiState.isPowerliftingWeek && !powerliftingDismissed) {
-        PowerliftingWeekOverlay(onDismiss = { powerliftingDismissed = true })
+    if (!uiState.isLoading && uiState.isPowerliftingWeek && !uiState.powerliftingDismissed) {
+        PowerliftingWeekOverlay(onDismiss = { viewModel.dismissPowerliftingOverlay() })
     }
 
     } // Box

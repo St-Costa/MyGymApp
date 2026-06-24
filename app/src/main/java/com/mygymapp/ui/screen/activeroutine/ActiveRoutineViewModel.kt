@@ -56,6 +56,10 @@ data class ActiveRoutineUiState(
     val allSessionLabels: List<String> = emptyList(),
     // True when the current week is a configured powerlifting week (shows overlay on open).
     val isPowerliftingWeek: Boolean = false,
+    // Set once the user dismisses the powerlifting overlay, so it isn't shown again when
+    // returning to this session from an exercise screen. Lives in the VM (not local composable
+    // state) so it survives recompositions and navigation.
+    val powerliftingDismissed: Boolean = false,
 )
 
 /** Section an exercise belongs to within a running session. */
@@ -273,6 +277,10 @@ class ActiveRoutineViewModel @Inject constructor(
             val routine = routineRepository.getById(routineId) ?: return@launch
             routineRepository.save(routine.copy(notes = notes))
         }
+    }
+
+    fun dismissPowerliftingOverlay() {
+        _uiState.value = _uiState.value.copy(powerliftingDismissed = true)
     }
 
     fun selectChartFilter(filter: String) {
