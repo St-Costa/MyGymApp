@@ -71,17 +71,29 @@ class StrengthExerciseViewModel @Inject constructor(
             val setCount = workoutExercise?.sets?.size ?: 3
             // Whether this exercise is being performed as a fixed-daily exercise in this session.
             val isDaily = workoutExercise?.isDaily ?: false
+            // The exercise "type" in this session, used to compare like-with-like below.
+            // Three mutually exclusive types: warmup, fixed-daily, normal.
+            val currentExcludeFromTonnage = workoutExercise?.excludeFromTonnage ?: false
+            val isWarmup = currentExcludeFromTonnage && !isDaily
 
             // Find previous workout data for this exercise (for showing grey "previous" values).
-            // Progress must compare like-with-like: a daily exercise only against prior sessions
-            // where it was also daily, and a normal exercise only against prior normal sessions.
+            // Progress must compare like-with-like: only against prior sessions where this exercise
+            // had the same type (daily / warmup / normal). Walk back through history and use the
+            // most recent matching session that actually has non-zero set data, so an empty 0-0
+            // session doesn't blank out the preview.
             val previousSets = workoutRepository.getSessionsForExercise(exerciseId, 30)
-                .firstOrNull { prev ->
-                    prev.exercises.any { it.exerciseId == exerciseId && it.isDaily == isDaily }
+                .asSequence()
+                .mapNotNull { prev ->
+                    prev.exercises.firstOrNull { ex ->
+                        ex.exerciseId == exerciseId &&
+                            ex.isDaily == isDaily &&
+                            (ex.excludeFromTonnage && !ex.isDaily) == isWarmup
+                    }
                 }
-                ?.exercises
-                ?.find { it.exerciseId == exerciseId }?.sets
-                ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+                .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
+                .firstOrNull { strengthSets ->
+                    strengthSets.any { it.reps > 0 || it.weight > 0.0 }
+                } ?: emptyList()
 
             // Get rep range from the owning routine. Daily exercises live in the fixed-daily
             // routine, not the session's routine, so look them up there.
@@ -100,8 +112,12 @@ class StrengthExerciseViewModel @Inject constructor(
             val currentSets = workoutExercise?.sets?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
             val hasProgress = currentSets.any { it.reps > 0 || it.weight > 0.0 }
 
+            // For sets beyond what the previous session recorded, fall back to the last
+            // non-zero previous set so extra sets still inherit a sensible default.
+            val lastMeaningfulPrev = previousSets.lastOrNull { it.reps > 0 || it.weight > 0.0 }
+
             val sets = (0 until setCount).map { i ->
-                val prev = previousSets.getOrNull(i)
+                val prev = previousSets.getOrNull(i) ?: lastMeaningfulPrev
                 val curr = if (hasProgress) currentSets.getOrNull(i) else null
                 StrengthSetUi(
                     reps = curr?.reps ?: prev?.reps ?: 0,

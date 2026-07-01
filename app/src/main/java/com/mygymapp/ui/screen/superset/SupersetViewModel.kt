@@ -89,25 +89,36 @@ class SupersetViewModel @Inject constructor(
             val workoutEx2 = session?.exercises?.find { it.exerciseId == exerciseId2 }
             val isDaily1 = workoutEx1?.isDaily ?: false
             val isDaily2 = workoutEx2?.isDaily ?: false
+            val isWarmup1 = (workoutEx1?.excludeFromTonnage ?: false) && !isDaily1
+            val isWarmup2 = (workoutEx2?.excludeFromTonnage ?: false) && !isDaily2
 
-            // Previous FORZA sets for showing defaults. Compare like-with-like on daily-status:
-            // daily progress only against prior daily sessions, normal only against prior normal.
-            suspend fun previousStrengthSets(exId: String, daily: Boolean): List<ExerciseSet.Strength> =
+            // Previous FORZA sets for showing defaults. Compare like-with-like on exercise type
+            // (daily / warmup / normal), and walk back to the most recent matching session that
+            // actually has non-zero data so an empty 0-0 session doesn't blank out the preview.
+            suspend fun previousStrengthSets(exId: String, daily: Boolean, warmup: Boolean): List<ExerciseSet.Strength> =
                 workoutRepository.getSessionsForExercise(exId, 30)
-                    .firstOrNull { prev ->
-                        prev.exercises.any { it.exerciseId == exId && it.isDaily == daily }
+                    .asSequence()
+                    .mapNotNull { prev ->
+                        prev.exercises.firstOrNull { ex ->
+                            ex.exerciseId == exId &&
+                                ex.isDaily == daily &&
+                                (ex.excludeFromTonnage && !ex.isDaily) == warmup
+                        }
                     }
-                    ?.exercises
-                    ?.find { it.exerciseId == exId }?.sets
-                    ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+                    .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
+                    .firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
 
             val prevStrengthSets1 = if (ex1.type == ExerciseType.FORZA) {
-                previousStrengthSets(exerciseId1, isDaily1)
+                previousStrengthSets(exerciseId1, isDaily1, isWarmup1)
             } else emptyList()
 
             val prevStrengthSets2 = if (ex2.type == ExerciseType.FORZA) {
-                previousStrengthSets(exerciseId2, isDaily2)
+                previousStrengthSets(exerciseId2, isDaily2, isWarmup2)
             } else emptyList()
+
+            // Fallback for sets beyond what the previous session recorded.
+            val lastMeaningful1 = prevStrengthSets1.lastOrNull { it.reps > 0 || it.weight > 0.0 }
+            val lastMeaningful2 = prevStrengthSets2.lastOrNull { it.reps > 0 || it.weight > 0.0 }
 
             // Rep ranges from the owning routine. Daily exercises live in the fixed-daily routine.
             var repMin1 = 0; var repMax1 = 0
@@ -134,7 +145,7 @@ class SupersetViewModel @Inject constructor(
                 when (ex1.type) {
                     ExerciseType.FORZA -> {
                         val cs = currentSet as? ExerciseSet.Strength
-                        val ps = prevStrengthSets1.getOrNull(i)
+                        val ps = prevStrengthSets1.getOrNull(i) ?: lastMeaningful1
                         val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
                         val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
                         val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0
@@ -170,7 +181,7 @@ class SupersetViewModel @Inject constructor(
                 when (ex2.type) {
                     ExerciseType.FORZA -> {
                         val cs = currentSet as? ExerciseSet.Strength
-                        val ps = prevStrengthSets2.getOrNull(i)
+                        val ps = prevStrengthSets2.getOrNull(i) ?: lastMeaningful2
                         val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
                         val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
                         val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0
