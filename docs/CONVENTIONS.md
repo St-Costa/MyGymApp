@@ -136,6 +136,14 @@ A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: "
 
 Warmup **and** fixed-daily exercises are excluded from tonnage. The exclusion is resolved when the session is built and persisted per-exercise as `WorkoutExercise.excludeFromTonnage`, so every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, and the active-session previous/historical comparisons — just filters `!excludeFromTonnage`. Cardio metrics are session-global (PolarManager) and intentionally still include these exercises.
 
+## Previous-set preview: match type, skip zeros, inherit last set
+
+When a strength exercise screen opens ([StrengthExerciseViewModel](../app/src/main/java/com/mygymapp/ui/screen/strengthexercise/StrengthExerciseViewModel.kt), [SupersetViewModel](../app/src/main/java/com/mygymapp/ui/screen/superset/SupersetViewModel.kt)), the grey "previous" defaults must be picked **like-with-like** along three rules:
+
+- **Match the exercise type.** An exercise can be performed as one of three mutually exclusive types in a session, identified by the `(isDaily, excludeFromTonnage)` pair on `WorkoutExercise`: **daily** (`isDaily`), **warmup** (`excludeFromTonnage && !isDaily`), or **normal** (neither). The preview is sourced only from prior sessions where this exercise had the **same** type. Comparing only `isDaily` is wrong — it conflates warmup with normal.
+- **Skip empty sessions.** Walk back through `getSessionsForExercise(id, 30)` (already sorted newest-first) and take the first matching session that has **at least one non-zero set**, so an aborted/skipped 0-0 session doesn't blank out the preview.
+- **Inherit the last set for extra sets.** Sets are matched positionally (`previousSets.getOrNull(i)`). If today has more sets than the previous session recorded, the extra indices fall back to the **last non-zero previous set** (`lastMeaningfulPrev`) rather than showing 0-0.
+
 ## Image caches — two of them
 
 - `gymdata/cache/images/` is [ImageCacheRepository](../app/src/main/java/com/mygymapp/data/repository/ImageCacheRepository.kt) — persistent, never evicted, used for exercise link images referenced from markdown.
