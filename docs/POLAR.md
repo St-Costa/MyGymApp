@@ -105,6 +105,8 @@ ActiveRoutineViewModel.init
 
 Stream errors trigger an auto-restart via `ecgRestartHandler` with a ≤2 s back-off. The restart is skipped if the device has disconnected or the session is no longer active.
 
+**Escalation to reconnect.** Plain restarts can't clear a sensor stuck in a stale PMD state — most notably `ERROR_ALREADY_IN_STATE`, where the H10 thinks it is still streaming after an Rx `dispose()` that never sent a STOP. Retrying `REQUEST_MEASUREMENT_START` then fails identically forever (observed 2026-07-08: a full session logged nothing but a ~2 s restart→`ALREADY_IN_STATE` loop and a 20-byte ECG file). So: `ALREADY_IN_STATE` escalates immediately, and any other error/silent-hang escalates after `ECG_MAX_RESTARTS` (3) consecutive restarts with no sample. `escalateEcgRecovery()` disposes the stream and calls `api.disconnectFromDevice()`; because the disconnect isn't user-initiated and a session is active, the involuntary-drop reconnect loop kicks in, `activeEcgSessionId` is mirrored into `pendingEcgSessionId`, and ECG restarts cleanly once `FEATURE_POLAR_ONLINE_STREAMING` is ready again. `ecgRestartAttempts` resets on any real sample and on a fresh `startEcgRecording()`.
+
 ### Post-session analysis
 
 On session completion (or abandon), `ActiveRoutineViewModel`:

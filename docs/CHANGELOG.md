@@ -126,6 +126,10 @@ Effetti:
 
 - **Preview per tipo, salta gli zeri, eredita l'ultimo set**: in `StrengthExerciseViewModel` e `SupersetViewModel` la scelta dei valori grigi "precedenti" aveva tre difetti. (1) Il confronto usava solo `isDaily`, quindi un warmup precedente veniva trattato come set normale; ora il tipo è la coppia `(isDaily, excludeFromTonnage)` → daily / warmup / normale, e la preview viene presa solo da sessioni dello stesso tipo. (2) Si fermava alla prima sessione dello stesso tipo anche se era tutta a 0-0 (es. un daily appena introdotto): ora cammina indietro tra le sessioni completate e prende la prima con almeno un set non-zero. (3) I set in più rispetto alla sessione precedente partivano da 0-0; ora ereditano l'ultimo set non-zero della preview (`lastMeaningfulPrev`). Vedi [CONVENTIONS.md](CONVENTIONS.md#previous-set-preview-match-type-skip-zeros-inherit-last-set).
 
+## Phase 25 — Recupero ECG via riconnessione
+
+- **Escalation a disconnect+reconnect quando l'ECG non parte**: il 2026-07-08 il Polar H10 si è connesso ma l'ECG non è mai partito — i log mostravano un loop infinito `REQUEST_MEASUREMENT_START → ERROR_ALREADY_IN_STATE → restart` ogni ~2 s per l'intera sessione, con un file ECG finale di 20 byte. Causa: il `dispose()` Rx dello stream non manda uno STOP al sensore, che resta bloccato nello stato "measuring"; ritentare lo stesso START fallisce identico all'infinito. `PolarManager` ora conta i restart consecutivi senza sample (`ecgRestartAttempts`) e, oltre `ECG_MAX_RESTARTS` (3) — o immediatamente su `ALREADY_IN_STATE` — chiama `escalateEcgRecovery()`, che forza `api.disconnectFromDevice()`. Non essendo user-initiated e con sessione attiva, parte il loop di riconnessione involontaria già esistente; al ritorno del feature ONLINE_STREAMING l'ECG riparte pulito. Il contatore si azzera su ogni sample reale e a inizio sessione. Anche i restart del watchdog passano ora per `scheduleEcgRestart` così contano verso l'escalation. Vedi [POLAR.md](POLAR.md#ecg-streaming).
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
