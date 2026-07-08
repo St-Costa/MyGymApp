@@ -74,6 +74,9 @@ class PolarManager @Inject constructor(
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
+        // After this many consecutive ECG stream restarts with no sample, stop retrying
+        // the same START command and escalate to a device disconnect+reconnect.
+        private const val ECG_MAX_RESTARTS = 3
     }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -179,6 +182,11 @@ class PolarManager @Inject constructor(
     private var pendingEcgSessionId: String? = null
     private var activeEcgSessionId: String? = null
     private val ecgRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    // Consecutive ECG stream restarts without a single sample arriving. When this
+    // crosses ECG_MAX_RESTARTS we stop hammering the same failing START command and
+    // escalate to a full device disconnect+reconnect, which resets the sensor's PMD
+    // state. Reset to 0 as soon as a real sample flows in.
+    private var ecgRestartAttempts = 0
     private val hrRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val reconnectHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -736,6 +744,7 @@ class PolarManager @Inject constructor(
 
     /** Start raw ECG recording for [sessionId]. No-op if not connected. */
     fun startEcgRecording(sessionId: String) {
+        ecgRestartAttempts = 0 // fresh session — clear any leftover escalation count
         val deviceId = connectedDeviceId ?: run {
             Log.d(TAG, "ECG start requested but not connected; queued")
             pendingEcgSessionId = sessionId
@@ -758,6 +767,7 @@ class PolarManager @Inject constructor(
         activeEcgSessionId = null
         ecgStreamStartedAt = 0L
         lastEcgSampleAtMs = 0L
+        ecgRestartAttempts = 0
     }
 
     /** Delete the recorded ECG file for a session. Called after analysis. */
@@ -792,6 +802,9 @@ class PolarManager @Inject constructor(
         ecgStreamStartedAt = System.currentTimeMillis()
         // Remember which session this ECG belongs to, so we can auto-restart on error
         activeEcgSessionId = sessionId
+        // Note: ecgRestartAttempts is intentionally NOT reset here — this method is the
+        // retry action itself, so resetting would defeat the escalation cap. It resets on
+        // a real sample (healthy stream) and in escalateEcgRecovery/stopEcgRecording.
 
         // Request the supported ECG settings and then start streaming at max (130Hz on H10)
         appLogger.i(TAG, "ECG start requested: session=$sessionId device=$deviceId")
@@ -811,6 +824,8 @@ class PolarManager @Inject constructor(
             .subscribe(
                 { ecgData ->
                     lastEcgSampleAtMs = System.currentTimeMillis()
+                    // A real sample arrived: the stream is healthy again.
+                    ecgRestartAttempts = 0
                     for (sample in ecgData.samples) {
                         if (sample is EcgSample) {
                             val v = sample.voltage
@@ -832,25 +847,68 @@ class PolarManager @Inject constructor(
                     Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
                     appLogger.e(TAG, "ECG streaming error for session=$sessionId: $error")
                     ecgRecorder.stop()
-                    scheduleEcgRestart(deviceId, sessionId)
+                    // ERROR_ALREADY_IN_STATE means the sensor thinks it is still streaming
+                    // (a stale PMD state left over after an Rx dispose that never sent STOP).
+                    // Retrying START is guaranteed to fail the same way, so skip the retry
+                    // loop and go straight to a reconnect, which resets the sensor state.
+                    if (error.toString().contains("ALREADY_IN_STATE", ignoreCase = true)) {
+                        appLogger.w(TAG, "ECG stuck in ALREADY_IN_STATE — escalating to reconnect")
+                        escalateEcgRecovery(deviceId, sessionId)
+                    } else {
+                        scheduleEcgRestart(deviceId, sessionId)
+                    }
                 }
             )
     }
 
     private fun scheduleEcgRestart(deviceId: String, sessionId: String) {
+        ecgRestartAttempts++
+        if (ecgRestartAttempts > ECG_MAX_RESTARTS) {
+            appLogger.w(TAG, "ECG restart cap reached ($ecgRestartAttempts) — escalating to reconnect for session=$sessionId")
+            escalateEcgRecovery(deviceId, sessionId)
+            return
+        }
         ecgRestartHandler.removeCallbacksAndMessages(null)
         ecgRestartHandler.postDelayed({
             if (connectedDeviceId == deviceId &&
                 streamingFeatureReady &&
                 activeEcgSessionId == sessionId
             ) {
-                Log.d(TAG, "Restarting ECG stream for session $sessionId")
-                appLogger.w(TAG, "ECG stream restart for session=$sessionId")
+                Log.d(TAG, "Restarting ECG stream for session $sessionId (attempt $ecgRestartAttempts)")
+                appLogger.w(TAG, "ECG stream restart for session=$sessionId (attempt $ecgRestartAttempts)")
                 startEcgStreamingInternal(deviceId, sessionId)
             } else {
                 appLogger.w(TAG, "ECG restart skipped: connected=${connectedDeviceId == deviceId} featureReady=$streamingFeatureReady activeSession=${activeEcgSessionId == sessionId}")
             }
         }, 2000)
+    }
+
+    /**
+     * Last-resort ECG recovery: the sensor is stuck in a bad PMD state that restarting
+     * the stream can't clear (e.g. ERROR_ALREADY_IN_STATE, or repeated silent failures).
+     * Force a device disconnect+reconnect, which resets the sensor. The reconnect path
+     * mirrors [activeEcgSessionId] into [pendingEcgSessionId] on disconnect, so ECG
+     * restarts cleanly once the ONLINE_STREAMING feature comes back ready.
+     */
+    private fun escalateEcgRecovery(deviceId: String, sessionId: String) {
+        if (activeEcgSessionId != sessionId) return // session ended in the meantime
+        ecgRestartHandler.removeCallbacksAndMessages(null)
+        ecgDisposable?.dispose()
+        ecgDisposable = null
+        ecgRecorder.stop()
+        ecgRestartAttempts = 0
+        streamingFeatureReady = false
+        // Keep activeEcgSessionId; the deviceDisconnected callback mirrors it into
+        // pendingEcgSessionId, and the involuntary-drop path (hrSeriesActive) triggers
+        // the auto-reconnect loop.
+        pendingEcgSessionId = sessionId
+        appLogger.w(TAG, "Forcing device reconnect to recover ECG for session=$sessionId")
+        try {
+            api.disconnectFromDevice(deviceId)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Escalation disconnect failed: $t")
+            appLogger.e(TAG, "Escalation disconnect failed for $deviceId", t)
+        }
     }
 
     /**
@@ -890,7 +948,10 @@ class PolarManager @Inject constructor(
                         appLogger.w(TAG, "ECG watchdog triggered ($reason) for session=$activeSession — restarting stream")
                         ecgStreamStartedAt = 0L
                         lastEcgSampleAtMs = 0L
-                        startEcgStreamingInternal(deviceId, activeSession)
+                        // Route through scheduleEcgRestart so watchdog restarts also count
+                        // toward the escalation cap (a silent hang that never recovers will
+                        // eventually force a reconnect instead of looping forever).
+                        scheduleEcgRestart(deviceId, activeSession)
                     }
                 }
             }
