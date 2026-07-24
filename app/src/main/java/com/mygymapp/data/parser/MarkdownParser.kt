@@ -11,6 +11,10 @@ data class MarkdownDocument(
 object MarkdownParser {
 
     private val loadSettings = LoadSettings.builder().build()
+    // Load is not thread-safe (snakeyaml-engine); ThreadLocal avoids allocating
+    // a fresh one per parse — parse() is called once per session file, so a
+    // gitgraph refresh over 4 weeks × 6 sessions is 168 skipped allocations.
+    private val threadLocalLoad = ThreadLocal.withInitial { Load(loadSettings) }
 
     fun parse(content: String): MarkdownDocument {
         val trimmed = content.trim()
@@ -26,8 +30,7 @@ object MarkdownParser {
         val yamlContent = trimmed.substring(3, secondDelimiter).trim()
         val body = trimmed.substring(secondDelimiter + 3).trim()
 
-        val yaml = Load(loadSettings)
-        val parsed = yaml.loadFromString(yamlContent)
+        val parsed = threadLocalLoad.get().loadFromString(yamlContent)
 
         @Suppress("UNCHECKED_CAST")
         val frontmatter = (parsed as? Map<String, Any>) ?: emptyMap()
