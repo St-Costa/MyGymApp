@@ -104,7 +104,9 @@ class MainViewModel @Inject constructor(
             }
 
             val dateStr = date.toString()
-            val daySessions = sessions.filter { it.date == dateStr }
+            // Exclude in-progress sessions (completedAt=="") — they would otherwise be
+            // selected as the day's "last session" with tonnage=0 → red REGRESSED square.
+            val daySessions = sessions.filter { it.date == dateStr && it.completedAt.isNotBlank() }
             val lastSession = daySessions.maxByOrNull { it.completedAt }
 
             if (dayOffset >= 21) {
@@ -120,7 +122,7 @@ class MainViewModel @Inject constructor(
             }
 
             val previous = sessionsByRoutine[lastSession.routineId]
-                ?.filter { it.date < dateStr }
+                ?.filter { it.date < dateStr && it.completedAt.isNotBlank() }
                 ?.maxByOrNull { it.completedAt }
 
             val (currTonnage, prevTonnage) = if (previous != null)
