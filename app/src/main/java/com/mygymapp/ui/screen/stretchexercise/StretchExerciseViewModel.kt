@@ -134,17 +134,7 @@ class StretchExerciseViewModel @Inject constructor(
         val sets = _uiState.value.sets
         val session = currentSession
         viewModelScope.launch {
-            if (session != null) {
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = true,
-                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
-                        )
-                    } else ex
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
-            }
+            if (session != null) saveThisExerciseSets(session, sets, completed = true)
             _completionSaved.value = true
         }
     }
@@ -159,18 +149,29 @@ class StretchExerciseViewModel @Inject constructor(
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
-            if (session != null) {
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = false,
-                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
-                        )
-                    } else ex
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
-            }
+            if (session != null) saveThisExerciseSets(session, sets, completed = false)
             clearScope.cancel()
         }
+    }
+
+    // Reload the session from disk before saving, so we don't clobber fields
+    // (Polar metrics, sibling-superset updates, notes) added to the disk copy
+    // after this VM was initialized. See StrengthExerciseViewModel for context.
+    private suspend fun saveThisExerciseSets(
+        original: WorkoutSession,
+        sets: List<StretchSetUi>,
+        completed: Boolean,
+    ) {
+        val today = java.time.LocalDate.parse(original.date)
+        val fresh = workoutRepository.getSession(original.id, today) ?: original
+        val exercises = fresh.exercises.map { ex ->
+            if (ex.exerciseId == exerciseId) {
+                ex.copy(
+                    completed = completed,
+                    sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
+                )
+            } else ex
+        }
+        workoutRepository.save(fresh.copy(exercises = exercises))
     }
 }

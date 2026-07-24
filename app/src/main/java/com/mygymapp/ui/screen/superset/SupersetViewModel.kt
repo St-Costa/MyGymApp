@@ -318,10 +318,7 @@ class SupersetViewModel @Inject constructor(
         val sets = _uiState.value.sets
         val session = currentSession
         viewModelScope.launch {
-            if (session != null) {
-                session.buildUpdatedSession(sets, completed = true)
-                    .let { workoutRepository.save(it) }
-            }
+            if (session != null) saveThisPair(session, sets, completed = true)
             _completionSaved.value = true
         }
     }
@@ -336,12 +333,23 @@ class SupersetViewModel @Inject constructor(
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
-            if (session != null) {
-                session.buildUpdatedSession(sets, completed = false)
-                    .let { workoutRepository.save(it) }
-            }
+            if (session != null) saveThisPair(session, sets, completed = false)
             clearScope.cancel()
         }
+    }
+
+    // Reload the session from disk before rebuilding it, so we don't overwrite
+    // fields (Polar metrics, other exercises' updates, notes) added to the disk
+    // copy after this VM was initialized. buildUpdatedSession only rewrites the
+    // two exercises in this superset; everything else on `fresh` is preserved.
+    private suspend fun saveThisPair(
+        original: WorkoutSession,
+        sets: List<SupersetSetUi>,
+        completed: Boolean,
+    ) {
+        val today = java.time.LocalDate.parse(original.date)
+        val fresh = workoutRepository.getSession(original.id, today) ?: original
+        workoutRepository.save(fresh.buildUpdatedSession(sets, completed))
     }
 
     private fun WorkoutSession.buildUpdatedSession(

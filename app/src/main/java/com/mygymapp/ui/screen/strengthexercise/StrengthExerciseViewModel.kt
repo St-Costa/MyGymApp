@@ -182,17 +182,7 @@ class StrengthExerciseViewModel @Inject constructor(
         val sets = _uiState.value.sets
         val session = currentSession
         viewModelScope.launch {
-            if (session != null) {
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = true,
-                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
-                        )
-                    } else ex
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
-            }
+            if (session != null) saveThisExerciseSets(session, sets, completed = true)
             _completionSaved.value = true
         }
     }
@@ -208,19 +198,31 @@ class StrengthExerciseViewModel @Inject constructor(
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
-            if (session != null) {
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = false,
-                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
-                        )
-                    } else ex
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
-            }
+            if (session != null) saveThisExerciseSets(session, sets, completed = false)
             clearScope.cancel()
         }
+    }
+
+    // Reload the session from disk before saving, otherwise a copy captured at init
+    // would clobber any fields (Polar metrics, sibling-superset updates, notes) added
+    // to the disk copy in the meantime — the on-disk write becomes the source of truth
+    // and we only overwrite the entries for THIS exercise.
+    private suspend fun saveThisExerciseSets(
+        original: WorkoutSession,
+        sets: List<StrengthSetUi>,
+        completed: Boolean,
+    ) {
+        val today = java.time.LocalDate.parse(original.date)
+        val fresh = workoutRepository.getSession(original.id, today) ?: original
+        val exercises = fresh.exercises.map { ex ->
+            if (ex.exerciseId == exerciseId) {
+                ex.copy(
+                    completed = completed,
+                    sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
+                )
+            } else ex
+        }
+        workoutRepository.save(fresh.copy(exercises = exercises))
     }
 
     private fun updateSet(index: Int, transform: (StrengthSetUi) -> StrengthSetUi) {
