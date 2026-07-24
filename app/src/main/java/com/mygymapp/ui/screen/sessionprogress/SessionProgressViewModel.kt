@@ -19,10 +19,32 @@ data class SessionProgressUiState(
     val isLoading: Boolean = true,
     val routineName: String = "",
     val totalTonnage: Double = 0.0,
+    val sessionCalories: Double = 0.0,
+    val sessionTrimp: Double = 0.0,
+    val vo2max: Double = 0.0,
     val sessionTonnage: List<Double> = emptyList(),
     val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
     val sessionLabels: List<String> = emptyList(),
     val selectedChartFilter: String = "Totale",
+    val allSessionCalories: List<Double> = emptyList(),
+    val allSessionTrimp: List<Double> = emptyList(),
+    val allSessionVo2max: List<Double> = emptyList(),
+    val allSessionLabels: List<String> = emptyList(),
+    val ecgBeats: Int = 0,
+    val ecgAvgHr: Double = 0.0,
+    val ecgSessionRmssd: Double = 0.0,
+    val ecgPacCount: Int = 0,
+    val ecgPauseCount: Int = 0,
+    val ecgIrregularBeats: Int = 0,
+    val cardiacDriftBpmMin: Double = 0.0,
+    val restingHr: Int = 0,
+    val hrr60s: Double = 0.0,
+    val sdnn: Double = 0.0,
+    val pnn50: Double = 0.0,
+    val poincareSd1: Double = 0.0,
+    val poincareSd2: Double = 0.0,
+    val poincareRatio: Double = 0.0,
+    val afibSuspicionEpisodes: Int = 0,
 )
 
 @HiltViewModel
@@ -55,11 +77,11 @@ class SessionProgressViewModel @Inject constructor(
         val labelFmt = DateTimeFormatter.ofPattern("d/M")
         val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
-        val currentForza = session.exercises.filter { it.type == ExerciseType.FORZA }
+        val currentForza = session.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
         val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
         val sessionTonnage = allSessions.map { hist ->
             hist.exercises
-                .filter { it.exerciseId in currentExerciseIds }
+                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
                 .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
         }
 
@@ -68,19 +90,46 @@ class SessionProgressViewModel @Inject constructor(
             val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
             allSessions.map { hist ->
                 hist.exercises
-                    .filter { it.exerciseId in bpIds }
+                    .filter { it.exerciseId in bpIds && !it.excludeFromTonnage }
                     .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
             }
         }
+
+        // Cross-routine data: ALL completed sessions for kcal/TRIMP/VO2max
+        val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, LocalDate.parse(date))
+            .filter { it.completedAt.isNotBlank() }
+        val allLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
         _uiState.value = SessionProgressUiState(
             isLoading = false,
             routineName = session.routineName,
             totalTonnage = session.totalTonnage,
+            sessionCalories = session.sessionCalories,
+            sessionTrimp = session.sessionTrimp,
+            vo2max = session.vo2max,
             sessionTonnage = sessionTonnage,
             sessionTonnageByBodypart = sessionTonnageByBodypart,
             sessionLabels = sessionLabels,
             selectedChartFilter = "Totale",
+            allSessionCalories = allCompletedSessions.map { it.sessionCalories },
+            allSessionTrimp = allCompletedSessions.map { it.sessionTrimp },
+            allSessionVo2max = allCompletedSessions.map { it.vo2max },
+            allSessionLabels = allLabels,
+            ecgBeats = session.ecgBeats,
+            ecgAvgHr = session.ecgAvgHr,
+            ecgSessionRmssd = session.ecgSessionRmssd,
+            ecgPacCount = session.ecgPacCount,
+            ecgPauseCount = session.ecgPauseCount,
+            ecgIrregularBeats = session.ecgIrregularBeats,
+            cardiacDriftBpmMin = session.cardiacDriftBpmMin,
+            restingHr = session.restingHr,
+            hrr60s = session.hrr60s,
+            sdnn = session.sdnn,
+            pnn50 = session.pnn50,
+            poincareSd1 = session.poincareSd1,
+            poincareSd2 = session.poincareSd2,
+            poincareRatio = session.poincareRatio,
+            afibSuspicionEpisodes = session.afibSuspicionEpisodes,
         )
     }
 

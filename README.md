@@ -1,6 +1,6 @@
 # MyGymApp
 
-A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspired by [Obsidian](https://obsidian.md/), all data is stored as plain `.md` files with YAML frontmatter — no database, no cloud, full ownership of your data.
+A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspired by [Obsidian](https://obsidian.md/), all data is stored as plain `.md` files with YAML frontmatter — no database, no cloud, full ownership of your data. Optional Polar H10 integration adds live heart rate, ECG, HRV readiness and VO2max.
 
 ## Screenshots
 
@@ -19,16 +19,17 @@ A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspi
 ## Features
 
 - **Gitgraph dashboard** — 4×7 grid of the last 28 days. Each cell shows a workout's tonnage change vs. the previous session for that routine (green = improved, red = regressed). Routine names appear below the current week.
-- **Week view** — see which routines are assigned to each day of the week.
+- **Week view** — routines assigned to each day of the week.
 - **Exercise library** — exercises grouped by body part with orange (strength) / blue (stretch) color coding. Attach an image or YouTube link to any exercise.
-- **Routine builder** — configure sets, rep ranges, and pair exercises into supersets with a chain-link button. Drag-and-drop reorder.
+- **Routine builder** — sets, rep ranges, supersets via a chain-link button, drag-and-drop reorder.
 - **Active workout** — tap an exercise to log sets. Strength exercises use a vertical scroll picker (no keyboard). Stretch exercises use a stopwatch with a status-bar notification.
 - **Supersets** — interleaved sets for two paired exercises in a single screen, pre-populated from your previous session.
 - **Progress charts** — per-bodypart tonnage line chart after completing a routine. Compares only exercises present in both sessions for a fair comparison.
-- **Auto-save** — all text fields save automatically with a 500 ms debounce. No save button.
+- **Polar H10 integration** (optional) — live heart rate bar in every exercise, 60s HRV readiness with 14-day baseline (DELOAD/LIGHT/NORMAL/GOOD/PEAK), live ECG waveform with beat counter and arrhythmia flags, VO2max, automatic HRR detection, cardiac drift, calorie & TRIMP tracking.
+- **Auto-save** — all text fields save automatically with a 500 ms debounce; a dispose-hook flushes pending writes so back navigation never drops data.
 - **File-based storage** — data lives in `gymdata/` inside app internal storage as plain Markdown files. Easy to inspect, back up, or migrate.
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
@@ -38,37 +39,9 @@ A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspi
 | Navigation | Compose Navigation |
 | YAML parsing | snakeyaml-engine |
 | Image loading | Coil |
-| Charts | Custom Canvas (`TonnageLineChart`) |
-
-## Architecture
-
-```
-app/src/main/java/…/
-├── data/
-│   ├── model/        # Exercise, Routine, WorkoutSession, ExerciseSet
-│   ├── parser/       # Markdown+YAML serialization
-│   ├── repository/   # File-based CRUD with in-memory cache
-│   └── util/         # StringUtils (slugify), DataChangedSignal
-├── di/               # Hilt modules
-├── ui/
-│   ├── components/   # Reusable composables (ScrollPickerInput, MediaPreview, …)
-│   ├── navigation/   # AppNavigation, Screen routes
-│   ├── screen/       # One package per screen (Screen + ViewModel)
-│   └── theme/        # Dark Material3 theme
-└── service/          # StopwatchService (foreground)
-```
-
-### Data storage layout
-
-```
-gymdata/
-├── exercises/              # {slug}-{ex-id}.md
-├── routines/               # {slug}-{rt-id}.md
-├── history/
-│   ├── YYYY/MM/            # YYYY-MM-DD_{routineId}_{sessionId}.md
-│   └── _idx/               # {exerciseId}.idx  (exercise → session path index)
-└── image_cache/            # Coil permanent disk cache
-```
+| Charts | Custom Canvas (`TonnageLineChart`, `GitgraphView`, `LiveEcgCard`) |
+| BLE / heart rate | Polar BLE SDK + RxJava 3 |
+| Min SDK | 26 (Android 8.0) · Target 36 |
 
 ## Building
 
@@ -80,11 +53,24 @@ ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 ANDROID_HOME=~/Android/Sdk ./gradlew installDebug
 ```
 
-Requires Android SDK with min API 26 (Android 8.0).
+From Android Studio the `sdk.dir` in `local.properties` is picked up automatically.
 
-## Design
+## Documentation
 
-Wireframes and functional specs are in the [`Design/`](Design/) folder (Excalidraw files).
+Developer documentation lives in [`docs/`](docs/):
+
+| Doc | What's in it |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Package layout, screens, navigation, ViewModels, components |
+| [STORAGE.md](docs/STORAGE.md) | File paths, YAML formats, history index, ECG format, SharedPreferences |
+| [POLAR.md](docs/POLAR.md) | Heart rate / ECG / HRV subsystem |
+| [CONVENTIONS.md](docs/CONVENTIONS.md) | Patterns and gotchas (DataChangedSignal, completionSaved, AutoSave flush, …) |
+| [CHANGELOG.md](docs/CHANGELOG.md) | Phase history |
+| [FUNCTIONAL_SPEC.md](docs/FUNCTIONAL_SPEC.md) | Original Italian functional spec |
+| [polar/implementation-guide.md](docs/polar/implementation-guide.md) | Deep-dive on the Polar subsystem (formulas, references) |
+| [polar/testing-checklist.md](docs/polar/testing-checklist.md) | Manual test checklist for a Polar session |
+
+Original wireframes (Excalidraw) live in [`Design/`](Design/).
 
 ## License
 

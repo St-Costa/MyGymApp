@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mygymapp.ui.theme.GitgraphEmpty
+import com.mygymapp.ui.theme.Primary
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
 import kotlin.math.abs
@@ -47,6 +48,8 @@ fun GitgraphView(
     todayIndex: Int,
     tonnageChanges: List<Double?> = emptyList(),      // 28 values, one per square
     lastWeekRoutineNames: List<String?> = emptyList(), // 7 values, last row only
+    // 4 values, one per week-row: true = powerlifting week (brand-purple border)
+    powerliftingWeeks: List<Boolean> = emptyList(),
     // Called when user taps a last-row cell that has a session; col = 0..6 (Mon–Sun)
     onLastRowCellClick: ((col: Int) -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -69,6 +72,7 @@ fun GitgraphView(
         ) {
             // Day-of-week header
             Row(
+                modifier = Modifier.padding(horizontal = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(spacing),
             ) {
                 dayLabels.forEach { label ->
@@ -85,7 +89,17 @@ fun GitgraphView(
 
             // 4 rows of 7 squares
             for (row in 0 until 4) {
+                val isPowerliftingWeek = powerliftingWeeks.getOrElse(row) { false }
+                val rowModifier = if (isPowerliftingWeek) {
+                    Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(2.dp, Primary, RoundedCornerShape(8.dp))
+                        .padding(3.dp)
+                } else {
+                    Modifier.padding(horizontal = 3.dp, vertical = 3.dp)
+                }
                 Row(
+                    modifier = rowModifier,
                     horizontalArrangement = Arrangement.spacedBy(spacing),
                 ) {
                     for (col in 0 until 7) {
@@ -136,6 +150,7 @@ fun GitgraphView(
             // each word on its own line, font maximized to fill cell width.
             if (lastWeekRoutineNames.isNotEmpty()) {
                 Row(
+                    modifier = Modifier.padding(horizontal = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(spacing),
                 ) {
                     for (col in 0 until 7) {

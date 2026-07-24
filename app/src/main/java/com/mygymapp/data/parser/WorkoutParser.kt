@@ -18,6 +18,25 @@ object WorkoutParser {
             completedAt = fm["completedAt"]?.toString() ?: "",
             totalTonnage = (fm["totalTonnage"] as? Number)?.toDouble() ?: 0.0,
             tonnageByBodypart = parseTonnageMap(fm["tonnageByBodypart"]),
+            sessionCalories = (fm["sessionCalories"] as? Number)?.toDouble() ?: 0.0,
+            sessionTrimp = (fm["sessionTrimp"] as? Number)?.toDouble() ?: 0.0,
+            vo2max = (fm["vo2max"] as? Number)?.toDouble() ?: 0.0,
+            ecgBeats = (fm["ecgBeats"] as? Number)?.toInt() ?: 0,
+            ecgDurationSec = (fm["ecgDurationSec"] as? Number)?.toDouble() ?: 0.0,
+            ecgAvgHr = (fm["ecgAvgHr"] as? Number)?.toDouble() ?: 0.0,
+            ecgSessionRmssd = (fm["ecgSessionRmssd"] as? Number)?.toDouble() ?: 0.0,
+            ecgPacCount = (fm["ecgPacCount"] as? Number)?.toInt() ?: 0,
+            ecgPauseCount = (fm["ecgPauseCount"] as? Number)?.toInt() ?: 0,
+            ecgIrregularBeats = (fm["ecgIrregularBeats"] as? Number)?.toInt() ?: 0,
+            cardiacDriftBpmMin = (fm["cardiacDriftBpmMin"] as? Number)?.toDouble() ?: 0.0,
+            restingHr = (fm["restingHr"] as? Number)?.toInt() ?: 0,
+            hrr60s = (fm["hrr60s"] as? Number)?.toDouble() ?: 0.0,
+            sdnn = (fm["sdnn"] as? Number)?.toDouble() ?: 0.0,
+            pnn50 = (fm["pnn50"] as? Number)?.toDouble() ?: 0.0,
+            poincareSd1 = (fm["poincareSd1"] as? Number)?.toDouble() ?: 0.0,
+            poincareSd2 = (fm["poincareSd2"] as? Number)?.toDouble() ?: 0.0,
+            poincareRatio = (fm["poincareRatio"] as? Number)?.toDouble() ?: 0.0,
+            afibSuspicionEpisodes = (fm["afibSuspicionEpisodes"] as? Number)?.toInt() ?: 0,
             exercises = parseExercises(fm["exercises"]),
             notes = doc.body,
         )
@@ -43,8 +62,11 @@ object WorkoutParser {
                 "bodypart" to ex.bodypart,
                 "type" to ex.type.toFileString(),
                 "completed" to ex.completed,
-                "sets" to sets,
-            )
+            ).apply {
+                if (ex.excludeFromTonnage) put("excludeFromTonnage", true)
+                if (ex.isDaily) put("isDaily", true)
+                put("sets", sets)
+            }
         }
 
         val frontmatter = linkedMapOf<String, Any?>(
@@ -54,9 +76,30 @@ object WorkoutParser {
             "date" to session.date,
             "completedAt" to session.completedAt,
             "totalTonnage" to session.totalTonnage,
-            "tonnageByBodypart" to session.tonnageByBodypart,
-            "exercises" to exerciseList,
-        )
+            "tonnageByBodypart" to session.tonnageByBodypart.filterValues { it > 0.0 },
+            "sessionCalories" to session.sessionCalories,
+            "sessionTrimp" to session.sessionTrimp,
+            "vo2max" to session.vo2max,
+        ).apply {
+            // ECG/HRV/recovery fields: omit when not computed (zero) to keep YAML lean
+            if (session.ecgBeats > 0) put("ecgBeats", session.ecgBeats)
+            if (session.ecgDurationSec > 0.0) put("ecgDurationSec", session.ecgDurationSec)
+            if (session.ecgAvgHr > 0.0) put("ecgAvgHr", session.ecgAvgHr)
+            if (session.ecgSessionRmssd > 0.0) put("ecgSessionRmssd", session.ecgSessionRmssd)
+            if (session.ecgPacCount > 0) put("ecgPacCount", session.ecgPacCount)
+            if (session.ecgPauseCount > 0) put("ecgPauseCount", session.ecgPauseCount)
+            if (session.ecgIrregularBeats > 0) put("ecgIrregularBeats", session.ecgIrregularBeats)
+            if (session.cardiacDriftBpmMin != 0.0) put("cardiacDriftBpmMin", session.cardiacDriftBpmMin)
+            if (session.restingHr > 0) put("restingHr", session.restingHr)
+            if (session.hrr60s > 0.0) put("hrr60s", session.hrr60s)
+            if (session.sdnn > 0.0) put("sdnn", session.sdnn)
+            if (session.pnn50 > 0.0) put("pnn50", session.pnn50)
+            if (session.poincareSd1 > 0.0) put("poincareSd1", session.poincareSd1)
+            if (session.poincareSd2 > 0.0) put("poincareSd2", session.poincareSd2)
+            if (session.poincareRatio > 0.0) put("poincareRatio", session.poincareRatio)
+            if (session.afibSuspicionEpisodes > 0) put("afibSuspicionEpisodes", session.afibSuspicionEpisodes)
+            put("exercises", exerciseList)
+        }
         return MarkdownParser.serialize(frontmatter, session.notes)
     }
 
@@ -79,6 +122,8 @@ object WorkoutParser {
                 type = type,
                 completed = map["completed"] as? Boolean ?: false,
                 sets = parseSets(map["sets"], type),
+                excludeFromTonnage = map["excludeFromTonnage"] as? Boolean ?: false,
+                isDaily = map["isDaily"] as? Boolean ?: false,
             )
         }
     }

@@ -3,6 +3,7 @@ package com.mygymapp.ui.screen.routinelist
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.DataChangedSignal
+import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
 import com.mygymapp.data.model.Routine
 import com.mygymapp.data.repository.RoutineRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,6 +42,7 @@ class RoutineListViewModel @Inject constructor(
     }
 
     fun toggleEnabled(routine: Routine) {
+        if (routine.id == FIXED_DAILY_ROUTINE_ID) return
         viewModelScope.launch {
             val updated = routine.copy(enabled = !routine.enabled)
             routineRepository.save(updated)
@@ -51,6 +53,7 @@ class RoutineListViewModel @Inject constructor(
     }
 
     fun deleteRoutine(id: String) {
+        if (id == FIXED_DAILY_ROUTINE_ID) return
         viewModelScope.launch {
             routineRepository.delete(id)
             _uiState.value = _uiState.value.copy(

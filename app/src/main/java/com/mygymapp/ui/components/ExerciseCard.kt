@@ -17,8 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
-import com.mygymapp.ui.theme.ForzaColor
-import com.mygymapp.ui.theme.StretchColor
+import com.mygymapp.ui.theme.accentColor
 
 @Composable
 fun ExerciseCard(
@@ -26,10 +25,7 @@ fun ExerciseCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = when (exercise.type) {
-        ExerciseType.FORZA -> ForzaColor
-        ExerciseType.STRETCH -> StretchColor
-    }
+    val borderColor = exercise.type.accentColor()
 
     Card(
         onClick = onClick,

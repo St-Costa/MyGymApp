@@ -61,5 +61,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.material.icons.extended)
 
+    implementation(libs.polar.ble.sdk)
+    implementation(libs.rxjava3)
+    implementation(libs.rxandroid3)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

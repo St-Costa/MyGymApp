@@ -12,6 +12,9 @@ ksp = "2.1.0-1.0.29"
 snakeyaml = "2.7"
 coil = "2.7.0"
 coroutines = "1.9.0"
+polarBle = "6.16.1"
+rxjava3 = "3.1.9"
+rxandroid3 = "3.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -33,6 +36,9 @@ androidx-browser = { group = "androidx.browser", name = "browser", version = "1.
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+polar-ble-sdk = { group = "com.github.polarofficial", name = "polar-ble-sdk", version.ref = "polarBle" }
+rxjava3 = { group = "io.reactivex.rxjava3", name = "rxjava", version.ref = "rxjava3" }
+rxandroid3 = { group = "io.reactivex.rxjava3", name = "rxandroid", version.ref = "rxandroid3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

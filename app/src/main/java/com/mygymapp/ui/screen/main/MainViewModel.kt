@@ -13,6 +13,7 @@ import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.components.DayStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,8 @@ data class MainUiState(
     // Session ID + date for each day of the current week (null = no session that day)
     val lastWeekSessionIds: List<String?> = List(7) { null },
     val lastWeekSessionDates: List<String?> = List(7) { null },
+    // One flag per gitgraph week-row (4): true = powerlifting week
+    val powerliftingWeeks: List<Boolean> = List(4) { false },
     val isLoading: Boolean = true,
     val isSeedingData: Boolean = false,
 )
@@ -42,7 +45,13 @@ class MainViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
     private val dataChangedSignal: DataChangedSignal,
+    private val appLogger: AppLogger,
+    private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "MainViewModel"
+    }
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState
@@ -51,6 +60,13 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             workoutRepository.migrateOldSessionFiles()
             workoutRepository.pruneOldSessions(LocalDate.now().minusMonths(3))
+            // Scrub sessions the user opened but never filled in, and their orphan ECG raws.
+            val ghostsDeleted = workoutRepository.cleanupGhostSessions()
+            val orphansDeleted = workoutRepository.cleanupOrphanEcgFiles()
+            appLogger.i(TAG, "Boot cleanup: ghosts=$ghostsDeleted orphanEcg=$orphansDeleted")
+            // Repair exercises/routines where repRangeMin > repRangeMax was persisted.
+            exerciseRepository.fixInvalidRepRanges()
+            routineRepository.fixInvalidRepRanges()
             loadGitgraphInternal()
         }
         viewModelScope.launch {
@@ -127,6 +143,11 @@ class MainViewModel @Inject constructor(
 
         val todayIndex = 3 * 7 + (todayDow - 1)
 
+        // One flag per week-row: the row's Monday is startDate + week*7.
+        val powerliftingWeeks = (0 until 4).map { week ->
+            powerliftingScheduleRepository.isPowerliftingWeek(startDate.plusWeeks(week.toLong()))
+        }
+
         _uiState.value = MainUiState(
             gitgraphDays = days,
             todayIndex = todayIndex,
@@ -134,6 +155,7 @@ class MainViewModel @Inject constructor(
             lastWeekRoutineNames = lastWeekRoutineNames,
             lastWeekSessionIds = lastWeekSessionIds,
             lastWeekSessionDates = lastWeekSessionDates,
+            powerliftingWeeks = powerliftingWeeks,
             isLoading = false,
         )
     }
@@ -146,11 +168,12 @@ class MainViewModel @Inject constructor(
      * Falls back to totalTonnage if the two sessions share no exercises.
      */
     private fun computeCommonTonnage(s1: WorkoutSession, s2: WorkoutSession): Pair<Double, Double> {
-        val commonIds = s1.exercises.map { it.exerciseId }.toSet()
-            .intersect(s2.exercises.map { it.exerciseId }.toSet())
+        // Warmup + fixed-daily exercises never contribute to tonnage comparisons.
+        val commonIds = s1.exercises.filterNot { it.excludeFromTonnage }.map { it.exerciseId }.toSet()
+            .intersect(s2.exercises.filterNot { it.excludeFromTonnage }.map { it.exerciseId }.toSet())
         if (commonIds.isEmpty()) return Pair(s1.totalTonnage, s2.totalTonnage)
         fun tonnageFor(s: WorkoutSession): Double = s.exercises
-            .filter { it.exerciseId in commonIds }
+            .filter { it.exerciseId in commonIds && !it.excludeFromTonnage }
             .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
         return Pair(tonnageFor(s1), tonnageFor(s2))
     }

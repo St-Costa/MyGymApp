@@ -21,6 +21,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Menu
@@ -144,7 +146,7 @@ fun RoutineEditScreen(
                     }
                 },
                 actions = {
-                    if (!uiState.isNew) {
+                    if (!uiState.isNew && !uiState.isFixedDaily) {
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(
                                 Icons.Filled.Delete,
@@ -172,13 +174,16 @@ fun RoutineEditScreen(
                 onValueChange = viewModel::onNameChange,
                 label = { Text("Routine Name") },
                 singleLine = true,
+                readOnly = uiState.isFixedDaily,
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            DayPicker(
-                selectedDay = uiState.day,
-                onDaySelected = viewModel::onDayChange,
-            )
+            if (!uiState.isFixedDaily) {
+                DayPicker(
+                    selectedDay = uiState.day,
+                    onDaySelected = viewModel::onDayChange,
+                )
+            }
 
             OutlinedTextField(
                 value = uiState.notes,
@@ -189,12 +194,25 @@ fun RoutineEditScreen(
             )
 
             Text(
-                text = "Exercises",
+                text = if (uiState.isFixedDaily) "Daily fixed exercises" else "Exercises",
                 style = MaterialTheme.typography.titleLarge,
             )
 
+            if (uiState.isFixedDaily) {
+                Text(
+                    text = "These exercises are added at the start of every session and are " +
+                        "excluded from tonnage.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+            }
+
             ExerciseDragDropList(
                 exercises = uiState.exercises,
+                showWarmupDivider = !uiState.isFixedDaily,
+                warmupCount = uiState.warmupCount,
+                onMoveLineUp = viewModel::moveWarmupLineUp,
+                onMoveLineDown = viewModel::moveWarmupLineDown,
                 onMoveSegment = viewModel::moveSegment,
                 onRemove = viewModel::removeExercise,
                 onToggleSuperset = viewModel::toggleSuperset,
@@ -224,6 +242,10 @@ fun RoutineEditScreen(
 @Composable
 private fun ExerciseDragDropList(
     exercises: List<RoutineExerciseUi>,
+    showWarmupDivider: Boolean,
+    warmupCount: Int,
+    onMoveLineUp: () -> Unit,
+    onMoveLineDown: () -> Unit,
     onMoveSegment: (from: Int, to: Int) -> Unit,
     onRemove: (index: Int) -> Unit,
     onToggleSuperset: (index: Int) -> Unit,
@@ -241,7 +263,18 @@ private fun ExerciseDragDropList(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        // Running count of exercises rendered so far, used to place the warmup line.
+        var cumExercises = 0
         segments.forEachIndexed { segIdx, segment ->
+            if (showWarmupDivider && cumExercises == warmupCount) {
+                WarmupDividerRow(
+                    canMoveUp = warmupCount > 0,
+                    canMoveDown = warmupCount < exercises.size,
+                    onMoveUp = onMoveLineUp,
+                    onMoveDown = onMoveLineDown,
+                )
+            }
+            cumExercises += segment.indices().size
             val isDragging = dragState?.fromIndex == segIdx
             val ds = dragState
             val offsetYPx = when {
@@ -266,8 +299,11 @@ private fun ExerciseDragDropList(
                 when (segment) {
                     is ExerciseSegment.Single -> {
                         val exIdx = segment.index
-                        // Show superset link button only when the next segment is also a Single
-                        val canLink = segIdx + 1 < segments.size && segments[segIdx + 1] is ExerciseSegment.Single
+                        // Show superset link button only when the next segment is also a Single,
+                        // and never across the warmup line (would straddle warmup/normal).
+                        val canLink = segIdx + 1 < segments.size &&
+                            segments[segIdx + 1] is ExerciseSegment.Single &&
+                            exIdx + 1 != warmupCount
                         RoutineExerciseItem(
                             exercise = exercises[exIdx],
                             isDragging = isDragging,
@@ -336,6 +372,57 @@ private fun ExerciseDragDropList(
                     }
                 }
             }
+        }
+        // Line sitting below every exercise (all exercises are warmup).
+        if (showWarmupDivider && cumExercises == warmupCount) {
+            WarmupDividerRow(
+                canMoveUp = warmupCount > 0,
+                canMoveDown = false,
+                onMoveUp = onMoveLineUp,
+                onMoveDown = onMoveLineDown,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Warmup divider line (positional; exercises above it are warmup)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun WarmupDividerRow(
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+) {
+    val color = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            HorizontalDivider(color = color, thickness = 2.dp)
+            Text(
+                text = "↑ Warmup · Workout ↓",
+                style = MaterialTheme.typography.labelMedium,
+                color = color,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                contentDescription = "Move line up",
+                tint = if (canMoveUp) color else color.copy(alpha = 0.3f),
+            )
+        }
+        IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = "Move line down",
+                tint = if (canMoveDown) color else color.copy(alpha = 0.3f),
+            )
         }
     }
 }
