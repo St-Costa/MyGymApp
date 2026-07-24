@@ -55,7 +55,7 @@ object MarkdownParser {
                 null -> sb.appendLine("$prefix$key:")
                 is String -> sb.appendLine("$prefix$key: \"$value\"")
                 is Boolean -> sb.appendLine("$prefix$key: $value")
-                is Number -> sb.appendLine("$prefix$key: $value")
+                is Number -> sb.appendLine("$prefix$key: ${formatValue(value)}")
                 is List<*> -> {
                     sb.appendLine("$prefix$key:")
                     for (item in value) {
@@ -130,7 +130,16 @@ object MarkdownParser {
         null -> ""
         is String -> "\"$value\""
         is Boolean -> value.toString()
+        is Double -> formatDouble(value)
+        is Float -> formatDouble(value.toDouble())
         is Number -> value.toString()
         else -> "\"$value\""
+    }
+
+    // Round doubles to 2 decimals on write so session YAML stays readable.
+    private fun formatDouble(v: Double): String {
+        if (v.isNaN() || v.isInfinite()) return "0.0"
+        val rounded = Math.round(v * 100.0) / 100.0
+        return rounded.toString()
     }
 }

@@ -87,31 +87,53 @@ class SupersetViewModel @Inject constructor(
 
             val workoutEx1 = session?.exercises?.find { it.exerciseId == exerciseId1 }
             val workoutEx2 = session?.exercises?.find { it.exerciseId == exerciseId2 }
+            val isDaily1 = workoutEx1?.isDaily ?: false
+            val isDaily2 = workoutEx2?.isDaily ?: false
+            val isWarmup1 = (workoutEx1?.excludeFromTonnage ?: false) && !isDaily1
+            val isWarmup2 = (workoutEx2?.excludeFromTonnage ?: false) && !isDaily2
 
-            // Previous FORZA sets for showing defaults
+            // Previous FORZA sets for showing defaults. Compare like-with-like on exercise type
+            // (daily / warmup / normal), and walk back to the most recent matching session that
+            // actually has non-zero data so an empty 0-0 session doesn't blank out the preview.
+            suspend fun previousStrengthSets(exId: String, daily: Boolean, warmup: Boolean): List<ExerciseSet.Strength> =
+                workoutRepository.getSessionsForExercise(exId, 30)
+                    .asSequence()
+                    .mapNotNull { prev ->
+                        prev.exercises.firstOrNull { ex ->
+                            ex.exerciseId == exId &&
+                                ex.isDaily == daily &&
+                                (ex.excludeFromTonnage && !ex.isDaily) == warmup
+                        }
+                    }
+                    .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
+                    .firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
+
             val prevStrengthSets1 = if (ex1.type == ExerciseType.FORZA) {
-                workoutRepository.getSessionsForExercise(exerciseId1, 1)
-                    .firstOrNull()?.exercises
-                    ?.find { it.exerciseId == exerciseId1 }?.sets
-                    ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+                previousStrengthSets(exerciseId1, isDaily1, isWarmup1)
             } else emptyList()
 
             val prevStrengthSets2 = if (ex2.type == ExerciseType.FORZA) {
-                workoutRepository.getSessionsForExercise(exerciseId2, 1)
-                    .firstOrNull()?.exercises
-                    ?.find { it.exerciseId == exerciseId2 }?.sets
-                    ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
+                previousStrengthSets(exerciseId2, isDaily2, isWarmup2)
             } else emptyList()
 
-            // Rep ranges from routine
+            // Fallback for sets beyond what the previous session recorded.
+            val lastMeaningful1 = prevStrengthSets1.lastOrNull { it.reps > 0 || it.weight > 0.0 }
+            val lastMeaningful2 = prevStrengthSets2.lastOrNull { it.reps > 0 || it.weight > 0.0 }
+
+            // Rep ranges from the owning routine. Daily exercises live in the fixed-daily routine.
             var repMin1 = 0; var repMax1 = 0
             var repMin2 = 0; var repMax2 = 0
-            val routineId = session?.routineId ?: ""
-            if (routineId.isNotBlank()) {
-                val routine = routineRepository.getById(routineId)
-                val re1 = routine?.exercises?.find { it.exerciseId == exerciseId1 }
-                val re2 = routine?.exercises?.find { it.exerciseId == exerciseId2 }
+            val sessionRoutineId = session?.routineId ?: ""
+            val routineId1 =
+                if (isDaily1) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else sessionRoutineId
+            val routineId2 =
+                if (isDaily2) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else sessionRoutineId
+            if (routineId1.isNotBlank()) {
+                val re1 = routineRepository.getById(routineId1)?.exercises?.find { it.exerciseId == exerciseId1 }
                 repMin1 = re1?.repRangeMin ?: 0; repMax1 = re1?.repRangeMax ?: 0
+            }
+            if (routineId2.isNotBlank()) {
+                val re2 = routineRepository.getById(routineId2)?.exercises?.find { it.exerciseId == exerciseId2 }
                 repMin2 = re2?.repRangeMin ?: 0; repMax2 = re2?.repRangeMax ?: 0
             }
 
@@ -123,7 +145,7 @@ class SupersetViewModel @Inject constructor(
                 when (ex1.type) {
                     ExerciseType.FORZA -> {
                         val cs = currentSet as? ExerciseSet.Strength
-                        val ps = prevStrengthSets1.getOrNull(i)
+                        val ps = prevStrengthSets1.getOrNull(i) ?: lastMeaningful1
                         val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
                         val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
                         val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0
@@ -159,7 +181,7 @@ class SupersetViewModel @Inject constructor(
                 when (ex2.type) {
                     ExerciseType.FORZA -> {
                         val cs = currentSet as? ExerciseSet.Strength
-                        val ps = prevStrengthSets2.getOrNull(i)
+                        val ps = prevStrengthSets2.getOrNull(i) ?: lastMeaningful2
                         val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
                         val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
                         val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0

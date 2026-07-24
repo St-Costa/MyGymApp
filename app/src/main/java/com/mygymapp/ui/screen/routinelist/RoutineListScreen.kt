@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
 import com.mygymapp.data.model.Routine
 import com.mygymapp.ui.components.EmptyStateBox
 import com.mygymapp.ui.components.FullscreenLoading
@@ -99,6 +101,7 @@ private fun RoutineItem(
     onClick: () -> Unit,
     onToggleEnabled: () -> Unit,
 ) {
+    val isFixed = routine.id == FIXED_DAILY_ROUTINE_ID
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -121,7 +124,13 @@ private fun RoutineItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (routine.day.isNotBlank()) {
+                if (isFixed) {
+                    Text(
+                        text = "Auto-added to every session",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                } else if (routine.day.isNotBlank()) {
                     Text(
                         text = routine.day.replaceFirstChar { it.uppercase() },
                         style = MaterialTheme.typography.bodyMedium,
@@ -134,10 +143,18 @@ private fun RoutineItem(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                 )
             }
-            Switch(
-                checked = routine.enabled,
-                onCheckedChange = { onToggleEnabled() },
-            )
+            if (isFixed) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Fixed routine",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                )
+            } else {
+                Switch(
+                    checked = routine.enabled,
+                    onCheckedChange = { onToggleEnabled() },
+                )
+            }
         }
     }
 }

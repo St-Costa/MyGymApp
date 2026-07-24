@@ -23,6 +23,8 @@ class ExerciseRepository @Inject constructor(
     private val mutex = Mutex()
     private var loaded = false
 
+    @Volatile private var bodypartsCache: List<String>? = null
+
     private fun exercisesDir(): File = fileManager.getDir("exercises")
 
     suspend fun getAll(): List<Exercise> = withContext(Dispatchers.IO) {
@@ -64,6 +66,7 @@ class ExerciseRepository @Inject constructor(
 
             file.writeText(ExerciseParser.toMarkdown(updated))
             cache[updated.id] = updated
+            bodypartsCache = null
             updated
         }
         if (nameChanged) {
@@ -77,11 +80,41 @@ class ExerciseRepository @Inject constructor(
             val exercise = cache.remove(id) ?: return@withLock
             val fileName = slugify(exercise.name, exercise.id)
             File(exercisesDir(), "$fileName.md").delete()
+            bodypartsCache = null
         }
     }
 
+    /**
+     * One-shot migration: scans all exercises and fixes any where
+     * `defaultRepRangeMin > defaultRepRangeMax` by setting `max = min`.
+     * Guarded by a sentinel file so it runs at most once. Returns count of fixed exercises.
+     */
+    suspend fun fixInvalidRepRanges(): Int = withContext(Dispatchers.IO) {
+        val sentinel = File(exercisesDir(), ".reprange_fixed")
+        if (sentinel.exists()) return@withContext 0
+        ensureLoaded()
+        var fixed = 0
+        mutex.withLock {
+            val toFix = cache.values.filter { it.defaultRepRangeMin > it.defaultRepRangeMax }
+            toFix.forEach { ex ->
+                val updated = ex.copy(defaultRepRangeMax = ex.defaultRepRangeMin)
+                val fileName = slugify(updated.name, updated.id)
+                val file = File(exercisesDir(), "$fileName.md")
+                file.writeText(ExerciseParser.toMarkdown(updated))
+                cache[updated.id] = updated
+                fixed++
+            }
+            exercisesDir().mkdirs()
+            sentinel.createNewFile()
+        }
+        fixed
+    }
+
     suspend fun getBodyparts(): List<String> {
-        return getAll().map { it.bodypart }.distinct().sorted()
+        bodypartsCache?.let { return it }
+        val computed = getAll().map { it.bodypart }.distinct().sorted()
+        bodypartsCache = computed
+        return computed
     }
 
     private suspend fun ensureLoaded() {

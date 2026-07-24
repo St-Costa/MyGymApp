@@ -1,6 +1,7 @@
 package com.mygymapp.ui.screen.exerciselist
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,11 +11,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -64,20 +68,40 @@ fun ExerciseListScreen(
             }
         },
     ) { padding ->
-        when {
-            uiState.isLoading -> FullscreenLoading(padding)
-            uiState.exercisesByBodypart.isEmpty() -> EmptyStateBox(
-                message = "No exercises yet.\nTap + to create one.",
-                paddingValues = padding,
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            OutlinedTextField(
+                value = uiState.searchQuery,
+                onValueChange = viewModel::onSearchQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("Search exercises") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (uiState.searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        }
+                    }
+                },
+                singleLine = true,
             )
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+            when {
+                uiState.isLoading -> FullscreenLoading(PaddingValues())
+                uiState.exercisesByBodypart.isEmpty() -> EmptyStateBox(
+                    message = if (uiState.searchQuery.isNotBlank()) {
+                        "No exercises match \"${uiState.searchQuery}\"."
+                    } else {
+                        "No exercises yet.\nTap + to create one."
+                    },
+                    paddingValues = PaddingValues(),
+                )
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                     uiState.exercisesByBodypart.forEach { (bodypart, exercises) ->
                         item(key = "header_$bodypart") {
                             Text(
@@ -103,6 +127,7 @@ fun ExerciseListScreen(
                                 },
                             )
                         }
+                    }
                     }
                 }
             }

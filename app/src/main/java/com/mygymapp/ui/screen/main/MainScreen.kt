@@ -10,22 +10,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -38,46 +34,26 @@ fun MainScreen(
     onNavigateToWeekView: () -> Unit,
     onNavigateToExercises: () -> Unit,
     onNavigateToRoutines: () -> Unit,
+    onNavigateToHeartRate: () -> Unit,
+    onNavigateToOptions: () -> Unit,
     onNavigateToSessionProgress: (sessionId: String, date: String) -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showSeedDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadGitgraph()
     }
 
-    if (showSeedDialog) {
-        AlertDialog(
-            onDismissRequest = { showSeedDialog = false },
-            title = { Text("Seed Debug Data") },
-            text = { Text("This will delete current-week sessions and regenerate debug data. Continue?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showSeedDialog = false
-                    viewModel.seedDebugData()
-                }) {
-                    Text("Confirm")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSeedDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-        )
-    }
-
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showSeedDialog = true },
+                onClick = onNavigateToOptions,
             ) {
                 if (uiState.isSeedingData) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else {
-                    Icon(Icons.Default.Settings, contentDescription = "Debug options")
+                    Icon(Icons.Default.Settings, contentDescription = "Opzioni")
                 }
             }
         },
@@ -95,6 +71,7 @@ fun MainScreen(
                 todayIndex = uiState.todayIndex,
                 tonnageChanges = uiState.gitgraphTonnageChanges,
                 lastWeekRoutineNames = uiState.lastWeekRoutineNames,
+                powerliftingWeeks = uiState.powerliftingWeeks,
                 onLastRowCellClick = { col ->
                     val sessionId = uiState.lastWeekSessionIds.getOrNull(col)
                     val date = uiState.lastWeekSessionDates.getOrNull(col)
@@ -113,21 +90,29 @@ fun MainScreen(
             ) {
                 Button(
                     onClick = onNavigateToWeekView,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Text("Week View", fontSize = 28.sp)
+                    Text("Week View", fontSize = 22.sp)
                 }
                 Button(
                     onClick = onNavigateToExercises,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Text("Exercises", fontSize = 28.sp)
+                    Text("Exercises", fontSize = 22.sp)
                 }
                 Button(
                     onClick = onNavigateToRoutines,
-                    modifier = Modifier.fillMaxWidth().height(96.dp),
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Text("Routines", fontSize = 28.sp)
+                    Text("Routines", fontSize = 22.sp)
+                }
+                Button(
+                    onClick = onNavigateToHeartRate,
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                ) {
+                    Icon(Icons.Default.FavoriteBorder, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Heart Rate", fontSize = 22.sp)
                 }
             }
             Spacer(modifier = Modifier.height(72.dp))

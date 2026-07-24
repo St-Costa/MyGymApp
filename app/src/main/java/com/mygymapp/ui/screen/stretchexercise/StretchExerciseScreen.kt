@@ -37,6 +37,7 @@ import android.content.Intent
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
+import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.service.StopwatchService
 
@@ -90,6 +91,9 @@ fun StretchExerciseScreen(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                 )
+
+                // Heart rate + recovery semaphore
+                HeartRateBar()
 
                 // Stopwatch timer display
                 val elapsed = uiState.elapsedSeconds
