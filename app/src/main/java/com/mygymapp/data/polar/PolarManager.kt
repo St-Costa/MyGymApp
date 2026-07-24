@@ -535,10 +535,15 @@ class PolarManager @Inject constructor(
                             }
                         }
 
-                        // Automatic peak detection → triggers recovery
-                        detectPeakAndTriggerRecovery(sample.hr)
-
-                        updateRecoveryState(sample.hr)
+                        // Automatic peak detection → triggers recovery.
+                        // Skip while readiness is still measuring: restingHr is the
+                        // default 70 during those 60s, so peakHr − 70 ≥ 15 fires false
+                        // recovery events on any HR spike (walking to the mat, tying
+                        // shoes) before we have a personal baseline.
+                        if (!readinessMeasuring) {
+                            detectPeakAndTriggerRecovery(sample.hr)
+                            updateRecoveryState(sample.hr)
+                        }
 
                         // Accumulate calories and TRIMP
                         accumulateCaloriesAndTrimp(sample.hr)
