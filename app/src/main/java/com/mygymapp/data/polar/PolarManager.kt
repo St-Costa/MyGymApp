@@ -103,6 +103,13 @@ class PolarManager @Inject constructor(
     private val _sessionTrimp = MutableStateFlow(0.0)
     val sessionTrimp: StateFlow<Double> = _sessionTrimp
 
+    // Guards every mutation/read of the collections written from the Polar Rx
+    // callback (hrSeries, pendingHrrPeaks, hrrDeltas, recentRR, hrWindow) plus
+    // their derived snapshots read from other threads
+    // (registerRoutine, ActiveRoutineViewModel). Reentrant, so the callback can
+    // still call cardiacDriftBpmPerMinute() without deadlocking.
+    private val hrSampleLock = Any()
+
     // HR time series for cardiac drift (capture during active session)
     private var hrSeriesActive = false
     private val hrSeries = ArrayDeque<Pair<Long, Int>>() // (elapsedMs, hr), capped at HR_SERIES_MAX_ENTRIES
@@ -470,8 +477,8 @@ class PolarManager @Inject constructor(
             .subscribe(
                 { hrData ->
                     lastHrSampleAtMs = System.currentTimeMillis()
-                    val sample = hrData.samples.lastOrNull()
-                    if (sample != null) {
+                    val sample = hrData.samples.lastOrNull() ?: return@subscribe
+                    synchronized(hrSampleLock) {
                         _heartRate.value = sample.hr
                         PolarStreamingService.updateHr(context, sample.hr)
 
@@ -684,28 +691,34 @@ class PolarManager @Inject constructor(
         // mid-session reconnect doesn't wipe the accumulated calories/TRIMP.
         _sessionCalories.value = 0.0
         _sessionTrimp.value = 0.0
-        hrSeries.clear()
-        hrSeriesStart = System.currentTimeMillis()
-        hrSeriesActive = true
-        lastDriftComputeMs = 0L
-        _liveCardiacDrift.value = 0.0
-        pendingHrrPeaks.clear()
-        hrrDeltas.clear()
-        _liveHrrLast.value = null
-        lastQueuedPeakAtMs = 0L
+        synchronized(hrSampleLock) {
+            hrSeries.clear()
+            hrSeriesStart = System.currentTimeMillis()
+            hrSeriesActive = true
+            lastDriftComputeMs = 0L
+            _liveCardiacDrift.value = 0.0
+            pendingHrrPeaks.clear()
+            hrrDeltas.clear()
+            _liveHrrLast.value = null
+            lastQueuedPeakAtMs = 0L
+        }
     }
 
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */
-    fun averageHrr60s(): Double = if (hrrDeltas.isNotEmpty()) hrrDeltas.average() else 0.0
+    fun averageHrr60s(): Double = synchronized(hrSampleLock) {
+        if (hrrDeltas.isNotEmpty()) hrrDeltas.average() else 0.0
+    }
 
     /** One HR recovery value (BPM) per detected effort peak/set during the session, in order. */
-    fun hrrDeltasSnapshot(): List<Double> = hrrDeltas.map { it.toDouble() }
+    fun hrrDeltasSnapshot(): List<Double> = synchronized(hrSampleLock) {
+        hrrDeltas.map { it.toDouble() }
+    }
 
     /** Resting HR observed during the readiness measurement (or fallback to lowest seen). */
-    fun sessionRestingHr(): Int = restingHr
+    fun sessionRestingHr(): Int = synchronized(hrSampleLock) { restingHr }
 
     fun stopHrSeriesCapture() {
-        hrSeriesActive = false
+        synchronized(hrSampleLock) { hrSeriesActive = false }
         // Session over: stop chasing a reconnection and clear any disconnect alert. If we were
         // still mid-reconnect (no device), tear down the now-pointless foreground service.
         reconnectHandler.removeCallbacksAndMessages(null)
@@ -722,7 +735,7 @@ class PolarManager @Inject constructor(
      * Positive value = HR drifted upward (possible dehydration/heat).
      */
     fun cardiacDriftBpmPerMinute(): Double {
-        val data = hrSeries.toList()
+        val data = synchronized(hrSampleLock) { hrSeries.toList() }
         if (data.size < 60) return 0.0
         val totalMinutes = data.last().first / 60000.0
         if (totalMinutes < 5.0) return 0.0
