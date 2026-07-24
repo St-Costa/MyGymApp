@@ -198,6 +198,7 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        super.onCleared()
         if (exerciseCompleted) {
             // Already saved via completeExercise() — nothing to do
             clearScope.cancel()

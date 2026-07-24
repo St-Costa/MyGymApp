@@ -150,6 +150,7 @@ class StretchExerciseViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        super.onCleared()
         timerJob?.cancel()
         if (exerciseCompleted) {
             clearScope.cancel()

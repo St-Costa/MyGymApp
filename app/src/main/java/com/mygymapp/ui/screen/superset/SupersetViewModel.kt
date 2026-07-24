@@ -327,6 +327,7 @@ class SupersetViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        super.onCleared()
         timerJob?.cancel()
         if (supersetCompleted) {
             clearScope.cancel()
