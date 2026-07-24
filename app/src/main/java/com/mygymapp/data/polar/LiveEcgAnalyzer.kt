@@ -6,6 +6,12 @@ import kotlin.math.abs
  * Incremental (streaming) version of Pan-Tompkins R-peak detection and
  * RR-based irregularity classification. State is kept across samples so
  * per-sample cost is O(1) aside from the two moving-average windows.
+ *
+ * Internal buffers are primitive DoubleArray rings — an ArrayDeque<Double>
+ * autoboxed every sample, which at 130 Hz for four windows meant ~650
+ * allocations per second of live ECG. Snapshot counters (pauses/premature/
+ * uneven) are maintained incrementally as flags are set, so snapshot() is
+ * O(1) instead of three list scans.
  */
 class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
 
@@ -15,12 +21,25 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
     private val integrationWindow = (0.150 * sampleRate).toInt().coerceAtLeast(1)
     private val refractoryPeriod = (0.25 * sampleRate).toInt()
 
-    private val lpBuf = ArrayDeque<Double>()
+    // Running-sum ring buffers. `size` counts filled slots (grows up to
+    // capacity, then stays); `head` is the index of the oldest sample.
+    private val lpBuf = DoubleArray(lpWindow)
+    private var lpHead = 0
+    private var lpSize = 0
     private var lpSum = 0.0
-    private val hpBuf = ArrayDeque<Double>()
+
+    private val hpBuf = DoubleArray(hpWindow)
+    private var hpHead = 0
+    private var hpSize = 0
     private var hpSum = 0.0
-    private val derivBuf = ArrayDeque<Double>()
-    private val intBuf = ArrayDeque<Double>()
+
+    private val derivBuf = DoubleArray(5)
+    private var derivHead = 0
+    private var derivSize = 0
+
+    private val intBuf = DoubleArray(integrationWindow)
+    private var intHead = 0
+    private var intSize = 0
     private var intSum = 0.0
 
     private var sampleIndex = 0
@@ -31,6 +50,11 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
     // RR intervals collected in real time (peaks come from internal detector)
     private val rrIntervals = mutableListOf<Int>()
     private val irregularityFlags = mutableListOf<Irreg>()
+
+    // Incremental counters, kept in sync with irregularityFlags.
+    private var pauseCount = 0
+    private var prematureCount = 0
+    private var unevenCount = 0
 
     enum class Irreg { NONE, PREMATURE, PAUSE, UNEVEN }
 
@@ -49,8 +73,8 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
      * relaxed range (< 70% of HRmax). During intense effort, physiological
      * RR variability from heavy breathing, valsalva and muscle artefacts
      * generates false positives that aren't clinically meaningful.
-     * When disabled (activeSetInProgress == true), candidate uneven beats
-     * are simply not flagged.
+     * When disabled (active == true), candidate uneven beats are simply not
+     * flagged.
      */
     @Synchronized
     fun setUnevenGate(active: Boolean) {
@@ -60,16 +84,20 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
 
     @Synchronized
     fun reset() {
-        lpBuf.clear(); lpSum = 0.0
-        hpBuf.clear(); hpSum = 0.0
-        derivBuf.clear()
-        intBuf.clear(); intSum = 0.0
+        // Reset ring buffers (only counters/sums, arrays are overwritten in-place)
+        lpHead = 0; lpSize = 0; lpSum = 0.0
+        hpHead = 0; hpSize = 0; hpSum = 0.0
+        derivHead = 0; derivSize = 0
+        intHead = 0; intSize = 0; intSum = 0.0
         sampleIndex = 0
         lastPeakIndex = -refractoryPeriod - 1
         threshold = 0.0
         observedMaxIntegrated = 0.0
         rrIntervals.clear()
         irregularityFlags.clear()
+        pauseCount = 0
+        prematureCount = 0
+        unevenCount = 0
     }
 
     /**
@@ -81,29 +109,27 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         sampleIndex++
 
         // Low-pass moving average
-        lpBuf.addLast(x); lpSum += x
-        if (lpBuf.size > lpWindow) lpSum -= lpBuf.removeFirst()
-        val lp = lpSum / lpBuf.size
+        val evicted = pushLp(x)
+        lpSum += x - evicted
+        val lp = lpSum / lpSize
 
         // High-pass = lp - moving average of lp (wider window)
-        hpBuf.addLast(lp); hpSum += lp
-        if (hpBuf.size > hpWindow) hpSum -= hpBuf.removeFirst()
-        val hp = lp - (hpSum / hpBuf.size)
+        val hpEvicted = pushHp(lp)
+        hpSum += lp - hpEvicted
+        val hp = lp - (hpSum / hpSize)
 
         // 5-point derivative (keeps last 5 hp values)
-        derivBuf.addLast(hp)
-        if (derivBuf.size > 5) derivBuf.removeFirst()
-        if (derivBuf.size < 5) return false
-        val d = derivBuf.toList()
-        val deriv = (-d[0] - 2 * d[1] + 2 * d[3] + d[4]) / 8.0
+        pushDeriv(hp)
+        if (derivSize < 5) return false
+        val deriv = (-derivAt(0) - 2 * derivAt(1) + 2 * derivAt(3) + derivAt(4)) / 8.0
 
         // Square
         val squared = deriv * deriv
 
         // Moving-window integration
-        intBuf.addLast(squared); intSum += squared
-        if (intBuf.size > integrationWindow) intSum -= intBuf.removeFirst()
-        val integrated = intSum / intBuf.size
+        val intEvicted = pushInt(squared)
+        intSum += squared - intEvicted
+        val integrated = intSum / intSize
 
         // Seed threshold from first ~2 seconds of data
         if (sampleIndex < sampleRate * 2) {
@@ -145,6 +171,58 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         return false
     }
 
+    // ─── Ring-buffer helpers ──────────────────────────────────────────────────
+    // Each pushXxx returns the evicted value (0.0 while still filling) so the
+    // caller can update its running sum in constant time.
+
+    private fun pushLp(v: Double): Double {
+        if (lpSize < lpWindow) {
+            lpBuf[(lpHead + lpSize) % lpWindow] = v
+            lpSize++
+            return 0.0
+        }
+        val evicted = lpBuf[lpHead]
+        lpBuf[lpHead] = v
+        lpHead = (lpHead + 1) % lpWindow
+        return evicted
+    }
+
+    private fun pushHp(v: Double): Double {
+        if (hpSize < hpWindow) {
+            hpBuf[(hpHead + hpSize) % hpWindow] = v
+            hpSize++
+            return 0.0
+        }
+        val evicted = hpBuf[hpHead]
+        hpBuf[hpHead] = v
+        hpHead = (hpHead + 1) % hpWindow
+        return evicted
+    }
+
+    private fun pushDeriv(v: Double) {
+        if (derivSize < 5) {
+            derivBuf[(derivHead + derivSize) % 5] = v
+            derivSize++
+        } else {
+            derivBuf[derivHead] = v
+            derivHead = (derivHead + 1) % 5
+        }
+    }
+
+    private fun derivAt(i: Int): Double = derivBuf[(derivHead + i) % 5]
+
+    private fun pushInt(v: Double): Double {
+        if (intSize < integrationWindow) {
+            intBuf[(intHead + intSize) % integrationWindow] = v
+            intSize++
+            return 0.0
+        }
+        val evicted = intBuf[intHead]
+        intBuf[intHead] = v
+        intHead = (intHead + 1) % integrationWindow
+        return evicted
+    }
+
     companion object {
         // ~0.99947 per sample → ~half-life of 10s at 130Hz. Prevents a single
         // artifact from permanently raising the max-tracked integrated value.
@@ -152,6 +230,28 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         // Aggressive multiplicative decay applied only when the detector is
         // stuck (no peak for >1.5s). ~0.99 per sample → halves in ~70 samples.
         private const val SEARCHBACK_DECAY_PER_SAMPLE = 0.99
+    }
+
+    // Update irregularityFlags[idx] and keep the incremental counters in sync.
+    // Only transitions NONE→X are expected here (Pauses are set once at insert,
+    // premature/uneven can be set later on the previous beat), but the helper
+    // handles X→Y just in case.
+    private fun setFlag(idx: Int, new: Irreg) {
+        val old = irregularityFlags[idx]
+        if (old == new) return
+        when (old) {
+            Irreg.PAUSE -> pauseCount--
+            Irreg.PREMATURE -> prematureCount--
+            Irreg.UNEVEN -> unevenCount--
+            Irreg.NONE -> {}
+        }
+        when (new) {
+            Irreg.PAUSE -> pauseCount++
+            Irreg.PREMATURE -> prematureCount++
+            Irreg.UNEVEN -> unevenCount++
+            Irreg.NONE -> {}
+        }
+        irregularityFlags[idx] = new
     }
 
     private fun recordRr(rrMs: Int) {
@@ -162,7 +262,7 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         // (PAC requires looking at the following beat's duration).
         val i = rrIntervals.size - 1
         if (rrMs > 2000) {
-            irregularityFlags[i] = Irreg.PAUSE
+            setFlag(i, Irreg.PAUSE)
             return
         }
 
@@ -178,9 +278,9 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
             val prev = rrIntervals[prevIdx]
             if (irregularityFlags[prevIdx] == Irreg.NONE && prev < localMedian * 0.85) {
                 if (rrMs > localMedian * 1.10) {
-                    irregularityFlags[prevIdx] = Irreg.PREMATURE
+                    setFlag(prevIdx, Irreg.PREMATURE)
                 } else {
-                    irregularityFlags[prevIdx] = Irreg.UNEVEN
+                    setFlag(prevIdx, Irreg.UNEVEN)
                 }
             }
         }
@@ -200,8 +300,8 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
             val curDeviation = rrMs - localMedian
             // Both on the "long" side of the median
             if (prevDeviation > localMedian * 0.20 && curDeviation > localMedian * 0.20) {
-                irregularityFlags[prevIdx] = Irreg.UNEVEN
-                irregularityFlags[i] = Irreg.UNEVEN
+                setFlag(prevIdx, Irreg.UNEVEN)
+                setFlag(i, Irreg.UNEVEN)
             }
         }
     }
@@ -209,19 +309,16 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
     @Synchronized
     fun snapshot(): Snapshot {
         val beats = rrIntervals.size
-        val pauses = irregularityFlags.count { it == Irreg.PAUSE }
-        val premature = irregularityFlags.count { it == Irreg.PREMATURE }
-        val uneven = irregularityFlags.count { it == Irreg.UNEVEN }
-        val irregularities = pauses + premature + uneven
+        val irregularities = pauseCount + prematureCount + unevenCount
         val regularPct = if (beats > 0) {
             ((beats - irregularities).toDouble() / beats) * 100.0
         } else 100.0
         return Snapshot(
             beats = beats,
             regularPct = regularPct,
-            premature = premature,
-            pauses = pauses,
-            uneven = uneven,
+            premature = prematureCount,
+            pauses = pauseCount,
+            uneven = unevenCount,
         )
     }
 }
