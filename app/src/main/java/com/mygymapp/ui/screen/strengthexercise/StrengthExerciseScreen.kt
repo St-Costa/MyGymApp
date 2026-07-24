@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
+import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.ScrollPickerInput
 
@@ -86,6 +87,9 @@ fun StrengthExerciseScreen(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                 )
+
+                // Heart rate + recovery semaphore
+                HeartRateBar()
 
                 // Sets header
                 val repRangeText = remember(uiState.repRangeMin, uiState.repRangeMax) {

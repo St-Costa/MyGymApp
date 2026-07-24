@@ -37,6 +37,9 @@ object RoutineParser {
             if (ex.supersetWithNext) {
                 map["supersetWithNext"] = true
             }
+            if (ex.isWarmup) {
+                map["isWarmup"] = true
+            }
             map
         }
 
@@ -64,6 +67,7 @@ object RoutineParser {
                 repRangeMax = (map["repRangeMax"] as? Number)?.toInt() ?: 0,
                 timePerSetSeconds = (map["timePerSetSeconds"] as? Number)?.toInt() ?: 0,
                 supersetWithNext = map["supersetWithNext"] as? Boolean ?: false,
+                isWarmup = map["isWarmup"] as? Boolean ?: false,
             )
         }
     }

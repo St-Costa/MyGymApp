@@ -1,5 +1,6 @@
 package com.mygymapp.data.repository
 
+import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.parser.WorkoutParser
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +63,35 @@ class WorkoutRepository @Inject constructor(
             mutableSetOf()
         if (lines.add(relPath)) {
             idxFile.writeText(lines.joinToString("\n"))
+        }
+    }
+
+    /**
+     * Accumulates (exerciseId, relPath) pairs in-memory so that each .idx file is read
+     * and written at most once, regardless of how many times it is touched during
+     * migration or rebuild. Must be called with [mutex] held.
+     */
+    private class ExerciseIndexBatch {
+        val perFile = HashMap<String, MutableSet<String>>() // exerciseId -> relPaths
+        fun add(exerciseId: String, relPath: String) {
+            perFile.getOrPut(exerciseId) { mutableSetOf() }.add(relPath)
+        }
+    }
+
+    private fun flushExerciseIndexBatch(batch: ExerciseIndexBatch) {
+        if (batch.perFile.isEmpty()) return
+        val dir = indexDir().also { it.mkdirs() }
+        for ((exerciseId, newPaths) in batch.perFile) {
+            val idxFile = File(dir, "$exerciseId.idx")
+            val merged = if (idxFile.exists())
+                idxFile.readLines().filter { it.isNotBlank() }.toMutableSet()
+            else
+                mutableSetOf()
+            val before = merged.size
+            merged.addAll(newPaths)
+            if (merged.size != before) {
+                idxFile.writeText(merged.joinToString("\n"))
+            }
         }
     }
 
@@ -139,6 +169,7 @@ class WorkoutRepository @Inject constructor(
             // Rebuild index from scratch
             idxDir.listFiles()?.filter { it.extension == "idx" }?.forEach { it.delete() }
 
+            val batch = ExerciseIndexBatch()
             val historyRoot = File(fileManager.root, "history")
             if (historyRoot.exists()) {
                 historyRoot.listFiles()?.forEach { yearDir ->
@@ -161,13 +192,14 @@ class WorkoutRepository @Inject constructor(
                                 }
                                 val rel = "${yearDir.name}/${monthDir.name}/${currentFile.name}"
                                 session.exercises.forEach { ex ->
-                                    addToExerciseIndex(ex.exerciseId, rel)
+                                    batch.add(ex.exerciseId, rel)
                                 }
                             } catch (_: Exception) { /* Skip malformed */ }
                         }
                     }
                 }
             }
+            flushExerciseIndexBatch(batch)
             sentinel.createNewFile()
         }
     }
@@ -187,11 +219,11 @@ class WorkoutRepository @Inject constructor(
             val fileName = sessionFileName(updated)
             File(dir, fileName).writeText(WorkoutParser.toMarkdown(updated))
 
-            // Keep exercise index up to date — distinct() avoids redundant file I/O
-            // when the same exercise appears multiple times in one session
+            // Keep exercise index up to date — one read+write per distinct exerciseId
             val rel = "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$fileName"
-            updated.exercises.map { it.exerciseId }.distinct()
-                .forEach { exerciseId -> addToExerciseIndex(exerciseId, rel) }
+            val batch = ExerciseIndexBatch()
+            updated.exercises.forEach { ex -> batch.add(ex.exerciseId, rel) }
+            flushExerciseIndexBatch(batch)
 
             updated
         }
@@ -358,6 +390,86 @@ class WorkoutRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * True if a session has no real user data: no completedAt, no exercise marked completed,
+     * and every set is empty (reps==0 & weight==0 for strength, done==false for stretch).
+     */
+    private fun isGhostSession(session: WorkoutSession): Boolean {
+        if (session.completedAt.isNotBlank()) return false
+        if (session.exercises.any { it.completed }) return false
+        val hasRealData = session.exercises.any { ex ->
+            ex.sets.any { set ->
+                when (set) {
+                    is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
+                    is ExerciseSet.Stretch -> set.done
+                }
+            }
+        }
+        return !hasRealData
+    }
+
+    /**
+     * Deletes session files that were opened but never had any set filled or any exercise
+     * marked as completed. Returns the number of files removed.
+     * Runs at boot to scrub sessions abandoned by the user (back/kill before any data).
+     */
+    suspend fun cleanupGhostSessions(): Int = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val historyRoot = File(fileManager.root, "history")
+            if (!historyRoot.exists()) return@withLock 0
+            var removed = 0
+            historyRoot.listFiles()?.forEach { yearDir ->
+                if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                yearDir.listFiles()?.forEach { monthDir ->
+                    if (!monthDir.isDirectory) return@forEach
+                    monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                        try {
+                            val session = WorkoutParser.fromMarkdown(file.readText())
+                            if (isGhostSession(session)) {
+                                val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
+                                session.exercises.forEach { ex ->
+                                    removeFromExerciseIndex(ex.exerciseId, rel)
+                                }
+                                file.delete()
+                                removed++
+                            }
+                        } catch (_: Exception) { /* skip malformed */ }
+                    }
+                }
+            }
+            removed
+        }
+    }
+
+    /**
+     * Deletes `.ecg` files in `gymdata/ecg/` whose sessionId has no corresponding session
+     * file in `history/`. Run AFTER [cleanupGhostSessions] so freshly abandoned sessions'
+     * raw ECG data is collected. Returns the number of files removed.
+     */
+    suspend fun cleanupOrphanEcgFiles(): Int = withContext(Dispatchers.IO) {
+        val ecgDir = fileManager.getDir("ecg")
+        if (!ecgDir.exists()) return@withContext 0
+        val historyRoot = File(fileManager.root, "history")
+        val validSessionIds = mutableSetOf<String>()
+        historyRoot.listFiles()?.forEach { yearDir ->
+            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+            yearDir.listFiles()?.forEach { monthDir ->
+                if (!monthDir.isDirectory) return@forEach
+                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                    val id = file.nameWithoutExtension.substringAfterLast("_")
+                    if (id.isNotBlank()) validSessionIds.add(id)
+                }
+            }
+        }
+        var removed = 0
+        ecgDir.listFiles()?.filter { it.extension == "ecg" }?.forEach { file ->
+            if (file.nameWithoutExtension !in validSessionIds) {
+                if (file.delete()) removed++
+            }
+        }
+        removed
     }
 
     /**
