@@ -396,6 +396,9 @@ class PolarManager @Inject constructor(
         _connectionState.value = ConnectionState.DISCONNECTED
         connectedDeviceId = null
         lastConnectedDeviceId = null
+        // Without this, a mid-session user-initiated disconnect leaves the flag on;
+        // the next deviceConnected then skips readiness + session-counter reset.
+        hrSeriesActive = false
         if (deviceId != null) {
             try {
                 api.disconnectFromDevice(deviceId)
@@ -451,6 +454,7 @@ class PolarManager @Inject constructor(
         ecgRecorder.stop()
         activeEcgSessionId = null
         pendingEcgSessionId = null
+        hrSeriesActive = false
         PolarStreamingService.stop(context)
         api.shutDown()
     }
