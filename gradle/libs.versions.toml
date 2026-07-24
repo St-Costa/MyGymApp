@@ -15,6 +15,7 @@ coroutines = "1.9.0"
 polarBle = "6.16.1"
 rxjava3 = "3.1.9"
 rxandroid3 = "3.0.2"
+junit = "4.13.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,6 +40,7 @@ androidx-material-icons-extended = { group = "androidx.compose.material", name =
 polar-ble-sdk = { group = "com.github.polarofficial", name = "polar-ble-sdk", version.ref = "polarBle" }
 rxjava3 = { group = "io.reactivex.rxjava3", name = "rxjava", version.ref = "rxjava3" }
 rxandroid3 = { group = "io.reactivex.rxjava3", name = "rxandroid", version.ref = "rxandroid3" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

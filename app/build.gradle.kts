@@ -66,4 +66,6 @@ dependencies {
     implementation(libs.rxandroid3)
 
     debugImplementation(libs.androidx.ui.tooling)
+
+    testImplementation(libs.junit)
 }

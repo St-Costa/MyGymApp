@@ -38,9 +38,21 @@ class PowerliftingScheduleRepository @Inject constructor(
     /** True if [date]'s week is a powerlifting week given the configured anchor + interval. */
     fun isPowerliftingWeek(date: LocalDate = LocalDate.now()): Boolean {
         val anchor = anchorMonday() ?: return false
-        val interval = intervalWeeks().coerceAtLeast(1)
-        val monday = date.minusDays((date.dayOfWeek.value - 1).toLong())
-        val weeksBetween = ChronoUnit.WEEKS.between(anchor, monday)
-        return Math.floorMod(weeksBetween, interval.toLong()) == 0L
+        return isPowerliftingWeek(date, anchor, intervalWeeks())
+    }
+
+    companion object {
+        /**
+         * Pure calendar predicate used by [isPowerliftingWeek]: the anchor week
+         * itself is a powerlifting week and every Nth week after (or before, via
+         * floorMod) is too. Extracted so the logic is unit-testable without a
+         * SharedPreferences dependency.
+         */
+        fun isPowerliftingWeek(date: LocalDate, anchorMonday: LocalDate, intervalWeeks: Int): Boolean {
+            val interval = intervalWeeks.coerceAtLeast(1)
+            val monday = date.minusDays((date.dayOfWeek.value - 1).toLong())
+            val weeksBetween = ChronoUnit.WEEKS.between(anchorMonday, monday)
+            return Math.floorMod(weeksBetween, interval.toLong()) == 0L
+        }
     }
 }
