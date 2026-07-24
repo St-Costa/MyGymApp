@@ -694,6 +694,9 @@ class PolarManager @Inject constructor(
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */
     fun averageHrr60s(): Double = if (hrrDeltas.isNotEmpty()) hrrDeltas.average() else 0.0
 
+    /** One HR recovery value (BPM) per detected effort peak/set during the session, in order. */
+    fun hrrDeltasSnapshot(): List<Double> = hrrDeltas.map { it.toDouble() }
+
     /** Resting HR observed during the readiness measurement (or fallback to lowest seen). */
     fun sessionRestingHr(): Int = restingHr
 

@@ -5,12 +5,19 @@ data class WorkoutSession(
     val routineId: String,
     val routineName: String,
     val date: String,
+    val startedAt: String = "",
     val completedAt: String = "",
+    val bodyWeightKg: Double = 0.0,
     val totalTonnage: Double = 0.0,
     val tonnageByBodypart: Map<String, Double> = emptyMap(),
     val sessionCalories: Double = 0.0,
     val sessionTrimp: Double = 0.0,
     val vo2max: Double = 0.0,
+    // Pre-session HRV readiness (from the 60s Polar readiness measurement)
+    val readiness: String = "",         // Readiness enum name, e.g. "GOOD", "LIGHT_DAY"
+    val readinessLnRmssd: Double = 0.0,
+    // HR recovery (BPM drop 60s after each detected effort peak), one entry per peak/set
+    val hrrPerSet: List<Double> = emptyList(),
     // ECG-derived metrics (post-session analysis, Step B)
     val ecgBeats: Int = 0,
     val ecgDurationSec: Double = 0.0,

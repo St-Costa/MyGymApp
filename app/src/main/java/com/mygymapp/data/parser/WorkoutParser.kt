@@ -15,12 +15,17 @@ object WorkoutParser {
             routineId = fm["routineId"]?.toString() ?: "",
             routineName = fm["routineName"]?.toString() ?: "",
             date = fm["date"]?.toString() ?: "",
+            startedAt = fm["startedAt"]?.toString() ?: "",
             completedAt = fm["completedAt"]?.toString() ?: "",
+            bodyWeightKg = (fm["bodyWeightKg"] as? Number)?.toDouble() ?: 0.0,
             totalTonnage = (fm["totalTonnage"] as? Number)?.toDouble() ?: 0.0,
             tonnageByBodypart = parseTonnageMap(fm["tonnageByBodypart"]),
             sessionCalories = (fm["sessionCalories"] as? Number)?.toDouble() ?: 0.0,
             sessionTrimp = (fm["sessionTrimp"] as? Number)?.toDouble() ?: 0.0,
             vo2max = (fm["vo2max"] as? Number)?.toDouble() ?: 0.0,
+            readiness = fm["readiness"]?.toString() ?: "",
+            readinessLnRmssd = (fm["readinessLnRmssd"] as? Number)?.toDouble() ?: 0.0,
+            hrrPerSet = parseDoubleList(fm["hrrPerSet"]),
             ecgBeats = (fm["ecgBeats"] as? Number)?.toInt() ?: 0,
             ecgDurationSec = (fm["ecgDurationSec"] as? Number)?.toDouble() ?: 0.0,
             ecgAvgHr = (fm["ecgAvgHr"] as? Number)?.toDouble() ?: 0.0,
@@ -74,6 +79,7 @@ object WorkoutParser {
             "routineId" to session.routineId,
             "routineName" to session.routineName,
             "date" to session.date,
+            "startedAt" to session.startedAt,
             "completedAt" to session.completedAt,
             "totalTonnage" to session.totalTonnage,
             "tonnageByBodypart" to session.tonnageByBodypart.filterValues { it > 0.0 },
@@ -81,7 +87,11 @@ object WorkoutParser {
             "sessionTrimp" to session.sessionTrimp,
             "vo2max" to session.vo2max,
         ).apply {
+            if (session.bodyWeightKg > 0.0) put("bodyWeightKg", session.bodyWeightKg)
             // ECG/HRV/recovery fields: omit when not computed (zero) to keep YAML lean
+            if (session.readiness.isNotBlank()) put("readiness", session.readiness)
+            if (session.readinessLnRmssd > 0.0) put("readinessLnRmssd", session.readinessLnRmssd)
+            if (session.hrrPerSet.isNotEmpty()) put("hrrPerSet", session.hrrPerSet)
             if (session.ecgBeats > 0) put("ecgBeats", session.ecgBeats)
             if (session.ecgDurationSec > 0.0) put("ecgDurationSec", session.ecgDurationSec)
             if (session.ecgAvgHr > 0.0) put("ecgAvgHr", session.ecgAvgHr)
@@ -107,6 +117,11 @@ object WorkoutParser {
     private fun parseTonnageMap(raw: Any?): Map<String, Double> {
         val map = raw as? Map<String, Any> ?: return emptyMap()
         return map.mapValues { (_, v) -> (v as? Number)?.toDouble() ?: 0.0 }
+    }
+
+    private fun parseDoubleList(raw: Any?): List<Double> {
+        val list = raw as? List<*> ?: return emptyList()
+        return list.mapNotNull { (it as? Number)?.toDouble() }
     }
 
     @Suppress("UNCHECKED_CAST")

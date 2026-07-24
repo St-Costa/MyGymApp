@@ -10,6 +10,7 @@ import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.polar.PolarManager
+import com.mygymapp.data.polar.UserProfileRepository
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -86,6 +87,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val workoutRepository: WorkoutRepository,
     private val polarManager: PolarManager,
+    private val userProfileRepository: UserProfileRepository,
     private val appLogger: AppLogger,
     private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
 ) : ViewModel() {
@@ -197,6 +199,8 @@ class ActiveRoutineViewModel @Inject constructor(
                 routineId = routineId,
                 routineName = routine.name,
                 date = LocalDate.now().toString(),
+                startedAt = LocalDateTime.now().toString(),
+                bodyWeightKg = userProfileRepository.get().weightKg,
                 exercises = workoutExercises,
                 notes = routine.notes,
             )
@@ -326,10 +330,14 @@ class ActiveRoutineViewModel @Inject constructor(
                 }
                 val today = LocalDate.parse(session.date)
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
+                val readinessResult = polarManager.readinessResult.value
                 var updated = reloaded.copy(
                     cardiacDriftBpmMin = drift,
                     hrr60s = polarManager.averageHrr60s(),
                     restingHr = polarManager.sessionRestingHr(),
+                    readiness = readinessResult.readiness.name,
+                    readinessLnRmssd = readinessResult.lnRmssd,
+                    hrrPerSet = polarManager.hrrDeltasSnapshot(),
                 )
                 if (ecgResult != null && ecgResult.hasAnything) {
                     updated = updated.copy(
