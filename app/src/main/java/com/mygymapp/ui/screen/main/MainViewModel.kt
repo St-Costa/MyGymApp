@@ -82,6 +82,12 @@ class MainViewModel @Inject constructor(
 
         val sessions = workoutRepository.getSessionsInRange(startDate, today)
         val sessionsByRoutine = sessions.groupBy { it.routineId }
+        // O(N) grouping up-front avoids the 28×N filter inside the loop below.
+        // Only completed sessions can be a day's "last" — in-progress ones would
+        // show tonnage=0 → red REGRESSED square on the current day.
+        val completedByDate = sessions
+            .filter { it.completedAt.isNotBlank() }
+            .groupBy { it.date }
 
         val days = mutableListOf<DayStatus>()
         val gitgraphTonnageChanges = mutableListOf<Double?>()
@@ -100,9 +106,7 @@ class MainViewModel @Inject constructor(
             }
 
             val dateStr = date.toString()
-            // Exclude in-progress sessions (completedAt=="") — they would otherwise be
-            // selected as the day's "last session" with tonnage=0 → red REGRESSED square.
-            val daySessions = sessions.filter { it.date == dateStr && it.completedAt.isNotBlank() }
+            val daySessions = completedByDate[dateStr].orEmpty()
             val lastSession = daySessions.maxByOrNull { it.completedAt }
 
             if (dayOffset >= 21) {
