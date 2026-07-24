@@ -15,17 +15,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -188,21 +188,36 @@ private fun AutoShrinkText(
     fontWeight: FontWeight = FontWeight.Normal,
     color: Color = Color.White,
 ) {
-    var fontSizeSp by remember(text, maxFontSizeSp) { mutableStateOf(maxFontSizeSp) }
-    Text(
-        text = text,
-        modifier = modifier,
-        fontSize = fontSizeSp.sp,
-        fontWeight = fontWeight,
-        maxLines = Int.MAX_VALUE,
-        softWrap = false,         // honour explicit \n but never word-wrap
-        overflow = TextOverflow.Clip,
-        textAlign = TextAlign.Center,
-        color = color,
-        onTextLayout = { result ->
-            if (result.didOverflowWidth && fontSizeSp > minFontSizeSp) {
-                fontSizeSp = (fontSizeSp * 0.85f).coerceAtLeast(minFontSizeSp)
+    // Compute the final font size once via TextMeasurer, inside BoxWithConstraints
+    // so we know the available width. The previous mutableStateOf + onTextLayout
+    // loop caused one recomposition per shrink step (per cell × up to N steps).
+    BoxWithConstraints(modifier) {
+        val measurer = rememberTextMeasurer()
+        val maxWidthPx = constraints.maxWidth
+        val fontSizeSp = remember(text, maxWidthPx, maxFontSizeSp, minFontSizeSp, fontWeight) {
+            if (text.isEmpty() || maxWidthPx <= 0) return@remember maxFontSizeSp
+            var size = maxFontSizeSp
+            while (size > minFontSizeSp) {
+                val layout = measurer.measure(
+                    text = text,
+                    style = TextStyle(fontSize = size.sp, fontWeight = fontWeight),
+                    softWrap = false,
+                    constraints = Constraints(),
+                )
+                if (layout.size.width <= maxWidthPx) break
+                size = (size * 0.85f).coerceAtLeast(minFontSizeSp)
             }
-        },
-    )
+            size
+        }
+        Text(
+            text = text,
+            fontSize = fontSizeSp.sp,
+            fontWeight = fontWeight,
+            maxLines = Int.MAX_VALUE,
+            softWrap = false,         // honour explicit \n but never word-wrap
+            overflow = TextOverflow.Clip,
+            textAlign = TextAlign.Center,
+            color = color,
+        )
+    }
 }
