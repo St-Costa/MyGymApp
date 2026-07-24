@@ -47,15 +47,13 @@ data class RoutineEditUiState(
     val warmupCount: Int = 0,
 )
 
-val DAYS_OF_WEEK = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-
 // ---------------------------------------------------------------------------
 // Superset segment helpers (also used by the Screen)
 // ---------------------------------------------------------------------------
 
-sealed class ExerciseSegment {
-    data class Single(val index: Int) : ExerciseSegment()
-    data class SupersetPair(val index1: Int, val index2: Int) : ExerciseSegment()
+sealed interface ExerciseSegment {
+    data class Single(val index: Int) : ExerciseSegment
+    data class SupersetPair(val index1: Int, val index2: Int) : ExerciseSegment
 
     fun indices(): List<Int> = when (this) {
         is Single -> listOf(index)

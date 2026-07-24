@@ -89,7 +89,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private val polarManager: PolarManager,
     private val userProfileRepository: UserProfileRepository,
     private val appLogger: AppLogger,
-    private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
+    private val powerliftingScheduleRepository: com.mygymapp.data.repository.PowerliftingScheduleRepository,
 ) : ViewModel() {
 
     companion object {

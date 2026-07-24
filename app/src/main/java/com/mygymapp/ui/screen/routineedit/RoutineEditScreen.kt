@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.data.model.DAYS_OF_WEEK
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.DeleteConfirmationDialog
 import com.mygymapp.ui.components.RoundStepButton

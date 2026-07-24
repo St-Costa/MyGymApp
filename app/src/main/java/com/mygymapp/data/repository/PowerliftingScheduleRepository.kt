@@ -1,4 +1,4 @@
-package com.mygymapp.data
+package com.mygymapp.data.repository
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext

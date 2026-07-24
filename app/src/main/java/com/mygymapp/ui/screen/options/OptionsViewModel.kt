@@ -1,7 +1,7 @@
 package com.mygymapp.ui.screen.options
 
 import androidx.lifecycle.ViewModel
-import com.mygymapp.data.PowerliftingScheduleRepository
+import com.mygymapp.data.repository.PowerliftingScheduleRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -27,6 +27,7 @@ class StopwatchService : Service() {
 
     companion object {
         const val CHANNEL_ID = "stopwatch_channel_v3"
+        private val LEGACY_CHANNEL_IDS = listOf("stopwatch_channel", "stopwatch_channel_v2")
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.mygymapp.START_STOPWATCH"
         const val ACTION_STOP = "com.mygymapp.STOP_STOPWATCH"
@@ -176,6 +177,13 @@ class StopwatchService : Service() {
     }
 
     private fun createNotificationChannel() {
+        val nm = getSystemService(NotificationManager::class.java)
+        // CHANNEL_ID is versioned because channel importance can't be changed after
+        // creation — bumping the suffix creates a new channel with the new
+        // settings. Delete the leftover legacy channels so they don't linger in
+        // the user's notification-settings screen forever (mirrors what
+        // PolarStreamingService does for its own bump).
+        LEGACY_CHANNEL_IDS.forEach { nm.deleteNotificationChannel(it) }
         val channel = NotificationChannel(
             CHANNEL_ID,
             "Stopwatch",
@@ -186,6 +194,6 @@ class StopwatchService : Service() {
             setSound(null, null)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        nm.createNotificationChannel(channel)
     }
 }

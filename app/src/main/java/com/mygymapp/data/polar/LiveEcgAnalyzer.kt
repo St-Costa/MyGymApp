@@ -69,16 +69,15 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
     }
 
     /**
-     * Uneven beats are only counted when the heart rate is in a relatively
-     * relaxed range (< 70% of HRmax). During intense effort, physiological
-     * RR variability from heavy breathing, valsalva and muscle artefacts
-     * generates false positives that aren't clinically meaningful.
-     * When disabled (active == true), candidate uneven beats are simply not
-     * flagged.
+     * Suppress uneven-beat flagging during intense effort. Uneven detection is
+     * only reliable in a relatively relaxed range (< 70% of HRmax); above that
+     * physiological RR variability from heavy breathing, valsalva and muscle
+     * artefacts fires false positives that aren't clinically meaningful. Pass
+     * `true` while under load, `false` when resting.
      */
     @Synchronized
-    fun setUnevenGate(active: Boolean) {
-        suppressUneven = active
+    fun setUnevenSuppressed(suppress: Boolean) {
+        suppressUneven = suppress
     }
     private var suppressUneven: Boolean = false
 

@@ -540,7 +540,7 @@ class PolarManager @Inject constructor(
                         // range (< 70% HRmax). During intense effort the RR variability
                         // is dominated by physiology, not arrhythmia.
                         val hrMaxFrac = sample.hr.toFloat() / userProfile.hrMax.coerceAtLeast(1)
-                        liveAnalyzer.setUnevenGate(active = hrMaxFrac >= 0.70f)
+                        liveAnalyzer.setUnevenSuppressed(suppress = hrMaxFrac >= 0.70f)
 
                         // Process RR intervals
                         for (rr in sample.rrsMs) {
