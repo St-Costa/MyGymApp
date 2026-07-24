@@ -104,6 +104,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
     private var previousTonnageByExercise: Map<String, Double> = emptyMap()
     private var sessionFinalized = false
+    private var sessionAbandoned = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -377,14 +378,12 @@ class ActiveRoutineViewModel @Inject constructor(
     }
 
     fun abandonSession() {
-        viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            appLogger.w(TAG, "Session abandoned by user: id=${session.id}")
-            polarManager.stopEcgRecording()
-            polarManager.stopHrSeriesCapture()
-            polarManager.deleteEcgFile(session.id)
-            workoutRepository.delete(session)
-        }
+        // Just flag the intent — the actual cleanup happens in onCleared() so it
+        // runs on clearScope, which survives the navigate-back that immediately
+        // follows the tap. Running the delete on viewModelScope would race with
+        // ViewModel destruction and leave a stray session file on disk.
+        sessionAbandoned = true
+        currentSession?.let { appLogger.w(TAG, "Session abandoned by user: id=${it.id}") }
     }
 
     // Must be `suspend` (not `launch`): registerRoutine() reloads the session from
@@ -496,7 +495,13 @@ class ActiveRoutineViewModel @Inject constructor(
             try {
                 polarManager.stopEcgRecording()
                 polarManager.stopHrSeriesCapture()
-                if (needsGhostCleanup) {
+                if (sessionAbandoned) {
+                    // User-initiated abandon: delete unconditionally, even if the
+                    // session has data. Ghost-cleanup below only handles the
+                    // "backed out without touching anything" case.
+                    polarManager.deleteEcgFile(session.id)
+                    workoutRepository.delete(session)
+                } else if (needsGhostCleanup) {
                     val today = LocalDate.parse(session.date)
                     val reloaded = workoutRepository.getSession(session.id, today) ?: session
                     val hasCompleted = reloaded.exercises.any { it.completed }
