@@ -184,6 +184,9 @@ class PolarManager @Inject constructor(
     private val _liveCardiacDrift = MutableStateFlow(0.0)
     val liveCardiacDrift: StateFlow<Double> = _liveCardiacDrift
     private var lastDriftComputeMs = 0L
+    // Throttles _ecgWaveform / _liveEcgSnapshot emissions to ~16 fps regardless
+    // of BLE batch rate (Compose can't render faster than the display refresh).
+    private var lastWaveformEmitMs = 0L
 
     private val _readinessResult = MutableStateFlow(ReadinessResult())
     val readinessResult: StateFlow<ReadinessResult> = _readinessResult
@@ -894,11 +897,17 @@ class PolarManager @Inject constructor(
                             samplesSinceLastEmit++
                         }
                     }
-                    // Emit waveform + snapshot on every block so the UI stays fresh
-                    // even when BLE delivers small batches infrequently (e.g. screen off).
-                    _ecgWaveform.value = waveformSnapshot()
-                    _liveEcgSnapshot.value = liveAnalyzer.snapshot()
-                    samplesSinceLastEmit = 0
+                    // Emit at ~16 fps max — BLE can burst 20+ blocks/s and every
+                    // extra StateFlow write costs a Compose recomposition + array
+                    // copy. The waveform buffer keeps the freshest 4 s of samples
+                    // so a rare skipped emit still shows a continuous trace.
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastWaveformEmitMs >= 60) {
+                        lastWaveformEmitMs = nowMs
+                        _ecgWaveform.value = waveformSnapshot()
+                        _liveEcgSnapshot.value = liveAnalyzer.snapshot()
+                        samplesSinceLastEmit = 0
+                    }
                 },
                 { error ->
                     Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
