@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -167,6 +168,9 @@ private fun EcgWaveformView(
     samples: IntArray,
     modifier: Modifier = Modifier,
 ) {
+    // The ECG batch redraws at ~10 Hz. Allocating a fresh Path each time
+    // creates 10× GC objects per second per running LiveEcgCard; reuse it.
+    val path = remember { Path() }
     Canvas(modifier = modifier) {
         if (samples.isEmpty()) return@Canvas
         val width = size.width
@@ -183,7 +187,7 @@ private fun EcgWaveformView(
         val usableHalf = (height / 2f) - verticalPad
         val scale = usableHalf / maxAbs.toFloat()
 
-        val path = Path()
+        path.reset()
         val step = width / (samples.size - 1).coerceAtLeast(1).toFloat()
         for (i in samples.indices) {
             val x = i * step
