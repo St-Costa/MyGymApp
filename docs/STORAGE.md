@@ -38,7 +38,7 @@ All persistent files are Markdown with a YAML frontmatter block and an optional 
 ---
 id: ex-a1b2c3d4
 name: Bench Press
-type: FORZA                   # FORZA | STRETCH
+type: forza                   # forza | stretch (lowercase, per ExerciseType.toFileString())
 bodypart: chest
 link: https://...             # optional image/YouTube URL
 defaultRepRangeMin: 8
@@ -124,8 +124,9 @@ hrr60s: 28
 exercises:
   - exerciseId: ex-a1b2c3d4
     exerciseName: Bench Press   # denormalized
-    type: FORZA
     bodypart: chest
+    type: forza                 # forza | stretch
+    completed: true             # always serialized
     excludeFromTonnage: true    # omitted when false; set for warmup + fixed-daily exercises
     isDaily: true               # omitted when false; set only for fixed-daily exercises
     sets:
@@ -154,7 +155,7 @@ Binary, written by [EcgRecorder](../app/src/main/java/com/mygymapp/data/polar/Ec
 | 12 | 8 B | Start timestamp (Int64, ns since epoch) |
 | 20 | N×2 B | Sample stream (Int16, µV) |
 
-Flushed every 260 samples (~2s). Deleted immediately after post-session analysis in [EcgAnalyzer](../app/src/main/java/com/mygymapp/data/polar/EcgAnalyzer.kt); the 14 computed metrics are stored in the session frontmatter.
+Flushed every 260 samples (~2s). Deleted by [ActiveRoutineViewModel.registerRoutine()](../app/src/main/java/com/mygymapp/ui/screen/activeroutine/ActiveRoutineViewModel.kt) after post-session analysis succeeds; on analysis failure the file is preserved for offline inspection. The 14 computed metrics are stored in the session frontmatter.
 
 ## IDs
 
@@ -202,7 +203,7 @@ No file rename is ever needed — filenames embed IDs, not names.
 
 ## SharedPreferences
 
-Two keys, both `MODE_PRIVATE`:
+All `MODE_PRIVATE`:
 
 | Prefs file | Key | Type | Owner | Purpose |
 |---|---|---|---|---|
@@ -210,8 +211,11 @@ Two keys, both `MODE_PRIVATE`:
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
 | `hrv_baseline` | `lnrmssd_values` | String (CSV, ≤14 doubles) | [PolarManager](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) | Rolling 14-day LnRMSSD baseline for HRV readiness z-score |
+| `hrv_baseline` | `hrrest_values` | String (CSV, ≤7 ints) | " | Rolling 7-day resting HR baseline; VO2max uses the min of these to reduce day-to-day noise |
+| `powerlifting_schedule` | `anchorMonday` | String (ISO date) | [PowerliftingScheduleRepository](../app/src/main/java/com/mygymapp/data/PowerliftingScheduleRepository.kt) | Anchor of the recurring powerlifting week, or null if disabled |
+| `powerlifting_schedule` | `intervalWeeks` | Int | " | Recurrence in weeks (default 4) |
 
-Nothing else is persisted outside `gymdata/`.
+Plus a persistent event log at `gymdata/logs/app.log` (see [AppLogger](../app/src/main/java/com/mygymapp/data/util/AppLogger.kt)) with a 10-day retention. Nothing else is persisted outside `gymdata/`.
 
 ## Backup / export
 

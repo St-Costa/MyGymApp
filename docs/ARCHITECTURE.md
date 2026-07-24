@@ -58,6 +58,7 @@ Defined in [Screen.kt](../app/src/main/java/com/mygymapp/ui/navigation/Screen.kt
 | ExercisePicker | `exercises/pick` | ExerciseList in picker mode (hidden) |
 | SessionProgress | `session/{sessionId}/{date}` | Post-workout charts + ECG/cardio analysis |
 | HeartRate | `heartrate` | Polar pairing, live ECG, readiness, cardio trends |
+| Options | `options` | Powerlifting-week scheduler + debug/seed actions |
 
 ### Navigation graph
 
@@ -68,6 +69,7 @@ Main ─┬─→ WeekView ──→ ActiveRoutine ─┬─→ StrengthExercise
       ├─→ ExerciseList ──→ ExerciseEdit
       ├─→ RoutineList  ──→ RoutineEdit ──→ ExercisePicker ─(result)→ RoutineEdit
       ├─→ HeartRate
+      ├─→ Options
       └─→ SessionProgress   (reachable from Main gitgraph tap)
 ```
 
@@ -81,7 +83,7 @@ Every screen has one ViewModel (same package). A few non-obvious collaborators:
 |---|---|---|
 | `MainViewModel` | WorkoutRepository, RoutineRepository, DataChangedSignal | Computes gitgraph data (28 days, routine-name overlay) |
 | `ActiveRoutineViewModel` | WorkoutRepository, RoutineRepository, ExerciseRepository, PolarManager, EcgAnalyzer | Starts/stops ECG recording + HR series capture |
-| `SessionProgressViewModel` | WorkoutRepository, EcgAnalyzer, CardioTrendLoader | Post-workout charts and cardio analysis |
+| `SessionProgressViewModel` | WorkoutRepository | Post-workout charts (loads session by id/date, no live analysis) |
 | `HeartRateViewModel` | PolarManager, UserProfileRepository, CardioTrendLoader | Combines ~9 PolarManager StateFlows for the Heart Rate screen |
 | `HeartRateBarViewModel` | PolarManager | Lightweight VM for the in-workout HR/recovery bar |
 

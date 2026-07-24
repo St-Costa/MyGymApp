@@ -36,10 +36,10 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 | `heartRate` | `Int?` | Every HR sample | HeartRateBar, status-bar notification |
 | `batteryLevel` | `Int?` | SDK callback | UI indicator |
 | `recoveryState` | `RECOVERING` / `ALMOST_READY` / `READY` | Every HR sample | Recovery semaphore |
-| `rmssd` | `Double?` | During recovery tracking | HR bar secondary line |
+| `rmssd` | `Double?` | During recovery tracking | (not currently displayed — kept for future recovery card) |
 | `sessionCalories` | `Double` | Every HR sample (Keytel) | HR bar + session save |
 | `sessionTrimp` | `Double` | Every HR sample (Banister) | HR bar + session save |
-| `liveHrrLast` | `Int?` | 60s after each detected peak | HR bar HRR badge |
+| `liveHrrLast` | `Int?` | 60s after each detected peak | (not currently displayed — LiveEcgCard intentionally hides live HRR; per-set values are persisted post-session as `hrrPerSet`) |
 | `readinessResult` | `ReadinessResult` | 60s measurement + baseline | HR screen readiness card + session save |
 | `vo2max` | `Double?` | End of readiness (Uth) | HR screen + session save |
 | `ecgWaveform` | `IntArray` (~520 samples) | Every ECG block (~100 ms) | LiveEcgCard canvas |

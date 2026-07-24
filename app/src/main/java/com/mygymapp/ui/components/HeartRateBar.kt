@@ -47,7 +47,9 @@ private val LightOff = Color(0xFF3A3A3A)
 
 /**
  * Shows current HR + recovery semaphore. Hides itself when Polar is not connected.
- * Call [PolarManager.onSetCompleted] to trigger recovery tracking.
+ * Recovery tracking is fully automatic — PolarManager detects effort peaks from the
+ * rolling HR window (see [PolarManager] `detectPeakAndTriggerRecovery`); no manual
+ * "set completed" call is needed.
  */
 @Composable
 fun HeartRateBar(
