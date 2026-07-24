@@ -387,94 +387,95 @@ class ActiveRoutineViewModel @Inject constructor(
         }
     }
 
-    private fun finalizeSession(reloaded: WorkoutSession) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingChart = true)
+    // Must be `suspend` (not `launch`): registerRoutine() reloads the session from
+    // disk right after this returns and overwrites it with Polar-derived fields;
+    // if the finalize save landed asynchronously it would clobber those fields.
+    private suspend fun finalizeSession(reloaded: WorkoutSession) {
+        _uiState.value = _uiState.value.copy(isLoadingChart = true)
 
-            val updated = reloaded.copy(
-                completedAt = LocalDateTime.now().toString(),
-            )
-            // Calculate tonnage from actual set data
-            var totalTonnage = 0.0
-            val tonnageByBodypart = mutableMapOf<String, Double>()
-            for (ex in updated.exercises) {
-                // Warmup + fixed-daily exercises never contribute to tonnage.
-                if (ex.excludeFromTonnage) continue
-                var exTonnage = 0.0
-                for (set in ex.sets) {
-                    if (set is ExerciseSet.Strength) {
-                        exTonnage += set.reps * set.weight
-                    }
+        val updated = reloaded.copy(
+            completedAt = LocalDateTime.now().toString(),
+        )
+        // Calculate tonnage from actual set data
+        var totalTonnage = 0.0
+        val tonnageByBodypart = mutableMapOf<String, Double>()
+        for (ex in updated.exercises) {
+            // Warmup + fixed-daily exercises never contribute to tonnage.
+            if (ex.excludeFromTonnage) continue
+            var exTonnage = 0.0
+            for (set in ex.sets) {
+                if (set is ExerciseSet.Strength) {
+                    exTonnage += set.reps * set.weight
                 }
-                totalTonnage += exTonnage
-                tonnageByBodypart[ex.bodypart] =
-                    (tonnageByBodypart[ex.bodypart] ?: 0.0) + exTonnage
             }
-            val finalSession = updated.copy(
-                totalTonnage = totalTonnage,
-                tonnageByBodypart = tonnageByBodypart.filterValues { it > 0.0 },
-                sessionCalories = polarManager.sessionCalories.value,
-                sessionTrimp = polarManager.sessionTrimp.value,
-                vo2max = polarManager.vo2max.value ?: 0.0,
-            )
-            currentSession = finalSession
-            workoutRepository.save(finalSession)
+            totalTonnage += exTonnage
+            tonnageByBodypart[ex.bodypart] =
+                (tonnageByBodypart[ex.bodypart] ?: 0.0) + exTonnage
+        }
+        val finalSession = updated.copy(
+            totalTonnage = totalTonnage,
+            tonnageByBodypart = tonnageByBodypart.filterValues { it > 0.0 },
+            sessionCalories = polarManager.sessionCalories.value,
+            sessionTrimp = polarManager.sessionTrimp.value,
+            vo2max = polarManager.vo2max.value ?: 0.0,
+        )
+        currentSession = finalSession
+        workoutRepository.save(finalSession)
 
-            // Load all sessions for this routine in the last 12 weeks, one point per session
-            val today = LocalDate.now()
-            val startDate = today.with(DayOfWeek.MONDAY).minusWeeks(11)
-            val allSessions = workoutRepository.getSessionsInRange(startDate, today)
-                .filter { it.routineId == routineId && it.completedAt.isNotBlank() }  // exclude abandoned sessions
+        // Load all sessions for this routine in the last 12 weeks, one point per session
+        val today = LocalDate.now()
+        val startDate = today.with(DayOfWeek.MONDAY).minusWeeks(11)
+        val allSessions = workoutRepository.getSessionsInRange(startDate, today)
+            .filter { it.routineId == routineId && it.completedAt.isNotBlank() }  // exclude abandoned sessions
 
-            val labelFmt = DateTimeFormatter.ofPattern("d/M")
-            val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
+        val labelFmt = DateTimeFormatter.ofPattern("d/M")
+        val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
-            // Compare only exercises that are in the current session, so the chart is meaningful
-            // even when routine composition has changed between sessions.
-            val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
-            val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
-            val sessionTonnage = allSessions.map { hist ->
+        // Compare only exercises that are in the current session, so the chart is meaningful
+        // even when routine composition has changed between sessions.
+        val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
+        val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
+        val sessionTonnage = allSessions.map { hist ->
+            hist.exercises
+                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
+        }
+
+        // Only bodyparts with strength exercises in the current session
+        val bodyparts = currentForza.map { it.bodypart }.distinct()
+        val sessionTonnageByBodypart = bodyparts.associateWith { bp ->
+            val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
+            allSessions.map { hist ->
                 hist.exercises
-                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                    .filter { it.exerciseId in bpIds && !it.excludeFromTonnage }
                     .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
             }
-
-            // Only bodyparts with strength exercises in the current session
-            val bodyparts = currentForza.map { it.bodypart }.distinct()
-            val sessionTonnageByBodypart = bodyparts.associateWith { bp ->
-                val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
-                allSessions.map { hist ->
-                    hist.exercises
-                        .filter { it.exerciseId in bpIds && !it.excludeFromTonnage }
-                        .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
-                }
-            }
-
-            // Cross-routine data: ALL completed sessions for kcal/TRIMP/VO2max charts
-            val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, today)
-                .filter { it.completedAt.isNotBlank() }
-            val allLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
-            val allCalories = allCompletedSessions.map { it.sessionCalories }
-            val allTrimp = allCompletedSessions.map { it.sessionTrimp }
-            val allVo2 = allCompletedSessions.map { it.vo2max }
-
-            sessionFinalized = true
-            _uiState.value = _uiState.value.copy(
-                totalTonnage = totalTonnage,
-                sessionCalories = finalSession.sessionCalories,
-                sessionTrimp = finalSession.sessionTrimp,
-                vo2max = finalSession.vo2max,
-                sessionTonnage = sessionTonnage,
-                sessionTonnageByBodypart = sessionTonnageByBodypart,
-                sessionLabels = sessionLabels,
-                allSessionCalories = allCalories,
-                allSessionTrimp = allTrimp,
-                allSessionVo2max = allVo2,
-                allSessionLabels = allLabels,
-                selectedChartFilter = "Totale",
-                isLoadingChart = false,
-            )
         }
+
+        // Cross-routine data: ALL completed sessions for kcal/TRIMP/VO2max charts
+        val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, today)
+            .filter { it.completedAt.isNotBlank() }
+        val allLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
+        val allCalories = allCompletedSessions.map { it.sessionCalories }
+        val allTrimp = allCompletedSessions.map { it.sessionTrimp }
+        val allVo2 = allCompletedSessions.map { it.vo2max }
+
+        sessionFinalized = true
+        _uiState.value = _uiState.value.copy(
+            totalTonnage = totalTonnage,
+            sessionCalories = finalSession.sessionCalories,
+            sessionTrimp = finalSession.sessionTrimp,
+            vo2max = finalSession.vo2max,
+            sessionTonnage = sessionTonnage,
+            sessionTonnageByBodypart = sessionTonnageByBodypart,
+            sessionLabels = sessionLabels,
+            allSessionCalories = allCalories,
+            allSessionTrimp = allTrimp,
+            allSessionVo2max = allVo2,
+            allSessionLabels = allLabels,
+            selectedChartFilter = "Totale",
+            isLoadingChart = false,
+        )
     }
 
     override fun onCleared() {
