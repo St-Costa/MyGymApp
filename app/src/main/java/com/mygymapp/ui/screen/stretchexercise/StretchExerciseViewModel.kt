@@ -8,13 +8,12 @@ import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.ui.util.StopwatchTicker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -48,9 +47,13 @@ class StretchExerciseViewModel @Inject constructor(
     val uiState: StateFlow<StretchExerciseUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
-    private var timerJob: Job? = null
     private var exerciseCompleted = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val stopwatch = StopwatchTicker(
+        scope = viewModelScope,
+        onElapsed = { s -> _uiState.value = _uiState.value.copy(elapsedSeconds = s) },
+        onRunningChange = { r -> _uiState.value = _uiState.value.copy(isStopwatchRunning = r) },
+    )
 
     init {
         viewModelScope.launch {
@@ -90,25 +93,7 @@ class StretchExerciseViewModel @Inject constructor(
         }
     }
 
-    fun toggleStopwatch() {
-        val wasRunning = _uiState.value.isStopwatchRunning
-        if (wasRunning) {
-            timerJob?.cancel()
-            timerJob = null
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = false)
-        } else {
-            timerJob?.cancel()
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = true, elapsedSeconds = 0)
-            timerJob = viewModelScope.launch {
-                while (true) {
-                    delay(1000)
-                    _uiState.value = _uiState.value.copy(
-                        elapsedSeconds = _uiState.value.elapsedSeconds + 1
-                    )
-                }
-            }
-        }
-    }
+    fun toggleStopwatch() = stopwatch.toggle()
 
     fun updateDescription(text: String) {
         _uiState.value = _uiState.value.copy(description = text)
@@ -141,7 +126,7 @@ class StretchExerciseViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel()
+        stopwatch.cancel()
         if (exerciseCompleted) {
             clearScope.cancel()
             return

@@ -76,24 +76,12 @@ class StrengthExerciseViewModel @Inject constructor(
             val currentExcludeFromTonnage = workoutExercise?.excludeFromTonnage ?: false
             val isWarmup = currentExcludeFromTonnage && !isDaily
 
-            // Find previous workout data for this exercise (for showing grey "previous" values).
-            // Progress must compare like-with-like: only against prior sessions where this exercise
-            // had the same type (daily / warmup / normal). Walk back through history and use the
-            // most recent matching session that actually has non-zero set data, so an empty 0-0
-            // session doesn't blank out the preview.
-            val previousSets = workoutRepository.getSessionsForExercise(exerciseId, 30)
-                .asSequence()
-                .mapNotNull { prev ->
-                    prev.exercises.firstOrNull { ex ->
-                        ex.exerciseId == exerciseId &&
-                            ex.isDaily == isDaily &&
-                            (ex.excludeFromTonnage && !ex.isDaily) == isWarmup
-                    }
-                }
-                .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
-                .firstOrNull { strengthSets ->
-                    strengthSets.any { it.reps > 0 || it.weight > 0.0 }
-                } ?: emptyList()
+            // Grey "previous" values shown on the picker: same-role match + skip
+            // sessions with no real data. Shared with SupersetViewModel via the
+            // repository helper.
+            val previousSets = workoutRepository.previousStrengthSetsMatching(
+                exerciseId, isDaily = isDaily, isWarmup = isWarmup,
+            )
 
             // Get rep range from the owning routine. Daily exercises live in the fixed-daily
             // routine, not the session's routine, so look them up there.

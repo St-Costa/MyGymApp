@@ -115,23 +115,24 @@ class ExerciseEditViewModel @Inject constructor(
         }
     }
 
+    private fun buildExercise(state: ExerciseEditUiState) = Exercise(
+        id = state.id,
+        name = state.name.trim(),
+        type = state.type,
+        bodypart = state.bodypart.trim(),
+        link = state.link.trim(),
+        notes = state.notes.trim(),
+        defaultRepRangeMin = state.defaultRepRangeMin,
+        defaultRepRangeMax = state.defaultRepRangeMax,
+    )
+
     // Called from the Screen's back button / BackHandler before popBackStack().
     // Saves synchronously so the list screen sees fresh cache data immediately.
     private var savedExplicitly = false
     suspend fun saveNow() {
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
-        val exercise = Exercise(
-            id = state.id,
-            name = state.name.trim(),
-            type = state.type,
-            bodypart = state.bodypart.trim(),
-            link = state.link.trim(),
-            notes = state.notes.trim(),
-            defaultRepRangeMin = state.defaultRepRangeMin,
-            defaultRepRangeMax = state.defaultRepRangeMax,
-        )
-        exerciseRepository.save(exercise)
+        exerciseRepository.save(buildExercise(state))
         dataChangedSignal.notifyExercisesChanged()
         savedExplicitly = true
     }
@@ -143,17 +144,7 @@ class ExerciseEditViewModel @Inject constructor(
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {
             try {
-                val exercise = Exercise(
-                    id = state.id,
-                    name = state.name.trim(),
-                    type = state.type,
-                    bodypart = state.bodypart.trim(),
-                    link = state.link.trim(),
-                    notes = state.notes.trim(),
-                    defaultRepRangeMin = state.defaultRepRangeMin,
-                    defaultRepRangeMax = state.defaultRepRangeMax,
-                )
-                exerciseRepository.save(exercise)
+                exerciseRepository.save(buildExercise(state))
                 dataChangedSignal.notifyExercisesChanged()
             } finally {
                 clearScope.cancel()

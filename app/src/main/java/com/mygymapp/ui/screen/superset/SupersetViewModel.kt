@@ -10,13 +10,12 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.ui.util.StopwatchTicker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -73,7 +72,11 @@ class SupersetViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
     private var supersetCompleted = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var timerJob: Job? = null
+    private val stopwatch = StopwatchTicker(
+        scope = viewModelScope,
+        onElapsed = { s -> _uiState.value = _uiState.value.copy(elapsedSeconds = s) },
+        onRunningChange = { r -> _uiState.value = _uiState.value.copy(isStopwatchRunning = r) },
+    )
 
     init {
         viewModelScope.launch {
@@ -92,28 +95,13 @@ class SupersetViewModel @Inject constructor(
             val isWarmup1 = (workoutEx1?.excludeFromTonnage ?: false) && !isDaily1
             val isWarmup2 = (workoutEx2?.excludeFromTonnage ?: false) && !isDaily2
 
-            // Previous FORZA sets for showing defaults. Compare like-with-like on exercise type
-            // (daily / warmup / normal), and walk back to the most recent matching session that
-            // actually has non-zero data so an empty 0-0 session doesn't blank out the preview.
-            suspend fun previousStrengthSets(exId: String, daily: Boolean, warmup: Boolean): List<ExerciseSet.Strength> =
-                workoutRepository.getSessionsForExercise(exId, 30)
-                    .asSequence()
-                    .mapNotNull { prev ->
-                        prev.exercises.firstOrNull { ex ->
-                            ex.exerciseId == exId &&
-                                ex.isDaily == daily &&
-                                (ex.excludeFromTonnage && !ex.isDaily) == warmup
-                        }
-                    }
-                    .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
-                    .firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
-
+            // Previous FORZA sets for showing defaults — see WorkoutRepository.previousStrengthSetsMatching.
             val prevStrengthSets1 = if (ex1.type == ExerciseType.FORZA) {
-                previousStrengthSets(exerciseId1, isDaily1, isWarmup1)
+                workoutRepository.previousStrengthSetsMatching(exerciseId1, isDaily1, isWarmup1)
             } else emptyList()
 
             val prevStrengthSets2 = if (ex2.type == ExerciseType.FORZA) {
-                previousStrengthSets(exerciseId2, isDaily2, isWarmup2)
+                workoutRepository.previousStrengthSetsMatching(exerciseId2, isDaily2, isWarmup2)
             } else emptyList()
 
             // Fallback for sets beyond what the previous session recorded.
@@ -251,25 +239,7 @@ class SupersetViewModel @Inject constructor(
         updateSetAt(listIndex) { it.copy(weightModified = true) }
     }
 
-    fun toggleStopwatch() {
-        val wasRunning = _uiState.value.isStopwatchRunning
-        if (wasRunning) {
-            timerJob?.cancel()
-            timerJob = null
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = false)
-        } else {
-            timerJob?.cancel()
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = true, elapsedSeconds = 0)
-            timerJob = viewModelScope.launch {
-                while (true) {
-                    delay(1000)
-                    _uiState.value = _uiState.value.copy(
-                        elapsedSeconds = _uiState.value.elapsedSeconds + 1
-                    )
-                }
-            }
-        }
-    }
+    fun toggleStopwatch() = stopwatch.toggle()
 
     fun toggleSetDone(listIndex: Int) {
         updateSetAt(listIndex) { it.copy(done = !it.done) }
@@ -325,7 +295,7 @@ class SupersetViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel()
+        stopwatch.cancel()
         if (supersetCompleted) {
             clearScope.cancel()
             return
