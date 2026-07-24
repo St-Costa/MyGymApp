@@ -58,7 +58,13 @@ class MainViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // Migration MUST precede gitgraph (rebuilds the exercise index that
+            // getSessionsInRange depends on); everything else can happen in the
+            // background so the first frame ships as soon as gitgraph is ready.
             workoutRepository.migrateOldSessionFiles()
+            loadGitgraphInternal()
+        }
+        viewModelScope.launch {
             workoutRepository.pruneOldSessions(LocalDate.now().minusMonths(3))
             // Scrub sessions the user opened but never filled in, and their orphan ECG raws.
             val ghostsDeleted = workoutRepository.cleanupGhostSessions()
@@ -67,7 +73,6 @@ class MainViewModel @Inject constructor(
             // Repair exercises/routines where repRangeMin > repRangeMax was persisted.
             exerciseRepository.fixInvalidRepRanges()
             routineRepository.fixInvalidRepRanges()
-            loadGitgraphInternal()
         }
         viewModelScope.launch {
             dataChangedSignal.routinesChanged.collect { loadGitgraphInternal() }
