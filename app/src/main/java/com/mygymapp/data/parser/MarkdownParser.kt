@@ -53,7 +53,7 @@ object MarkdownParser {
         for ((key, value) in map) {
             when (value) {
                 null -> sb.appendLine("$prefix$key:")
-                is String -> sb.appendLine("$prefix$key: \"$value\"")
+                is String -> sb.appendLine("$prefix$key: ${quoteYamlString(value)}")
                 is Boolean -> sb.appendLine("$prefix$key: $value")
                 is Number -> sb.appendLine("$prefix$key: ${formatValue(value)}")
                 is List<*> -> {
@@ -82,7 +82,7 @@ object MarkdownParser {
                     @Suppress("UNCHECKED_CAST")
                     serializeYaml(sb, value as Map<String, Any?>, indent + 1)
                 }
-                else -> sb.appendLine("$prefix$key: \"$value\"")
+                else -> sb.appendLine("$prefix$key: ${quoteYamlString(value.toString())}")
             }
         }
     }
@@ -128,12 +128,12 @@ object MarkdownParser {
 
     private fun formatValue(value: Any?): String = when (value) {
         null -> ""
-        is String -> "\"$value\""
+        is String -> quoteYamlString(value)
         is Boolean -> value.toString()
         is Double -> formatDouble(value)
         is Float -> formatDouble(value.toDouble())
         is Number -> value.toString()
-        else -> "\"$value\""
+        else -> quoteYamlString(value.toString())
     }
 
     // Round doubles to 2 decimals on write so session YAML stays readable.
@@ -141,5 +141,27 @@ object MarkdownParser {
         if (v.isNaN() || v.isInfinite()) return "0.0"
         val rounded = Math.round(v * 100.0) / 100.0
         return rounded.toString()
+    }
+
+    // Wrap a string in YAML double quotes, escaping the characters that would
+    // otherwise break the document. Without this, an exercise/routine named
+    // `Bench "heavy"` produces invalid YAML and snakeyaml silently fails the
+    // whole file. Order matters: backslash first, so its escape doesn't get
+    // re-escaped.
+    private fun quoteYamlString(raw: String): String {
+        val sb = StringBuilder(raw.length + 2)
+        sb.append('"')
+        for (c in raw) {
+            when (c) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> sb.append(c)
+            }
+        }
+        sb.append('"')
+        return sb.toString()
     }
 }
