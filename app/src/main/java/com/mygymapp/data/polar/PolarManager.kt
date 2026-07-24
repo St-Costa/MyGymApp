@@ -104,16 +104,36 @@ class PolarManager @Inject constructor(
     val sessionTrimp: StateFlow<Double> = _sessionTrimp
 
     // Guards every mutation/read of the collections written from the Polar Rx
-    // callback (hrSeries, pendingHrrPeaks, hrrDeltas, recentRR, hrWindow) plus
-    // their derived snapshots read from other threads
+    // callback (hrSeries ring, pendingHrrPeaks, hrrDeltas, recentRR, hrWindow)
+    // plus their derived snapshots read from other threads
     // (registerRoutine, ActiveRoutineViewModel). Reentrant, so the callback can
     // still call cardiacDriftBpmPerMinute() without deadlocking.
     private val hrSampleLock = Any()
 
-    // HR time series for cardiac drift (capture during active session)
+    // HR time series for cardiac drift (capture during active session).
+    // Primitive ring buffer avoids Pair<Long,Int> allocation per sample.
     private var hrSeriesActive = false
-    private val hrSeries = ArrayDeque<Pair<Long, Int>>() // (elapsedMs, hr), capped at HR_SERIES_MAX_ENTRIES
+    private val hrSeriesTimes = LongArray(HR_SERIES_MAX_ENTRIES)
+    private val hrSeriesValues = IntArray(HR_SERIES_MAX_ENTRIES)
+    private var hrSeriesHead = 0
+    private var hrSeriesCount = 0
     private var hrSeriesStart = 0L
+
+    private fun addHrSample(elapsedMs: Long, hr: Int) {
+        val idx = (hrSeriesHead + hrSeriesCount) % HR_SERIES_MAX_ENTRIES
+        hrSeriesTimes[idx] = elapsedMs
+        hrSeriesValues[idx] = hr
+        if (hrSeriesCount < HR_SERIES_MAX_ENTRIES) {
+            hrSeriesCount++
+        } else {
+            hrSeriesHead = (hrSeriesHead + 1) % HR_SERIES_MAX_ENTRIES
+        }
+    }
+
+    private fun clearHrSeries() {
+        hrSeriesHead = 0
+        hrSeriesCount = 0
+    }
 
     // Heart Rate Recovery tracking: each entry is (peakHr, peakTimestampMs).
     // At ~60s after each peak we record the delta = peakHr - currentHr.
@@ -128,11 +148,32 @@ class PolarManager @Inject constructor(
     // "fully recovered" state, which during intense training may never occur).
     private var lastQueuedPeakAtMs = 0L
 
-    // Live ECG waveform + analyzer (exposed while an active session is running)
+    // Live ECG waveform + analyzer (exposed while an active session is running).
+    // Primitive ring buffer avoids Int autoboxing at 130 Hz.
     private val liveAnalyzer = LiveEcgAnalyzer(sampleRate = 130)
-    private val waveformBuffer = ArrayDeque<Int>() // last ~4s of ECG samples (µV)
     private val waveformCapacity = 130 * 4
+    private val waveformValues = IntArray(waveformCapacity)
+    private var waveformHead = 0
+    private var waveformCount = 0
     private var samplesSinceLastEmit = 0
+
+    private fun addWaveformSample(v: Int) {
+        val idx = (waveformHead + waveformCount) % waveformCapacity
+        waveformValues[idx] = v
+        if (waveformCount < waveformCapacity) {
+            waveformCount++
+        } else {
+            waveformHead = (waveformHead + 1) % waveformCapacity
+        }
+    }
+
+    private fun waveformSnapshot(): IntArray {
+        val out = IntArray(waveformCount)
+        for (i in 0 until waveformCount) {
+            out[i] = waveformValues[(waveformHead + i) % waveformCapacity]
+        }
+        return out
+    }
 
     private val _ecgWaveform = MutableStateFlow<IntArray>(IntArray(0))
     val ecgWaveform: StateFlow<IntArray> = _ecgWaveform
@@ -485,9 +526,7 @@ class PolarManager @Inject constructor(
                         // Capture HR series for cardiac drift analysis
                         if (hrSeriesActive) {
                             val now = System.currentTimeMillis()
-                            val elapsed = now - hrSeriesStart
-                            if (hrSeries.size >= HR_SERIES_MAX_ENTRIES) hrSeries.removeFirst()
-                            hrSeries.addLast(elapsed to sample.hr)
+                            addHrSample(now - hrSeriesStart, sample.hr)
                             // Recompute live drift every ~30s
                             if (now - lastDriftComputeMs >= 30_000) {
                                 lastDriftComputeMs = now
@@ -697,7 +736,7 @@ class PolarManager @Inject constructor(
         _sessionCalories.value = 0.0
         _sessionTrimp.value = 0.0
         synchronized(hrSampleLock) {
-            hrSeries.clear()
+            clearHrSeries()
             hrSeriesStart = System.currentTimeMillis()
             hrSeriesActive = true
             lastDriftComputeMs = 0L
@@ -739,24 +778,33 @@ class PolarManager @Inject constructor(
      * Requires ≥5 minutes of data, otherwise returns 0.
      * Positive value = HR drifted upward (possible dehydration/heat).
      */
-    fun cardiacDriftBpmPerMinute(): Double {
-        val data = synchronized(hrSampleLock) { hrSeries.toList() }
-        if (data.size < 60) return 0.0
-        val totalMinutes = data.last().first / 60000.0
-        if (totalMinutes < 5.0) return 0.0
-        // Linear regression slope (HR vs minutes)
-        val xs = data.map { it.first / 60000.0 }
-        val ys = data.map { it.second.toDouble() }
-        val meanX = xs.average()
-        val meanY = ys.average()
+    fun cardiacDriftBpmPerMinute(): Double = synchronized(hrSampleLock) {
+        val n = hrSeriesCount
+        if (n < 60) return@synchronized 0.0
+        val lastIdx = (hrSeriesHead + n - 1) % HR_SERIES_MAX_ENTRIES
+        val totalMinutes = hrSeriesTimes[lastIdx] / 60000.0
+        if (totalMinutes < 5.0) return@synchronized 0.0
+
+        // Two-pass linear regression directly on the ring — no ArrayList/Pair
+        // allocations. Slope = Σ(dx·dy) / Σ(dx²), HR vs minutes.
+        var sumX = 0.0
+        var sumY = 0.0
+        for (i in 0 until n) {
+            val idx = (hrSeriesHead + i) % HR_SERIES_MAX_ENTRIES
+            sumX += hrSeriesTimes[idx] / 60000.0
+            sumY += hrSeriesValues[idx].toDouble()
+        }
+        val meanX = sumX / n
+        val meanY = sumY / n
         var num = 0.0
         var den = 0.0
-        for (i in xs.indices) {
-            val dx = xs[i] - meanX
-            num += dx * (ys[i] - meanY)
+        for (i in 0 until n) {
+            val idx = (hrSeriesHead + i) % HR_SERIES_MAX_ENTRIES
+            val dx = hrSeriesTimes[idx] / 60000.0 - meanX
+            num += dx * (hrSeriesValues[idx] - meanY)
             den += dx * dx
         }
-        return if (den > 0) num / den else 0.0
+        if (den > 0) num / den else 0.0
     }
 
     /** Start raw ECG recording for [sessionId]. No-op if not connected. */
@@ -809,7 +857,8 @@ class PolarManager @Inject constructor(
         ecgDisposable?.dispose()
         // Reset live analyzer + waveform for a fresh session
         liveAnalyzer.reset()
-        waveformBuffer.clear()
+        waveformHead = 0
+        waveformCount = 0
         _ecgWaveform.value = IntArray(0)
         _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0)
         samplesSinceLastEmit = 0
@@ -841,15 +890,13 @@ class PolarManager @Inject constructor(
                             val v = sample.voltage
                             ecgRecorder.writeSample(v)
                             liveAnalyzer.onSample(v)
-                            // Waveform buffer
-                            waveformBuffer.addLast(v)
-                            if (waveformBuffer.size > waveformCapacity) waveformBuffer.removeFirst()
+                            addWaveformSample(v)
                             samplesSinceLastEmit++
                         }
                     }
                     // Emit waveform + snapshot on every block so the UI stays fresh
                     // even when BLE delivers small batches infrequently (e.g. screen off).
-                    _ecgWaveform.value = waveformBuffer.toIntArray()
+                    _ecgWaveform.value = waveformSnapshot()
                     _liveEcgSnapshot.value = liveAnalyzer.snapshot()
                     samplesSinceLastEmit = 0
                 },
