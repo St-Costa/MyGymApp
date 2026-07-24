@@ -11,6 +11,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,6 +38,31 @@ class WorkoutRepository @Inject constructor(
     private val fileManager: FileManager,
 ) {
     private val mutex = Mutex()
+
+    // Parsed-session cache keyed by absolute path. Each entry pairs the last
+    // observed mtime with its parsed form; if the file was rewritten (save)
+    // its mtime advances and parseCached() transparently re-parses. Deleted
+    // files' entries are cleaned up in delete()/pruneOldSessions().
+    private data class CachedSession(val lastModified: Long, val session: WorkoutSession)
+    private val sessionCache = ConcurrentHashMap<String, CachedSession>()
+
+    private fun parseCached(file: File): WorkoutSession? {
+        val key = file.absolutePath
+        val currentMtime = file.lastModified()
+        if (currentMtime == 0L) {
+            sessionCache.remove(key)
+            return null
+        }
+        sessionCache[key]?.let { if (it.lastModified == currentMtime) return it.session }
+        return try {
+            val parsed = WorkoutParser.fromMarkdown(file.readText())
+            sessionCache[key] = CachedSession(currentMtime, parsed)
+            parsed
+        } catch (_: Exception) {
+            sessionCache.remove(key)
+            null
+        }
+    }
 
     // ─── File naming ──────────────────────────────────────────────────────────
 
@@ -275,9 +301,9 @@ class WorkoutRepository @Inject constructor(
                             file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE
                         )
                         if (!fileDate.isBefore(startDate) && !fileDate.isAfter(endDate)) {
-                            sessions.add(WorkoutParser.fromMarkdown(file.readText()))
+                            parseCached(file)?.let { sessions.add(it) }
                         }
-                    } catch (_: Exception) { /* Skip malformed */ }
+                    } catch (_: Exception) { /* Skip malformed filename */ }
                 }
             }
             current = current.plusMonths(1)
@@ -292,12 +318,7 @@ class WorkoutRepository @Inject constructor(
     suspend fun getLastSessionForRoutine(routineId: String): WorkoutSession? =
         withContext(Dispatchers.IO) {
             getRoutineSessionFiles(routineId)
-                .mapNotNull { file ->
-                    try {
-                        WorkoutParser.fromMarkdown(file.readText())
-                            .takeIf { it.completedAt.isNotBlank() }
-                    } catch (_: Exception) { null }
-                }
+                .mapNotNull { file -> parseCached(file)?.takeIf { it.completedAt.isNotBlank() } }
                 .maxByOrNull { it.completedAt }
         }
 
@@ -317,18 +338,12 @@ class WorkoutRepository @Inject constructor(
                     file.nameWithoutExtension.endsWith("-$sessionId")      // old format pre-migration
                 )
             }?.forEach { file ->
-                try {
-                    val session = WorkoutParser.fromMarkdown(file.readText())
-                    if (session.id == sessionId) return@withContext session
-                } catch (_: Exception) { }
+                parseCached(file)?.let { if (it.id == sessionId) return@withContext it }
             }
 
             // Fallback: full scan (edge cases / unusual IDs)
             dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                try {
-                    val session = WorkoutParser.fromMarkdown(file.readText())
-                    if (session.id == sessionId) return@withContext session
-                } catch (_: Exception) { }
+                parseCached(file)?.let { if (it.id == sessionId) return@withContext it }
             }
             null
         }
@@ -343,12 +358,10 @@ class WorkoutRepository @Inject constructor(
     ): List<WorkoutSession> = withContext(Dispatchers.IO) {
         getExerciseSessionFiles(exerciseId)
             .mapNotNull { file ->
-                try {
-                    WorkoutParser.fromMarkdown(file.readText()).takeIf { session ->
-                        session.completedAt.isNotBlank() &&
-                            session.exercises.any { it.exerciseId == exerciseId }
-                    }
-                } catch (_: Exception) { null }
+                parseCached(file)?.takeIf { session ->
+                    session.completedAt.isNotBlank() &&
+                        session.exercises.any { it.exerciseId == exerciseId }
+                }
             }
             .sortedByDescending { it.completedAt }
             .take(maxSessions)
