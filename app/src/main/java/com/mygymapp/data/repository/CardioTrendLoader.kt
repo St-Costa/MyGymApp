@@ -69,39 +69,43 @@ class CardioTrendLoader @Inject constructor(
 
         val hasEnough = recent.size >= 2  // need at least 2 recent sessions to show anything
 
+        // Pre-classify by recency once so metric() can extract in a single pass
+        // over sessions instead of one pass each per (all/recent/baseline).
+        val sessionsWithRecency = sessions.map { it to (LocalDate.parse(it.date) > cutoff) }
+
         val metrics = buildList {
-            add(metric("restingHr", "Resting HR", "BPM", sessions, recent, baseline,
+            add(metric("restingHr", "Resting HR", "BPM", sessionsWithRecency,
                 { it.restingHr.toDouble().takeIf { v -> v > 0 } },
                 goodDirection = TrendDirection.DOWN,
                 absoluteBad = { it > 85.0 },
                 absoluteOk = { it in 40.0..75.0 }))
 
-            add(metric("hrr60s", "HRR (1 min)", "BPM", sessions, recent, baseline,
+            add(metric("hrr60s", "HRR (1 min)", "BPM", sessionsWithRecency,
                 { it.hrr60s.takeIf { v -> v > 0 } },
                 goodDirection = TrendDirection.UP,
                 absoluteBad = { it < 12.0 },
                 absoluteOk = { it >= 20.0 }))
 
-            add(metric("vo2max", "VO2max", "ml/kg/min", sessions, recent, baseline,
+            add(metric("vo2max", "VO2max", "ml/kg/min", sessionsWithRecency,
                 { it.vo2max.takeIf { v -> v > 0 } },
                 goodDirection = TrendDirection.UP,
                 absoluteBad = { false },
                 absoluteOk = { true },
                 formatCurrent = "%.1f"))
 
-            add(metric("rmssd", "RMSSD", "ms", sessions, recent, baseline,
+            add(metric("rmssd", "RMSSD", "ms", sessionsWithRecency,
                 { it.ecgSessionRmssd.takeIf { v -> v > 0 } },
                 goodDirection = TrendDirection.UP,
                 absoluteBad = { false },
                 absoluteOk = { true }))
 
-            add(metric("sdnn", "SDNN", "ms", sessions, recent, baseline,
+            add(metric("sdnn", "SDNN", "ms", sessionsWithRecency,
                 { it.sdnn.takeIf { v -> v > 0 } },
                 goodDirection = TrendDirection.UP,
                 absoluteBad = { false },
                 absoluteOk = { true }))
 
-            add(metric("drift", "Cardiac drift", "BPM/min", sessions, recent, baseline,
+            add(metric("drift", "Cardiac drift", "BPM/min", sessionsWithRecency,
                 { it.cardiacDriftBpmMin.takeIf { v -> v != 0.0 } },
                 goodDirection = TrendDirection.DOWN,
                 absoluteBad = { it > 1.0 },
@@ -112,7 +116,7 @@ class CardioTrendLoader @Inject constructor(
             // Poincare ratio as a standalone (no series, single value) — we still
             // pass a series if you want to visualize; here we include it in metrics
             // list with a flat series using the recent mean.
-            add(metric("poincareRatio", "SD2/SD1 ratio", "", sessions, recent, baseline,
+            add(metric("poincareRatio", "SD2/SD1 ratio", "", sessionsWithRecency,
                 { it.poincareRatio.takeIf { v -> v > 0 } },
                 goodDirection = TrendDirection.FLAT,
                 absoluteBad = { it < 1.0 || it > 6.0 },
@@ -157,9 +161,7 @@ class CardioTrendLoader @Inject constructor(
         key: String,
         label: String,
         unitLabel: String,
-        all: List<WorkoutSession>,
-        recent: List<WorkoutSession>,
-        baseline: List<WorkoutSession>,
+        sessionsWithRecency: List<Pair<WorkoutSession, Boolean>>,
         extractor: (WorkoutSession) -> Double?,
         goodDirection: TrendDirection,
         absoluteBad: (Double) -> Boolean,
@@ -167,9 +169,16 @@ class CardioTrendLoader @Inject constructor(
         formatCurrent: String = "%.0f",
         formatDelta: String = "%+.1f",
     ): CardioMetric {
-        val series = all.mapNotNull(extractor)
-        val recentValues = recent.mapNotNull(extractor)
-        val baselineValues = baseline.mapNotNull(extractor)
+        // Single pass: extract once per session, classify into series (all
+        // non-null values) + recent + baseline based on the pre-computed flag.
+        val series = ArrayList<Double>(sessionsWithRecency.size)
+        val recentValues = ArrayList<Double>()
+        val baselineValues = ArrayList<Double>()
+        for ((session, isRecent) in sessionsWithRecency) {
+            val v = extractor(session) ?: continue
+            series.add(v)
+            if (isRecent) recentValues.add(v) else baselineValues.add(v)
+        }
         val current = if (recentValues.isNotEmpty()) recentValues.average() else 0.0
         val baselineAvg = if (baselineValues.isNotEmpty()) baselineValues.average() else current
         val delta = current - baselineAvg
