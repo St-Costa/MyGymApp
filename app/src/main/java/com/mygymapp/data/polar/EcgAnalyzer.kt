@@ -101,8 +101,13 @@ class EcgAnalyzer @Inject constructor() {
             }
             val start = (i - windowSize / 2).coerceAtLeast(0)
             val end = (start + windowSize).coerceAtMost(rrIntervals.size)
-            if (end - start < 5) { uncountedConsecutive = false; continue }
-            val localMedian = rrIntervals.subList(start, end).sorted().let { it[it.size / 2] }
+            // Median must EXCLUDE the current beat, otherwise a very short RR
+            // (a PAC) pulls its own reference median down and self-masks.
+            // LiveEcgAnalyzer already does this correctly (`subList(start, i)`).
+            val window = ArrayList<Int>(end - start - 1)
+            for (j in start until end) if (j != i) window.add(rrIntervals[j])
+            if (window.size < 5) { uncountedConsecutive = false; continue }
+            val localMedian = window.sorted().let { it[it.size / 2] }
 
             if (rr < localMedian * 0.85) {
                 val next = rrIntervals.getOrNull(i + 1)
