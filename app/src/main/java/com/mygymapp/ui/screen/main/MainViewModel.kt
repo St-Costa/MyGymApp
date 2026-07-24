@@ -74,10 +74,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun loadGitgraph() {
-        viewModelScope.launch { loadGitgraphInternal() }
-    }
-
     private suspend fun loadGitgraphInternal() {
         val today = LocalDate.now()
         val todayDow = today.dayOfWeek.value // 1=Mon, 7=Sun
