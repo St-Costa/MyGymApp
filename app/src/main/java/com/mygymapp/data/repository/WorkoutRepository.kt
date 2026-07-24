@@ -78,21 +78,6 @@ class WorkoutRepository @Inject constructor(
     private fun indexDir(): File = File(File(fileManager.root, "history"), "_idx")
 
     /**
-     * Adds [relPath] (relative to `history/`) to the index for [exerciseId].
-     * Deduplicates. Must be called with [mutex] held.
-     */
-    private fun addToExerciseIndex(exerciseId: String, relPath: String) {
-        val idxFile = File(indexDir().also { it.mkdirs() }, "$exerciseId.idx")
-        val lines = if (idxFile.exists())
-            idxFile.readLines().filter { it.isNotBlank() }.toMutableSet()
-        else
-            mutableSetOf()
-        if (lines.add(relPath)) {
-            idxFile.writeText(lines.joinToString("\n"))
-        }
-    }
-
-    /**
      * Accumulates (exerciseId, relPath) pairs in-memory so that each .idx file is read
      * and written at most once, regardless of how many times it is touched during
      * migration or rebuild. Must be called with [mutex] held.
@@ -366,6 +351,31 @@ class WorkoutRepository @Inject constructor(
             .sortedByDescending { it.completedAt }
             .take(maxSessions)
     }
+
+    /**
+     * Previous strength sets for [exerciseId] matching the same "role" (daily
+     * vs warmup vs normal) so grey "previous" values on the exercise/superset
+     * screens compare like-with-like. Walks back through recent sessions and
+     * returns the most recent matching one whose sets contain non-zero data,
+     * so an empty (skipped) session doesn't blank out the preview.
+     */
+    suspend fun previousStrengthSetsMatching(
+        exerciseId: String,
+        isDaily: Boolean,
+        isWarmup: Boolean,
+        maxSessions: Int = 30,
+    ): List<ExerciseSet.Strength> =
+        getSessionsForExercise(exerciseId, maxSessions)
+            .asSequence()
+            .mapNotNull { prev ->
+                prev.exercises.firstOrNull { ex ->
+                    ex.exerciseId == exerciseId &&
+                        ex.isDaily == isDaily &&
+                        (ex.excludeFromTonnage && !ex.isDaily) == isWarmup
+                }
+            }
+            .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
+            .firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
 
     // ─── Maintenance ─────────────────────────────────────────────────────────
 

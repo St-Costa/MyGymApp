@@ -94,9 +94,6 @@ class PolarManager @Inject constructor(
     private val _recoveryState = MutableStateFlow(RecoveryState.READY)
     val recoveryState: StateFlow<RecoveryState> = _recoveryState
 
-    private val _rmssd = MutableStateFlow<Double?>(null)
-    val rmssd: StateFlow<Double?> = _rmssd
-
     private val _sessionCalories = MutableStateFlow(0.0)
     val sessionCalories: StateFlow<Double> = _sessionCalories
 
@@ -139,10 +136,6 @@ class PolarManager @Inject constructor(
     // At ~60s after each peak we record the delta = peakHr - currentHr.
     private val pendingHrrPeaks = mutableListOf<Pair<Int, Long>>()
     private val hrrDeltas = mutableListOf<Int>()
-
-    /** Last computed HRR (BPM dropped 60s after the most recent peak). null = no peak yet. */
-    private val _liveHrrLast = MutableStateFlow<Int?>(null)
-    val liveHrrLast: StateFlow<Int?> = _liveHrrLast
 
     // HRR queueing: we want one HRR measurement per set (not gated by the
     // "fully recovered" state, which during intense training may never occur).
@@ -637,7 +630,6 @@ class PolarManager @Inject constructor(
                     isRecovering = true
                     recentRR.clear()
                     _recoveryState.value = RecoveryState.RECOVERING
-                    _rmssd.value = null
                     Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
                 }
                 // HRR queue: independent from recovery flag. Stricter criteria
@@ -663,7 +655,6 @@ class PolarManager @Inject constructor(
                 val delta = peakHr - hr
                 if (delta in 0..120) {
                     hrrDeltas.add(delta)
-                    _liveHrrLast.value = delta
                 }
                 iter.remove()
             }
@@ -685,7 +676,6 @@ class PolarManager @Inject constructor(
 
         // RMSSD-based recovery: parasympathetic reactivation
         val currentRmssd = calculateRMSSD(recentRR.toList())
-        _rmssd.value = currentRmssd
         val rmssdReady = currentRmssd > RMSSD_READY_THRESHOLD && recentRR.size >= 15
 
         val state = when {
@@ -746,7 +736,6 @@ class PolarManager @Inject constructor(
             _liveCardiacDrift.value = 0.0
             pendingHrrPeaks.clear()
             hrrDeltas.clear()
-            _liveHrrLast.value = null
             lastQueuedPeakAtMs = 0L
         }
     }

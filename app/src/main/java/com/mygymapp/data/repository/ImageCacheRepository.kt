@@ -1,7 +1,5 @@
 package com.mygymapp.data.repository
 
-import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -16,7 +14,6 @@ private val GOOGLE_DRIVE_OPEN_ID = Regex("drive\\.google\\.com/open\\?id=([^&]+)
 
 @Singleton
 class ImageCacheRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val fileManager: FileManager,
 ) {
     private val cacheDir: File by lazy {
