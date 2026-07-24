@@ -132,7 +132,7 @@ class WorkoutRepository @Inject constructor(
         val historyRoot = File(fileManager.root, "history")
         val result = mutableListOf<File>()
         historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+            if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_trash") return@forEach
             yearDir.listFiles()?.forEach { monthDir ->
                 if (!monthDir.isDirectory) return@forEach
                 monthDir.listFiles()?.filterTo(result) { file ->
@@ -173,7 +173,7 @@ class WorkoutRepository @Inject constructor(
             val historyRoot = File(fileManager.root, "history")
             if (historyRoot.exists()) {
                 historyRoot.listFiles()?.forEach { yearDir ->
-                    if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                    if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_trash") return@forEach
                     yearDir.listFiles()?.forEach { monthDir ->
                         if (!monthDir.isDirectory) return@forEach
                         // snapshot to avoid ConcurrentModification during rename
@@ -357,34 +357,47 @@ class WorkoutRepository @Inject constructor(
     // ─── Maintenance ─────────────────────────────────────────────────────────
 
     /**
-     * Deletes all session files whose filename date is before [cutoffDate].
-     * Cleans up exercise index entries for deleted files.
+     * Soft-deletes session files whose filename date is before [cutoffDate] by
+     * moving them under history/_trash/ (with the original YYYY/MM/ structure
+     * preserved). Exercise index entries are still cleared as if the file were
+     * gone, so live queries stay consistent. Users can recover a file by hand
+     * from history/_trash/ or delete the folder to reclaim space — the app
+     * never touches it again.
      */
     suspend fun pruneOldSessions(cutoffDate: LocalDate) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val historyRoot = File(fileManager.root, "history")
             if (!historyRoot.exists()) return@withLock
+            val trashRoot = File(historyRoot, "_trash")
             historyRoot.listFiles()?.forEach { yearDir ->
-                if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_trash") return@forEach
                 yearDir.listFiles()?.forEach { monthDir ->
                     if (!monthDir.isDirectory) return@forEach
                     monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                        try {
-                            val fileDate = LocalDate.parse(
-                                file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE
-                            )
-                            if (fileDate.isBefore(cutoffDate)) {
-                                try {
-                                    val session = WorkoutParser.fromMarkdown(file.readText())
-                                    val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
-                                    session.exercises.forEach { ex ->
-                                        removeFromExerciseIndex(ex.exerciseId, rel)
-                                    }
-                                } catch (_: Exception) { /* Delete anyway */ }
-                                file.delete()
-                            }
+                        val fileDate = try {
+                            LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
                         } catch (_: Exception) {
-                            file.delete() // Malformed filename — discard
+                            // Malformed filename — leave it alone so a legitimate rescue
+                            // is still possible. Old behaviour was to file.delete() it.
+                            return@forEach
+                        }
+                        if (fileDate.isBefore(cutoffDate)) {
+                            try {
+                                val session = WorkoutParser.fromMarkdown(file.readText())
+                                val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
+                                session.exercises.forEach { ex ->
+                                    removeFromExerciseIndex(ex.exerciseId, rel)
+                                }
+                            } catch (_: Exception) { /* Move to trash anyway */ }
+                            val destDir = File(trashRoot, "${yearDir.name}/${monthDir.name}").apply { mkdirs() }
+                            val dest = File(destDir, file.name)
+                            // renameTo is best-effort; on failure fall through to copy+delete.
+                            if (!file.renameTo(dest)) {
+                                try {
+                                    dest.writeBytes(file.readBytes())
+                                    file.delete()
+                                } catch (_: Exception) { /* Give up quietly */ }
+                            }
                         }
                     }
                 }
@@ -421,7 +434,7 @@ class WorkoutRepository @Inject constructor(
             if (!historyRoot.exists()) return@withLock 0
             var removed = 0
             historyRoot.listFiles()?.forEach { yearDir ->
-                if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_trash") return@forEach
                 yearDir.listFiles()?.forEach { monthDir ->
                     if (!monthDir.isDirectory) return@forEach
                     monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
@@ -454,7 +467,7 @@ class WorkoutRepository @Inject constructor(
         val historyRoot = File(fileManager.root, "history")
         val validSessionIds = mutableSetOf<String>()
         historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+            if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_trash") return@forEach
             yearDir.listFiles()?.forEach { monthDir ->
                 if (!monthDir.isDirectory) return@forEach
                 monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
