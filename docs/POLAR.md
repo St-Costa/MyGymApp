@@ -40,7 +40,7 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 | `sessionCalories` | `Double` | Every HR sample (Keytel) | HR bar + session save |
 | `sessionTrimp` | `Double` | Every HR sample (Banister) | HR bar + session save |
 | `liveHrrLast` | `Int?` | 60s after each detected peak | HR bar HRR badge |
-| `readinessResult` | `ReadinessResult` | 60s measurement + baseline | HR screen readiness card |
+| `readinessResult` | `ReadinessResult` | 60s measurement + baseline | HR screen readiness card + session save |
 | `vo2max` | `Double?` | End of readiness (Uth) | HR screen + session save |
 | `ecgWaveform` | `IntArray` (~520 samples) | Every ECG block (~100 ms) | LiveEcgCard canvas |
 | `liveEcgSnapshot` | beats/regular%/PAC/pause/irregular | Every ECG block | LiveEcgCard counters |
@@ -125,7 +125,7 @@ PolarManager watches a rolling window for automatic peak detection:
 2. Peaks qualify only if at least `PEAK_MIN_RISE_BPM` (15) above the current resting HR.
 3. Qualified peaks are queued as `(peakHr, timestamp)`.
 4. 60 s after each peak: `delta = peakHr − currentHr` is appended to `hrrDeltas` and emitted via `_liveHrrLast`.
-5. Session average is saved as `hrr60s` in the session file.
+5. Session average is saved as `hrr60s` in the session file; the full ordered list (one value per detected peak/set) is saved as `hrrPerSet` via `PolarManager.hrrDeltasSnapshot()`.
 
 ### Cardiac drift
 

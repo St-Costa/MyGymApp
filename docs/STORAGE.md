@@ -94,14 +94,18 @@ routineId: rt-b2c3d4e5
 routineName: Push Day         # denormalized for historical display
 startedAt: 2025-04-15T09:15:00
 completedAt: 2025-04-15T10:05:42   # empty string if abandoned
+bodyWeightKg: 78.5                 # snapshot of UserProfile.weightKg at session start, omitted if 0
 totalTonnage: 12450.0              # pre-computed (sum of reps×weight)
 tonnageByBodypart:
   chest: 8200.0
   shoulders: 4250.0
-# Polar-derived metrics (all optional, zero if not recorded)
+# Polar-derived metrics (all optional, zero/blank if not recorded)
 sessionCalories: 412.3
 sessionTrimp: 87.5
 vo2max: 48.2
+readiness: NORMAL                  # Readiness enum name from the pre-session 60s measurement
+readinessLnRmssd: 3.8
+hrrPerSet: [24.0, 19.0, 22.0]       # one HR-recovery value per detected effort peak, in order
 ecgBeats: 5240
 ecgDurationSec: 2950
 ecgSessionRmssd: 38.2

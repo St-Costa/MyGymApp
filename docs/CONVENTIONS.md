@@ -191,7 +191,7 @@ Disconnect handling in `PolarManager`:
 Two rules applied in `WorkoutParser.toMarkdown` + `MarkdownParser.formatValue`:
 
 1. **2-decimal rounding for Doubles/Floats** at serialization. Store full precision in memory, write a readable value to disk. Applies uniformly — set `weight: 14.0` stays `14.0`, `vo2max: 46.142857142857146` becomes `46.14`.
-2. **Omit-zero for ECG/HRV/recovery fields** (`ecgBeats`, `ecgDurationSec`, `ecgAvgHr`, `ecgSessionRmssd`, `ecgPacCount`, `ecgPauseCount`, `ecgIrregularBeats`, `cardiacDriftBpmMin`, `restingHr`, `hrr60s`, `sdnn`, `pnn50`, `poincareSd1`, `poincareSd2`, `poincareRatio`, `afibSuspicionEpisodes`): not serialized when zero. `tonnageByBodypart` also drops zero-valued entries.
+2. **Omit-zero for ECG/HRV/recovery fields** (`ecgBeats`, `ecgDurationSec`, `ecgAvgHr`, `ecgSessionRmssd`, `ecgPacCount`, `ecgPauseCount`, `ecgIrregularBeats`, `cardiacDriftBpmMin`, `restingHr`, `hrr60s`, `sdnn`, `pnn50`, `poincareSd1`, `poincareSd2`, `poincareRatio`, `afibSuspicionEpisodes`, `bodyWeightKg`, `readiness`, `readinessLnRmssd`, `hrrPerSet`): not serialized when zero/blank/empty. `tonnageByBodypart` also drops zero-valued entries.
 
 The reader (`WorkoutParser.fromMarkdown`) defaults missing numeric fields to 0 via `as? Number ?: 0.0`, so older files stay readable and newly omitted fields round-trip cleanly.
 
