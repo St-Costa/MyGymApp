@@ -143,6 +143,7 @@ When a strength exercise screen opens ([StrengthExerciseViewModel](../app/src/ma
 - **Match the exercise type.** An exercise can be performed as one of three mutually exclusive types in a session, identified by the `(isDaily, excludeFromTonnage)` pair on `WorkoutExercise`: **daily** (`isDaily`), **warmup** (`excludeFromTonnage && !isDaily`), or **normal** (neither). The preview is sourced only from prior sessions where this exercise had the **same** type. Comparing only `isDaily` is wrong — it conflates warmup with normal.
 - **Skip empty sessions.** Walk back through `getSessionsForExercise(id, 30)` (already sorted newest-first) and take the first matching session that has **at least one non-zero set**, so an aborted/skipped 0-0 session doesn't blank out the preview.
 - **Inherit the last set for extra sets.** Sets are matched positionally (`previousSets.getOrNull(i)`). If today has more sets than the previous session recorded, the extra indices fall back to the **last non-zero previous set** (`lastMeaningfulPrev`) rather than showing 0-0.
+- **Check "has current data" per set, not per exercise.** `StrengthExerciseViewModel` used to gate the whole exercise on one `hasProgress` flag (`currentSets.any { reps>0 || weight>0 }`): filling in set 1's reps flipped that flag, and every *other*, still-untouched set switched from showing its previous-session value to showing 0-0 on the next recompose/reopen — looking exactly like "the preview stopped working." Each set must decide independently, the way `SupersetViewModel` already did it: `curr = currentSet.takeIf { it.reps > 0 || it.weight > 0.0 }`, falling back to `prev` only for that one set.
 
 ## Image caches — two of them
 
@@ -185,6 +186,12 @@ Disconnect handling in `PolarManager`:
 ## ECG analysis: keep the raw file on failure
 
 `ActiveRoutineViewModel.registerRoutine()` runs `analyzeSessionEcg` and then deletes the raw `.ecg`. Delete ONLY when `ecgResult != null && ecgResult.hasAnything` (i.e. ≥1 beat detected). On failure (file too short, too few peaks, too few valid RR intervals) the `.ecg` is preserved so it can be inspected offline. `EcgAnalyzer.analyze()` emits structured logs (`file too small`, `only N peaks`, `only N valid RR intervals`, or the success line `N peaks → M valid RR intervals`) to pinpoint the cause.
+
+## R-peak threshold must be local, not global-max
+
+`EcgAnalyzer.panTompkinsDetect` used to derive its adaptive threshold from `integrated.max()` over the **whole** recording (`threshold = maxVal * 0.3`, floor `maxVal * 0.1`). A gym session almost always contains a single motion artifact (strap shift, a heavy rep, adjusting the strap) whose integrated value is an order of magnitude above any real QRS complex — confirmed on real `.ecg` files pulled off-device (`adb shell run-as com.mygymapp cat files/gymdata/ecg/{id}.ecg`) where the ratio of global-max to the p99.99 percentile was ~18x on a failing recording vs ~2.7x on a working one. Once that one artifact set the global max, the threshold was pinned far above any real beat for the rest of the multi-hour session, so `analyzeSessionEcg` returned `null` (peaks < 2) on essentially every registered session — every `.ecg` file on the test device back to May had been kept as a failure.
+
+Fix: threshold is now `trailingMax(integrated, windowSize = sampleRate * 5) * 0.5` — a rolling max over the trailing 5s, computed in O(n) via a monotonic deque (`trailingMax`). One artifact only poisons detection for ~5s around itself instead of the whole file. Validated against real recordings (Python replica of the exact algorithm) landing near the plausible HR range (~90-95 bpm during a lifting session) instead of 1 peak total.
 
 ## YAML compaction in session frontmatter
 
