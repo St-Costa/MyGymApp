@@ -108,9 +108,10 @@ class StrengthExerciseViewModel @Inject constructor(
                 repMax = routineExercise?.repRangeMax ?: 0
             }
 
-            // Use current session's in-progress values if available, else fall back to previous
+            // Use current session's in-progress values if available, else fall back to previous.
+            // Checked per-set (not per-exercise): filling in set 1 shouldn't make sets 2-3 lose
+            // their previous-session inheritance and drop to 0 while the lifter hasn't reached them yet.
             val currentSets = workoutExercise?.sets?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
-            val hasProgress = currentSets.any { it.reps > 0 || it.weight > 0.0 }
 
             // For sets beyond what the previous session recorded, fall back to the last
             // non-zero previous set so extra sets still inherit a sensible default.
@@ -118,7 +119,8 @@ class StrengthExerciseViewModel @Inject constructor(
 
             val sets = (0 until setCount).map { i ->
                 val prev = previousSets.getOrNull(i) ?: lastMeaningfulPrev
-                val curr = if (hasProgress) currentSets.getOrNull(i) else null
+                val currCandidate = currentSets.getOrNull(i)
+                val curr = currCandidate?.takeIf { it.reps > 0 || it.weight > 0.0 }
                 StrengthSetUi(
                     reps = curr?.reps ?: prev?.reps ?: 0,
                     weight = curr?.weight ?: prev?.weight ?: 0.0,

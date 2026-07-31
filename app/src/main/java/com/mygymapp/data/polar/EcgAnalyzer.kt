@@ -6,7 +6,6 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -237,14 +236,22 @@ class EcgAnalyzer @Inject constructor() {
         val winSize = (0.150 * sampleRate).toInt().coerceAtLeast(1)
         val integrated = movingAverage(squared, winSize)
 
-        // Step 5: adaptive threshold peak detection with refractory period
-        val peaks = mutableListOf<Int>()
+        // Step 5: adaptive threshold peak detection with refractory period.
+        //
+        // The threshold is a fraction of the LOCAL max over a trailing window, not the
+        // global max of the whole recording. A gym session almost always contains a motion
+        // artifact (strap shift, heavy breathing, a rep) whose integrated value can be an
+        // order of magnitude above any real QRS complex. A global-max-derived threshold
+        // pins detection at an unreachable level for the rest of the multi-hour recording,
+        // so one artifact anywhere silently zeroed out the entire session's beat count.
+        // A 5s trailing window recovers within seconds of any single outlier instead, while
+        // still being long enough (~5-8 beats at rest) to ride out normal RR variability.
         val refractory = (0.25 * sampleRate).toInt() // 250 ms
-        val maxVal = integrated.max()
-        if (maxVal <= 0) return emptyList()
-        var threshold = maxVal * 0.3
+        val localMax = trailingMax(integrated, windowSize = sampleRate * 5)
+        val peaks = mutableListOf<Int>()
         var lastPeak = -refractory - 1
         for (i in 1 until n - 1) {
+            val threshold = localMax[i] * 0.5
             if (integrated[i] > threshold &&
                 integrated[i] > integrated[i - 1] &&
                 integrated[i] >= integrated[i + 1] &&
@@ -252,11 +259,26 @@ class EcgAnalyzer @Inject constructor() {
             ) {
                 peaks.add(i)
                 lastPeak = i
-                // Adapt threshold toward current peak
-                threshold = max(maxVal * 0.1, 0.75 * threshold + 0.25 * integrated[i] * 0.4)
             }
         }
         return peaks
+    }
+
+    /**
+     * Trailing max over the last [windowSize] samples (inclusive of the current one),
+     * computed in O(n) via a monotonic deque of indices.
+     */
+    private fun trailingMax(data: DoubleArray, windowSize: Int): DoubleArray {
+        val n = data.size
+        val out = DoubleArray(n)
+        val deque = ArrayDeque<Int>() // indices, decreasing values
+        for (i in 0 until n) {
+            while (deque.isNotEmpty() && data[deque.last()] <= data[i]) deque.removeLast()
+            deque.addLast(i)
+            while (deque.first() <= i - windowSize) deque.removeFirst()
+            out[i] = data[deque.first()]
+        }
+        return out
     }
 
     private fun movingAverage(data: DoubleArray, window: Int): DoubleArray {
