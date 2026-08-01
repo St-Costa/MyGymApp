@@ -48,4 +48,11 @@ data class WorkoutExercise(
      * daily (and normal progress only against prior normal sessions).
      */
     val isDaily: Boolean = false,
-)
+) {
+    /**
+     * True when the lifter never touched a pre-filled value for this exercise before tapping
+     * "Complete" (see docs/CONVENTIONS.md "Untouched-exercise guard") — saved with no sets and
+     * not completed, identical to an exercise that was never opened.
+     */
+    fun isUntouched(): Boolean = !completed && sets.isEmpty()
+}
