@@ -229,11 +229,19 @@ class ActiveRoutineViewModel @Inject constructor(
             val today = LocalDate.parse(session.date)
             val reloaded = workoutRepository.getSession(session.id, today) ?: session
 
+            val reloadedExercise = reloaded.exercises.find { it.exerciseId == exerciseId }
+            // The exercise screen itself decides completed=false when the lifter never touched
+            // any pre-filled value (see StrengthExerciseViewModel/SupersetViewModel/
+            // StretchExerciseViewModel completeExercise()) — honor that here instead of always
+            // ticking the row off, so an untouched exercise stays open rather than counting as done.
+            if (reloadedExercise?.completed != true) {
+                return@launch
+            }
+
             // Compute current tonnage for this exercise
-            val currentExTonnage = reloaded.exercises
-                .find { it.exerciseId == exerciseId }
-                ?.sets?.filterIsInstance<ExerciseSet.Strength>()
-                ?.sumOf { it.reps * it.weight } ?: 0.0
+            val currentExTonnage = reloadedExercise
+                .sets.filterIsInstance<ExerciseSet.Strength>()
+                .sumOf { it.reps * it.weight }
 
             val prevExTonnage = previousTonnageByExercise[exerciseId]
             val changePct: Double? = if (prevExTonnage != null && prevExTonnage > 0) {

@@ -35,6 +35,8 @@ data class SupersetSetUi(
     val previousWeight: Double = 0.0,
     val repsModified: Boolean = false,
     val weightModified: Boolean = false,
+    val repsTouched: Boolean = false,
+    val weightTouched: Boolean = false,
     // STRETCH fields
     val timeSeconds: Int = 0,
     val done: Boolean = false,
@@ -236,19 +238,19 @@ class SupersetViewModel @Inject constructor(
     }
 
     fun updateReps(listIndex: Int, reps: Int) {
-        updateSetAt(listIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true) }
+        updateSetAt(listIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true) }
     }
 
     fun updateWeight(listIndex: Int, weight: Double) {
-        updateSetAt(listIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true) }
+        updateSetAt(listIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true, weightTouched = true) }
     }
 
     fun confirmReps(listIndex: Int) {
-        updateSetAt(listIndex) { it.copy(repsModified = true) }
+        updateSetAt(listIndex) { it.copy(repsModified = true, repsTouched = true) }
     }
 
     fun confirmWeight(listIndex: Int) {
-        updateSetAt(listIndex) { it.copy(weightModified = true) }
+        updateSetAt(listIndex) { it.copy(weightModified = true, weightTouched = true) }
     }
 
     fun toggleStopwatch() {
@@ -319,7 +321,7 @@ class SupersetViewModel @Inject constructor(
         val session = currentSession
         viewModelScope.launch {
             if (session != null) {
-                session.buildUpdatedSession(sets, completed = true)
+                session.buildUpdatedSession(sets, completed = true, respectTouch = true)
                     .let { workoutRepository.save(it) }
             }
             _completionSaved.value = true
@@ -336,22 +338,35 @@ class SupersetViewModel @Inject constructor(
         val session = currentSession
         clearScope.launch {
             if (session != null) {
-                session.buildUpdatedSession(sets, completed = false)
+                session.buildUpdatedSession(sets, completed = false, respectTouch = false)
                     .let { workoutRepository.save(it) }
             }
             clearScope.cancel()
         }
     }
 
+    /**
+     * @param respectTouch when true (only on explicit "Complete Superset"), a side of the
+     * superset with no touched FORZA field and no toggled STRETCH set is saved as untouched
+     * (completed=false, empty sets) instead of re-recording last session's numbers as new work.
+     */
     private fun WorkoutSession.buildUpdatedSession(
         sets: List<SupersetSetUi>,
         completed: Boolean,
+        respectTouch: Boolean,
     ): WorkoutSession {
         val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
         val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
+        fun anyTouched(sideSets: List<SupersetSetUi>) = sideSets.any {
+            it.repsTouched || it.weightTouched || (it.exerciseType == ExerciseType.STRETCH && it.done)
+        }
+        val side1Untouched = respectTouch && !anyTouched(sets1)
+        val side2Untouched = respectTouch && !anyTouched(sets2)
         val updatedExercises = exercises.map { ex ->
             when (ex.exerciseId) {
-                exerciseId1 -> ex.copy(
+                exerciseId1 -> if (side1Untouched) {
+                    ex.copy(completed = false, sets = emptyList())
+                } else ex.copy(
                     completed = completed,
                     sets = sets1.map { setUi ->
                         when (setUi.exerciseType) {
@@ -360,7 +375,9 @@ class SupersetViewModel @Inject constructor(
                         }
                     },
                 )
-                exerciseId2 -> ex.copy(
+                exerciseId2 -> if (side2Untouched) {
+                    ex.copy(completed = false, sets = emptyList())
+                } else ex.copy(
                     completed = completed,
                     sets = sets2.map { setUi ->
                         when (setUi.exerciseType) {
