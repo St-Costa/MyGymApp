@@ -59,6 +59,7 @@ class PolarManager @Inject constructor(
     private val ecgRecorder: EcgRecorder,
     private val ecgAnalyzer: EcgAnalyzer,
     private val appLogger: AppLogger,
+    private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
 ) {
     companion object {
         private const val TAG = "PolarManager"
@@ -236,6 +237,7 @@ class PolarManager @Inject constructor(
                 appLogger.i(TAG, "Connected: ${polarDeviceInfo.deviceId} (${polarDeviceInfo.name}) midSession=$hrSeriesActive")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 lastConnectedDeviceId = polarDeviceInfo.deviceId
+                knownPolarDeviceRepository.setKnownDeviceId(polarDeviceInfo.deviceId)
                 userInitiatedDisconnect = false
                 reconnectStartAtMs = 0L
                 reconnectHandler.removeCallbacksAndMessages(null)
@@ -340,9 +342,14 @@ class PolarManager @Inject constructor(
         })
     }
 
+    private var autoConnectAttempted = false
+
     fun startScan() {
         _discoveredDevices.value = emptyList()
         _isScanning.value = true
+        autoConnectAttempted = false
+
+        val knownDeviceId = knownPolarDeviceRepository.getKnownDeviceId()
 
         scanDisposable?.dispose()
         scanDisposable = api.searchForDevice()
@@ -351,6 +358,10 @@ class PolarManager @Inject constructor(
                     val current = _discoveredDevices.value
                     if (current.none { it.deviceId == deviceInfo.deviceId }) {
                         _discoveredDevices.value = current + deviceInfo
+                    }
+                    if (!autoConnectAttempted && knownDeviceId != null && deviceInfo.deviceId == knownDeviceId) {
+                        autoConnectAttempted = true
+                        connectToDevice(deviceInfo.deviceId)
                     }
                 },
                 { error ->

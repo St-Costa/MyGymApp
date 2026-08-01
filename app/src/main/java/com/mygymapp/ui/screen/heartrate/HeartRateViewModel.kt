@@ -9,6 +9,11 @@ import com.mygymapp.data.polar.UserProfile
 import com.mygymapp.data.polar.UserProfileRepository
 import com.mygymapp.data.repository.CardioTrendLoader
 import com.mygymapp.data.repository.CardioTrendReport
+import com.mygymapp.data.repository.ScaleTrendLoader
+import com.mygymapp.data.repository.ScaleTrendReport
+import com.mygymapp.data.scale.BleScaleManager
+import com.mygymapp.data.scale.ScaleConnectionState
+import com.mygymapp.data.scale.ScaleReading
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +34,10 @@ data class HeartRateUiState(
     val vo2max: Double? = null,
     val profile: UserProfile = UserProfile(),
     val cardioTrend: CardioTrendReport = CardioTrendReport(),
+    val scaleConnectionState: ScaleConnectionState = ScaleConnectionState.DISCONNECTED,
+    val scaleReading: ScaleReading? = null,
+    val scaleError: String? = null,
+    val scaleTrend: ScaleTrendReport = ScaleTrendReport(),
 )
 
 data class DiscoveredDevice(
@@ -42,6 +51,8 @@ class HeartRateViewModel @Inject constructor(
     private val polarManager: PolarManager,
     private val profileRepo: UserProfileRepository,
     private val cardioTrendLoader: CardioTrendLoader,
+    private val scaleManager: BleScaleManager,
+    private val scaleTrendLoader: ScaleTrendLoader,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HeartRateUiState())
@@ -53,6 +64,10 @@ class HeartRateViewModel @Inject constructor(
         viewModelScope.launch {
             val report = cardioTrendLoader.load()
             _uiState.value = _uiState.value.copy(cardioTrend = report)
+        }
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(scaleTrend = scaleTrendLoader.load())
         }
 
         viewModelScope.launch {
@@ -98,12 +113,41 @@ class HeartRateViewModel @Inject constructor(
                 )
             }.collect { _uiState.value = it }
         }
+
+        viewModelScope.launch {
+            var previousState = scaleManager.connectionState.value
+            combine(
+                scaleManager.connectionState,
+                scaleManager.lastReading,
+                scaleManager.lastError,
+            ) { connectionState, reading, error ->
+                Triple(connectionState, reading, error)
+            }.collect { (connectionState, reading, error) ->
+                _uiState.value = _uiState.value.copy(
+                    scaleConnectionState = connectionState,
+                    scaleReading = reading,
+                    scaleError = error,
+                )
+                // Reload the trend once the scale session ends — a weigh-in was
+                // likely just persisted (BleScaleManager saves on stable weight).
+                if (previousState == ScaleConnectionState.CONNECTED &&
+                    connectionState == ScaleConnectionState.DISCONNECTED
+                ) {
+                    _uiState.value = _uiState.value.copy(scaleTrend = scaleTrendLoader.load())
+                }
+                previousState = connectionState
+            }
+        }
     }
 
     fun startScan() = polarManager.startScan()
     fun stopScan() = polarManager.stopScan()
     fun connectToDevice(deviceId: String) = polarManager.connectToDevice(deviceId)
     fun disconnect() = polarManager.disconnect()
+
+    fun startScaleScan() = scaleManager.startScan()
+    fun stopScaleScan() = scaleManager.stopScan()
+    fun disconnectScale() = scaleManager.disconnect()
 
     fun updateAge(age: Int) {
         val profile = _uiState.value.profile.copy(age = age)
@@ -124,5 +168,11 @@ class HeartRateViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(profile = profile)
         profileRepo.save(profile)
         polarManager.updateUserProfile(profile)
+    }
+
+    fun updateHeight(heightCm: Int) {
+        val profile = _uiState.value.profile.copy(heightCm = heightCm)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
     }
 }
