@@ -33,5 +33,6 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String, date: String): String = "session/$sessionId/$date"
     }
     data object HeartRate : Screen("heartrate")
+    data object ScaleDebug : Screen("scale_debug")
     data object Options : Screen("options")
 }

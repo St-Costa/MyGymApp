@@ -227,9 +227,16 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
+        composable(Screen.ScaleDebug.route) {
+            com.mygymapp.ui.screen.scale.ScaleDebugScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+
         composable(Screen.Options.route) {
             OptionsScreen(
                 onBack = { navController.popBackStack() },
+                onNavigateToScaleDebug = { navController.navigate(Screen.ScaleDebug.route) },
             )
         }
 
