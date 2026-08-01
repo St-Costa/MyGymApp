@@ -1,10 +1,13 @@
 package com.mygymapp.ui.screen.heartrate
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,15 +24,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -55,7 +60,9 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.Readiness
+import com.mygymapp.data.scale.ScaleConnectionState
 import com.mygymapp.ui.components.CardioTrendSection
+import com.mygymapp.ui.components.ScaleTrendSection
 import com.mygymapp.ui.components.ScrollPickerInput
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +74,33 @@ fun HeartRateScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    fun blePermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT,
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    fun hasBlePermissions(): Boolean = blePermissions().all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun isBluetoothEnabled(): Boolean {
+        val manager = context.getSystemService(BluetoothManager::class.java)
+        return manager?.adapter?.isEnabled == true
+    }
+
+    // Location must be on for BLE scans on Android <= 11; from Android 12+ the
+    // neverForLocation BLUETOOTH_SCAN flag (already set in the manifest) removes
+    // this requirement.
+    fun isLocationRequiredAndDisabled(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return false
+        val manager = context.getSystemService(LocationManager::class.java)
+        return manager?.let { !it.isProviderEnabled(LocationManager.GPS_PROVIDER) && !it.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } ?: false
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -75,29 +109,46 @@ fun HeartRateScreen(
         }
     }
 
+    val scalePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.values.all { it }) {
+            viewModel.startScaleScan()
+        }
+    }
+
     fun startScanWithPermissionCheck() {
-        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT,
-            )
-        } else {
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        val allGranted = required.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        if (allGranted) {
+        if (hasBlePermissions()) {
             viewModel.startScan()
         } else {
-            permissionLauncher.launch(required)
+            permissionLauncher.launch(blePermissions())
+        }
+    }
+
+    // Scale auto-connects: start scanning as soon as the screen opens (once,
+    // and only if the scale isn't already connected/connecting).
+    LaunchedEffect(Unit) {
+        if (uiState.scaleConnectionState == ScaleConnectionState.DISCONNECTED) {
+            if (hasBlePermissions()) {
+                viewModel.startScaleScan()
+            } else {
+                scalePermissionLauncher.launch(blePermissions())
+            }
+        }
+    }
+
+    // Polar auto-connects the same way: scan on open, PolarManager itself
+    // only auto-connects if it finds the last-known device ID in range.
+    LaunchedEffect(Unit) {
+        if (uiState.connectionState == ConnectionState.DISCONNECTED) {
+            startScanWithPermissionCheck()
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Heart Rate") },
+                title = { Text("❤️⚖️") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -114,28 +165,36 @@ fun HeartRateScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            when (uiState.connectionState) {
-                ConnectionState.DISCONNECTED -> {
-                    DisconnectedContent(
-                        uiState = uiState,
-                        onStartScan = { startScanWithPermissionCheck() },
-                        onStopScan = { viewModel.stopScan() },
-                        onConnectDevice = { viewModel.connectToDevice(it) },
-                    )
-                }
-                ConnectionState.CONNECTING -> {
-                    Spacer(modifier = Modifier.height(48.dp))
-                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Connecting...", style = MaterialTheme.typography.titleMedium)
-                }
-                ConnectionState.CONNECTED -> {
-                    ConnectedContent(
-                        uiState = uiState,
-                        onDisconnect = { viewModel.disconnect() },
-                    )
-                }
+            Icon(
+                Icons.Default.BluetoothSearching,
+                contentDescription = null,
+                modifier = Modifier.size(62.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (!isBluetoothEnabled()) {
+                RadioWarningBox("Attiva il Bluetooth per collegare i dispositivi")
+            } else if (isLocationRequiredAndDisabled()) {
+                RadioWarningBox("Attiva la posizione per cercare dispositivi Bluetooth")
+            } else {
+                DeviceStatusHeader(
+                    heartRateConnectionState = uiState.connectionState,
+                    scaleConnectionState = uiState.scaleConnectionState,
+                    scaleReading = uiState.scaleReading,
+                )
             }
+
+            if (uiState.connectionState == ConnectionState.CONNECTED) {
+                ConnectedContent(
+                    uiState = uiState,
+                    onDisconnect = { viewModel.disconnect() },
+                )
+            }
+
+            // Scale trend graphs (weight, BMI, fat/lean %)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 32.dp))
+            ScaleTrendSection(report = uiState.scaleTrend)
 
             // Cardio trend (last 4 weeks)
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
@@ -148,8 +207,126 @@ fun HeartRateScreen(
                 onAgeChange = { viewModel.updateAge(it) },
                 onWeightChange = { viewModel.updateWeight(it) },
                 onGenderChange = { viewModel.updateGender(it) },
+                onHeightChange = { viewModel.updateHeight(it) },
             )
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun RadioWarningBox(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFCA28).copy(alpha = 0.15f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFCA28))
+            Text(message, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun DeviceStatusHeader(
+    heartRateConnectionState: ConnectionState,
+    scaleConnectionState: ScaleConnectionState,
+    scaleReading: com.mygymapp.data.scale.ScaleReading?,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("❤️", fontSize = 36.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            HeartRateStatusIcon(heartRateConnectionState)
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("⚖️", fontSize = 36.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+            ScaleStatusIcon(scaleConnectionState, scaleReading)
+        }
+    }
+
+    val weighInComplete = scaleConnectionState == ScaleConnectionState.CONNECTED &&
+        scaleReading?.weightKg != null &&
+        scaleReading.impedanceOhm != null
+    if (weighInComplete) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Pesata completata, puoi scendere ✓",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF66BB6A),
+        )
+    }
+}
+
+@Composable
+private fun HeartRateStatusIcon(connectionState: ConnectionState) {
+    when (connectionState) {
+        ConnectionState.DISCONNECTED -> Icon(
+            Icons.Default.LinkOff,
+            contentDescription = "Non connesso",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ConnectionState.CONNECTING -> Icon(
+            Icons.Default.Sync,
+            contentDescription = "Connessione in corso",
+            tint = Color(0xFFFFCA28),
+        )
+        ConnectionState.CONNECTED -> Icon(
+            Icons.Default.BluetoothSearching,
+            contentDescription = "Connesso",
+            tint = Color(0xFF66BB6A),
+        )
+    }
+}
+
+/**
+ * Two meaningful connected states: plain Bluetooth icon while connected and
+ * waiting/measuring, and a checkmark once weight+impedance have both been
+ * received for this weigh-in ("you can step off the scale now").
+ */
+@Composable
+private fun ScaleStatusIcon(
+    connectionState: ScaleConnectionState,
+    reading: com.mygymapp.data.scale.ScaleReading?,
+) {
+    when (connectionState) {
+        ScaleConnectionState.DISCONNECTED -> Icon(
+            Icons.Default.LinkOff,
+            contentDescription = "Non connessa",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ScaleConnectionState.SCANNING, ScaleConnectionState.CONNECTING -> Icon(
+            Icons.Default.Sync,
+            contentDescription = "Connessione in corso",
+            tint = Color(0xFFFFCA28),
+        )
+        ScaleConnectionState.CONNECTED -> {
+            val weighInComplete = reading?.weightKg != null && reading.impedanceOhm != null
+            if (weighInComplete) {
+                Icon(
+                    Icons.Default.TaskAlt,
+                    contentDescription = "Pesata completata, puoi scendere",
+                    modifier = Modifier.size(32.dp),
+                    tint = Color(0xFF66BB6A),
+                )
+            } else {
+                Icon(
+                    Icons.Default.BluetoothSearching,
+                    contentDescription = "Connessa",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
@@ -160,6 +337,7 @@ private fun ProfileSection(
     onAgeChange: (Int) -> Unit,
     onWeightChange: (Double) -> Unit,
     onGenderChange: (Boolean) -> Unit,
+    onHeightChange: (Int) -> Unit,
 ) {
     Text(
         "Profile",
@@ -213,6 +391,16 @@ private fun ProfileSection(
                 modifier = Modifier.width(120.dp),
             )
         }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Height (cm)", style = MaterialTheme.typography.bodySmall)
+            ScrollPickerInput(
+                value = profile.heightCm,
+                onValueChange = { onHeightChange(it.toInt()) },
+                buttonStep = 1.0,
+                isModified = true,
+                modifier = Modifier.width(120.dp),
+            )
+        }
     }
 
     Spacer(modifier = Modifier.height(4.dp))
@@ -221,106 +409,6 @@ private fun ProfileSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-}
-
-@Composable
-private fun ColumnScope.DisconnectedContent(
-    uiState: HeartRateUiState,
-    onStartScan: () -> Unit,
-    onStopScan: () -> Unit,
-    onConnectDevice: (String) -> Unit,
-) {
-    if (uiState.isScanning) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            Text("Scanning for devices...", style = MaterialTheme.typography.titleMedium)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(onClick = onStopScan) {
-            Text("Stop Scan")
-        }
-    } else {
-        Icon(
-            Icons.Default.BluetoothSearching,
-            contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onStartScan) {
-            Icon(Icons.Default.Bluetooth, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Search for Devices")
-        }
-    }
-
-    Spacer(modifier = Modifier.height(24.dp))
-
-    if (uiState.discoveredDevices.isNotEmpty()) {
-        Text(
-            "Devices Found",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for (device in uiState.discoveredDevices) {
-                DeviceCard(
-                    device = device,
-                    onClick = { onConnectDevice(device.deviceId) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeviceCard(
-    device: DiscoveredDevice,
-    onClick: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Default.Bluetooth,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    device.name,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    "ID: ${device.deviceId}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                "${device.rssi} dBm",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }
 
 @Composable
