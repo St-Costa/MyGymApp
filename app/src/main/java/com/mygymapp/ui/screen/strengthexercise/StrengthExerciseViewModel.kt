@@ -26,6 +26,8 @@ data class StrengthSetUi(
     val previousWeight: Double = 0.0,
     val repsModified: Boolean = false,
     val weightModified: Boolean = false,
+    val repsTouched: Boolean = false,
+    val weightTouched: Boolean = false,
 )
 
 data class StrengthExerciseUiState(
@@ -143,19 +145,19 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     fun updateReps(setIndex: Int, reps: Int) {
-        updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true) }
+        updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true) }
     }
 
     fun updateWeight(setIndex: Int, weight: Double) {
-        updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true) }
+        updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true, weightTouched = true) }
     }
 
     fun confirmReps(setIndex: Int) {
-        updateSet(setIndex) { it.copy(repsModified = true) }
+        updateSet(setIndex) { it.copy(repsModified = true, repsTouched = true) }
     }
 
     fun confirmWeight(setIndex: Int) {
-        updateSet(setIndex) { it.copy(weightModified = true) }
+        updateSet(setIndex) { it.copy(weightModified = true, weightTouched = true) }
     }
 
     fun updateDescription(text: String) {
@@ -183,14 +185,22 @@ class StrengthExerciseViewModel @Inject constructor(
         exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
+        val anyTouched = sets.any { it.repsTouched || it.weightTouched }
         viewModelScope.launch {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = true,
-                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
-                        )
+                        // If the lifter never touched any pre-filled value, there's no evidence
+                        // the exercise was actually performed — treat it like an unopened exercise
+                        // rather than silently re-recording last session's numbers as new work.
+                        if (anyTouched) {
+                            ex.copy(
+                                completed = true,
+                                sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
+                            )
+                        } else {
+                            ex.copy(completed = false, sets = emptyList())
+                        }
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
