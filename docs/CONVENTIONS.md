@@ -65,6 +65,16 @@ LaunchedEffect(completionSaved) {
 
 Navigation happens only after disk confirms the write. `onCleared()` is reserved for the mid-exercise back case and skips re-saving when `completionSaved` is already true.
 
+## Untouched-exercise guard (completing without changing anything)
+
+Tapping "Complete Exercise"/"Complete Superset" without touching any pre-filled field no longer records last session's numbers as new work. Each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `repsTouched`/`weightTouched`, set `true` only by an explicit user action (`updateReps`/`updateWeight`/`confirmReps`/`confirmWeight`, or the stepper buttons that call them) — never by the prefill logic in `init`. Stretch sets have no prefill at all, so `done` itself (only ever flipped by an explicit toggle) is the touch signal.
+
+In `completeExercise()`/`completeSuperset()`, if no set was touched (per exercise side, for supersets), the exercise is saved as `completed = false, sets = emptyList()` — the identical on-disk shape as an exercise the user never opened. This means every downstream consumer (tonnage sums, the per-exercise/session `%` change calculations, ghost-session detection, and the previous-session prefill's "skip all-zero sessions" walk-back) already handles it correctly with no extra code, since they all key off `completed`/non-empty `sets`.
+
+`ActiveRoutineViewModel.markExerciseCompleted()` reloads the session from disk and now checks the reloaded exercise's actual `completed` flag before ticking off the UI row — if the screen decided it was untouched, the row stays open and `allCompleted` (which gates session finalization) stays false. This is safe: the exercise screen's own `completionSaved` → `onComplete()` effect pops the back stack unconditionally and independently, so the user still returns to `ActiveRoutineScreen` normally; only the row's completed/dimmed state differs. See `StrengthExerciseViewModel.completeExercise()`, `SupersetViewModel.buildUpdatedSession(respectTouch = true)`, `StretchExerciseViewModel.completeExercise()`, `ActiveRoutineViewModel.markExerciseCompleted()`.
+
+`WorkoutExercise.isUntouched()` (`!completed && sets.isEmpty()`) is the canonical check for this state. `MainViewModel.computeCommonTonnage()` — the session-vs-session comparison behind the gitgraph's day color and `%` change — excludes untouched exercises from the common-exercise-ID intersection in *either* session being compared, same as it already excludes `excludeFromTonnage` (warmup/daily) exercises. Without this, an untouched exercise would count as "0 tonnage" toward that day's average and silently drag it down, even though nothing was actually skipped-badly — it just wasn't done. The per-exercise badge (`ActiveRoutineViewModel.markExerciseCompleted`) never computes a `%` for an untouched exercise at all, since it returns early before that exercise's row is touched.
+
 ## `onBack` vs `onComplete`
 
 The three exercise screens take two distinct navigation callbacks:
