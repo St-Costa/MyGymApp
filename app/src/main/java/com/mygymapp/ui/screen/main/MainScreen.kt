@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -110,9 +109,7 @@ fun MainScreen(
                     onClick = onNavigateToHeartRate,
                     modifier = Modifier.fillMaxWidth().height(72.dp),
                 ) {
-                    Icon(Icons.Default.FavoriteBorder, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Heart Rate", fontSize = 22.sp)
+                    Text("❤️⚖️", fontSize = 22.sp)
                 }
             }
             Spacer(modifier = Modifier.height(72.dp))
