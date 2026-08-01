@@ -133,14 +133,22 @@ class StretchExerciseViewModel @Inject constructor(
         exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
+        // A stretch set only becomes `done` via an explicit toggle, so "no set marked done"
+        // means the lifter never touched this exercise — treat it like an unopened exercise
+        // rather than recording an empty/untouched stretch as performed work.
+        val anyDone = sets.any { it.done }
         viewModelScope.launch {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = true,
-                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
-                        )
+                        if (anyDone) {
+                            ex.copy(
+                                completed = true,
+                                sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
+                            )
+                        } else {
+                            ex.copy(completed = false, sets = emptyList())
+                        }
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
