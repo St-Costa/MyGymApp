@@ -7,6 +7,7 @@ import android.location.LocationManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -125,24 +126,41 @@ fun HeartRateScreen(
         }
     }
 
-    // Scale auto-connects: start scanning as soon as the screen opens (once,
-    // and only if the scale isn't already connected/connecting).
-    LaunchedEffect(Unit) {
-        if (uiState.scaleConnectionState == ScaleConnectionState.DISCONNECTED) {
-            if (hasBlePermissions()) {
-                viewModel.startScaleScan()
-            } else {
-                scalePermissionLauncher.launch(blePermissions())
-            }
+    fun startScaleScanWithPermissionCheck() {
+        if (hasBlePermissions()) {
+            viewModel.startScaleScan()
+        } else {
+            scalePermissionLauncher.launch(blePermissions())
         }
     }
 
-    // Polar auto-connects the same way: scan on open, PolarManager itself
-    // only auto-connects if it finds the last-known device ID in range.
-    LaunchedEffect(Unit) {
-        if (uiState.connectionState == ConnectionState.DISCONNECTED) {
-            startScanWithPermissionCheck()
+    // Both devices auto-scan on ON_RESUME, not just on first composition —
+    // a plain LaunchedEffect(Unit) only fires once and never retries after
+    // e.g. the user backgrounds the app to toggle Bluetooth in a system
+    // dialog (like the OEM "available devices" popup Android/One UI shows
+    // right after Bluetooth is turned on) and returns without navigating
+    // away from this screen, which never recreates the composable.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                // Force-restart both scans: a previous scan may still be stuck
+                // in SCANNING (e.g. interrupted mid-flight by a system dialog
+                // backgrounding the app), and startScan() no-ops if it isn't
+                // strictly DISCONNECTED. Stopping first guarantees a fresh
+                // attempt every time the screen comes back to the foreground.
+                if (uiState.scaleConnectionState != ScaleConnectionState.CONNECTED) {
+                    viewModel.stopScaleScan()
+                    startScaleScanWithPermissionCheck()
+                }
+                if (uiState.connectionState != ConnectionState.CONNECTED) {
+                    viewModel.stopScan()
+                    startScanWithPermissionCheck()
+                }
+            }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
