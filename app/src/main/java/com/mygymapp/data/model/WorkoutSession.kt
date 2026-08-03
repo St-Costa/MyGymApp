@@ -48,11 +48,18 @@ data class WorkoutExercise(
      * daily (and normal progress only against prior normal sessions).
      */
     val isDaily: Boolean = false,
+    /**
+     * True when the lifter tapped "Complete" without ever touching a pre-filled value (see
+     * docs/CONVENTIONS.md "Untouched-exercise guard"). Unlike [isUntouched], this exercise IS
+     * marked completed — it closes out of the active list like any other — but carries no set
+     * data, so the UI flags it (red border, warning icon) instead of showing a tonnage change.
+     */
+    val completedEmpty: Boolean = false,
 ) {
     /**
-     * True when the lifter never touched a pre-filled value for this exercise before tapping
-     * "Complete" (see docs/CONVENTIONS.md "Untouched-exercise guard") — saved with no sets and
-     * not completed, identical to an exercise that was never opened.
+     * True when the lifter never touched a pre-filled value for this exercise AND never tapped
+     * "Complete" either — identical to an exercise that was never opened. Distinct from
+     * [completedEmpty], which is the same "no data" case but explicitly closed out by the user.
      */
     fun isUntouched(): Boolean = !completed && sets.isEmpty()
 }

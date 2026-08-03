@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -117,13 +118,15 @@ fun ActiveRoutineScreen(
     onNavigateToExercise: (sessionId: String, exerciseId: String, isStretch: Boolean) -> Unit,
     onNavigateToSuperset: (sessionId: String, exerciseId1: String, exerciseId2: String) -> Unit,
     onBack: () -> Unit,
-    onNavigateHome: () -> Unit,
+    onSessionRegistered: (sessionId: String, date: String) -> Unit,
     viewModel: ActiveRoutineViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(uiState.sessionRegistered) {
-        if (uiState.sessionRegistered) onNavigateHome()
+        if (uiState.sessionRegistered) {
+            onSessionRegistered(uiState.registeredSessionId, uiState.registeredSessionDate)
+        }
     }
 
     BackHandler {
@@ -258,6 +261,7 @@ fun ActiveRoutineScreen(
                             sessionTrimp = uiState.sessionTrimp,
                             vo2max = uiState.vo2max,
                             sessionTonnage = uiState.sessionTonnage,
+                            sessionBestE1RM = uiState.sessionBestE1RM,
                             sessionTonnageByBodypart = uiState.sessionTonnageByBodypart,
                             sessionLabels = uiState.sessionLabels,
                             allSessionCalories = uiState.allSessionCalories,
@@ -329,7 +333,7 @@ private fun ExerciseRow(
     exercise: ActiveExerciseUi,
     onClick: () -> Unit,
 ) {
-    val borderColor = exercise.type.accentColor()
+    val borderColor = if (exercise.completedEmpty) GitgraphRed else exercise.type.accentColor()
 
     Card(
         onClick = onClick,
@@ -344,7 +348,8 @@ private fun ExerciseRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Left side: name + sets — dimmed when completed
+            // Left side: name + sets — dimmed when completed. Struck through only when it
+            // actually holds data; a completed-empty exercise stays dimmed but not struck through.
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -353,7 +358,7 @@ private fun ExerciseRow(
                 Text(
                     text = exercise.exerciseName,
                     style = MaterialTheme.typography.titleMedium,
-                    textDecoration = if (exercise.completed) TextDecoration.LineThrough else null,
+                    textDecoration = if (exercise.completed && !exercise.completedEmpty) TextDecoration.LineThrough else null,
                 )
                 Text(
                     text = "${exercise.setCount} sets",
@@ -361,13 +366,18 @@ private fun ExerciseRow(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
             }
-            // Right side: progress % (bright, not dimmed) or nothing
-            if (exercise.completed && exercise.tonnageChangePct != null) {
-                val color = if (exercise.tonnageChangePct > 0) GitgraphGreen else GitgraphRed
-                Text(
-                    text = "%+.1f%%".format(exercise.tonnageChangePct),
+            // Right side: warning (completed empty) takes priority, then progress %, then nothing
+            if (exercise.completedEmpty) {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = "Completato senza dati",
+                    tint = GitgraphRed,
+                )
+            } else if (exercise.completed && exercise.tonnageChangePct != null) {
+                TonnageAndRmChange(
+                    tonnageChangePct = exercise.tonnageChangePct,
+                    rmChangePct = exercise.rmChangePct,
                     style = MaterialTheme.typography.titleSmall,
-                    color = color,
                 )
             } else if (exercise.completed && exercise.isFirstTimeTonnage) {
                 Text(
@@ -388,12 +398,13 @@ private fun SupersetGroupRow(
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val bothCompleted = ex1.completed && ex2.completed
+    val borderColor = if (ex1.completedEmpty || ex2.completedEmpty) GitgraphRed else primaryColor
 
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(2.dp, primaryColor),
+        border = BorderStroke(2.dp, borderColor),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -421,7 +432,8 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left side: name + sets — dimmed when completed (mirrors ExerciseRow)
+        // Left side: name + sets — dimmed when completed (mirrors ExerciseRow). Struck through
+        // only when it actually holds data; completed-empty stays dimmed but not struck through.
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -430,7 +442,7 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
             Text(
                 text = exercise.exerciseName,
                 style = MaterialTheme.typography.titleSmall,
-                textDecoration = if (exercise.completed) TextDecoration.LineThrough else null,
+                textDecoration = if (exercise.completed && !exercise.completedEmpty) TextDecoration.LineThrough else null,
             )
             Text(
                 text = "${exercise.setCount} sets",
@@ -438,19 +450,47 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
         }
-        // Right side: tonnage % — full brightness (not dimmed)
-        if (exercise.completed && exercise.tonnageChangePct != null) {
-            val color = if (exercise.tonnageChangePct > 0) GitgraphGreen else GitgraphRed
-            Text(
-                text = "%+.1f%%".format(exercise.tonnageChangePct),
+        // Right side: warning (completed empty) takes priority, then tonnage %, then nothing
+        if (exercise.completedEmpty) {
+            Icon(
+                imageVector = Icons.Filled.Warning,
+                contentDescription = "Completato senza dati",
+                tint = GitgraphRed,
+            )
+        } else if (exercise.completed && exercise.tonnageChangePct != null) {
+            TonnageAndRmChange(
+                tonnageChangePct = exercise.tonnageChangePct,
+                rmChangePct = exercise.rmChangePct,
                 style = MaterialTheme.typography.labelSmall,
-                color = color,
             )
         } else if (exercise.completed && exercise.isFirstTimeTonnage) {
             Text(
                 text = "primo dato",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            )
+        }
+    }
+}
+
+/** "+14%T +3%RM" — tonnage and 1RM change, each rounded to whole percent, each colored by its own sign. */
+@Composable
+private fun TonnageAndRmChange(
+    tonnageChangePct: Double,
+    rmChangePct: Double?,
+    style: androidx.compose.ui.text.TextStyle,
+) {
+    Row {
+        Text(
+            text = "%+.0f%%T".format(tonnageChangePct),
+            style = style,
+            color = if (tonnageChangePct > 0) GitgraphGreen else GitgraphRed,
+        )
+        if (rmChangePct != null) {
+            Text(
+                text = " %+.0f%%RM".format(rmChangePct),
+                style = style,
+                color = if (rmChangePct > 0) GitgraphGreen else GitgraphRed,
             )
         }
     }
@@ -464,6 +504,7 @@ private fun ProgressSection(
     sessionTrimp: Double,
     vo2max: Double,
     sessionTonnage: List<Double>,
+    sessionBestE1RM: List<Double>,
     sessionTonnageByBodypart: Map<String, List<Double>>,
     sessionLabels: List<String>,
     allSessionCalories: List<Double>,
@@ -597,6 +638,11 @@ private fun ProgressSection(
                         data = chartData,
                         labels = chartLabels,
                         modifier = Modifier.fillMaxWidth(),
+                        // 1RM only lines up point-for-point with tonnage on the "Totale" view —
+                        // per-bodypart/cross-routine views don't have a matching e1RM series.
+                        secondaryData = if (selectedFilter == "Totale" && sessionBestE1RM.size == chartData.size) {
+                            sessionBestE1RM
+                        } else null,
                     )
                 }
             }
