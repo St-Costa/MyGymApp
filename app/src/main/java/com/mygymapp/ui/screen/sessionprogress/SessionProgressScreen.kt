@@ -39,18 +39,28 @@ import com.mygymapp.ui.components.trimpColor
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionProgressScreen(
+    justCompleted: Boolean = false,
     onBack: () -> Unit,
+    onDone: () -> Unit = onBack,
     viewModel: SessionProgressViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    // Reached right after finishing a workout: force the summary to be seen before Home,
+    // instead of letting it get buried under the exercise list like before.
+    if (justCompleted) {
+        androidx.activity.compose.BackHandler { onDone() }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.routineName) },
+                title = { Text(if (justCompleted) "Sessione completata" else uiState.routineName) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (!justCompleted) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
             )
@@ -68,6 +78,12 @@ fun SessionProgressScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (justCompleted) {
+                Text(
+                    text = uiState.routineName,
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
             // Calories + TRIMP summary (if recorded)
             if (uiState.sessionCalories > 0 || uiState.sessionTrimp > 0) {
                 Card(
@@ -297,9 +313,23 @@ fun SessionProgressScreen(
                                 data = chartData,
                                 labels = chartLabels,
                                 modifier = Modifier.fillMaxWidth(),
+                                secondaryData = if (uiState.selectedChartFilter == "Totale" &&
+                                    uiState.sessionBestE1RM.size == chartData.size
+                                ) {
+                                    uiState.sessionBestE1RM
+                                } else null,
                             )
                         }
                     }
+                }
+            }
+
+            if (justCompleted) {
+                androidx.compose.material3.Button(
+                    onClick = onDone,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Text("Fatto")
                 }
             }
         }

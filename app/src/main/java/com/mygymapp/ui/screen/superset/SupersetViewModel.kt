@@ -362,12 +362,16 @@ class SupersetViewModel @Inject constructor(
         }
         val side1Untouched = respectTouch && !anyTouched(sets1)
         val side2Untouched = respectTouch && !anyTouched(sets2)
+        // On an explicit Complete tap (respectTouch=true) an untouched side still closes as
+        // completed — flagged completedEmpty so the list can warn about it — rather than
+        // reopening. On a bare back-out (respectTouch=false) nothing is "completed" at all.
         val updatedExercises = exercises.map { ex ->
             when (ex.exerciseId) {
                 exerciseId1 -> if (side1Untouched) {
-                    ex.copy(completed = false, sets = emptyList())
+                    ex.copy(completed = respectTouch, completedEmpty = respectTouch, sets = emptyList())
                 } else ex.copy(
                     completed = completed,
+                    completedEmpty = false,
                     sets = sets1.map { setUi ->
                         when (setUi.exerciseType) {
                             ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
@@ -376,9 +380,10 @@ class SupersetViewModel @Inject constructor(
                     },
                 )
                 exerciseId2 -> if (side2Untouched) {
-                    ex.copy(completed = false, sets = emptyList())
+                    ex.copy(completed = respectTouch, completedEmpty = respectTouch, sets = emptyList())
                 } else ex.copy(
                     completed = completed,
+                    completedEmpty = false,
                     sets = sets2.map { setUi ->
                         when (setUi.exerciseType) {
                             ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
