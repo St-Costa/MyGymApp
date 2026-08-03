@@ -30,6 +30,9 @@ data class StrengthSetUi(
     val weightTouched: Boolean = false,
 )
 
+/** Best single set ever recorded for this exercise, by tonnage (reps * weight). */
+data class TonnagePr(val reps: Int, val weight: Double)
+
 data class StrengthExerciseUiState(
     val exercise: Exercise? = null,
     val sets: List<StrengthSetUi> = emptyList(),
@@ -38,6 +41,7 @@ data class StrengthExerciseUiState(
     val description: String = "",
     val isLoading: Boolean = true,
     val allSetsFilled: Boolean = false,
+    val tonnagePr: TonnagePr? = null,
 )
 
 @HiltViewModel
@@ -70,13 +74,27 @@ class StrengthExerciseViewModel @Inject constructor(
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
-            val setCount = workoutExercise?.sets?.size ?: 3
             // Whether this exercise is being performed as a fixed-daily exercise in this session.
             val isDaily = workoutExercise?.isDaily ?: false
             // The exercise "type" in this session, used to compare like-with-like below.
             // Three mutually exclusive types: warmup, fixed-daily, normal.
             val currentExcludeFromTonnage = workoutExercise?.excludeFromTonnage ?: false
             val isWarmup = currentExcludeFromTonnage && !isDaily
+
+            // Get set count + rep range from the owning routine. Daily exercises live in the
+            // fixed-daily routine, not the session's routine, so look them up there.
+            // Looked up here (not just from workoutExercise.sets) because completing an exercise
+            // without touching any value intentionally clears sets = emptyList() as a ghost-data
+            // guard (see completeExercise()) — falling back to workoutExercise.sets.size alone
+            // would leave the screen with zero set rows on re-entry.
+            val rangeRoutineId =
+                if (isDaily) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else session?.routineId ?: ""
+            val routine = if (rangeRoutineId.isNotBlank()) routineRepository.getById(rangeRoutineId) else null
+            val routineExercise = routine?.exercises?.find { it.exerciseId == exerciseId }
+
+            val setCount = workoutExercise?.sets?.takeIf { it.isNotEmpty() }?.size
+                ?: routineExercise?.sets
+                ?: 3
 
             // Find previous workout data for this exercise (for showing grey "previous" values).
             // Progress must compare like-with-like: only against prior sessions where this exercise
@@ -97,18 +115,9 @@ class StrengthExerciseViewModel @Inject constructor(
                     strengthSets.any { it.reps > 0 || it.weight > 0.0 }
                 } ?: emptyList()
 
-            // Get rep range from the owning routine. Daily exercises live in the fixed-daily
-            // routine, not the session's routine, so look them up there.
-            var repMin = 0
-            var repMax = 0
-            val rangeRoutineId =
-                if (isDaily) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else session?.routineId ?: ""
-            if (rangeRoutineId.isNotBlank()) {
-                val routine = routineRepository.getById(rangeRoutineId)
-                val routineExercise = routine?.exercises?.find { it.exerciseId == exerciseId }
-                repMin = routineExercise?.repRangeMin ?: 0
-                repMax = routineExercise?.repRangeMax ?: 0
-            }
+            // Rep range from the routine lookup above (routineExercise).
+            val repMin = routineExercise?.repRangeMin ?: 0
+            val repMax = routineExercise?.repRangeMax ?: 0
 
             // Use current session's in-progress values if available, else fall back to previous.
             // Checked per-set (not per-exercise): filling in set 1 shouldn't make sets 2-3 lose
@@ -133,6 +142,18 @@ class StrengthExerciseViewModel @Inject constructor(
                 )
             }
 
+            // All-time PR: the single set with the highest tonnage (reps * weight) ever recorded
+            // for this exercise, across every session (not just the last 30 used for "previous").
+            // Warmup sets don't count toward a real PR.
+            val tonnagePr = workoutRepository.getSessionsForExercise(exerciseId, Int.MAX_VALUE)
+                .asSequence()
+                .flatMap { prev -> prev.exercises.asSequence() }
+                .filter { it.exerciseId == exerciseId && !it.excludeFromTonnage }
+                .flatMap { it.sets.asSequence().filterIsInstance<ExerciseSet.Strength>() }
+                .filter { it.reps > 0 && it.weight > 0.0 }
+                .maxByOrNull { it.reps * it.weight }
+                ?.let { TonnagePr(reps = it.reps, weight = it.weight) }
+
             _uiState.value = StrengthExerciseUiState(
                 exercise = exercise,
                 sets = sets,
@@ -140,6 +161,7 @@ class StrengthExerciseViewModel @Inject constructor(
                 repRangeMax = repMax,
                 description = exercise.notes,
                 isLoading = false,
+                tonnagePr = tonnagePr,
             )
         }
     }
@@ -191,15 +213,17 @@ class StrengthExerciseViewModel @Inject constructor(
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         // If the lifter never touched any pre-filled value, there's no evidence
-                        // the exercise was actually performed — treat it like an unopened exercise
-                        // rather than silently re-recording last session's numbers as new work.
+                        // the exercise was actually performed — don't silently re-record last
+                        // session's numbers as new work. Still closes as completed (the lifter
+                        // did tap Complete) but flagged empty so the list can warn about it.
                         if (anyTouched) {
                             ex.copy(
                                 completed = true,
+                                completedEmpty = false,
                                 sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
                             )
                         } else {
-                            ex.copy(completed = false, sets = emptyList())
+                            ex.copy(completed = true, completedEmpty = true, sets = emptyList())
                         }
                     } else ex
                 }

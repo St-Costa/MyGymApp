@@ -75,6 +75,15 @@ fun StrengthExerciseScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // All-time PR (best single set by tonnage), e.g. "12 x 80"
+                uiState.tonnagePr?.let { pr ->
+                    Text(
+                        text = "PR: ${pr.reps} x ${formatWeight(pr.weight)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
                 // Media (image or YouTube thumbnail)
                 MediaPreview(link = uiState.exercise?.link ?: "")
 
@@ -173,3 +182,7 @@ fun StrengthExerciseScreen(
         }
     }
 }
+
+/** "80" for whole kilos, "82.5" for fractional — avoids a redundant ".0". */
+private fun formatWeight(weight: Double): String =
+    if (weight == weight.toLong().toDouble()) weight.toLong().toString() else weight.toString()

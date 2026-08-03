@@ -155,8 +155,12 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(Screen.Superset.createRoute(sessionId, exerciseId1, exerciseId2))
                 },
                 onBack = { navController.popBackStack() },
-                onNavigateHome = {
-                    navController.popBackStack(Screen.Main.route, inclusive = false)
+                onSessionRegistered = { sessionId, date ->
+                    navController.navigate(Screen.SessionProgress.createRoute(sessionId, date, justCompleted = true)) {
+                        // Replace the active-routine screen so back from the summary goes to Home,
+                        // not back into the just-finished session.
+                        popUpTo(Screen.Main.route) { inclusive = false }
+                    }
                 },
                 viewModel = viewModel,
             )
@@ -260,10 +264,14 @@ fun AppNavigation(navController: NavHostController) {
             arguments = listOf(
                 navArgument("sessionId") { type = NavType.StringType },
                 navArgument("date") { type = NavType.StringType },
+                navArgument("justCompleted") { type = NavType.BoolType; defaultValue = false },
             ),
-        ) {
+        ) { backStackEntry ->
+            val justCompleted = backStackEntry.arguments?.getBoolean("justCompleted") ?: false
             SessionProgressScreen(
+                justCompleted = justCompleted,
                 onBack = { navController.popBackStack() },
+                onDone = { navController.popBackStack(Screen.Main.route, inclusive = false) },
             )
         }
     }

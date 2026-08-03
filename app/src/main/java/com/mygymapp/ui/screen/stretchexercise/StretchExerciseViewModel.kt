@@ -144,10 +144,11 @@ class StretchExerciseViewModel @Inject constructor(
                         if (anyDone) {
                             ex.copy(
                                 completed = true,
+                                completedEmpty = false,
                                 sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
                             )
                         } else {
-                            ex.copy(completed = false, sets = emptyList())
+                            ex.copy(completed = true, completedEmpty = true, sets = emptyList())
                         }
                     } else ex
                 }
