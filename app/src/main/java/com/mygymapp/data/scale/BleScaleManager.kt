@@ -186,6 +186,11 @@ class BleScaleManager @Inject constructor(
             isMale = profile.isMale,
             impedanceOhm = impedanceOhm,
         )
+        // Keep UserProfile.weightKg in sync with the scale — it's the only
+        // source of body weight now (no manual entry), and PolarManager reads
+        // it for calorie-burn calculations during heart-rate sessions.
+        userProfileRepository.save(profile.copy(weightKg = weightKg))
+
         scope.launch {
             scaleHistoryRepository.save(
                 weightKg = weightKg,

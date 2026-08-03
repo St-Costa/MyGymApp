@@ -14,6 +14,11 @@ data class WeeklyPoint(
     val value: Double,
 ) {
     val weekLabel: String get() = "W${weekStart.get(WeekFields.of(Locale.getDefault()).weekOfWeekBasedYear())}"
+
+    /** Abbreviated month name (e.g. "Gen", "Feb") — used for multi-week windows where a week number is less readable. */
+    val monthLabel: String get() = weekStart.month
+        .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault())
+        .replaceFirstChar { it.uppercase() }
 }
 
 /** Average of the week-to-week deltas (last - first, divided by number of gaps). Null if fewer than 2 points. */
@@ -59,6 +64,12 @@ data class ScaleTrendReport(
         return if (values.isEmpty()) null else median(values)
     }
 
+    /** Median of this week's body-fat % values, or null if no weigh-in yet this week. */
+    val currentWeekMedianFatPercent: Double? get() {
+        val values = currentWeekSlots.mapNotNull { it?.bodyFatPercent }.filter { it > 0.0 }
+        return if (values.isEmpty()) null else median(values)
+    }
+
     /**
      * Index (0=Monday..6=Sunday) into [currentWeekSlots] whose weight is
      * closest to this week's median — the point to highlight as "the median".
@@ -81,7 +92,10 @@ data class ScaleTrendReport(
         filter: (ScaleWeighIn) -> Boolean = { true },
         valueOf: (ScaleWeighIn) -> Double,
     ): List<WeeklyPoint> {
-        val cutoff = LocalDate.now().minusMonths(2).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        // Exactly 8 weeks (incl. the current one), not "2 calendar months" —
+        // the latter rounds up to 9-10 weeks once snapped to Monday boundaries.
+        val currentWeekMonday = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val cutoff = currentWeekMonday.minusWeeks(7)
         val grouped = weighIns
             .filter { filter(it) && !LocalDate.parse(it.date).isBefore(cutoff) }
             .groupBy { LocalDate.parse(it.date).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }

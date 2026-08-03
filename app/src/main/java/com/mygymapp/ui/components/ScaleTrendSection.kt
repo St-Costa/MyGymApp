@@ -69,13 +69,23 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Peso settimanale", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    report.currentWeekMedianBmi?.let { bmi ->
-                        Text(
-                            "BMI %.1f".format(bmi),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = BmiColor,
-                        )
+                    Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                        report.currentWeekMedianBmi?.let { bmi ->
+                            Text(
+                                "BMI %.1f".format(bmi),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = BmiColor,
+                            )
+                        }
+                        report.currentWeekMedianFatPercent?.let { fat ->
+                            Text(
+                                "BF %.1f%%".format(fat),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = FatColor,
+                            )
+                        }
                     }
                 }
                 PointLineChart(
@@ -177,7 +187,7 @@ private fun ScaleIcon() {
 }
 
 @Composable
-private fun ChartCard(content: @Composable ColumnScope.() -> Unit) {
+internal fun ChartCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -192,7 +202,7 @@ private fun ChartCard(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
-private enum class PointLabelStyle { NONE, TEXT_ABOVE, BADGE }
+internal enum class PointLabelStyle { NONE, TEXT_ABOVE, BADGE }
 
 /**
  * Draws a dot for every non-null value and connects consecutive non-null
@@ -202,7 +212,7 @@ private enum class PointLabelStyle { NONE, TEXT_ABOVE, BADGE }
  * empty slot between Monday's and Wednesday's dots).
  */
 @Composable
-private fun PointLineChart(
+internal fun PointLineChart(
     values: List<Double?>,
     color: Color,
     labelStyle: PointLabelStyle,
