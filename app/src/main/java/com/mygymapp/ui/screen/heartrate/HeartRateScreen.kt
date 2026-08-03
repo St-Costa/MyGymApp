@@ -62,7 +62,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.scale.ScaleConnectionState
-import com.mygymapp.ui.components.CardioTrendSection
+import com.mygymapp.ui.components.CardioMetricsTrendSection
 import com.mygymapp.ui.components.ScaleTrendSection
 import com.mygymapp.ui.components.ScrollPickerInput
 
@@ -141,19 +141,29 @@ fun HeartRateScreen(
     // right after Bluetooth is turned on) and returns without navigating
     // away from this screen, which never recreates the composable.
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val latestUiState = androidx.compose.runtime.rememberUpdatedState(uiState)
     DisposableEffect(lifecycleOwner) {
+        var isFirstResume = true
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                // Force-restart both scans: a previous scan may still be stuck
-                // in SCANNING (e.g. interrupted mid-flight by a system dialog
-                // backgrounding the app), and startScan() no-ops if it isn't
-                // strictly DISCONNECTED. Stopping first guarantees a fresh
-                // attempt every time the screen comes back to the foreground.
-                if (uiState.scaleConnectionState != ScaleConnectionState.CONNECTED) {
+                // Skip the very first ON_RESUME: it fires immediately on initial
+                // composition, when the scale/Polar scan hasn't had a chance to
+                // run yet, and force-restarting here would tear down a
+                // just-established connection every time the screen opens.
+                if (isFirstResume) {
+                    isFirstResume = false
+                    return@LifecycleEventObserver
+                }
+                // Force-restart both scans on later resumes only: a previous
+                // scan may be stuck in SCANNING (e.g. interrupted mid-flight by
+                // a system dialog backgrounding the app), and startScan()
+                // no-ops if it isn't strictly DISCONNECTED.
+                val state = latestUiState.value
+                if (state.scaleConnectionState != ScaleConnectionState.CONNECTED) {
                     viewModel.stopScaleScan()
                     startScaleScanWithPermissionCheck()
                 }
-                if (uiState.connectionState != ConnectionState.CONNECTED) {
+                if (state.connectionState != ConnectionState.CONNECTED) {
                     viewModel.stopScan()
                     startScanWithPermissionCheck()
                 }
@@ -161,6 +171,16 @@ fun HeartRateScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // First-open auto-scan (separate from the resume observer above).
+    LaunchedEffect(Unit) {
+        if (uiState.scaleConnectionState == ScaleConnectionState.DISCONNECTED) {
+            startScaleScanWithPermissionCheck()
+        }
+        if (uiState.connectionState == ConnectionState.DISCONNECTED) {
+            startScanWithPermissionCheck()
+        }
     }
 
     Scaffold(
@@ -214,16 +234,15 @@ fun HeartRateScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 32.dp))
             ScaleTrendSection(report = uiState.scaleTrend)
 
-            // Cardio trend (last 4 weeks)
+            // Cardio metrics trend (Resting HR, HRR60s, VO2max)
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            CardioTrendSection(report = uiState.cardioTrend)
+            CardioMetricsTrendSection(report = uiState.cardioMetricsTrend)
 
             // Profile section (always visible)
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             ProfileSection(
                 profile = uiState.profile,
                 onAgeChange = { viewModel.updateAge(it) },
-                onWeightChange = { viewModel.updateWeight(it) },
                 onGenderChange = { viewModel.updateGender(it) },
                 onHeightChange = { viewModel.updateHeight(it) },
             )
@@ -353,7 +372,6 @@ private fun ScaleStatusIcon(
 private fun ProfileSection(
     profile: com.mygymapp.data.polar.UserProfile,
     onAgeChange: (Int) -> Unit,
-    onWeightChange: (Double) -> Unit,
     onGenderChange: (Boolean) -> Unit,
     onHeightChange: (Int) -> Unit,
 ) {
@@ -394,17 +412,6 @@ private fun ProfileSection(
                 value = profile.age,
                 onValueChange = { onAgeChange(it.toInt()) },
                 buttonStep = 1.0,
-                isModified = true,
-                modifier = Modifier.width(120.dp),
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Weight (kg)", style = MaterialTheme.typography.bodySmall)
-            ScrollPickerInput(
-                value = profile.weightKg,
-                onValueChange = { onWeightChange(it.toDouble()) },
-                buttonStep = 1.0,
-                isDecimal = true,
                 isModified = true,
                 modifier = Modifier.width(120.dp),
             )
