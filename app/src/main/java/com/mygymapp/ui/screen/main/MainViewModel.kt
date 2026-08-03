@@ -172,8 +172,8 @@ class MainViewModel @Inject constructor(
         // lifter never touched (completed=false, no sets — see docs/CONVENTIONS.md "Untouched-exercise
         // guard") is excluded too: it wasn't really performed, so it shouldn't drag either session's
         // common-tonnage average toward zero.
-        val commonIds = s1.exercises.filterNot { it.excludeFromTonnage || it.isUntouched() }.map { it.exerciseId }.toSet()
-            .intersect(s2.exercises.filterNot { it.excludeFromTonnage || it.isUntouched() }.map { it.exerciseId }.toSet())
+        val commonIds = s1.exercises.filterNot { it.excludeFromTonnage || it.isUntouched() || it.completedEmpty }.map { it.exerciseId }.toSet()
+            .intersect(s2.exercises.filterNot { it.excludeFromTonnage || it.isUntouched() || it.completedEmpty }.map { it.exerciseId }.toSet())
         if (commonIds.isEmpty()) return Pair(s1.totalTonnage, s2.totalTonnage)
         fun tonnageFor(s: WorkoutSession): Double = s.exercises
             .filter { it.exerciseId in commonIds && !it.excludeFromTonnage }

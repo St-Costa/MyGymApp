@@ -9,6 +9,7 @@ import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
 import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.bestEstimated1RM
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
@@ -44,11 +45,14 @@ data class ActiveRoutineUiState(
     val vo2max: Double = 0.0,
     // Chart: one point per completed session (last 12 weeks), oldest first
     val sessionTonnage: List<Double> = emptyList(),
+    val sessionBestE1RM: List<Double> = emptyList(),
     val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
     val sessionLabels: List<String> = emptyList(),
     val selectedChartFilter: String = "Totale",
     val isLoadingChart: Boolean = false,
     val sessionRegistered: Boolean = false,
+    val registeredSessionId: String = "",
+    val registeredSessionDate: String = "",
     // Cross-routine charts (all sessions, not filtered by routine)
     val allSessionCalories: List<Double> = emptyList(),
     val allSessionTrimp: List<Double> = emptyList(),
@@ -73,7 +77,9 @@ data class ActiveExerciseUi(
     val completed: Boolean = false,
     val setCount: Int = 0,
     val tonnageChangePct: Double? = null,
+    val rmChangePct: Double? = null,
     val isFirstTimeTonnage: Boolean = false,
+    val completedEmpty: Boolean = false,
     val supersetWithNext: Boolean = false,
     val excludeFromTonnage: Boolean = false,
     val category: SessionExerciseCategory = SessionExerciseCategory.NORMAL,
@@ -101,6 +107,7 @@ class ActiveRoutineViewModel @Inject constructor(
 
     private var currentSession: WorkoutSession? = null
     private var previousTonnageByExercise: Map<String, Double> = emptyMap()
+    private var previousBestE1RMByExercise: Map<String, Double> = emptyMap()
     private var sessionFinalized = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -161,6 +168,13 @@ class ActiveRoutineViewModel @Inject constructor(
                         .filterIsInstance<ExerciseSet.Strength>()
                         .sumOf { it.reps * it.weight }
                 } ?: emptyMap()
+
+            previousBestE1RMByExercise = previousSession?.exercises
+                ?.filterNot { it.excludeFromTonnage }
+                ?.mapNotNull { ex ->
+                    ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM()
+                        ?.let { ex.exerciseId to it }
+                }?.toMap() ?: emptyMap()
 
             // Compute previous tonnage using only exercises common to the current session,
             // so it matches the chart (which also filters to current exercise IDs).
@@ -253,13 +267,25 @@ class ActiveRoutineViewModel @Inject constructor(
                 (prevExTonnage == null || prevExTonnage == 0.0) &&
                 currentExTonnage > 0
 
+            val currentBestE1RM = reloadedExercise
+                .sets.filterIsInstance<ExerciseSet.Strength>()
+                .bestEstimated1RM()
+            val prevBestE1RM = previousBestE1RMByExercise[exerciseId]
+            val rmChangePct: Double? = if (prevBestE1RM != null && prevBestE1RM > 0 && currentBestE1RM != null) {
+                ((currentBestE1RM - prevBestE1RM) / prevBestE1RM) * 100.0
+            } else null
+
+            val completedEmpty = reloadedExercise.completedEmpty
             val updatedExercises = _uiState.value.exercises.map { ex ->
                 if (ex.exerciseId == exerciseId) {
                     ex.copy(
                         completed = true,
-                        // No tonnage comparison for warmup/fixed-daily exercises.
-                        tonnageChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage) changePct else null,
-                        isFirstTimeTonnage = ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && isFirstTime,
+                        completedEmpty = completedEmpty,
+                        // No tonnage/1RM comparison for warmup/fixed-daily exercises, or when
+                        // completed with no data (nothing to compare — see completedEmpty above).
+                        tonnageChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && !completedEmpty) changePct else null,
+                        rmChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && !completedEmpty) rmChangePct else null,
+                        isFirstTimeTonnage = ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && !completedEmpty && isFirstTime,
                     )
                 } else ex
             }
@@ -372,7 +398,11 @@ class ActiveRoutineViewModel @Inject constructor(
                 }
             }
             appLogger.i(TAG, "Session registered: id=${session?.id} tonnage=${session?.totalTonnage} kcal=${"%.1f".format(session?.sessionCalories ?: 0.0)} trimp=${"%.1f".format(session?.sessionTrimp ?: 0.0)}")
-            _uiState.value = _uiState.value.copy(sessionRegistered = true)
+            _uiState.value = _uiState.value.copy(
+                sessionRegistered = true,
+                registeredSessionId = session?.id ?: "",
+                registeredSessionDate = session?.date ?: "",
+            )
         }
     }
 
@@ -439,6 +469,16 @@ class ActiveRoutineViewModel @Inject constructor(
                     .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
             }
 
+            // Best estimated 1RM per session, across the same exercises used for sessionTonnage.
+            // Unlike tonnage, 1RM is a max across exercises/sets, not a sum — summing would just
+            // reproduce the same "more reps beats heavier weight" distortion this metric exists to avoid.
+            val sessionBestE1RM = allSessions.map { hist ->
+                hist.exercises
+                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                    .mapNotNull { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM() }
+                    .maxOrNull() ?: 0.0
+            }
+
             // Only bodyparts with strength exercises in the current session
             val bodyparts = currentForza.map { it.bodypart }.distinct()
             val sessionTonnageByBodypart = bodyparts.associateWith { bp ->
@@ -465,6 +505,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 sessionTrimp = finalSession.sessionTrimp,
                 vo2max = finalSession.vo2max,
                 sessionTonnage = sessionTonnage,
+                sessionBestE1RM = sessionBestE1RM,
                 sessionTonnageByBodypart = sessionTonnageByBodypart,
                 sessionLabels = sessionLabels,
                 allSessionCalories = allCalories,
