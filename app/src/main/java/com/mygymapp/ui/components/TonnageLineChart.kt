@@ -21,12 +21,16 @@ private val ColorZero = Color(0xFF424242)  // dark gray for zero-value points
 private val GridColor = Color(0x33FFFFFF)
 private val LabelColor = Color(0xFFAAAAAA)
 private val ZeroLineColor = Color(0x55FFFFFF)
+private val RmColor = Color(0xFFFFB74D)  // orange — 1RM secondary axis
 
 @Composable
 fun TonnageLineChart(
     data: List<Double>,
     labels: List<String>,
     modifier: Modifier = Modifier,
+    // Optional secondary series (e.g. estimated 1RM), drawn on its own right-hand axis/scale
+    // so it stays readable regardless of how different its magnitude is from `data`.
+    secondaryData: List<Double>? = null,
 ) {
     if (data.isEmpty()) return
 
@@ -103,15 +107,55 @@ fun TonnageLineChart(
                 drawXLabel(label, x, paddingTop + chartHeight + 28f, LabelColor)
             }
         }
+
+        // Secondary series (1RM): own 0-based scale, right-hand axis labels, dashed-free solid line.
+        if (secondaryData != null && secondaryData.isNotEmpty() && secondaryData.size == n) {
+            val maxSecondary = secondaryData.maxOrNull()?.takeIf { it > 0 } ?: 1.0
+
+            listOf(0.0, 1.0).forEach { level ->
+                val y = paddingTop + chartHeight * (1f - level.toFloat())
+                val labelValue = (maxSecondary * level).toInt()
+                drawYLabel(
+                    text = labelValue.toString(),
+                    y = y,
+                    rightX = paddingLeft + chartWidth + paddingRight,
+                    color = RmColor,
+                    align = android.graphics.Paint.Align.LEFT,
+                )
+            }
+
+            val secondaryPoints = secondaryData.mapIndexed { i, value ->
+                val x = paddingLeft + (i.toFloat() / (n - 1).coerceAtLeast(1)) * chartWidth
+                val y = paddingTop + chartHeight * (1f - (value / maxSecondary).toFloat()).coerceIn(0f, 1f)
+                Offset(x, y)
+            }
+            for (i in 0 until secondaryPoints.size - 1) {
+                drawLine(
+                    color = RmColor,
+                    start = secondaryPoints[i],
+                    end = secondaryPoints[i + 1],
+                    strokeWidth = 4f,
+                )
+            }
+            secondaryPoints.forEach { pt ->
+                drawCircle(color = RmColor, radius = 10f, center = pt)
+            }
+        }
     }
 }
 
-private fun DrawScope.drawYLabel(text: String, y: Float, rightX: Float, color: Color) {
+private fun DrawScope.drawYLabel(
+    text: String,
+    y: Float,
+    rightX: Float,
+    color: Color,
+    align: android.graphics.Paint.Align = android.graphics.Paint.Align.RIGHT,
+) {
     val paint = Paint().asFrameworkPaint().apply {
         isAntiAlias = true
         textSize = 10.sp.toPx()
         this.color = color.toArgb()
-        textAlign = android.graphics.Paint.Align.RIGHT
+        textAlign = align
     }
     drawContext.canvas.nativeCanvas.drawText(text, rightX, y + paint.textSize / 3, paint)
 }
