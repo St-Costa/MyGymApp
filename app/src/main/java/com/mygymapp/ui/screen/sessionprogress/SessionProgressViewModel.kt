@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.bestEstimated1RM
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ data class SessionProgressUiState(
     val sessionTrimp: Double = 0.0,
     val vo2max: Double = 0.0,
     val sessionTonnage: List<Double> = emptyList(),
+    val sessionBestE1RM: List<Double> = emptyList(),
     val sessionTonnageByBodypart: Map<String, List<Double>> = emptyMap(),
     val sessionLabels: List<String> = emptyList(),
     val selectedChartFilter: String = "Totale",
@@ -85,6 +87,15 @@ class SessionProgressViewModel @Inject constructor(
                 .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
         }
 
+        // Best estimated 1RM per session, mirroring ActiveRoutineViewModel's chart data —
+        // a max across exercises/sets, not a sum (see estimate1RM / bestEstimated1RM).
+        val sessionBestE1RM = allSessions.map { hist ->
+            hist.exercises
+                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                .mapNotNull { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM() }
+                .maxOrNull() ?: 0.0
+        }
+
         val bodyparts = currentForza.map { it.bodypart }.distinct()
         val sessionTonnageByBodypart = bodyparts.associateWith { bp ->
             val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
@@ -108,6 +119,7 @@ class SessionProgressViewModel @Inject constructor(
             sessionTrimp = session.sessionTrimp,
             vo2max = session.vo2max,
             sessionTonnage = sessionTonnage,
+            sessionBestE1RM = sessionBestE1RM,
             sessionTonnageByBodypart = sessionTonnageByBodypart,
             sessionLabels = sessionLabels,
             selectedChartFilter = "Totale",
