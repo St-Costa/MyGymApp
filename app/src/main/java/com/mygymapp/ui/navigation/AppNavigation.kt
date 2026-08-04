@@ -265,6 +265,11 @@ fun AppNavigation(navController: NavHostController) {
                 justCompleted = justCompleted,
                 onBack = { navController.popBackStack() },
                 onDone = { navController.popBackStack(Screen.Main.route, inclusive = false) },
+                onNavigateHome = {
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.Main.route) { inclusive = true }
+                    }
+                },
             )
         }
     }

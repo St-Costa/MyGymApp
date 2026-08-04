@@ -75,15 +75,6 @@ fun StrengthExerciseScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // All-time PR (best single set by tonnage), e.g. "12 x 80"
-                uiState.tonnagePr?.let { pr ->
-                    Text(
-                        text = "PR: ${pr.reps} x ${formatWeight(pr.weight)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-
                 // Media (image or YouTube thumbnail)
                 MediaPreview(link = uiState.exercise?.link ?: "")
 
@@ -126,6 +117,17 @@ fun StrengthExerciseScreen(
                 }
 
                 HorizontalDivider()
+
+                // All-time PR (best single set by tonnage), e.g. "12 x 80"
+                uiState.tonnagePr?.let { pr ->
+                    Text(
+                        text = "PR: ${pr.reps} x ${formatWeight(pr.weight)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
                 // Set rows
                 uiState.sets.forEachIndexed { index, set ->
