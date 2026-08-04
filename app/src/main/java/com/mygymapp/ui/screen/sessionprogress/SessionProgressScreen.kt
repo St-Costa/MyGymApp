@@ -6,18 +6,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +39,7 @@ fun SessionProgressScreen(
     justCompleted: Boolean = false,
     onBack: () -> Unit,
     onDone: () -> Unit = onBack,
+    onNavigateHome: () -> Unit,
     viewModel: SessionProgressViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -63,6 +61,11 @@ fun SessionProgressScreen(
                         }
                     }
                 },
+                actions = {
+                    IconButton(onClick = onNavigateHome) {
+                        Icon(Icons.Default.Home, contentDescription = "Home")
+                    }
+                },
             )
         },
     ) { padding ->
@@ -75,7 +78,8 @@ fun SessionProgressScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (justCompleted) {
@@ -102,7 +106,7 @@ fun SessionProgressScreen(
                             Text(
                                 "${uiState.sessionCalories.toInt()}",
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = androidx.compose.ui.graphics.Color(0xFFFF9800),
+                                color = Color(0xFFFF9800),
                             )
                             Text("kcal", style = MaterialTheme.typography.bodySmall)
                         }
@@ -127,127 +131,8 @@ fun SessionProgressScreen(
                 }
             }
 
-            // ECG analysis + cardiac drift card
-            if (uiState.ecgBeats > 0 || uiState.cardiacDriftBpmMin != 0.0) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            "ECG Analysis",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        if (uiState.ecgBeats > 0) {
-                            Text(
-                                "${uiState.ecgBeats} beats • avg ${uiState.ecgAvgHr.toInt()} BPM • RMSSD ${"%.0f".format(uiState.ecgSessionRmssd)} ms",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            val anomalies = uiState.ecgPacCount + uiState.ecgPauseCount + uiState.ecgIrregularBeats
-                            if (anomalies > 0) {
-                                Text(
-                                    "PAC: ${uiState.ecgPacCount} • Pauses: ${uiState.ecgPauseCount} • Irregular: ${uiState.ecgIrregularBeats}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    "Not diagnostic — consult a physician if persistent.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            } else {
-                                Text(
-                                    "No anomalies detected.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        if (uiState.cardiacDriftBpmMin != 0.0) {
-                            val drift = uiState.cardiacDriftBpmMin
-                            val driftLabel = when {
-                                drift > 1.0 -> "high — consider hydration/heat"
-                                drift > 0.5 -> "moderate — mild dehydration likely"
-                                drift > -0.5 -> "normal"
-                                else -> "negative (HR dropped)"
-                            }
-                            Text(
-                                "Cardiac drift: ${"%+.2f".format(drift)} BPM/min ($driftLabel)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-
-                        if (uiState.restingHr > 0 || uiState.hrr60s > 0) {
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                                modifier = Modifier.padding(vertical = 4.dp),
-                            )
-                            if (uiState.restingHr > 0) {
-                                Text(
-                                    "Resting HR: ${uiState.restingHr} BPM",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                            if (uiState.hrr60s > 0) {
-                                val hrrLabel = when {
-                                    uiState.hrr60s < 12 -> "low — poor recovery"
-                                    uiState.hrr60s < 20 -> "ok"
-                                    uiState.hrr60s < 30 -> "good"
-                                    else -> "excellent"
-                                }
-                                Text(
-                                    "HRR (1 min): ${uiState.hrr60s.toInt()} BPM ($hrrLabel)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
-
-                        if (uiState.sdnn > 0 || uiState.pnn50 > 0) {
-                            Text(
-                                "HRV: SDNN ${uiState.sdnn.toInt()} ms · pNN50 ${"%.1f".format(uiState.pnn50)}%",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-
-                        if (uiState.poincareSd1 > 0) {
-                            Text(
-                                "Poincare: SD1 ${uiState.poincareSd1.toInt()} · SD2 ${uiState.poincareSd2.toInt()} · ratio ${"%.2f".format(uiState.poincareRatio)}",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-
-                        if (uiState.afibSuspicionEpisodes > 0) {
-                            Text(
-                                "AFib screening: ${uiState.afibSuspicionEpisodes} suspicious episode(s)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFEF5350),
-                            )
-                            Text(
-                                "Not diagnostic — consult a physician if recurring.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (uiState.sessionTonnage.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("Nessun dato disponibile", style = MaterialTheme.typography.bodyLarge)
-                }
-            } else {
+            // Total tonnage chart — no filter/selector, just the trend across recent sessions
+            if (uiState.sessionTonnage.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -258,66 +143,72 @@ fun SessionProgressScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        val crossRoutineFilters = listOf("kcal", "TRIMP", "VO2max")
-                        val filters = listOf("Totale") + uiState.sessionTonnageByBodypart.keys.toList() + crossRoutineFilters
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(filters) { filter ->
-                                FilterChip(
-                                    selected = filter == uiState.selectedChartFilter,
-                                    onClick = { viewModel.selectFilter(filter) },
-                                    label = { Text(filter) },
-                                )
-                            }
-                        }
-
-                        val chartData: List<Double>
-                        val chartLabels: List<String>
-                        val chartTitle: String
-
-                        when (uiState.selectedChartFilter) {
-                            "kcal" -> {
-                                chartData = uiState.allSessionCalories
-                                chartLabels = uiState.allSessionLabels
-                                chartTitle = "kcal: ${(chartData.lastOrNull() ?: 0.0).toInt()} (all routines)"
-                            }
-                            "TRIMP" -> {
-                                chartData = uiState.allSessionTrimp
-                                chartLabels = uiState.allSessionLabels
-                                chartTitle = "TRIMP: ${(chartData.lastOrNull() ?: 0.0).toInt()} (all routines)"
-                            }
-                            "VO2max" -> {
-                                chartData = uiState.allSessionVo2max.filter { it > 0 }
-                                chartLabels = uiState.allSessionLabels.zip(uiState.allSessionVo2max)
-                                    .filter { it.second > 0 }.map { it.first }
-                                chartTitle = "VO2max: ${"%.1f".format(chartData.lastOrNull() ?: 0.0)} (all routines)"
-                            }
-                            "Totale" -> {
-                                chartData = uiState.sessionTonnage
-                                chartLabels = uiState.sessionLabels
-                                chartTitle = "Totale: ${"%.1f".format(chartData.lastOrNull() ?: 0.0)} kg"
-                            }
-                            else -> {
-                                chartData = uiState.sessionTonnageByBodypart[uiState.selectedChartFilter] ?: uiState.sessionTonnage
-                                chartLabels = uiState.sessionLabels
-                                chartTitle = "${uiState.selectedChartFilter}: ${"%.1f".format(chartData.lastOrNull() ?: 0.0)} kg"
-                            }
-                        }
-
                         Text(
-                            text = chartTitle,
+                            text = "Tonnellaggio totale: ${"%.1f".format(uiState.sessionTonnage.lastOrNull() ?: 0.0)} kg",
                             style = MaterialTheme.typography.titleMedium,
                         )
+                        TonnageLineChart(
+                            data = uiState.sessionTonnage,
+                            labels = uiState.sessionLabels,
+                            modifier = Modifier.fillMaxWidth(),
+                            secondaryData = if (uiState.sessionBestE1RM.size == uiState.sessionTonnage.size) {
+                                uiState.sessionBestE1RM
+                            } else null,
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("Nessun dato disponibile", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
 
-                        if (chartData.isNotEmpty()) {
-                            TonnageLineChart(
-                                data = chartData,
-                                labels = chartLabels,
-                                modifier = Modifier.fillMaxWidth(),
-                                secondaryData = if (uiState.selectedChartFilter == "Totale" &&
-                                    uiState.sessionBestE1RM.size == chartData.size
-                                ) {
-                                    uiState.sessionBestE1RM
-                                } else null,
+            // Cardio trend charts — one small chart per metric, only when it has data
+            val hasCardioData = listOf(
+                uiState.avgHrSeries, uiState.hrrSeries, uiState.vo2maxSeries, uiState.rmssdSeries,
+                uiState.sdnnSeries, uiState.poincareRatioSeries, uiState.restingHrSeries, uiState.cardiacDriftSeries,
+            ).any { it.data.isNotEmpty() }
+            val anomalies = uiState.ecgPacCount + uiState.ecgPauseCount + uiState.ecgIrregularBeats
+
+            if (hasCardioData || anomalies > 0 || uiState.afibSuspicionEpisodes > 0) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Text("Cardio", style = MaterialTheme.typography.titleMedium)
+
+                        CardioChart("HR medio", "bpm", uiState.avgHrSeries)
+                        CardioChart("HRR (recupero 60s)", "bpm", uiState.hrrSeries)
+                        CardioChart("VO2max", "", uiState.vo2maxSeries)
+                        CardioChart("HRV — RMSSD", "ms", uiState.rmssdSeries)
+                        CardioChart("HRV — SDNN", "ms", uiState.sdnnSeries)
+                        CardioChart("Poincare ratio", "", uiState.poincareRatioSeries)
+                        CardioChart("HR a riposo", "bpm", uiState.restingHrSeries)
+                        CardioChart("Deriva cardiaca", "bpm/min", uiState.cardiacDriftSeries)
+
+                        if (anomalies > 0) {
+                            Text(
+                                "PAC: ${uiState.ecgPacCount} • Pause: ${uiState.ecgPauseCount} • Irregolari: ${uiState.ecgIrregularBeats} — non diagnostico, consulta un medico se persiste.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (uiState.afibSuspicionEpisodes > 0) {
+                            Text(
+                                "AFib screening: ${uiState.afibSuspicionEpisodes} episodio/i sospetto/i — non diagnostico, consulta un medico se ricorrente.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFEF5350),
                             )
                         }
                     }
@@ -333,5 +224,23 @@ fun SessionProgressScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CardioChart(title: String, unit: String, series: ChartSeries) {
+    if (series.data.isEmpty()) return
+    val last = series.data.last()
+    val lastText = if (last == last.toLong().toDouble()) last.toLong().toString() else "%.1f".format(last)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = if (unit.isBlank()) "$title: $lastText" else "$title: $lastText $unit",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        TonnageLineChart(
+            data = series.data,
+            labels = series.labels,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

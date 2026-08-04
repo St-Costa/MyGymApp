@@ -101,8 +101,7 @@ class StrengthExerciseViewModel @Inject constructor(
             // had the same type (daily / warmup / normal). Walk back through history and use the
             // most recent matching session that actually has non-zero set data, so an empty 0-0
             // session doesn't blank out the preview.
-            val previousSets = workoutRepository.getSessionsForExercise(exerciseId, 30)
-                .asSequence()
+            val matchingSetsPerSession = workoutRepository.getSessionsForExercise(exerciseId, 30)
                 .mapNotNull { prev ->
                     prev.exercises.firstOrNull { ex ->
                         ex.exerciseId == exerciseId &&
@@ -111,9 +110,10 @@ class StrengthExerciseViewModel @Inject constructor(
                     }
                 }
                 .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
-                .firstOrNull { strengthSets ->
-                    strengthSets.any { it.reps > 0 || it.weight > 0.0 }
-                } ?: emptyList()
+
+            val previousSets = matchingSetsPerSession.firstOrNull { strengthSets ->
+                strengthSets.any { it.reps > 0 || it.weight > 0.0 }
+            } ?: emptyList()
 
             // Rep range from the routine lookup above (routineExercise).
             val repMin = routineExercise?.repRangeMin ?: 0
