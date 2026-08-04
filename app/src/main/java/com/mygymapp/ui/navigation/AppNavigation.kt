@@ -257,6 +257,11 @@ fun AppNavigation(navController: NavHostController) {
         ) {
             SessionProgressScreen(
                 onBack = { navController.popBackStack() },
+                onNavigateHome = {
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.Main.route) { inclusive = true }
+                    }
+                },
             )
         }
     }
