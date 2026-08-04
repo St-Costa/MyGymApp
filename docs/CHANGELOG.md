@@ -141,6 +141,10 @@ Tapping "Complete Exercise"/"Complete Superset" without changing anything used t
 
 `SessionProgressScreen` (the tonnage/kcal/TRIMP/ECG charts screen reached by tapping a gitgraph cell) only had the top-bar back arrow, which relies on the back stack popping to `Main`. Added an explicit Home icon button in the `TopAppBar` actions, wired in `AppNavigation` to `navController.navigate(Screen.Main.route) { popUpTo(Screen.Main.route) { inclusive = true } }` so it always lands on the home screen regardless of back-stack state.
 
+## Phase 28 — PR badge on exercise screens
+
+`StrengthExerciseScreen` and `SupersetScreen` now show a "PR NxM" badge (reps × heaviest weight ever logged for that exercise, same daily/warmup type, over the last 30 matching sessions) right above the sets — between the "kg"/"rep" header row and the first set in `StrengthExerciseScreen`, and above each FORZA exercise's first set in `SupersetScreen`. Derived from the same per-session set history `StrengthExerciseViewModel`/`SupersetViewModel` already fetch for the grey "previous value" prefill, just reduced with `maxWithOrNull(compareBy(weight, reps))` instead of taking the most recent session.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

@@ -38,6 +38,9 @@ data class StrengthExerciseUiState(
     val description: String = "",
     val isLoading: Boolean = true,
     val allSetsFilled: Boolean = false,
+    // Heaviest set ever logged for this exercise (same daily/warmup type), across past sessions.
+    val prReps: Int = 0,
+    val prWeight: Double = 0.0,
 )
 
 @HiltViewModel
@@ -83,8 +86,7 @@ class StrengthExerciseViewModel @Inject constructor(
             // had the same type (daily / warmup / normal). Walk back through history and use the
             // most recent matching session that actually has non-zero set data, so an empty 0-0
             // session doesn't blank out the preview.
-            val previousSets = workoutRepository.getSessionsForExercise(exerciseId, 30)
-                .asSequence()
+            val matchingSetsPerSession = workoutRepository.getSessionsForExercise(exerciseId, 30)
                 .mapNotNull { prev ->
                     prev.exercises.firstOrNull { ex ->
                         ex.exerciseId == exerciseId &&
@@ -93,9 +95,15 @@ class StrengthExerciseViewModel @Inject constructor(
                     }
                 }
                 .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
-                .firstOrNull { strengthSets ->
-                    strengthSets.any { it.reps > 0 || it.weight > 0.0 }
-                } ?: emptyList()
+
+            val previousSets = matchingSetsPerSession.firstOrNull { strengthSets ->
+                strengthSets.any { it.reps > 0 || it.weight > 0.0 }
+            } ?: emptyList()
+
+            // Heaviest set ever logged (across the same fetched history), for the "PR" badge.
+            val prSet = matchingSetsPerSession.flatten()
+                .filter { it.weight > 0.0 }
+                .maxWithOrNull(compareBy({ it.weight }, { it.reps }))
 
             // Get rep range from the owning routine. Daily exercises live in the fixed-daily
             // routine, not the session's routine, so look them up there.
@@ -140,6 +148,8 @@ class StrengthExerciseViewModel @Inject constructor(
                 repRangeMax = repMax,
                 description = exercise.notes,
                 isLoading = false,
+                prReps = prSet?.reps ?: 0,
+                prWeight = prSet?.weight ?: 0.0,
             )
         }
     }
