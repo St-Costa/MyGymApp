@@ -137,6 +137,10 @@ Diagnosed on the connected test phone with real data instead of guessing: `adb s
 
 Tapping "Complete Exercise"/"Complete Superset" without changing anything used to silently re-record last session's pre-filled numbers as this session's work, inflating tonnage and the per-exercise `%` change with a phantom identical set. Added real touch tracking (`repsTouched`/`weightTouched` on `StrengthSetUi`/`SupersetSetUi`, set only by explicit user actions — never by the prefill in `init`; stretch sets use their existing `done` toggle as the touch signal, since stretch has no prefill). If an exercise (or, for supersets, one side of it) is completed with nothing touched, it's saved as `completed = false, sets = emptyList()` — the same on-disk shape as an exercise the user never opened — so tonnage, `%` change, ghost-session detection, and next-session prefill all handle it correctly with no extra logic. `ActiveRoutineViewModel.markExerciseCompleted()` now checks the reloaded exercise's actual `completed` flag before ticking off the UI row, so an untouched exercise stays open and blocks session finalization like any other incomplete exercise. Added `WorkoutExercise.isUntouched()` and used it in `MainViewModel.computeCommonTonnage()` to exclude untouched exercises from the session-vs-session tonnage comparison behind the gitgraph's day color/`%` change — otherwise an untouched exercise counted as "0 tonnage" and silently dragged that day's average down. See [CONVENTIONS.md](CONVENTIONS.md#untouched-exercise-guard-completing-without-changing-anything).
 
+## Phase 27 — Home button on session progress screen
+
+`SessionProgressScreen` (the tonnage/kcal/TRIMP/ECG charts screen reached by tapping a gitgraph cell) only had the top-bar back arrow, which relies on the back stack popping to `Main`. Added an explicit Home icon button in the `TopAppBar` actions, wired in `AppNavigation` to `navController.navigate(Screen.Main.route) { popUpTo(Screen.Main.route) { inclusive = true } }` so it always lands on the home screen regardless of back-stack state.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
