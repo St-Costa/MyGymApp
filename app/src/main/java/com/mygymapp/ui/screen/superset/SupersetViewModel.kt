@@ -55,6 +55,11 @@ data class SupersetUiState(
     val isLoading: Boolean = true,
     val isStopwatchRunning: Boolean = false,
     val elapsedSeconds: Int = 0,
+    // Heaviest set ever logged for each exercise (FORZA only), for the "PR" badge.
+    val prReps1: Int = 0,
+    val prWeight1: Double = 0.0,
+    val prReps2: Int = 0,
+    val prWeight2: Double = 0.0,
 )
 
 @HiltViewModel
@@ -97,9 +102,8 @@ class SupersetViewModel @Inject constructor(
             // Previous FORZA sets for showing defaults. Compare like-with-like on exercise type
             // (daily / warmup / normal), and walk back to the most recent matching session that
             // actually has non-zero data so an empty 0-0 session doesn't blank out the preview.
-            suspend fun previousStrengthSets(exId: String, daily: Boolean, warmup: Boolean): List<ExerciseSet.Strength> =
+            suspend fun matchingSetsPerSession(exId: String, daily: Boolean, warmup: Boolean): List<List<ExerciseSet.Strength>> =
                 workoutRepository.getSessionsForExercise(exId, 30)
-                    .asSequence()
                     .mapNotNull { prev ->
                         prev.exercises.firstOrNull { ex ->
                             ex.exerciseId == exId &&
@@ -108,15 +112,22 @@ class SupersetViewModel @Inject constructor(
                         }
                     }
                     .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
-                    .firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
 
-            val prevStrengthSets1 = if (ex1.type == ExerciseType.FORZA) {
-                previousStrengthSets(exerciseId1, isDaily1, isWarmup1)
+            fun bestSet(sessions: List<List<ExerciseSet.Strength>>): ExerciseSet.Strength? =
+                sessions.flatten().filter { it.weight > 0.0 }
+                    .maxWithOrNull(compareBy({ it.weight }, { it.reps }))
+
+            val matchingSessions1 = if (ex1.type == ExerciseType.FORZA) {
+                matchingSetsPerSession(exerciseId1, isDaily1, isWarmup1)
+            } else emptyList()
+            val matchingSessions2 = if (ex2.type == ExerciseType.FORZA) {
+                matchingSetsPerSession(exerciseId2, isDaily2, isWarmup2)
             } else emptyList()
 
-            val prevStrengthSets2 = if (ex2.type == ExerciseType.FORZA) {
-                previousStrengthSets(exerciseId2, isDaily2, isWarmup2)
-            } else emptyList()
+            val prevStrengthSets1 = matchingSessions1.firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
+            val prevStrengthSets2 = matchingSessions2.firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
+            val prSet1 = bestSet(matchingSessions1)
+            val prSet2 = bestSet(matchingSessions2)
 
             // Fallback for sets beyond what the previous session recorded.
             val lastMeaningful1 = prevStrengthSets1.lastOrNull { it.reps > 0 || it.weight > 0.0 }
@@ -233,6 +244,10 @@ class SupersetViewModel @Inject constructor(
                 description1 = ex1.notes,
                 description2 = ex2.notes,
                 isLoading = false,
+                prReps1 = prSet1?.reps ?: 0,
+                prWeight1 = prSet1?.weight ?: 0.0,
+                prReps2 = prSet2?.reps ?: 0,
+                prWeight2 = prSet2?.weight ?: 0.0,
             )
         }
     }
