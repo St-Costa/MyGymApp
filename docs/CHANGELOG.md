@@ -145,6 +145,15 @@ Tapping "Complete Exercise"/"Complete Superset" without changing anything used t
 
 `StrengthExerciseScreen` and `SupersetScreen` now show a "PR NxM" badge (reps × heaviest weight ever logged for that exercise, same daily/warmup type, over the last 30 matching sessions) right above the sets — between the "kg"/"rep" header row and the first set in `StrengthExerciseScreen`, and above each FORZA exercise's first set in `SupersetScreen`. Derived from the same per-session set history `StrengthExerciseViewModel`/`SupersetViewModel` already fetch for the grey "previous value" prefill, just reduced with `maxWithOrNull(compareBy(weight, reps))` instead of taking the most recent session.
 
+## Phase 29 — Simplify session progress screen, replace ECG text dump with charts
+
+`SessionProgressScreen` was cluttered: a wall of ECG stat text, plus a tonnage chart with a filter-chip row (Totale / bodyparts / kcal / TRIMP / VO2max) that made it unclear what was being plotted. Reworked per user feedback:
+
+- **Tonnage**: dropped the filter chips entirely — the chart now always shows total tonnage across recent sessions of this routine, no selection needed.
+- **ECG**: replaced the paragraph of numbers with small per-metric trend line charts (reusing `TonnageLineChart`) — HR medio, HRR, VO2max, HRV (RMSSD + SDNN), Poincare ratio, HR a riposo, deriva cardiaca — each only rendered when it has recorded data, one point per past completed session (cross-routine, since these are physiological, not routine-specific). PAC/Pause/Irregular and AFib-screening counts stay as a single minimal text line, shown only when this session actually has anomalies.
+- `SessionProgressViewModel` gained a small `ChartSeries(data, labels)` holder and a `cardioSeries()` reducer that drops zero/unset points so a metric a device didn't record doesn't render as a flat line at 0. No change to what gets saved to disk — this is display-only; `WorkoutSession` still persists every field it did before.
+- The screen's root `Column` is now `verticalScroll`-able (it wasn't before), since the cardio section can add several chart cards.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
