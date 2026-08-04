@@ -118,6 +118,21 @@ fun StrengthExerciseScreen(
 
                 HorizontalDivider()
 
+                // PR badge: heaviest set ever logged for this exercise
+                if (uiState.prWeight > 0) {
+                    val prWeightText = remember(uiState.prWeight) {
+                        val w = uiState.prWeight
+                        if (w == w.toLong().toDouble()) w.toLong().toString() else "%.1f".format(w)
+                    }
+                    Text(
+                        text = "PR ${uiState.prReps}x${prWeightText}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
                 // Set rows
                 uiState.sets.forEachIndexed { index, set ->
                     Row(
