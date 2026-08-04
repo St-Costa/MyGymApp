@@ -190,6 +190,8 @@ fun SupersetScreen(
                                     setUi = setUi,
                                     repRangeMin = if (setUi.exerciseIndex == 0) uiState.repRangeMin1 else uiState.repRangeMin2,
                                     repRangeMax = if (setUi.exerciseIndex == 0) uiState.repRangeMax1 else uiState.repRangeMax2,
+                                    prReps = if (setUi.exerciseIndex == 0) uiState.prReps1 else uiState.prReps2,
+                                    prWeight = if (setUi.exerciseIndex == 0) uiState.prWeight1 else uiState.prWeight2,
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
                                     onToggleDone = { viewModel.toggleSetDone(listIndex) },
@@ -278,6 +280,8 @@ private fun SupersetSetItem(
     setUi: SupersetSetUi,
     repRangeMin: Int,
     repRangeMax: Int,
+    prReps: Int = 0,
+    prWeight: Double = 0.0,
     onUpdateReps: (Int) -> Unit,
     onUpdateWeight: (Double) -> Unit,
     onToggleDone: () -> Unit,
@@ -305,6 +309,19 @@ private fun SupersetSetItem(
                 color = borderColor,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // PR badge: heaviest set ever logged for this exercise, shown once above its first set
+            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 && prWeight > 0) {
+                val prWeightText = remember(prWeight) {
+                    if (prWeight == prWeight.toLong().toDouble()) prWeight.toLong().toString() else "%.1f".format(prWeight)
+                }
+                Text(
+                    text = "PR ${prReps}x${prWeightText}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             when (setUi.exerciseType) {
                 ExerciseType.FORZA -> {
