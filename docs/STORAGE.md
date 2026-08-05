@@ -24,9 +24,13 @@ filesDir/gymdata/              ← FileManager.root
 │   └── (Coil-managed)
 ├── readiness/                 ← One file per 60s HRV readiness measurement
 │   └── {8hex}.md
+├── scale/                     ← VitaFit VT701 weigh-ins (one per calendar day)
+│   └── YYYY/MM/
+│       └── YYYY-MM-DD.md
 └── _sync/                     ← Server sync ledgers (see SYNC.md)
     ├── state.yml               (sessions)
-    └── readiness_state.yml     (readiness events)
+    ├── readiness_state.yml     (readiness events)
+    └── scale_state.yml         (scale weigh-ins)
 ```
 
 The two image caches serve different purposes:
@@ -159,6 +163,22 @@ recommendation: "HRV above baseline. Good day to push intensity."
 ```
 
 Written by [ReadinessRepository](../app/src/main/java/com/mygymapp/data/polar/ReadinessRepository.kt) at the end of [PolarManager.finishReadinessMeasurement()](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) — the 60s HRV measurement that already ran on every HR connect, but was previously only held in an in-memory StateFlow for the UI and never persisted. Only successful measurements are saved (`cleanRR.size >= 20`); a failed "not enough clean data" attempt is discarded, not written. See [POLAR.md](POLAR.md) for the readiness algorithm and [SYNC.md](SYNC.md) for how these get synced to the server immediately, independent of session sync.
+
+### Scale weigh-in (`scale/YYYY/MM/{date}.md`)
+
+```yaml
+---
+id: "2026-08-05"
+date: "2026-08-05"
+recordedAt: "2026-08-05T07:12:34"
+weightKg: 78.4
+bmi: 24.1
+bodyFatPercent: 16.8
+leanMassPercent: 81.2
+---
+```
+
+Written by [ScaleHistoryRepository](../app/src/main/java/com/mygymapp/data/repository/ScaleHistoryRepository.kt) from [BleScaleManager.maybeSaveWeighIn()](../app/src/main/java/com/mygymapp/data/scale/BleScaleManager.kt) — parses the VitaFit VT701's weight + bioimpedance notify packets, computes BMI/body-fat/lean-mass via [BodyCompositionCalculator](../app/src/main/java/com/mygymapp/data/scale/BodyCompositionCalculator.kt), and also updates `UserProfile.weightKg` (the scale is the sole source of body weight — no manual entry). **`id` is an ISO date string, not an `{8hex}` UUID** — one weigh-in per calendar day; re-weighing the same day overwrites the existing file rather than creating a second entry. See [SYNC.md](SYNC.md) for how these get synced to the server immediately.
 
 ### Raw ECG (`ecg/{sessionId}.ecg`)
 
