@@ -16,6 +16,7 @@ import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import android.content.Context
 import android.util.Log
+import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
 import com.mygymapp.data.util.AppLogger
@@ -99,6 +100,7 @@ class ActiveRoutineViewModel @Inject constructor(
     private val appLogger: AppLogger,
     private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
     private val syncLedgerRepository: SyncLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -393,12 +395,17 @@ class ActiveRoutineViewModel @Inject constructor(
                     currentSession = saved
                     // Enqueue for server sync (docs/SYNC.md §1.1) — after the durable save,
                     // never inline. The actual send happens async via WorkManager so a
-                    // flaky/offline/unreachable server can never block this flow.
-                    val relPath = workoutRepository.relPathFor(saved)
-                    val file = workoutRepository.fileFor(saved)
-                    if (file.exists()) {
-                        syncLedgerRepository.enqueue(saved.id, relPath, file)
-                        SyncWorker.Scheduler.runExpedited(appContext)
+                    // flaky/offline/unreachable server can never block this flow. Gated on
+                    // isEnabled(): this is the *automatic* per-session path, distinct from
+                    // the user's explicit "Resync all" action in Options (which enqueues
+                    // regardless, since pressing that button is itself the opt-in).
+                    if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                        val relPath = workoutRepository.relPathFor(saved)
+                        val file = workoutRepository.fileFor(saved)
+                        if (file.exists()) {
+                            syncLedgerRepository.enqueue(saved.id, relPath, file)
+                            SyncWorker.Scheduler.runExpedited(appContext)
+                        }
                     }
                 } catch (e: Throwable) {
                     Log.e("ActiveRoutineVM", "Save session failed", e)
