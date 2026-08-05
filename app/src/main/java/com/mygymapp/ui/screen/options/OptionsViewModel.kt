@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.PowerliftingScheduleRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.sync.DiagnosticStep
 import com.mygymapp.data.sync.SyncApi
 import com.mygymapp.data.sync.SyncConfigRepository
+import com.mygymapp.data.sync.SyncDiagnostics
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,6 +34,8 @@ data class OptionsUiState(
     val syncIsTestingConnection: Boolean = false,
     val syncConnectionTestResult: Boolean? = null, // null = not tested yet this session
     val syncIsResyncing: Boolean = false,
+    val syncDiagnosticSteps: List<DiagnosticStep> = emptyList(),
+    val syncDiagnosticRunning: Boolean = false,
 )
 
 @HiltViewModel
@@ -41,6 +45,7 @@ class OptionsViewModel @Inject constructor(
     private val syncLedgerRepository: SyncLedgerRepository,
     private val syncApi: SyncApi,
     private val workoutRepository: WorkoutRepository,
+    private val syncDiagnostics: SyncDiagnostics,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -152,6 +157,20 @@ class OptionsViewModel @Inject constructor(
             SyncWorker.Scheduler.runExpedited(appContext)
             refreshSyncStatus()
             _uiState.value = _uiState.value.copy(syncIsResyncing = false)
+        }
+    }
+
+    /**
+     * Runs [SyncDiagnostics] (health check + real send + idempotency re-send) and surfaces
+     * each labeled step in the UI. Every step is also written to AppLogger — see
+     * `adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`.
+     */
+    fun runDiagnostics() {
+        _uiState.value = _uiState.value.copy(syncDiagnosticRunning = true, syncDiagnosticSteps = emptyList())
+        viewModelScope.launch {
+            val steps = syncDiagnostics.run()
+            _uiState.value = _uiState.value.copy(syncDiagnosticRunning = false, syncDiagnosticSteps = steps)
+            refreshSyncStatus()
         }
     }
 }
