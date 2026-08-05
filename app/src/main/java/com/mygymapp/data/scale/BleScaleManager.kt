@@ -19,6 +19,9 @@ import android.os.Looper
 import android.util.Log
 import com.mygymapp.data.polar.UserProfileRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
+import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
+import com.mygymapp.data.sync.ScaleWeighInSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,6 +64,8 @@ class BleScaleManager @Inject constructor(
     private val knownScaleRepository: KnownScaleRepository,
     private val userProfileRepository: UserProfileRepository,
     private val scaleHistoryRepository: ScaleHistoryRepository,
+    private val scaleWeighInLedgerRepository: ScaleWeighInLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
 ) {
     companion object {
         private const val TAG = "BleScaleManager"
@@ -192,12 +197,26 @@ class BleScaleManager @Inject constructor(
         userProfileRepository.save(profile.copy(weightKg = weightKg))
 
         scope.launch {
-            scaleHistoryRepository.save(
+            val weighIn = scaleHistoryRepository.save(
                 weightKg = weightKg,
                 bmi = composition.bmi,
                 bodyFatPercent = composition.bodyFatPercent,
                 leanMassPercent = composition.leanMassPercent,
             )
+            // Sync immediately (docs/SYNC.md) — same isEnabled() scoping rule as
+            // sessions/readiness: only gates the automatic enqueue, never blocks the
+            // save itself, never inline on the network.
+            if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                val file = scaleHistoryRepository.fileFor(weighIn.id)
+                if (file.exists()) {
+                    scaleWeighInLedgerRepository.enqueue(
+                        weighIn.id,
+                        scaleHistoryRepository.relPathFor(weighIn.id),
+                        file,
+                    )
+                    ScaleWeighInSyncWorker.Scheduler.runExpedited(context)
+                }
+            }
         }
 
         // Weigh-in is complete (weight + impedance both received) — no need to
