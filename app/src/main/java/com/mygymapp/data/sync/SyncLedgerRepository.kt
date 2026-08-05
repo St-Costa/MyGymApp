@@ -54,11 +54,16 @@ class SyncLedgerRepository @Inject constructor(
             null
         }
         @Suppress("UNCHECKED_CAST")
-        val sessionsMap = (root as? Map<String, Any?>)?.get("sessions") as? Map<String, Any?>
+        val sessionsMap = (root as? Map<*, Any?>)?.get("sessions") as? Map<*, Any?>
             ?: return mutableMapOf()
 
         val result = LinkedHashMap<String, SyncLedgerEntry>()
-        for ((sessionId, raw) in sessionsMap) {
+        for ((rawKey, raw) in sessionsMap) {
+            // Keys are always written quoted (see writeAllUnlocked), but a session ID
+            // that happens to be all-digit (e.g. "82676173") is parsed back as a YAML
+            // Integer key by any file written before that fix — toString() it rather
+            // than crashing on `as String`.
+            val sessionId = rawKey?.toString() ?: continue
             @Suppress("UNCHECKED_CAST")
             val fields = raw as? Map<String, Any?> ?: continue
             result[sessionId] = SyncLedgerEntry(
@@ -92,7 +97,12 @@ class SyncLedgerRepository @Inject constructor(
         val sb = StringBuilder()
         sb.appendLine("sessions:")
         for ((sessionId, entry) in entries) {
-            sb.appendLine("  $sessionId:")
+            // Quoted: an all-digit sessionId (e.g. "82676173") is otherwise parsed back
+            // as a YAML Integer key instead of a String, crashing readAllUnlocked's
+            // `for ((sessionId, raw) in sessionsMap)` with a ClassCastException the next
+            // time the ledger is read (hit in practice via "Resync all" — enough sessions
+            // pushes the odds of an all-digit 8-hex ID up fast).
+            sb.appendLine("  \"$sessionId\":")
             sb.appendLine("    relPath: \"${entry.relPath}\"")
             sb.appendLine("    status: ${entry.status.name}")
             sb.appendLine("    attempts: ${entry.attempts}")
