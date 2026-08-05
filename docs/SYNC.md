@@ -451,25 +451,86 @@ layer that setup would lean on.)
 
 ---
 
-## Extensibility: adding a second record type later
+## Second record type: readiness events
 
-When VitaFit scale data is ready to sync, it follows the same shape without touching what
-exists:
+Implemented (phone side) as a second, independent record type — a real instance of the
+pattern anticipated below, built as a **separate** ledger/worker/API rather than
+generalizing the session sync code, specifically so the already-verified session path
+could not regress. See CHANGELOG.md for the phase this landed in.
 
-- New endpoint `POST /v1/scale-readings` (or a `recordType` field in a shared envelope —
-  either works; a separate path is simpler to reason about and matches "one raw-file-type
-  per endpoint").
-- New ledger *namespace* in `state.yml` (`scaleReadings:` alongside `sessions:`) or a
-  second ledger file — the `SyncRepository`/`SyncWorker` pair should be written generic
-  over "a source of IDs + file paths to send" rather than hardcoded to sessions, so this is
-  a few lines, not a rewrite.
+### What it is
+
+`PolarManager.finishReadinessMeasurement()` computes a 60s HRV/resting-HR readiness
+reading (see POLAR.md) but historically only held it in the `readinessResult` StateFlow
+for the UI — never written to disk. Now persisted immediately as its own file,
+`gymdata/readiness/{id}.md`:
+
+```yaml
+---
+id: a1b2c3d4
+measuredAt: "2026-08-05T07:04:10.123"
+readiness: "GOOD"              # Readiness enum name: MEASURING|DELOAD_RECOMMENDED|LIGHT_DAY|NORMAL|GOOD|PEAK|NO_BASELINE
+lnRmssd: 4.30
+restingHr: 65
+vo2max: 45.2
+recommendation: "HRV above baseline. Good day to push intensity."
+---
+```
+
+Only persisted (and thus only synced) for measurements that produce a real result —
+the early-return case (`cleanRR.size < 20`, "not enough clean data, try again") is
+discarded, never written, since it's a failed measurement, not a data point.
+
+### Sync path
+
+Mirrors the session sync design (§1.1–§1.4) with dedicated classes rather than shared
+ones:
+
+| Session sync | Readiness sync |
+|---|---|
+| `SyncLedgerRepository` (`_sync/state.yml`) | `ReadinessLedgerRepository` (`_sync/readiness_state.yml`) |
+| `SyncApi` (`POST /v1/sessions`) | `ReadinessSyncApi` (`POST /v1/readiness`) |
+| `SyncWorker` | `ReadinessSyncWorker` |
+| Enqueued in `ActiveRoutineViewModel.registerRoutine()` | Enqueued in `PolarManager.finishReadinessMeasurement()` |
+
+Trigger is immediate, not batched with a session: readiness fires once per HR connect
+(60s after pairing), independent of whether the user goes on to complete a workout that
+day — this is the point of keeping it separate from session sync, which only fires at
+workout end.
+
+No periodic durability net for readiness (unlike sessions' 4-hourly `ensurePeriodic()`) —
+a missed send just waits for the next HR connect's readiness measurement to trigger
+another expedited run. Add a periodic worker later if that turns out to be too sparse in
+practice (e.g. the phone stays off Tailscale for a long stretch and no HR connect happens
+in the meantime to retry).
+
+Same `isEnabled()` scoping rule as sessions (§1.5): gates the automatic enqueue in
+`PolarManager` only, not whether `ReadinessSyncWorker` drains what's already queued. No
+"resync all readiness" UI action exists yet (unlike sessions) — add one the same way if
+backfilling old readiness events is ever needed; today only events measured after this
+feature shipped exist to backfill anyway.
+
+### Server-side spec
+
+The wire format and server implementation follow the exact same principles as
+`POST /v1/sessions` (raw-first, content-hash idempotent, `parse_failures` on parser
+error). A companion spec for the server repo (`MyGymApp_server`, mirroring
+`docs/sync-ingestion/SPEC.md`'s structure there) should be written before implementing
+`/v1/readiness` — same multipart envelope shape (`eventId` instead of `sessionId`, no
+`exercises`/`sets` child tables needed, just a flat `readiness_events` table mirroring the
+YAML fields above).
+
+## Extensibility: adding further record types later
+
+When VitaFit scale data is ready to sync, it follows the same shape the readiness path
+above already demonstrates:
+
+- New endpoint `POST /v1/scale-readings`.
+- New dedicated ledger (`_sync/scale_state.yml`) + dedicated worker/API classes, not a
+  generalization of the existing ones — same reasoning as readiness: don't risk regressing
+  a sync path already relied upon.
 - New `raw/scale/` directory + new SQLite table server-side, same raw-then-parse split,
   same `schema_version` mechanism.
-
-Nothing above needs to be built now — noted so the v1 implementation doesn't accidentally
-paint itself into a sessions-only corner (e.g. don't name the worker class
-`SessionSyncWorker` if it's meant to generalize; do keep the envelope's `recordType`-ish
-distinction possible even if v1 only ever sends one kind).
 
 ---
 
