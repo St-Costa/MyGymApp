@@ -127,6 +127,7 @@ fun OptionsScreen(
                 onEnabledChange = viewModel::setSyncEnabled,
                 onTestConnection = viewModel::testConnection,
                 onResyncAll = viewModel::resyncAll,
+                onRunDiagnostics = viewModel::runDiagnostics,
             )
         }
     }
@@ -140,6 +141,7 @@ private fun SyncSection(
     onEnabledChange: (Boolean) -> Unit,
     onTestConnection: () -> Unit,
     onResyncAll: () -> Unit,
+    onRunDiagnostics: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -242,6 +244,54 @@ private fun SyncSection(
                     Text("Rinvia tutte le sessioni")
                 }
             }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            Text("Test sincronizzazione", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Esegue in sequenza: health check, invio di una sessione reale (o fittizia " +
+                    "se non ce ne sono), e reinvio della stessa sessione per verificare che " +
+                    "il server risponda 'duplicate'. Ogni passaggio viene anche scritto nel " +
+                    "log dell'app (adb: files/gymdata/logs/app.log).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = onRunDiagnostics,
+                enabled = !uiState.syncDiagnosticRunning &&
+                    uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.syncDiagnosticRunning) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Test sincronizzazione")
+                }
+            }
+
+            if (uiState.syncDiagnosticSteps.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    uiState.syncDiagnosticSteps.forEach { step ->
+                        DiagnosticStepRow(step)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticStepRow(step: com.mygymapp.data.sync.DiagnosticStep) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(
+            imageVector = if (step.ok) Icons.Default.CheckCircle else Icons.Default.Error,
+            contentDescription = if (step.ok) "OK" else "Errore",
+            tint = if (step.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(20.dp),
+        )
+        Column {
+            Text(step.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(step.detail, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
