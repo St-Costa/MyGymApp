@@ -520,17 +520,43 @@ error). A companion spec for the server repo (`MyGymApp_server`, mirroring
 `exercises`/`sets` child tables needed, just a flat `readiness_events` table mirroring the
 YAML fields above).
 
-## Extensibility: adding further record types later
+## Third record type: scale weigh-ins
 
-When VitaFit scale data is ready to sync, it follows the same shape the readiness path
-above already demonstrates:
+Implemented (phone side), following the exact same dedicated-classes pattern as readiness.
 
-- New endpoint `POST /v1/scale-readings`.
-- New dedicated ledger (`_sync/scale_state.yml`) + dedicated worker/API classes, not a
-  generalization of the existing ones — same reasoning as readiness: don't risk regressing
-  a sync path already relied upon.
-- New `raw/scale/` directory + new SQLite table server-side, same raw-then-parse split,
-  same `schema_version` mechanism.
+### What it is
+
+[BleScaleManager.maybeSaveWeighIn()](../app/src/main/java/com/mygymapp/data/scale/BleScaleManager.kt)
+already persists each VitaFit VT701 weigh-in via
+[ScaleHistoryRepository](../app/src/main/java/com/mygymapp/data/repository/ScaleHistoryRepository.kt)
+(`gymdata/scale/YYYY/MM/{date}.md` — see STORAGE.md). Now also enqueues and sends it
+immediately after that save, same as readiness.
+
+One difference from sessions/readiness: a weigh-in's ID is an **ISO date string**
+(`2026-08-05`), not an 8-hex UUID — `ScaleHistoryRepository` saves one weigh-in per
+calendar day, overwriting same-day re-weighs. This flows through unchanged: a same-day
+re-weigh naturally produces a content-hash change for a known ID, which the existing
+"different hash for known ID = update, not duplicate" rule (§2.2 step 5) already handles
+correctly without any special-casing.
+
+### Sync path
+
+| Sessions | Readiness | Scale weigh-ins |
+|---|---|---|
+| `SyncLedgerRepository` (`_sync/state.yml`) | `ReadinessLedgerRepository` (`_sync/readiness_state.yml`) | `ScaleWeighInLedgerRepository` (`_sync/scale_state.yml`) |
+| `SyncApi` (`POST /v1/sessions`) | `ReadinessSyncApi` (`POST /v1/readiness`) | `ScaleWeighInSyncApi` (`POST /v1/scale-weighins`) |
+| `SyncWorker` | `ReadinessSyncWorker` | `ScaleWeighInSyncWorker` |
+| `ActiveRoutineViewModel.registerRoutine()` | `PolarManager.finishReadinessMeasurement()` | `BleScaleManager.maybeSaveWeighIn()` |
+
+No periodic durability net (like readiness) — the scale is used roughly daily in practice,
+so a missed send just waits for the next weigh-in to retry, an even shorter worst-case gap
+than readiness's "next HR connect."
+
+### Server-side spec
+
+A companion spec (`docs/sync-ingestion/SCALE_SPEC.md` in `MyGymApp_server`, same structure
+as the session and readiness specs) covers `POST /v1/scale-weighins` and the
+`scale_weighins` SQLite table.
 
 ---
 
@@ -557,10 +583,20 @@ Phone side (this repo, package `data/sync/`):
       `WorkoutRepository.getAllCompletedSessions()`).
 - [x] `STORAGE.md`'s SharedPreferences table updated with `sync_config`; new
       `gymdata/_sync/` directory documented in the root layout.
-- [ ] Server side — see `MyGymApp_server` repo, `docs/sync-ingestion/SPEC.md` there (own
-      implementation checklist, out of this repo's scope).
-- [ ] On-device end-to-end test against a live server (build compiles; not yet run against
-      the actual Tailscale Serve endpoint from a phone).
+- [x] Session sync verified end-to-end against the live Tailscale server, including a
+      58-session backfill via "Resync all" — see CHANGELOG.md for the debugging session
+      that found and fixed the DNS/ACL/port issues, a ledger YAML crash, and a stale
+      status-line bug along the way.
+- [x] Readiness events: `ReadinessEvent.kt`/`ReadinessRepository.kt` (persist),
+      `ReadinessLedgerRepository.kt`/`ReadinessSyncApi.kt`/`ReadinessSyncWorker.kt` (sync),
+      hooked into `PolarManager.finishReadinessMeasurement()`. Build-verified; not yet
+      tested against a live HR connect + server round-trip.
+- [x] Scale weigh-ins: `ScaleWeighInLedgerRepository.kt`/`ScaleWeighInSyncApi.kt`/
+      `ScaleWeighInSyncWorker.kt`, hooked into `BleScaleManager.maybeSaveWeighIn()`.
+      Build-verified; not yet tested against a live weigh-in + server round-trip.
+- [ ] Server side for readiness (`/v1/readiness`) and scale weigh-ins
+      (`/v1/scale-weighins`) — specs written (`READINESS_SPEC.md`, `SCALE_SPEC.md` in
+      `MyGymApp_server/docs/sync-ingestion/`), not yet implemented server-side.
 
 New Gradle dependencies added: `com.squareup.okhttp3:okhttp`, `androidx.work:work-runtime-ktx`,
 `androidx.hilt:hilt-work` (+ `hilt-compiler` via KSP). `buildFeatures.buildConfig = true`

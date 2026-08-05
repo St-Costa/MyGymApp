@@ -18,6 +18,24 @@ class ScaleHistoryRepository @Inject constructor(
     private fun dirFor(date: LocalDate): File =
         fileManager.getDir("scale/${date.year}/${date.monthValue.toString().padStart(2, '0')}")
 
+    /** Absolute file for a weigh-in, e.g. for the sync worker to read+hash. [id] is the ISO date string. */
+    fun fileFor(id: String): File {
+        val date = LocalDate.parse(id, DateTimeFormatter.ISO_LOCAL_DATE)
+        return File(dirFor(date), "$id.md")
+    }
+
+    /** Relative path from `scale/` root, mirroring [WorkoutRepository.relPathFor]'s convention. */
+    fun relPathFor(id: String): String {
+        val date = LocalDate.parse(id, DateTimeFormatter.ISO_LOCAL_DATE)
+        return "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$id.md"
+    }
+
+    suspend fun getById(id: String): ScaleWeighIn? = withContext(Dispatchers.IO) {
+        val file = fileFor(id)
+        if (!file.exists()) return@withContext null
+        runCatching { ScaleWeighInParser.fromMarkdown(file.readText()) }.getOrNull()
+    }
+
     /** One weigh-in per calendar day: saving again on the same day overwrites the previous entry. */
     suspend fun save(
         weightKg: Double,
