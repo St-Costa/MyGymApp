@@ -156,6 +156,29 @@ Tapping "Complete Exercise"/"Complete Superset" without changing anything used t
 - `SessionProgressViewModel` gained a small `ChartSeries(data, labels)` holder and a `cardioSeries()` reducer that drops zero/unset points so a metric a device didn't record doesn't render as a flat line at 0. No change to what gets saved to disk — this is display-only; `WorkoutSession` still persists every field it did before.
 - The screen's root `Column` is now `verticalScroll`-able (it wasn't before), since the cardio section can add several chart cards.
 
+## Phase 30 — Server sync (phone-side transport)
+
+Added `data/sync/` — pushes raw session `.md` files to a self-hosted server over Tailscale
+at the end of every session, for weekly analysis. Design lives in `docs/SYNC.md`; the core
+decision it's built around is sending the session file's exact bytes unmodified, with all
+interpretation on the server side, so the sync code never breaks when the on-disk YAML
+schema changes (which happens most phases in this project). `SyncLedgerRepository`
+maintains a local durable ledger (`gymdata/_sync/state.yml`, PENDING/SENT/FAILED per
+session ID + content hash) so delivery survives app kills, offline phones, and a
+temporarily-down server without losing anything — retried via `SyncWorker`
+(`@HiltWorker`/`CoroutineWorker`, WorkManager) both as an expedited one-off right after
+each session and a 4-hourly periodic durability net, both with exponential backoff.
+`ActiveRoutineViewModel.registerRoutine()` enqueues right after the session's final save;
+`WorkoutRepository`'s rename-sync paths requeue an already-SENT session if a later edit
+changes its content hash. `OptionsScreen` gained a sync section: server URL + bearer token
+fields, an enabled switch (off by default until both are filled in), a connection test
+button, a pending-count/last-sync status line, and a "resync all" backfill action. New
+deps: OkHttp (multipart POST), WorkManager + Hilt-Work (`MyGymApp` is now a
+`Configuration.Provider`; WorkManager's default `androidx.startup` initializer is disabled
+in the manifest so Hilt can construct the worker). The server side is a separate
+repository (`MyGymApp_server`, spec at `docs/sync-ingestion/SPEC.md` there) — not part of
+this codebase; not yet tested end-to-end against a live server from a phone.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
