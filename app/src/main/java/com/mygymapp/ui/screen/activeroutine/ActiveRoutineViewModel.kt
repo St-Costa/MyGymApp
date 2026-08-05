@@ -14,9 +14,13 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import android.content.Context
 import android.util.Log
+import com.mygymapp.data.sync.SyncLedgerRepository
+import com.mygymapp.data.sync.SyncWorker
 import com.mygymapp.data.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -94,6 +98,8 @@ class ActiveRoutineViewModel @Inject constructor(
     private val polarManager: PolarManager,
     private val appLogger: AppLogger,
     private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
+    private val syncLedgerRepository: SyncLedgerRepository,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     companion object {
@@ -383,8 +389,17 @@ class ActiveRoutineViewModel @Inject constructor(
                     )
                 }
                 try {
-                    workoutRepository.save(updated)
-                    currentSession = updated
+                    val saved = workoutRepository.save(updated)
+                    currentSession = saved
+                    // Enqueue for server sync (docs/SYNC.md §1.1) — after the durable save,
+                    // never inline. The actual send happens async via WorkManager so a
+                    // flaky/offline/unreachable server can never block this flow.
+                    val relPath = workoutRepository.relPathFor(saved)
+                    val file = workoutRepository.fileFor(saved)
+                    if (file.exists()) {
+                        syncLedgerRepository.enqueue(saved.id, relPath, file)
+                        SyncWorker.Scheduler.runExpedited(appContext)
+                    }
                 } catch (e: Throwable) {
                     Log.e("ActiveRoutineVM", "Save session failed", e)
                 }
