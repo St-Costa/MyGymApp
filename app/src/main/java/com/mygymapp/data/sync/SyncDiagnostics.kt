@@ -75,18 +75,13 @@ class SyncDiagnostics @Inject constructor(
         log(DiagnosticStep("Configurazione", true, "URL=$serverUrl, token=${token.take(6)}…"))
 
         // Step 2 — health check
-        val healthy = try {
-            api.checkHealth(serverUrl)
-        } catch (e: Exception) {
-            appLogger.e(TAG, "Health check threw", e)
-            false
-        }
+        val healthResult = api.checkHealth(serverUrl)
+        val healthy = healthResult is SyncResult.Success
         log(
-            DiagnosticStep(
-                "Health check (GET /health)",
-                healthy,
-                if (healthy) "raggiungibile" else "non raggiungibile — controlla Tailscale/URL",
-            )
+            when (healthResult) {
+                is SyncResult.Success -> DiagnosticStep("Health check (GET /health)", true, "raggiungibile (HTTP ${healthResult.status})")
+                is SyncResult.Failure -> DiagnosticStep("Health check (GET /health)", false, healthResult.reason)
+            }
         )
         if (!healthy) {
             appLogger.w(TAG, "=== Sync diagnostic run aborted: server unreachable ===")

@@ -95,13 +95,19 @@ class SyncApi @Inject constructor() {
     }
 
     /** `GET /health` — used by the Options screen to verify reachability without a real payload. */
-    fun checkHealth(serverUrl: String): Boolean {
-        if (serverUrl.isBlank()) return false
+    fun checkHealth(serverUrl: String): SyncResult {
+        if (serverUrl.isBlank()) return SyncResult.Failure("URL vuoto")
         val request = Request.Builder().url("$serverUrl/health").get().build()
         return try {
-            client.newCall(request).execute().use { it.isSuccessful }
-        } catch (_: Exception) {
-            false
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    SyncResult.Success(response.code.toString())
+                } else {
+                    SyncResult.Failure("HTTP ${response.code}: ${response.body?.string()?.take(200)}")
+                }
+            }
+        } catch (e: Exception) {
+            SyncResult.Failure("${e.javaClass.simpleName}: ${e.message}")
         }
     }
 }
