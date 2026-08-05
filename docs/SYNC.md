@@ -213,12 +213,17 @@ than inventing a new one):
   regardless of the toggle's current state. Conflating the two — checked live on-device —
   makes "Resync all" a silent no-op whenever sync is off, which defeats its own purpose
   (testing/backfilling *before* committing to automatic sync).
-- **Status line**: "N sessions pending, last successful sync: <time>" — read from the
-  ledger, gives visibility without needing `adb` to check.
-- **"Resync all" button**: clears the ledger's `SENT` markers (sets every known session
-  back to `PENDING`) and enqueues a full scan of `history/**/*.md`. This is the backfill
-  mechanism (§3.3) and doubles as "the server's parser just learned to handle a new field,
-  re-send everything" during development. Works even with the enabled toggle off — see above.
+- **Status line**: "N elementi in attesa (sessioni, misurazioni, pesate), ultimo invio:
+  <time>" — sums the pending count across all three ledgers (sessions + readiness +
+  scale), read without needing `adb` to check.
+- **"Invia tutti i dati in coda" button**: re-enqueues every session, readiness event, and
+  scale weigh-in found on disk, across all three independent sync pipelines (§ below),
+  regardless of prior SENT status. This is the backfill mechanism (§3.3) and covers three
+  cases at once: "the server's parser just learned to handle a new field, re-send
+  everything" during development; catching up data that was created while the server
+  didn't exist yet or was unreachable (the common case while building the server side —
+  the phone always persists and queues locally regardless); and a manual nudge after a
+  known outage. Works even with the enabled toggle off — see above.
 
 URL + token stored in `SharedPreferences` (`sync_config`, `MODE_PRIVATE`) — same tier of
 sensitivity as `user_profile`, already documented in STORAGE.md's SharedPreferences table;
@@ -376,6 +381,19 @@ stays retryable, periodic worker keeps trying. Nothing is lost; delivery is dela
 dropped. This is the main reason a local durable queue was chosen over "just try to send
 and shrug on failure."
 
+This is not just a theoretical case: the server has been intermittently offline for
+extended stretches (multi-day) in practice while its own analysis/GUI side is built out on
+a dev machine rather than run continuously. All three sync pipelines (sessions, readiness,
+scale) have their own 4-hourly periodic durability net for exactly this — WorkManager's
+backoff between retries is capped around 5 hours regardless of the requested interval, so
+in the worst case a queued item gets retried roughly every few hours indefinitely, never
+giving up, for as long as the server stays down. `AppLogger` records every attempt
+(success and failure) so a multi-day gap can be reviewed after the fact — see
+`adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`, filtering for `SyncWorker`
+/ `ReadinessSyncWorker` / `ScaleWeighInSyncWorker` — and "Invia tutti i dati in coda" in
+Options exists specifically to force a fresh attempt across all three once the server is
+confirmed back up, rather than waiting for the next periodic tick.
+
 ### 3.3 Retry produces a duplicate delivery
 Content-hash idempotency check (§2.2 step 4) makes a duplicate POST a safe no-op
 server-side. The phone doesn't need exactly-once semantics on its end — at-least-once
@@ -498,11 +516,14 @@ Trigger is immediate, not batched with a session: readiness fires once per HR co
 day — this is the point of keeping it separate from session sync, which only fires at
 workout end.
 
-No periodic durability net for readiness (unlike sessions' 4-hourly `ensurePeriodic()`) —
-a missed send just waits for the next HR connect's readiness measurement to trigger
-another expedited run. Add a periodic worker later if that turns out to be too sparse in
-practice (e.g. the phone stays off Tailscale for a long stretch and no HR connect happens
-in the meantime to retry).
+Same 4-hourly periodic durability net as sessions (`ReadinessSyncWorker.Scheduler.ensurePeriodic()`,
+scheduled at app start alongside the other two in `MyGymApp.onCreate()`). Originally
+shipped without one on the reasoning that a missed send would just wait for the next HR
+connect — but the self-hosted server is expected to be offline for days at a stretch while
+its own analysis/GUI side is still being built, so the periodic net matters here just as
+much as it does for sessions: it's what keeps retrying regularly even if the app is never
+force-killed-and-relaunched (which would otherwise be the only other trigger for a stuck
+expedited work item).
 
 Same `isEnabled()` scoping rule as sessions (§1.5): gates the automatic enqueue in
 `PolarManager` only, not whether `ReadinessSyncWorker` drains what's already queued. No
@@ -548,9 +569,11 @@ correctly without any special-casing.
 | `SyncWorker` | `ReadinessSyncWorker` | `ScaleWeighInSyncWorker` |
 | `ActiveRoutineViewModel.registerRoutine()` | `PolarManager.finishReadinessMeasurement()` | `BleScaleManager.maybeSaveWeighIn()` |
 
-No periodic durability net (like readiness) — the scale is used roughly daily in practice,
-so a missed send just waits for the next weigh-in to retry, an even shorter worst-case gap
-than readiness's "next HR connect."
+Same 4-hourly periodic durability net as sessions and readiness
+(`ScaleWeighInSyncWorker.Scheduler.ensurePeriodic()`) — same reasoning: the server is
+expected offline for extended stretches, so all three record types need a net that keeps
+retrying on its own rather than depending on the next natural trigger (a workout, an HR
+connect, a weigh-in) to notice a stuck send.
 
 ### Server-side spec
 
@@ -594,9 +617,17 @@ Phone side (this repo, package `data/sync/`):
 - [x] Scale weigh-ins: `ScaleWeighInLedgerRepository.kt`/`ScaleWeighInSyncApi.kt`/
       `ScaleWeighInSyncWorker.kt`, hooked into `BleScaleManager.maybeSaveWeighIn()`.
       Build-verified; not yet tested against a live weigh-in + server round-trip.
+- [x] All three sync workers (sessions/readiness/scale) now have a matching 4-hourly
+      periodic durability net (`ensurePeriodic()`, scheduled together in
+      `MyGymApp.onCreate()`) — added once it became clear the server would be offline for
+      multi-day stretches during its own development, not just brief outages.
+- [x] "Invia tutti i dati in coda" (Options) now backfills and resends all three record
+      types in one action — `OptionsViewModel.resyncAll()` re-enqueues every session,
+      readiness event, and scale weigh-in found on disk regardless of prior status, and
+      the pending-count status line sums all three ledgers.
 - [ ] Server side for readiness (`/v1/readiness`) and scale weigh-ins
       (`/v1/scale-weighins`) — specs written (`READINESS_SPEC.md`, `SCALE_SPEC.md` in
-      `MyGymApp_server/docs/sync-ingestion/`), not yet implemented server-side.
+      `MyGymApp_server/docs/sync-ingestion/`), currently being implemented.
 
 New Gradle dependencies added: `com.squareup.okhttp3:okhttp`, `androidx.work:work-runtime-ktx`,
 `androidx.hilt:hilt-work` (+ `hilt-compiler` via KSP). `buildFeatures.buildConfig = true`

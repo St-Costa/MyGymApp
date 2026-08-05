@@ -96,4 +96,28 @@ class ScaleHistoryRepository @Inject constructor(
         }
         weighIns.sortedBy { it.recordedAt }
     }
+
+    /**
+     * All weigh-ins across the entire `scale/` tree, unfiltered. Used only by the sync
+     * "Invia tutti i dati in coda" action to re-enqueue every weigh-in for server
+     * delivery — not for anything performance-sensitive, mirrors
+     * [WorkoutRepository.getAllCompletedSessions].
+     */
+    suspend fun getAll(): List<ScaleWeighIn> = withContext(Dispatchers.IO) {
+        val root = File(fileManager.root, "scale")
+        if (!root.exists()) return@withContext emptyList()
+        val weighIns = mutableListOf<ScaleWeighIn>()
+        root.listFiles()?.forEach { yearDir ->
+            if (!yearDir.isDirectory) return@forEach
+            yearDir.listFiles()?.forEach { monthDir ->
+                if (!monthDir.isDirectory) return@forEach
+                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                    try {
+                        weighIns.add(ScaleWeighInParser.fromMarkdown(file.readText()))
+                    } catch (_: Exception) { /* Skip malformed */ }
+                }
+            }
+        }
+        weighIns
+    }
 }
