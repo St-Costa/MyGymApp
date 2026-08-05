@@ -1,0 +1,495 @@
+# Server sync (design — not yet implemented)
+
+Status: **planned, no code yet**. This document is the agreed design for pushing workout
+data from the phone to a self-hosted server over Tailscale, for weekly analysis. Written
+before implementation so the shape is settled up front instead of discovered mid-build.
+When implementation starts, update this doc's status line and keep it in sync with the
+code the same way every other doc here is kept in sync (per CLAUDE.md).
+
+## Goal
+
+At the end of every workout session, push that session's data (tonnage, calories, TRIMP,
+VO2max, ECG/HRV metrics, per-exercise sets — everything currently in the session YAML,
+see [STORAGE.md](STORAGE.md#workout-session-historyyyyymmyyyy-mm-dd_routineid_sessionidmd))
+to a server on the user's own tailnet, reachable via Tailscale. The server stores it and
+runs weekly analysis. No other party involved — one phone, one server, both owned by the
+same person.
+
+**Out of scope for v1**: VitaFit BLE scale readings (separate in-progress feature,
+`feature/vitafit-scale-ble` — not merged). The design below is generic enough that scale
+readings become a second record type later without restructuring anything; see
+[Extensibility](#extensibility-adding-a-second-record-type-later).
+
+## The core design problem
+
+This codebase's on-disk schema changes almost every phase (see CHANGELOG.md — readiness,
+`hrrPerSet`, `isDaily`, cardio trend charts, PR badges, etc. all added fields over time).
+A sync system that serializes the app's Kotlin data classes straight to a bespoke JSON
+contract will break, silently, every time `WorkoutSession` gains a field — because nothing
+forces the sync code to be touched in the same commit.
+
+The fix applied throughout this design: **sync the raw session file, unmodified**. The
+wire format *is* the on-disk format already documented in STORAGE.md. No second schema to
+hand-maintain in two codebases. The phone-side sync code becomes "read bytes, POST bytes,
+record success" — it has zero knowledge of what fields exist inside a session. All
+interpretation of the YAML lives server-side, in one place, and gets touched exactly when
+STORAGE.md gets touched (same discipline the project already has for docs/code drift).
+
+## Architecture overview
+
+```
+┌─────────────────────────┐  Tailscale Serve   ┌──────────────────────────┐
+│  Phone (MyGymApp)       │  (tailnet-only,     │  Self-hosted server      │
+│                          │   HTTPS, no public  │                          │
+│  session finalized       │   exposure)          │  receiver (FastAPI)      │
+│    → write .md to disk   │ ───────────────────▶│    → validate envelope   │
+│    → enqueue in          │  POST /v1/sessions   │    → write raw .md to   │
+│      SyncQueue (local     │                      │      disk (source of    │
+│      ledger)              │                      │      truth)              │
+│                          │                      │    → parse → upsert into│
+│  SyncWorker (WorkManager) │◀──────────────────── │      SQLite (query layer)│
+│    drains queue,          │  200 OK {sessionId}  │                          │
+│    retries w/ backoff     │                      │  weekly cron/script      │
+└─────────────────────────┘                      │    reads SQLite, runs     │
+                                                   │    analysis               │
+                                                   └──────────────────────────┘
+```
+
+Two separate concerns, deliberately kept apart:
+
+1. **Transport**: get the exact bytes of a session file from phone to server, reliably,
+   exactly-once-effectively (idempotent on retry).
+2. **Interpretation**: turn those bytes into queryable rows for analysis. This can be
+   re-run at any time from the raw files without touching the phone again.
+
+---
+
+## Part 1 — Transport (phone side)
+
+### 1.1 Trigger
+
+Sync is triggered at the same point the session is finalized — the existing
+`registerRoutine()` path in `ActiveRoutineViewModel` (the point where the session `.md` is
+already durably written to disk and the ghost-session guard has already decided the
+session is real, not abandoned). Adding one line after the existing save:
+`syncQueue.enqueue(sessionId)`.
+
+This does **not** perform the network call inline. It only writes a queue entry. The
+actual send happens asynchronously via WorkManager (§1.3). This matches the project's
+existing discipline of never letting network/IO uncertainty block the save-and-navigate
+path (`completionSaved` pattern, `onCleared()` save pattern — save first, side effects
+after, never block UI on network).
+
+### 1.2 Local sync ledger
+
+New small file-based ledger, following the project's "no database" convention rather than
+introducing Room for one small table:
+
+```
+filesDir/gymdata/_sync/state.yml
+```
+
+```yaml
+sessions:
+  3c4d5e6f:
+    status: PENDING           # PENDING | SENT | FAILED
+    attempts: 0
+    lastAttemptAt: ""
+    lastError: ""
+    contentHash: ""           # sha256 of the file bytes at enqueue time
+  a1b2c3d4:
+    status: SENT
+    attempts: 1
+    lastAttemptAt: 2026-08-05T09:15:00
+    lastError: ""
+    contentHash: 9f8e7d6c5b4a...
+```
+
+Owned by a new `SyncRepository` (mirrors the existing repository pattern — in-memory cache
++ mutex + IO dispatcher, same as `ExerciseRepository`/`WorkoutRepository`). Read/write
+through `MarkdownParser`-style YAML (snakeyaml-engine, already a dependency — no new
+parsing library needed).
+
+Why a hash and not just "file exists": if a session file is edited after being marked SENT
+(not common today, but sessions technically could be re-saved — e.g. name-sync-on-rename
+rewrites session files, see STORAGE.md), the ledger should notice the content changed and
+requeue it. `WorkoutRepository`'s save path emits `DataChangedSignal`-adjacent hooks
+already; add one more call there: after any session file write, if the new content hash
+differs from the ledger's recorded hash for that ID, flip status back to `PENDING`.
+
+Why not "ask the server what it already has" (considered and rejected): it makes offline
+queueing pointless (the phone needs the server reachable just to know what to send) and
+adds a round trip. A local ledger is simpler, works fully offline, and is authoritative for
+the one thing that matters — "have I successfully handed this exact content to the server."
+
+### 1.3 Delivery worker
+
+A `SyncWorker : CoroutineWorker`, scheduled two ways:
+
+- **Expedited one-off** enqueued right after `syncQueue.enqueue(sessionId)` — tries to
+  send promptly if network+tailnet are available, so data usually lands within seconds of
+  session end, not just "eventually this week."
+- **Periodic** (e.g. every 4 hours, `ExistingPeriodicWorkPolicy.KEEP`) as the durability
+  net — catches anything the expedited attempt couldn't send (phone off tailnet, server
+  down, app killed before the one-off ran).
+
+Constraints: `NetworkType.CONNECTED` (WorkManager constraint). No tailnet-specific
+constraint exists in WorkManager — connectivity to the *tailnet* specifically is verified
+by the request itself failing/succeeding, not pre-checked. This is fine: a failed attempt
+(server unreachable) just leaves the ledger entry `PENDING`/`FAILED` and WorkManager's own
+backoff policy (`BackoffPolicy.EXPONENTIAL`, e.g. starting at 30s, capped at the periodic
+interval) retries later without any custom logic.
+
+Worker logic per pending ledger entry:
+
+1. Read session file bytes from `history/YYYY/MM/...md` by re-deriving the path from the
+   session ID the same way `WorkoutRepository` already does (or, simpler: store the
+   relative path in the ledger entry at enqueue time, since the ledger already knows the ID
+   the moment the file is written and its path is known then).
+2. Compute sha256, confirm it matches the ledger's recorded hash (guards against sending a
+   file that changed underneath the ledger between enqueue and send — rare, but cheap to
+   check).
+3. POST to the server (§1.4).
+4. On 2xx: ledger entry → `SENT`, `attempts += 1`.
+5. On non-2xx or exception: ledger entry → `FAILED`, `attempts += 1`, `lastError` recorded,
+   `lastAttemptAt` updated. Left as `PENDING`-equivalent for the next worker run (i.e.
+   `FAILED` is still eligible for retry — it's a status for user-visible diagnostics, not a
+   dead-letter state). No cap on retry count for v1 — a self-hosted personal server being
+   down for a while is expected and should just catch up whenever it's back, not give up.
+
+### 1.4 Request shape
+
+```
+POST /v1/sessions
+Content-Type: multipart/form-data
+Authorization: Bearer <shared-secret>
+
+  part "envelope" (application/json):
+    {
+      "sessionId": "3c4d5e6f",
+      "relPath": "2026/08/2026-08-05_rt-b2c3d4e5_3c4d5e6f.md",
+      "contentHash": "sha256:9f8e7d6c...",
+      "appVersion": "1.0-phase29",       // git describe or versionName, for server-side
+                                          // "which parser logic applies" if ever needed
+      "clientSentAt": "2026-08-05T10:05:42Z"
+    }
+  part "file" (text/markdown):
+    <raw bytes of the .md file, unmodified>
+```
+
+Multipart chosen over a single JSON body with base64-embedded content: avoids the
+33%-inflation and escaping headaches of embedding a Markdown+YAML blob (which itself
+contains a free-text body that can hold arbitrary characters) inside a JSON string. The
+server gets the exact original bytes back, byte-for-byte, which matters since
+`contentHash` is checked against them on receipt too (§2.2).
+
+Response:
+
+```
+200 OK  { "sessionId": "3c4d5e6f", "status": "stored" }       // first time
+200 OK  { "sessionId": "3c4d5e6f", "status": "duplicate" }    // already had this hash
+400/422 { "error": "..." }                                    // envelope malformed
+401     (missing/wrong bearer token)
+```
+
+Both `stored` and `duplicate` are treated as success by the worker (§1.3 step 4) — this is
+what makes retries safe (§3).
+
+### 1.5 Settings / configuration
+
+New section in the existing `OptionsScreen` (`ui/screen/options/`, already has a "Dati di
+debugging" section and the powerlifting-week settings — this fits the same screen rather
+than inventing a new one):
+
+- **Server URL** text field (the Tailscale Serve HTTPS address, e.g.
+  `https://gym-server.<tailnet-name>.ts.net`) — see §4 for why this specific form.
+- **Bearer token** text field (masked, like a password field).
+- **Sync enabled** toggle — off by default until both fields are filled in; lets the
+  feature ship dormant and be turned on deliberately.
+- **Status line**: "N sessions pending, last successful sync: <time>" — read from the
+  ledger, gives visibility without needing `adb` to check.
+- **"Resync all" button**: clears the ledger's `SENT` markers (sets every known session
+  back to `PENDING`) and enqueues a full scan of `history/**/*.md`. This is the backfill
+  mechanism (§3.3) and doubles as "the server's parser just learned to handle a new field,
+  re-send everything" during development.
+
+URL + token stored in `SharedPreferences` (`sync_config`, `MODE_PRIVATE`) — same tier of
+sensitivity as `user_profile`, already documented in STORAGE.md's SharedPreferences table;
+add a row there once implemented.
+
+---
+
+## Part 2 — Server side
+
+### 2.1 Stack
+
+Small Python service (FastAPI) — matches "simple script/service I run myself." No
+particular reason it couldn't be Node/Go instead; FastAPI is a reasonable default for a
+single-person receiver with async I/O and good multipart support out of the box.
+
+### 2.2 Receiver endpoint (`POST /v1/sessions`)
+
+1. Check `Authorization: Bearer` against the configured shared secret (constant-time
+   compare). Reject with 401 otherwise.
+2. Parse the `envelope` JSON part, validate required fields present.
+3. Read the `file` part's bytes, compute sha256, compare to `envelope.contentHash`. Reject
+   with 422 on mismatch (corrupted upload) — do **not** store a file that failed its own
+   integrity check.
+4. **Idempotency check**: does a row already exist for `sessionId` with this exact
+   `contentHash`? If yes → respond `200 duplicate`, no write. (Handles retried requests
+   where the phone never saw the first response, and re-sent "Resync all" runs.)
+5. If `sessionId` exists with a **different** hash (session was edited on the phone after
+   an earlier sync — e.g. rename-sync rewrote it), this is an update: overwrite, don't
+   duplicate.
+6. Write raw bytes to disk, mirroring the phone's own layout for familiarity:
+   `~/gym-server-data/raw/{relPath}` (i.e. `raw/2026/08/2026-08-05_....md`). This is the
+   **source of truth** on the server — human-readable, `git`-able if you want history on
+   it, and the thing every future re-parse reads from. Never derived-only data lives only
+   in SQLite.
+7. Parse the YAML frontmatter (a from-scratch small parser — the server doesn't share code
+   with the Android app, so this is a second implementation of "read this YAML shape,"
+   deliberately thin: a handful of known fields per STORAGE.md, defaulting missing ones,
+   same tolerance policy the Kotlin `WorkoutParser` already uses). Upsert into SQLite
+   (§2.3) keyed by `sessionId`.
+8. Respond `200 stored`.
+
+Steps 6 and 7 are two different failure domains and should not be coupled: if step 7 (YAML
+parsing) throws because of a field shape the server doesn't understand yet, step 6 (raw
+file write) has **already succeeded and is durable**. The endpoint should catch a
+parse-layer exception, log it, and still return `200 stored` (the phone's job — reliably
+delivering bytes — is done; the server's own backlog of "raw files not yet reflected in
+SQLite" is a server-side problem with a server-side fix, see §2.4). This is the direct
+payoff of splitting raw storage from parsed storage: a schema you haven't taught the parser
+about yet **cannot** cause data loss or a phone-visible failure, it just delays that
+session's appearance in the SQL view until you fix the parser and re-run it.
+
+### 2.3 SQLite schema (parsed / queryable layer)
+
+One `sessions` table with the well-known scalar fields from STORAGE.md's frontmatter,
+plus a normalized `sets` table for per-exercise data (better for weekly aggregate queries
+than a JSON blob column):
+
+```sql
+CREATE TABLE sessions (
+  id                TEXT PRIMARY KEY,     -- 8-hex session id
+  date              TEXT NOT NULL,
+  routine_id        TEXT,
+  routine_name      TEXT,
+  started_at        TEXT,
+  completed_at      TEXT,
+  total_tonnage     REAL,
+  session_calories  REAL,
+  session_trimp     REAL,
+  vo2max            REAL,
+  ecg_beats         INTEGER,
+  ecg_duration_sec  INTEGER,
+  ecg_session_rmssd REAL,
+  ecg_pac_count     INTEGER,
+  ecg_pause_count   INTEGER,
+  ecg_irregular_beats INTEGER,
+  afib_suspicion_episodes INTEGER,
+  sdnn              REAL,
+  pnn50             REAL,
+  poincare_sd1      REAL,
+  poincare_sd2      REAL,
+  poincare_ratio    REAL,
+  cardiac_drift_bpm_min REAL,
+  resting_hr        INTEGER,
+  hrr60s            INTEGER,
+  content_hash      TEXT NOT NULL,
+  raw_path          TEXT NOT NULL,        -- relative path under raw/, for re-parse / audit
+  received_at       TEXT NOT NULL,
+  schema_version     INTEGER NOT NULL      -- see §2.4
+);
+
+CREATE TABLE exercise_sets (
+  session_id   TEXT NOT NULL REFERENCES sessions(id),
+  exercise_id  TEXT NOT NULL,
+  exercise_name TEXT,
+  bodypart     TEXT,
+  set_index    INTEGER NOT NULL,
+  reps         INTEGER,
+  weight       REAL,
+  exclude_from_tonnage INTEGER,   -- 0/1
+  is_daily     INTEGER            -- 0/1
+);
+
+CREATE TABLE tonnage_by_bodypart (
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  bodypart   TEXT NOT NULL,
+  tonnage    REAL NOT NULL
+);
+```
+
+Unknown/new frontmatter fields the parser doesn't yet recognize are simply not written to
+a column — they're still safe in the raw file (§2.2 step 6) and get backfilled once the
+parser and a matching column are added (§2.4). This is the server-side mirror of the
+`WorkoutParser` convention already documented in CONVENTIONS.md ("reader defaults missing
+numeric fields to 0 ... so newly omitted fields round-trip cleanly") — same tolerance
+philosophy, applied in the other direction.
+
+### 2.4 `schema_version` and re-parse workflow
+
+`schema_version` is an integer the parser code stamps on every row it writes, bumped
+whenever the parser's field set changes. This gives you:
+
+```sql
+-- "which raw files were parsed by an older version of my parser?"
+SELECT raw_path FROM sessions WHERE schema_version < 3;
+```
+
+A small `reparse.py` maintenance script: given a list of `raw_path`s (or "all"), re-reads
+the raw file from disk, re-runs the *current* parser, and upserts — the exact same code
+path as step 7 of the live receiver, factored into a shared function so there is only one
+parser implementation, called from two entry points (live receiver, batch reparse). This
+is the concrete mechanism for "the app's format changed, catch the server up": edit the
+parser once, run `reparse.py --all`, done — no phone involvement, because the raw files
+already have everything.
+
+### 2.5 Weekly analysis job
+
+Out of scope for this document's detail (per your "the details is not important" framing
+at the start) beyond noting the shape: a cron-scheduled script (`cron` or systemd timer,
+your choice) that queries SQLite, produces whatever report/output you want, running
+entirely server-side against the `sessions`/`exercise_sets` tables. Because it's decoupled
+from ingestion, iterating on the analysis logic never touches the phone or the receiver.
+
+---
+
+## Part 3 — Reliability properties (why this survives real-world flakiness)
+
+### 3.1 Phone-side crash / kill mid-send
+Ledger entry stays `PENDING` (only flipped to `SENT` after a confirmed 2xx). Next
+WorkManager run retries. No partial state possible because the ledger write happens after
+the HTTP response, not before the request.
+
+### 3.2 Server down / unreachable (off tailnet, box rebooting, etc.)
+WorkManager's own retry/backoff handles this without custom code — request fails, entry
+stays retryable, periodic worker keeps trying. Nothing is lost; delivery is delayed, not
+dropped. This is the main reason a local durable queue was chosen over "just try to send
+and shrug on failure."
+
+### 3.3 Retry produces a duplicate delivery
+Content-hash idempotency check (§2.2 step 4) makes a duplicate POST a safe no-op
+server-side. The phone doesn't need exactly-once semantics on its end — at-least-once
+delivery + idempotent receiver = effectively-exactly-once storage.
+
+### 3.4 Session edited after being marked `SENT`
+Rare today (rename-sync rewrites are the main case) but handled: content hash mismatch on
+next check flips the ledger entry back to `PENDING`; server-side, a resend with a new hash
+for a known `sessionId` is treated as an update (§2.2 step 5), not a duplicate rejection.
+
+### 3.5 Schema drift (the original concern that shaped this whole design)
+- Adding a new frontmatter field on the phone requires **zero** sync-code changes — the
+  raw bytes are sent as-is regardless of what fields exist.
+- The server's SQLite view of that new field lags until the parser is updated, but nothing
+  is lost or blocked in the meantime (§2.2's split of raw-write vs parse).
+- `schema_version` + `reparse.py` (§2.4) is the explicit, deliberate step for catching the
+  SQLite layer up — done once, on your schedule, not silently or automatically.
+- The "Resync all" button (§1.5) exists for the rare case you actually want the *phone* to
+  re-send everything (e.g. you wiped the server's raw store and need to rebuild it from
+  the phone's `history/`), which is a different scenario from a schema catch-up (that only
+  needs `reparse.py`, no phone involvement).
+
+### 3.6 Partial multipart upload / network drop mid-transfer
+Server-side hash check (§2.2 step 3) rejects a truncated/corrupted body before it's ever
+written to disk or SQLite. The phone sees a 422, ledger entry stays `FAILED`/retryable,
+next attempt re-sends the whole file cleanly.
+
+---
+
+## Part 4 — Tailscale specifics
+
+### 4.1 Serve, not Funnel
+The phone runs the Tailscale Android app and is joined to the same tailnet as the server —
+confirmed. That makes this a **tailnet-internal** connection between two peers, which is
+exactly what **Tailscale Serve** is for: `tailscale serve https / http://localhost:<port>`
+exposes the local FastAPI service at `https://<server-hostname>.<tailnet-name>.ts.net`
+*only* to other devices on the tailnet, with a real (Let's Encrypt via Tailscale's
+integration) TLS cert — no self-signed cert to pin, no public internet exposure at all.
+
+**Tailscale Funnel** is the wrong tool here — it exposes the endpoint to the public
+internet through Tailscale's relay. There is no reason to do that for a phone that is
+itself always a tailnet member; using Funnel would trade "private by construction" for
+"public, defended by a bearer token" for zero benefit. Do not use Funnel for this feature.
+(If a future need arises for delivery from a device *not* on the tailnet — e.g. someday
+wanting a non-Tailscale device to submit data — that would be the moment to reconsider
+Funnel, with the bearer-token auth already in place from §1.4/§2.2 as the defense-in-depth
+layer that setup would lean on.)
+
+### 4.2 Server setup checklist
+1. `tailscale up` on the server (already presumably done, self-hosted box on the tailnet).
+2. Run the FastAPI receiver bound to `localhost:<port>` (not `0.0.0.0` — Serve reverse-
+   proxies to localhost, no need to expose the port itself beyond loopback).
+3. `tailscale serve --bg https / http://localhost:<port>` — persists across reboots with
+   `--bg`; check `tailscale serve status` to confirm the mapping.
+4. Note the resulting hostname (`tailscale status` or `tailscale serve status` shows it,
+   form `https://<machine-name>.<tailnet-name>.ts.net`) — this is the value that goes into
+   the phone's Server URL setting (§1.5).
+5. Generate the bearer token (e.g. `openssl rand -hex 32`), put it in the server's config
+   (env var, not hardcoded) and the phone's Bearer token setting.
+6. Confirm MagicDNS is enabled on the tailnet (Tailscale admin console → DNS) — required
+   for the `.ts.net` hostname to resolve; it's on by default for most tailnets.
+
+### 4.3 What Tailscale is/isn't doing for you here
+- Tailscale (WireGuard under the hood) already encrypts the transport between phone and
+  server — the `https://` on top (via Serve's cert) is defense-in-depth / lets you use
+  normal HTTP client code without disabling cert validation, not the thing actually
+  securing the link.
+- Tailscale does **not** authenticate the *app* — any device on your tailnet could in
+  principle hit the endpoint. The bearer token (§1.4/§2.2) is what scopes "only MyGymApp,
+  not some other tailnet peer, may POST sessions" — keep it even though the transport is
+  already private. Cheap insurance, and it's the same token that'd matter if Funnel were
+  ever turned on later.
+
+---
+
+## Extensibility: adding a second record type later
+
+When VitaFit scale data is ready to sync, it follows the same shape without touching what
+exists:
+
+- New endpoint `POST /v1/scale-readings` (or a `recordType` field in a shared envelope —
+  either works; a separate path is simpler to reason about and matches "one raw-file-type
+  per endpoint").
+- New ledger *namespace* in `state.yml` (`scaleReadings:` alongside `sessions:`) or a
+  second ledger file — the `SyncRepository`/`SyncWorker` pair should be written generic
+  over "a source of IDs + file paths to send" rather than hardcoded to sessions, so this is
+  a few lines, not a rewrite.
+- New `raw/scale/` directory + new SQLite table server-side, same raw-then-parse split,
+  same `schema_version` mechanism.
+
+Nothing above needs to be built now — noted so the v1 implementation doesn't accidentally
+paint itself into a sessions-only corner (e.g. don't name the worker class
+`SessionSyncWorker` if it's meant to generalize; do keep the envelope's `recordType`-ish
+distinction possible even if v1 only ever sends one kind).
+
+---
+
+## Implementation checklist (when this moves from design to code)
+
+Phone side:
+- [ ] `data/sync/SyncRepository.kt` — ledger read/write (`_sync/state.yml`)
+- [ ] `data/sync/SyncApi.kt` — Retrofit/OkHttp client for the multipart POST (new dep:
+      Retrofit + OkHttp, or plain `HttpURLConnection`/Ktor client if avoiding new deps is
+      preferred — decide against the project's current dependency footprint)
+- [ ] `data/sync/SyncWorker.kt` — CoroutineWorker, WorkManager dep (new dep, check current
+      `build.gradle` first)
+- [ ] Hook into `ActiveRoutineViewModel.registerRoutine()` — enqueue after successful save
+- [ ] Hook into `WorkoutRepository` rename-sync paths — requeue on content change
+- [ ] `OptionsScreen` additions — server URL, token, enabled toggle, status line, resync
+      button (+ `SyncSettingsRepository` for the two SharedPreferences keys)
+- [ ] Update STORAGE.md's SharedPreferences table with the new `sync_config` entry
+- [ ] Update CONVENTIONS.md if any new non-obvious pattern falls out of implementation
+- [ ] CHANGELOG.md entry once shipped
+
+Server side (separate repo/location, not in this Android codebase):
+- [ ] FastAPI receiver (`POST /v1/sessions`, bearer auth, hash check, raw write, parse,
+      SQLite upsert)
+- [ ] SQLite schema + migration for the `sessions`/`exercise_sets`/`tonnage_by_bodypart`
+      tables
+- [ ] `reparse.py` maintenance script sharing the parser function with the live receiver
+- [ ] Tailscale Serve setup (§4.2)
+- [ ] Weekly analysis script (shape TBD — separate discussion)
+- [ ] Backup story for `~/gym-server-data/raw/` (this is now a second copy of your workout
+      history — decide if it needs its own backup independent of the phone)
