@@ -22,8 +22,11 @@ filesDir/gymdata/              ← FileManager.root
 │   └── {sha256[:16]}.img
 ├── image_cache/               ← Coil disk cache (100 MB, LRU)
 │   └── (Coil-managed)
-└── _sync/                     ← Server sync ledger (see SYNC.md)
-    └── state.yml
+├── readiness/                 ← One file per 60s HRV readiness measurement
+│   └── {8hex}.md
+└── _sync/                     ← Server sync ledgers (see SYNC.md)
+    ├── state.yml               (sessions)
+    └── readiness_state.yml     (readiness events)
 ```
 
 The two image caches serve different purposes:
@@ -140,6 +143,22 @@ Session notes
 `excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected.
 
 `isDaily: true` marks an exercise performed as a fixed-daily exercise in this session. Exercise screens use it so daily progress (grey "previous" values) is compared only against prior sessions where the same exercise was *also* daily, and normal progress only against prior normal sessions — the same exercise can swing between the two roles across days without contaminating either history.
+
+### Readiness event (`readiness/{id}.md`)
+
+```yaml
+---
+id: a1b2c3d4
+measuredAt: "2026-08-05T07:04:10.123"
+readiness: "GOOD"
+lnRmssd: 4.30
+restingHr: 65
+vo2max: 45.2
+recommendation: "HRV above baseline. Good day to push intensity."
+---
+```
+
+Written by [ReadinessRepository](../app/src/main/java/com/mygymapp/data/polar/ReadinessRepository.kt) at the end of [PolarManager.finishReadinessMeasurement()](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) — the 60s HRV measurement that already ran on every HR connect, but was previously only held in an in-memory StateFlow for the UI and never persisted. Only successful measurements are saved (`cleanRR.size >= 20`); a failed "not enough clean data" attempt is discarded, not written. See [POLAR.md](POLAR.md) for the readiness algorithm and [SYNC.md](SYNC.md) for how these get synced to the server immediately, independent of session sync.
 
 ### Raw ECG (`ecg/{sessionId}.ecg`)
 
