@@ -113,7 +113,9 @@ class OptionsViewModel @Inject constructor(
         if (url.isBlank()) return
         _uiState.value = _uiState.value.copy(syncIsTestingConnection = true, syncConnectionTestResult = null)
         viewModelScope.launch {
-            val reachable = withContext(Dispatchers.IO) { syncApi.checkHealth(url) }
+            val reachable = withContext(Dispatchers.IO) {
+                syncApi.checkHealth(url) is com.mygymapp.data.sync.SyncResult.Success
+            }
             _uiState.value = _uiState.value.copy(
                 syncIsTestingConnection = false,
                 syncConnectionTestResult = reachable,
