@@ -68,6 +68,7 @@ class PolarManager @Inject constructor(
     private val readinessRepository: ReadinessRepository,
     private val readinessLedgerRepository: com.mygymapp.data.sync.ReadinessLedgerRepository,
     private val syncConfigRepository: SyncConfigRepository,
+    private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
 ) {
     // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
     // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
@@ -250,6 +251,7 @@ class PolarManager @Inject constructor(
                 appLogger.i(TAG, "Connected: ${polarDeviceInfo.deviceId} (${polarDeviceInfo.name}) midSession=$hrSeriesActive")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 lastConnectedDeviceId = polarDeviceInfo.deviceId
+                knownPolarDeviceRepository.setKnownDeviceId(polarDeviceInfo.deviceId)
                 userInitiatedDisconnect = false
                 reconnectStartAtMs = 0L
                 reconnectHandler.removeCallbacksAndMessages(null)
@@ -354,9 +356,14 @@ class PolarManager @Inject constructor(
         })
     }
 
+    private var autoConnectAttempted = false
+
     fun startScan() {
         _discoveredDevices.value = emptyList()
         _isScanning.value = true
+        autoConnectAttempted = false
+
+        val knownDeviceId = knownPolarDeviceRepository.getKnownDeviceId()
 
         scanDisposable?.dispose()
         scanDisposable = api.searchForDevice()
@@ -365,6 +372,10 @@ class PolarManager @Inject constructor(
                     val current = _discoveredDevices.value
                     if (current.none { it.deviceId == deviceInfo.deviceId }) {
                         _discoveredDevices.value = current + deviceInfo
+                    }
+                    if (!autoConnectAttempted && knownDeviceId != null && deviceInfo.deviceId == knownDeviceId) {
+                        autoConnectAttempted = true
+                        connectToDevice(deviceInfo.deviceId)
                     }
                 },
                 { error ->

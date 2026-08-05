@@ -34,5 +34,6 @@ sealed class Screen(val route: String) {
             "session/$sessionId/$date?justCompleted=$justCompleted"
     }
     data object HeartRate : Screen("heartrate")
+    data object ScaleDebug : Screen("scale_debug")
     data object Options : Screen("options")
 }
