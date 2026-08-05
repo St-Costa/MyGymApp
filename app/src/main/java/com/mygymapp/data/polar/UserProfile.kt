@@ -9,6 +9,7 @@ data class UserProfile(
     val age: Int = 30,
     val weightKg: Double = 75.0,
     val isMale: Boolean = true,
+    val heightCm: Int = 175,
 ) {
     /** Tanaka formula: more accurate than 220-age */
     val hrMax: Int get() = (208 - (0.7 * age)).toInt()
@@ -24,6 +25,7 @@ class UserProfileRepository @Inject constructor(
         age = prefs.getInt("age", 30),
         weightKg = prefs.getFloat("weightKg", 75f).toDouble(),
         isMale = prefs.getBoolean("isMale", true),
+        heightCm = prefs.getInt("heightCm", 175),
     )
 
     fun save(profile: UserProfile) {
@@ -31,6 +33,7 @@ class UserProfileRepository @Inject constructor(
             .putInt("age", profile.age)
             .putFloat("weightKg", profile.weightKg.toFloat())
             .putBoolean("isMale", profile.isMale)
+            .putInt("heightCm", profile.heightCm)
             .apply()
     }
 }
