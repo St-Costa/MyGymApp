@@ -1,10 +1,10 @@
-# Server sync (design — not yet implemented)
+# Server sync
 
-Status: **planned, no code yet**. This document is the agreed design for pushing workout
-data from the phone to a self-hosted server over Tailscale, for weekly analysis. Written
-before implementation so the shape is settled up front instead of discovered mid-build.
-When implementation starts, update this doc's status line and keep it in sync with the
-code the same way every other doc here is kept in sync (per CLAUDE.md).
+Status: **phone-side transport implemented** (`data/sync/`, hooked into
+`ActiveRoutineViewModel.registerRoutine()` and the Options screen). The server side lives
+in a separate repository (`MyGymApp_server`) per `docs/sync-ingestion/SPEC.md` there — not
+in this codebase. This document is the design this implementation followed; kept in sync
+with the code per CLAUDE.md's working conventions.
 
 ## Goal
 
@@ -466,30 +466,34 @@ distinction possible even if v1 only ever sends one kind).
 
 ---
 
-## Implementation checklist (when this moves from design to code)
+## Implementation status
 
-Phone side:
-- [ ] `data/sync/SyncRepository.kt` — ledger read/write (`_sync/state.yml`)
-- [ ] `data/sync/SyncApi.kt` — Retrofit/OkHttp client for the multipart POST (new dep:
-      Retrofit + OkHttp, or plain `HttpURLConnection`/Ktor client if avoiding new deps is
-      preferred — decide against the project's current dependency footprint)
-- [ ] `data/sync/SyncWorker.kt` — CoroutineWorker, WorkManager dep (new dep, check current
-      `build.gradle` first)
-- [ ] Hook into `ActiveRoutineViewModel.registerRoutine()` — enqueue after successful save
-- [ ] Hook into `WorkoutRepository` rename-sync paths — requeue on content change
-- [ ] `OptionsScreen` additions — server URL, token, enabled toggle, status line, resync
-      button (+ `SyncSettingsRepository` for the two SharedPreferences keys)
-- [ ] Update STORAGE.md's SharedPreferences table with the new `sync_config` entry
-- [ ] Update CONVENTIONS.md if any new non-obvious pattern falls out of implementation
-- [ ] CHANGELOG.md entry once shipped
+Phone side (this repo, package `data/sync/`):
+- [x] `SyncConfigRepository.kt` — server URL / bearer token / enabled flag, SharedPreferences (`sync_config`)
+- [x] `SyncLedgerEntry.kt` / `SyncLedgerRepository.kt` — ledger read/write (`gymdata/_sync/state.yml`)
+- [x] `SyncApi.kt` — OkHttp client for the multipart POST + `/health` check
+- [x] `SyncWorker.kt` (`@HiltWorker`) + `SyncWorker.Scheduler` — expedited one-off on
+      enqueue, periodic (4h) durability net, both via WorkManager with exponential backoff
+- [x] `MyGymApp` is now a `Configuration.Provider` (`HiltWorkerFactory`); WorkManager's
+      default `androidx.startup` initializer is disabled in the manifest so Hilt can
+      construct `SyncWorker` — required whenever a `@HiltWorker` is introduced.
+- [x] Hook into `ActiveRoutineViewModel.registerRoutine()` — enqueues right after the
+      final `workoutRepository.save(updated)`, then triggers an expedited `SyncWorker` run.
+      Never inline/blocking — same discipline as `completionSaved`/`onCleared()` save.
+- [x] Hook into `WorkoutRepository.updateExerciseNameInHistory` /
+      `updateRoutineNameInHistory` — `syncLedgerRepository.requeueIfChanged()` after each
+      rewritten session file, so a rename-triggered edit gets resynced (§3.4).
+- [x] `OptionsScreen`/`OptionsViewModel` additions — server URL + token fields, enabled
+      switch, "Verifica connessione" (health check), pending-count/last-sync status line,
+      "Rinvia tutte le sessioni" (resync-all, backed by
+      `WorkoutRepository.getAllCompletedSessions()`).
+- [x] `STORAGE.md`'s SharedPreferences table updated with `sync_config`; new
+      `gymdata/_sync/` directory documented in the root layout.
+- [ ] Server side — see `MyGymApp_server` repo, `docs/sync-ingestion/SPEC.md` there (own
+      implementation checklist, out of this repo's scope).
+- [ ] On-device end-to-end test against a live server (build compiles; not yet run against
+      the actual Tailscale Serve endpoint from a phone).
 
-Server side (separate repo/location, not in this Android codebase):
-- [ ] FastAPI receiver (`POST /v1/sessions`, bearer auth, hash check, raw write, parse,
-      SQLite upsert)
-- [ ] SQLite schema + migration for the `sessions`/`exercise_sets`/`tonnage_by_bodypart`
-      tables
-- [ ] `reparse.py` maintenance script sharing the parser function with the live receiver
-- [ ] Tailscale Serve setup (§4.2)
-- [ ] Weekly analysis script (shape TBD — separate discussion)
-- [ ] Backup story for `~/gym-server-data/raw/` (this is now a second copy of your workout
-      history — decide if it needs its own backup independent of the phone)
+New Gradle dependencies added: `com.squareup.okhttp3:okhttp`, `androidx.work:work-runtime-ktx`,
+`androidx.hilt:hilt-work` (+ `hilt-compiler` via KSP). `buildFeatures.buildConfig = true`
+enabled (needed for `BuildConfig.VERSION_NAME` in the sync envelope's `appVersion` field).

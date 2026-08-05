@@ -36,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -64,6 +65,13 @@ dependencies {
     implementation(libs.polar.ble.sdk)
     implementation(libs.rxjava3)
     implementation(libs.rxandroid3)
+
+    // Server sync (docs/SYNC.md): raw session files pushed to a self-hosted
+    // server over Tailscale via WorkManager-driven retry.
+    implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

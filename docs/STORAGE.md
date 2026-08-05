@@ -20,8 +20,10 @@ filesDir/gymdata/              ← FileManager.root
 │   └── {sessionId}.ecg
 ├── cache/images/              ← ImageCacheRepository (exercise link previews)
 │   └── {sha256[:16]}.img
-└── image_cache/               ← Coil disk cache (100 MB, LRU)
-    └── (Coil-managed)
+├── image_cache/               ← Coil disk cache (100 MB, LRU)
+│   └── (Coil-managed)
+└── _sync/                     ← Server sync ledger (see SYNC.md)
+    └── state.yml
 ```
 
 The two image caches serve different purposes:
@@ -206,8 +208,33 @@ Two keys, both `MODE_PRIVATE`:
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
 | `hrv_baseline` | `lnrmssd_values` | String (CSV, ≤14 doubles) | [PolarManager](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) | Rolling 14-day LnRMSSD baseline for HRV readiness z-score |
+| `sync_config` | `serverUrl` | String | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net` |
+| `sync_config` | `bearerToken` | String | " | Shared secret sent as `Authorization: Bearer` on every sync POST |
+| `sync_config` | `enabled` | Boolean | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |
 
 Nothing else is persisted outside `gymdata/`.
+
+## Server sync ledger (`_sync/state.yml`)
+
+Tracks delivery status per session ID for the self-hosted server sync feature — see
+[SYNC.md](SYNC.md). Not session content; purely "has this session's current content been
+handed to the server yet."
+
+```yaml
+sessions:
+  3c4d5e6f:
+    relPath: "2026/08/2026-08-05_rt-b2c3d4e5_3c4d5e6f.md"
+    status: SENT              # PENDING | SENT | FAILED
+    attempts: 1
+    lastAttemptAt: "2026-08-05T10:05:42"
+    lastError: ""
+    contentHash: "sha256:9f8e7d6c..."
+```
+
+Owned by [SyncLedgerRepository](../app/src/main/java/com/mygymapp/data/sync/SyncLedgerRepository.kt),
+read/written with the same hand-rolled snakeyaml `Load` + manual-write approach as
+[MarkdownParser](../app/src/main/java/com/mygymapp/data/parser/MarkdownParser.kt), since
+this is a flat map rather than a frontmatter+body document.
 
 ## Backup / export
 

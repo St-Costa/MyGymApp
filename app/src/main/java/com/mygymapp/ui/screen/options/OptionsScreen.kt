@@ -20,6 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -30,7 +33,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -113,6 +120,128 @@ fun OptionsScreen(
                 onSetInterval = viewModel::setInterval,
                 onClear = viewModel::clearSchedule,
             )
+            SyncSection(
+                uiState = uiState,
+                onServerUrlChange = viewModel::setSyncServerUrl,
+                onBearerTokenChange = viewModel::setSyncBearerToken,
+                onEnabledChange = viewModel::setSyncEnabled,
+                onTestConnection = viewModel::testConnection,
+                onResyncAll = viewModel::resyncAll,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncSection(
+    uiState: OptionsUiState,
+    onServerUrlChange: (String) -> Unit,
+    onBearerTokenChange: (String) -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+    onTestConnection: () -> Unit,
+    onResyncAll: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Sincronizzazione server", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Invia i dati delle sessioni al tuo server self-hosted via Tailscale, " +
+                    "per l'analisi settimanale. I dati vengono inviati alla fine di ogni " +
+                    "sessione; nulla viene inviato finché non è attivata.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            OutlinedTextField(
+                value = uiState.syncServerUrl,
+                onValueChange = onServerUrlChange,
+                label = { Text("URL server (Tailscale)") },
+                placeholder = { Text("https://tuo-host.tailnet.ts.net") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = uiState.syncBearerToken,
+                onValueChange = onBearerTokenChange,
+                label = { Text("Token condiviso (bearer)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Sincronizzazione attiva", style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = uiState.syncEnabled,
+                    onCheckedChange = onEnabledChange,
+                    enabled = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank(),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onTestConnection,
+                    enabled = uiState.syncServerUrl.isNotBlank() && !uiState.syncIsTestingConnection,
+                ) {
+                    if (uiState.syncIsTestingConnection) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Verifica connessione")
+                    }
+                }
+                when (uiState.syncConnectionTestResult) {
+                    true -> Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = "Raggiungibile",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    false -> Icon(
+                        Icons.Default.Error,
+                        contentDescription = "Non raggiungibile",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    null -> {}
+                }
+            }
+
+            Text(
+                buildString {
+                    append("${uiState.syncPendingCount} sessioni in attesa")
+                    if (uiState.syncLastSuccessAt != null) {
+                        append(" · ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}")
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            OutlinedButton(
+                onClick = onResyncAll,
+                enabled = !uiState.syncIsResyncing &&
+                    uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.syncIsResyncing) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Rinvia tutte le sessioni")
+                }
+            }
         }
     }
 }
