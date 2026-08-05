@@ -5,9 +5,11 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mygymapp.BuildConfig
@@ -24,9 +26,7 @@ import java.util.concurrent.TimeUnit
  * Deliberately its own worker rather than a generalized one (docs/SYNC.md
  * "Extensibility"): readiness events fire immediately after a 60s measurement, whereas
  * sessions fire once at workout end, and keeping them independent means retrying one kind
- * never contends with or risks the other. No periodic durability net for readiness (unlike
- * sessions) — a missed readiness sync just waits for the next expedited trigger from
- * PolarManager, which happens once per HR connect; add one later if that's not enough.
+ * never contends with or risks the other.
  */
 @HiltWorker
 class ReadinessSyncWorker @AssistedInject constructor(
@@ -42,6 +42,10 @@ class ReadinessSyncWorker @AssistedInject constructor(
     companion object {
         private const val TAG = "ReadinessSyncWorker"
         private const val UNIQUE_EXPEDITED_NAME = "readiness-sync-expedited"
+        private const val UNIQUE_PERIODIC_NAME = "readiness-sync-periodic"
+
+        /** Exposed so the Options screen can observe completion and refresh its status line. */
+        const val EXPEDITED_WORK_NAME = UNIQUE_EXPEDITED_NAME
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -106,6 +110,22 @@ class ReadinessSyncWorker @AssistedInject constructor(
                 .build()
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(UNIQUE_EXPEDITED_NAME, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        /**
+         * Durability net, same role as [SyncWorker.Scheduler.ensurePeriodic] — catches
+         * anything an expedited run couldn't send (e.g. the app was killed before
+         * WorkManager persisted the retry). Matters most for a server that's expected to
+         * be offline for days at a time: without this, a lost expedited run would just
+         * never retry until the next HR connect happens to trigger a new one.
+         */
+        fun ensurePeriodic(context: Context) {
+            val request = PeriodicWorkRequestBuilder<ReadinessSyncWorker>(4, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniquePeriodicWork(UNIQUE_PERIODIC_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
         }
     }
 }
