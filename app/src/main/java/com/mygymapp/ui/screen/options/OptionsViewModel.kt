@@ -11,6 +11,8 @@ import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncDiagnostics
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +64,29 @@ class OptionsViewModel @Inject constructor(
 
     init {
         refreshSyncStatus()
+        observeSyncWorkerCompletion()
+    }
+
+    /**
+     * The status line ("N sessioni in attesa") was only ever refreshed right after
+     * enqueueing work, not when that work actually *finished* — SyncWorker runs
+     * asynchronously in the background (WorkManager), so "Resync all" would enqueue 58
+     * sessions, immediately show "58 in attesa", and never update again even though the
+     * worker went on to deliver all 58 within seconds. Observing WorkManager's own state
+     * for the expedited work name means the status line refreshes itself the moment the
+     * worker actually completes, regardless of who triggered it (auto-enqueue on session
+     * end, "Resync all", or the periodic durability net).
+     */
+    private fun observeSyncWorkerCompletion() {
+        viewModelScope.launch {
+            WorkManager.getInstance(appContext)
+                .getWorkInfosForUniqueWorkFlow(SyncWorker.Scheduler.EXPEDITED_WORK_NAME)
+                .collect { infos ->
+                    if (infos.any { it.state.isFinished }) {
+                        refreshSyncStatus()
+                    }
+                }
+        }
     }
 
     /** Select any day; the whole week (its Monday) becomes the anchor. */

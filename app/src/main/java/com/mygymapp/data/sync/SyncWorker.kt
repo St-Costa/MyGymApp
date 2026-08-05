@@ -119,6 +119,9 @@ class SyncWorker @AssistedInject constructor(
 
     /** Enqueues one-off and periodic [SyncWorker] runs. Call from app start and after each enqueue. */
     object Scheduler {
+        /** Exposed so the Options screen can observe completion and refresh its status line. */
+        const val EXPEDITED_WORK_NAME = UNIQUE_EXPEDITED_NAME
+
         private val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
