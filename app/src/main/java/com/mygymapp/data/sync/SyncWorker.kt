@@ -53,7 +53,15 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        if (!config.isEnabled() || !config.isConfigured()) {
+        // isEnabled() gates whether NEW work gets queued in the first place (see
+        // ActiveRoutineViewModel.registerRoutine() and the periodic durability net) —
+        // it must NOT gate draining a queue that already has entries in it, since those
+        // only exist because of an explicit action (a finalized session while enabled
+        // was on, or the user pressing "Resync all"). Without this distinction, flipping
+        // the switch off after enqueueing silently strands PENDING entries forever, and
+        // "Resync all" (usable even with sync off, so a user can test/backfill before
+        // committing to automatic sync) would appear to do nothing.
+        if (!config.isConfigured()) {
             return@withContext Result.success()
         }
         val serverUrl = config.serverUrl()

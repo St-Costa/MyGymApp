@@ -205,13 +205,20 @@ than inventing a new one):
   `https://gym-server.<tailnet-name>.ts.net`) — see §4 for why this specific form.
 - **Bearer token** text field (masked, like a password field).
 - **Sync enabled** toggle — off by default until both fields are filled in; lets the
-  feature ship dormant and be turned on deliberately.
+  feature ship dormant and be turned on deliberately. **Scope of what this gates**: only
+  the *automatic* per-session enqueue in `ActiveRoutineViewModel.registerRoutine()`. It
+  does **not** gate whether `SyncWorker` will drain entries that are already `PENDING` in
+  the ledger — those exist only because of an explicit action (the toggle was on when that
+  session finished, or "Resync all" was pressed), and once queued they get delivered
+  regardless of the toggle's current state. Conflating the two — checked live on-device —
+  makes "Resync all" a silent no-op whenever sync is off, which defeats its own purpose
+  (testing/backfilling *before* committing to automatic sync).
 - **Status line**: "N sessions pending, last successful sync: <time>" — read from the
   ledger, gives visibility without needing `adb` to check.
 - **"Resync all" button**: clears the ledger's `SENT` markers (sets every known session
   back to `PENDING`) and enqueues a full scan of `history/**/*.md`. This is the backfill
   mechanism (§3.3) and doubles as "the server's parser just learned to handle a new field,
-  re-send everything" during development.
+  re-send everything" during development. Works even with the enabled toggle off — see above.
 
 URL + token stored in `SharedPreferences` (`sync_config`, `MODE_PRIVATE`) — same tier of
 sensitivity as `user_profile`, already documented in STORAGE.md's SharedPreferences table;
