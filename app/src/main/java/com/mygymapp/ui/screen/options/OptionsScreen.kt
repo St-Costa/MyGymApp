@@ -225,7 +225,7 @@ private fun SyncSection(
 
             Text(
                 buildString {
-                    append("${uiState.syncPendingCount} sessioni in attesa")
+                    append("${uiState.syncPendingCount} elementi in attesa (sessioni, misurazioni, pesate)")
                     if (uiState.syncLastSuccessAt != null) {
                         append(" · ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}")
                     }
@@ -243,7 +243,7 @@ private fun SyncSection(
                 if (uiState.syncIsResyncing) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Rinvia tutte le sessioni")
+                    Text("Invia tutti i dati in coda")
                 }
             }
 

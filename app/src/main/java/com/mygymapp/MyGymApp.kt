@@ -7,6 +7,8 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -25,9 +27,14 @@ class MyGymApp : Application(), ImageLoaderFactory, Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        // Durability net: catches anything an expedited post-session send couldn't
-        // deliver (server down, phone off tailnet, app killed before the one-off ran).
+        // Durability net: catches anything an expedited send couldn't deliver (server
+        // down, phone off tailnet, app killed before the one-off ran). Retries every 4h
+        // indefinitely — this is what keeps data flowing in when the self-hosted server
+        // is only up intermittently (e.g. only running on a dev machine for now), not
+        // just for brief outages.
         SyncWorker.Scheduler.ensurePeriodic(this)
+        ReadinessSyncWorker.Scheduler.ensurePeriodic(this)
+        ScaleWeighInSyncWorker.Scheduler.ensurePeriodic(this)
     }
 
     override fun newImageLoader(): ImageLoader {

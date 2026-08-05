@@ -4,8 +4,14 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.PowerliftingScheduleRepository
+import com.mygymapp.data.polar.ReadinessRepository
+import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.sync.DiagnosticStep
+import com.mygymapp.data.sync.ReadinessLedgerRepository
+import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
+import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncApi
 import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncDiagnostics
@@ -48,6 +54,10 @@ class OptionsViewModel @Inject constructor(
     private val syncApi: SyncApi,
     private val workoutRepository: WorkoutRepository,
     private val syncDiagnostics: SyncDiagnostics,
+    private val readinessRepository: ReadinessRepository,
+    private val readinessLedgerRepository: ReadinessLedgerRepository,
+    private val scaleHistoryRepository: ScaleHistoryRepository,
+    private val scaleWeighInLedgerRepository: ScaleWeighInLedgerRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -78,14 +88,19 @@ class OptionsViewModel @Inject constructor(
      * end, "Resync all", or the periodic durability net).
      */
     private fun observeSyncWorkerCompletion() {
-        viewModelScope.launch {
-            WorkManager.getInstance(appContext)
-                .getWorkInfosForUniqueWorkFlow(SyncWorker.Scheduler.EXPEDITED_WORK_NAME)
-                .collect { infos ->
+        val workManager = WorkManager.getInstance(appContext)
+        listOf(
+            SyncWorker.Scheduler.EXPEDITED_WORK_NAME,
+            ReadinessSyncWorker.EXPEDITED_WORK_NAME,
+            ScaleWeighInSyncWorker.EXPEDITED_WORK_NAME,
+        ).forEach { workName ->
+            viewModelScope.launch {
+                workManager.getWorkInfosForUniqueWorkFlow(workName).collect { infos ->
                     if (infos.any { it.state.isFinished }) {
                         refreshSyncStatus()
                     }
                 }
+            }
         }
     }
 
@@ -148,40 +163,65 @@ class OptionsViewModel @Inject constructor(
         }
     }
 
+    /** Sum across all three ledgers (sessions + readiness + scale) — one status line for everything queued. */
     private fun refreshSyncStatus() {
         viewModelScope.launch {
-            val pending = syncLedgerRepository.pendingCount()
+            val sessionsPending = syncLedgerRepository.pendingCount()
+            val readinessPending = readinessLedgerRepository.getPending().size
+            val scalePending = scaleWeighInLedgerRepository.getPending().size
             val lastSuccess = syncLedgerRepository.lastSuccessfulSyncAt()
             _uiState.value = _uiState.value.copy(
-                syncPendingCount = pending,
+                syncPendingCount = sessionsPending + readinessPending + scalePending,
                 syncLastSuccessAt = lastSuccess,
             )
         }
     }
 
     /**
-     * Re-enqueues every completed session in `history/` for delivery, regardless of prior
-     * SENT status. Backfill mechanism (docs/SYNC.md §1.5/§3.5) — used to rebuild the
-     * server's raw store from scratch, or to resend everything after improving the
-     * server-side parser during development.
+     * Re-enqueues every session, readiness event, and scale weigh-in on disk for
+     * delivery, regardless of prior SENT status — a full backfill across all three
+     * independent sync pipelines (docs/SYNC.md §1.5/§3.5). Named "Invia tutti i dati in
+     * coda" in the UI. Useful whenever the server was offline/not-yet-built when some of
+     * this data was created (the common case while developing the server side — data is
+     * always persisted and queued locally regardless of whether the server exists yet),
+     * or to resend everything after improving a server-side parser.
      */
     fun resyncAll() {
         _uiState.value = _uiState.value.copy(syncIsResyncing = true)
         viewModelScope.launch {
             val sessions = workoutRepository.getAllCompletedSessions()
+            val readinessEvents = readinessRepository.getAll()
+            val weighIns = scaleHistoryRepository.getAll()
+
             withContext(Dispatchers.IO) {
                 sessions.forEach { session ->
                     val file = workoutRepository.fileFor(session)
                     if (file.exists()) {
-                        syncLedgerRepository.enqueue(
-                            session.id,
-                            workoutRepository.relPathFor(session),
+                        syncLedgerRepository.enqueue(session.id, workoutRepository.relPathFor(session), file)
+                    }
+                }
+                readinessEvents.forEach { event ->
+                    val file = readinessRepository.fileFor(event)
+                    if (file.exists()) {
+                        readinessLedgerRepository.enqueue(event.id, "readiness/${event.id}.md", file)
+                    }
+                }
+                weighIns.forEach { weighIn ->
+                    val file = scaleHistoryRepository.fileFor(weighIn.id)
+                    if (file.exists()) {
+                        scaleWeighInLedgerRepository.enqueue(
+                            weighIn.id,
+                            scaleHistoryRepository.relPathFor(weighIn.id),
                             file,
                         )
                     }
                 }
             }
+
             SyncWorker.Scheduler.runExpedited(appContext)
+            ReadinessSyncWorker.Scheduler.runExpedited(appContext)
+            ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext)
+
             refreshSyncStatus()
             _uiState.value = _uiState.value.copy(syncIsResyncing = false)
         }

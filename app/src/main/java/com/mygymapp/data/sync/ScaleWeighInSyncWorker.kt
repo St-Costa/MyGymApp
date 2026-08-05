@@ -5,9 +5,11 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mygymapp.BuildConfig
@@ -23,10 +25,6 @@ import java.util.concurrent.TimeUnit
  * Drains the scale weigh-in sync ledger — the third independent sync worker alongside
  * [SyncWorker] (sessions) and [ReadinessSyncWorker]. Same reasoning for staying dedicated
  * rather than generalized: see docs/SYNC.md "Extensibility".
- *
- * No periodic durability net (like readiness, unlike sessions) — a missed send waits for
- * the next weigh-in to trigger another expedited run. The scale is used roughly daily in
- * practice, so this is an even shorter worst-case gap than readiness's "next HR connect."
  */
 @HiltWorker
 class ScaleWeighInSyncWorker @AssistedInject constructor(
@@ -42,6 +40,10 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
     companion object {
         private const val TAG = "ScaleWeighInSyncWorker"
         private const val UNIQUE_EXPEDITED_NAME = "scale-sync-expedited"
+        private const val UNIQUE_PERIODIC_NAME = "scale-sync-periodic"
+
+        /** Exposed so the Options screen can observe completion and refresh its status line. */
+        const val EXPEDITED_WORK_NAME = UNIQUE_EXPEDITED_NAME
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -106,6 +108,16 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
                 .build()
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(UNIQUE_EXPEDITED_NAME, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        /** Durability net — see [ReadinessSyncWorker.Scheduler.ensurePeriodic] for the reasoning. */
+        fun ensurePeriodic(context: Context) {
+            val request = PeriodicWorkRequestBuilder<ScaleWeighInSyncWorker>(4, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniquePeriodicWork(UNIQUE_PERIODIC_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
         }
     }
 }
