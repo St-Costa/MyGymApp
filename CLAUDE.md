@@ -20,6 +20,7 @@ ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 | "How does the heart rate / ECG / readiness stuff work?" | [docs/POLAR.md](docs/POLAR.md) |
 | "There's an odd pattern — is this intentional?" | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
 | "What happened over time?" | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
+| "How does syncing data to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (design only, not yet implemented) |
 
 Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementation-guide.md).
 
