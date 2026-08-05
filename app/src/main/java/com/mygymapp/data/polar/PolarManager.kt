@@ -25,8 +25,14 @@ import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
+import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -59,7 +65,15 @@ class PolarManager @Inject constructor(
     private val ecgRecorder: EcgRecorder,
     private val ecgAnalyzer: EcgAnalyzer,
     private val appLogger: AppLogger,
+    private val readinessRepository: ReadinessRepository,
+    private val readinessLedgerRepository: com.mygymapp.data.sync.ReadinessLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
 ) {
+    // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
+    // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
+    // explicit cancellation — unlike the per-screen `clearScope` pattern in edit
+    // ViewModels (see CONVENTIONS.md), there is no "cleared" moment to race against.
+    private val readinessScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     companion object {
         private const val TAG = "PolarManager"
         private const val RR_BUFFER_SIZE = 30
@@ -1005,6 +1019,36 @@ class PolarManager @Inject constructor(
 
         Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
         appLogger.i(TAG, "Readiness: $readiness lnRMSSD=${"%.2f".format(lnRmssd)} restingHr=$measuredRestingHr vo2max=${vo2?.let { "%.1f".format(it) } ?: "n/a"} rrSamples=${cleanRR.size}")
+
+        // Persist + sync immediately (docs/SYNC.md) — independent of whether the user
+        // goes on to complete a workout session today. Fire-and-forget on readinessScope:
+        // must never block/delay the UI update above, and a save/sync failure here must
+        // never crash a BLE callback thread.
+        readinessScope.launch {
+            try {
+                val event = readinessRepository.save(
+                    readiness = readiness.name,
+                    lnRmssd = lnRmssd,
+                    restingHr = measuredRestingHr,
+                    vo2max = vo2 ?: 0.0,
+                    recommendation = recommendation,
+                )
+                appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
+                // Sync enqueue is gated the same way session sync is (docs/SYNC.md §1.5):
+                // only the automatic path respects the enabled toggle. A manual resync
+                // action for readiness events can be added later the same way "Resync
+                // all" works for sessions, if that's ever needed.
+                if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                    val file = readinessRepository.fileFor(event)
+                    if (file.exists()) {
+                        readinessLedgerRepository.enqueue(event.id, "readiness/${event.id}.md", file)
+                        ReadinessSyncWorker.Scheduler.runExpedited(context)
+                    }
+                }
+            } catch (e: Throwable) {
+                appLogger.e(TAG, "Failed to persist/queue readiness event", e)
+            }
+        }
     }
 
     /** Short vibration + beep, fired when the 60s post-connection readiness window ends. */
