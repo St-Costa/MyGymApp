@@ -65,6 +65,7 @@ import java.util.Locale
 @Composable
 fun OptionsScreen(
     onBack: () -> Unit,
+    onNavigateToScaleDebug: () -> Unit = {},
     viewModel: OptionsViewModel = hiltViewModel(),
     mainViewModel: MainViewModel = hiltViewModel(),
 ) {
@@ -112,6 +113,7 @@ fun OptionsScreen(
             DebugSection(
                 isSeeding = mainState.isSeedingData,
                 onSeedClick = { showSeedDialog = true },
+                onScaleDebugClick = onNavigateToScaleDebug,
             )
             PowerliftingSection(
                 anchorMonday = uiState.anchorMonday,
@@ -297,7 +299,7 @@ private fun DiagnosticStepRow(step: com.mygymapp.data.sync.DiagnosticStep) {
 }
 
 @Composable
-private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit) {
+private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit, onScaleDebugClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -322,6 +324,12 @@ private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit) {
                 } else {
                     Text("Inserisci dati di debugging")
                 }
+            }
+            OutlinedButton(
+                onClick = onScaleDebugClick,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Scale BLE Debug")
             }
         }
     }
