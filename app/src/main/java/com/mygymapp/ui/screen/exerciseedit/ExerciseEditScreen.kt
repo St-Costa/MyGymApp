@@ -22,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.BackHandler
@@ -189,6 +190,26 @@ fun ExerciseEditScreen(
                         )
                         RoundStepButton("+") { viewModel.onRepMaxChange(uiState.defaultRepRangeMax + 1) }
                     }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text("Corpo libero", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Nessun peso esterno per natura (es. plank, push-up). " +
+                                "I set restano conteggiati come lavoro svolto anche a peso 0.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = uiState.isBodyweight,
+                        onCheckedChange = viewModel::onBodyweightChange,
+                    )
                 }
             }
 
