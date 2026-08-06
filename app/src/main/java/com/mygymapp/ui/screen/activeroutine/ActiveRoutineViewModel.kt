@@ -199,7 +199,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
                 val sets = (1..re.sets).map { _ ->
                     when (exercise.type) {
-                        ExerciseType.FORZA -> ExerciseSet.Strength()
+                        ExerciseType.FORZA -> ExerciseSet.Strength(isBodyweight = exercise.isBodyweight)
                         ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = re.timePerSetSeconds)
                     }
                 }

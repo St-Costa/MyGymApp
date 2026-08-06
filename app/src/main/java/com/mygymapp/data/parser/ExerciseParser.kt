@@ -19,6 +19,7 @@ object ExerciseParser {
             defaultRepRangeMax = fm["defaultRepRangeMax"]?.toString()?.toIntOrNull() ?: 12,
             created = fm["created"]?.toString() ?: "",
             updated = fm["updated"]?.toString() ?: "",
+            isBodyweight = fm["isBodyweight"] as? Boolean ?: false,
         )
     }
 
@@ -33,7 +34,9 @@ object ExerciseParser {
             "defaultRepRangeMax" to exercise.defaultRepRangeMax,
             "created" to exercise.created,
             "updated" to exercise.updated,
-        )
+        ).apply {
+            if (exercise.isBodyweight) put("isBodyweight", true)
+        }
         return MarkdownParser.serialize(frontmatter, exercise.notes)
     }
 }

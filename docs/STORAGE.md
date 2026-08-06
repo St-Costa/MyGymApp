@@ -52,6 +52,7 @@ bodypart: chest
 link: https://...             # optional image/YouTube URL
 defaultRepRangeMin: 8
 defaultRepRangeMax: 12
+isBodyweight: true            # omitted when false — FORZA only, no external weight by design
 created: 2025-03-15T10:22:14
 updated: 2025-04-18T09:00:00
 ---
@@ -139,6 +140,18 @@ exercises:
       - reps: 6
         weight: 85.0
       ...
+  - exerciseId: ex-c3d4e5f6
+    exerciseName: Plank
+    type: FORZA
+    bodypart: core
+    sets:
+      - reps: 45
+        weight: 0.0
+        isBodyweight: true      # omitted when false — copied from Exercise.isBodyweight
+                                 # at session-build time; distinguishes "genuinely no
+                                 # external weight" from "set never touched" (both are
+                                 # weight=0 otherwise indistinguishable to any reader
+                                 # that filters on weight > 0 — see SYNC.md)
 ---
 
 Session notes
