@@ -35,6 +35,18 @@ record success" — it has zero knowledge of what fields exist inside a session.
 interpretation of the YAML lives server-side, in one place, and gets touched exactly when
 STORAGE.md gets touched (same discipline the project already has for docs/code drift).
 
+**This played out for real, not just in theory**: while implementing server-side analysis
+against synced data, the server found that `weight: 0.0` was ambiguous between "set never
+touched" and "genuinely bodyweight work" (plank, push-ups — no external load by design),
+silently dropping all bodyweight tonnage from any analysis that filtered on `weight > 0`.
+Fixed by adding `Exercise.isBodyweight` (set once per exercise in the catalog, not
+per-session) and propagating it onto each `WorkoutSession` set as `isBodyweight: true`
+(omitted when false, same convention as every other optional boolean field) — see
+STORAGE.md's session/exercise format examples. No sync-layer code changed at all: the new
+field just started appearing in the same raw bytes already being sent, exactly as this
+design intends. The server's raw-first parser already tolerated unknown fields, so
+`parse_failures` didn't even spike while the server-side column/filter update landed.
+
 ## Architecture overview
 
 ```

@@ -207,6 +207,7 @@ class StrengthExerciseViewModel @Inject constructor(
         exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
+        val isBodyweight = _uiState.value.exercise?.isBodyweight ?: false
         val anyTouched = sets.any { it.repsTouched || it.weightTouched }
         viewModelScope.launch {
             if (session != null) {
@@ -220,7 +221,7 @@ class StrengthExerciseViewModel @Inject constructor(
                             ex.copy(
                                 completed = true,
                                 completedEmpty = false,
-                                sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
+                                sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight, isBodyweight = isBodyweight) },
                             )
                         } else {
                             ex.copy(completed = true, completedEmpty = true, sets = emptyList())
@@ -242,13 +243,14 @@ class StrengthExerciseViewModel @Inject constructor(
         // Back-navigation without completing: save current progress as incomplete
         val sets = _uiState.value.sets
         val session = currentSession
+        val isBodyweight = _uiState.value.exercise?.isBodyweight ?: false
         clearScope.launch {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         ex.copy(
                             completed = false,
-                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) },
+                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight, isBodyweight = isBodyweight) },
                         )
                     } else ex
                 }
@@ -262,7 +264,12 @@ class StrengthExerciseViewModel @Inject constructor(
         val sets = _uiState.value.sets.toMutableList()
         if (index in sets.indices) {
             sets[index] = transform(sets[index])
-            val allFilled = sets.all { it.reps > 0 && it.weight > 0 }
+            // Bodyweight exercises (Exercise.isBodyweight) have weight=0 by design — a
+            // set with reps filled in but weight left at 0 is complete, not empty. Using
+            // `&&` unconditionally would mean allSetsFilled could never become true for
+            // any bodyweight exercise.
+            val isBodyweight = _uiState.value.exercise?.isBodyweight ?: false
+            val allFilled = sets.all { it.reps > 0 && (it.weight > 0 || isBodyweight) }
             _uiState.value = _uiState.value.copy(sets = sets, allSetsFilled = allFilled)
         }
     }

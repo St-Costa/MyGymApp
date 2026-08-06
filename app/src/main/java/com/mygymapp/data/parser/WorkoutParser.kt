@@ -49,7 +49,9 @@ object WorkoutParser {
                     is ExerciseSet.Strength -> linkedMapOf<String, Any?>(
                         "reps" to set.reps,
                         "weight" to set.weight,
-                    )
+                    ).apply {
+                        if (set.isBodyweight) put("isBodyweight", true)
+                    }
                     is ExerciseSet.Stretch -> linkedMapOf<String, Any?>(
                         "timeSeconds" to set.timeSeconds,
                         "done" to set.done,
@@ -139,6 +141,7 @@ object WorkoutParser {
                 ExerciseType.FORZA -> ExerciseSet.Strength(
                     reps = (map["reps"] as? Number)?.toInt() ?: 0,
                     weight = (map["weight"] as? Number)?.toDouble() ?: 0.0,
+                    isBodyweight = map["isBodyweight"] as? Boolean ?: false,
                 )
                 ExerciseType.STRETCH -> ExerciseSet.Stretch(
                     timeSeconds = (map["timeSeconds"] as? Number)?.toInt() ?: 0,

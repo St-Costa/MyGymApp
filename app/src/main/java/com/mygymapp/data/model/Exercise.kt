@@ -11,6 +11,13 @@ data class Exercise(
     val defaultRepRangeMax: Int = 12,
     val created: String = "",
     val updated: String = "",
+    // FORZA only: no external weight by design (e.g. plank, push-ups, mobility work).
+    // Distinguishes "genuinely bodyweight, weight=0 is correct" from "set never touched,
+    // weight=0 by default" — without this, tonnage/PR/e1RM analysis (phone-side and
+    // server-side, see ANALYSIS_SPEC.md §1.2-1.5) silently drops all bodyweight work
+    // because it filters on weight > 0. Propagated onto each WorkoutExercise's sets when
+    // a session is built from this exercise — see WorkoutExercise/ExerciseSet.Strength.
+    val isBodyweight: Boolean = false,
 )
 
 enum class ExerciseType {

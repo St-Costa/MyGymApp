@@ -179,6 +179,25 @@ in the manifest so Hilt can construct the worker). The server side is a separate
 repository (`MyGymApp_server`, spec at `docs/sync-ingestion/SPEC.md` there) — not part of
 this codebase; not yet tested end-to-end against a live server from a phone.
 
+## Phase 31 — `Exercise.isBodyweight`
+
+Server-side analysis work (implementing the tonnage/PR/e1RM logic from `ANALYSIS_SPEC.md`
+against synced session data) surfaced a real gap: `weight: 0.0` on a set is ambiguous
+between "never touched" and "genuinely bodyweight work" (plank, push-ups — zero external
+load by design), and any filter on `weight > 0` silently drops all bodyweight tonnage.
+Added `isBodyweight: Boolean` to `Exercise` (toggled once per exercise in
+`ExerciseEditScreen`, next to the rep-range picker, FORZA only), propagated onto each
+`ExerciseSet.Strength` when a session's sets are built or re-saved
+(`ActiveRoutineViewModel`, `StrengthExerciseViewModel`, `SupersetViewModel`) and persisted
+per-set (`WorkoutParser`, omitted when false). Also fixed a related pre-existing bug in
+`StrengthExerciseViewModel.updateSet()`: `allSetsFilled` required `weight > 0`
+unconditionally, so it could never become true for a bodyweight exercise — now accepts
+`reps > 0` alone when the exercise is marked bodyweight. `bestEstimated1RM`'s `weight > 0`
+filter was deliberately left as-is: an Epley 1RM estimate is conceptually inapplicable
+without external load, and evaluates to 0 for a bodyweight set regardless. See
+`docs/SYNC.md`'s note on this change for why no sync-layer code needed touching — the
+raw-file design absorbed the new field for free.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
