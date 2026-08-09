@@ -58,6 +58,9 @@ data class ActiveRoutineUiState(
     val sessionRegistered: Boolean = false,
     val registeredSessionId: String = "",
     val registeredSessionDate: String = "",
+    // Session-RPE prompt: shown once, right after "Registra routine" is tapped and before
+    // the session is actually finalized/synced. Skippable — see docs/CONVENTIONS.md.
+    val showRpePrompt: Boolean = false,
     // Cross-routine charts (all sessions, not filtered by routine)
     val allSessionCalories: List<Double> = emptyList(),
     val allSessionTrimp: List<Double> = emptyList(),
@@ -219,6 +222,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 routineId = routineId,
                 routineName = routine.name,
                 date = LocalDate.now().toString(),
+                startedAt = LocalDateTime.now().toString(),
                 exercises = workoutExercises,
                 notes = routine.notes,
             )
@@ -329,7 +333,43 @@ class ActiveRoutineViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedChartFilter = filter)
     }
 
-    fun registerRoutine() {
+    /**
+     * Entry point from the "Registra routine" button. Shows the mandatory session-RPE prompt
+     * first (docs/SYNC.md — internal-load signal complementing tonnage); the actual
+     * finalize+sync flow ([registerRoutine]) runs only after the user answers it, via
+     * [submitSessionRpe]. No skip option — a rating is required to proceed.
+     */
+    fun requestRegisterRoutine() {
+        _uiState.value = _uiState.value.copy(showRpePrompt = true)
+    }
+
+    /**
+     * Submits the session-RPE (Foster method, 0-9) and proceeds to register the session.
+     * Validated client-side before being stored: values outside [0, 9] are rejected and the
+     * prompt stays open rather than silently clamping or dropping the rating.
+     * @return true if accepted, false if invalid (caller should keep the prompt open).
+     */
+    fun submitSessionRpe(rpe: Int): Boolean {
+        if (rpe !in 0..9) return false
+        _uiState.value = _uiState.value.copy(showRpePrompt = false)
+        registerRoutine(sessionRpe = rpe)
+        return true
+    }
+
+    /** Session duration in whole minutes from startedAt/completedAt, or null if unavailable. */
+    private fun sessionDurationMinutes(session: WorkoutSession): Float? {
+        if (session.startedAt.isBlank()) return null
+        val end = if (session.completedAt.isNotBlank()) {
+            runCatching { LocalDateTime.parse(session.completedAt) }.getOrNull()
+        } else {
+            LocalDateTime.now()
+        } ?: return null
+        val start = runCatching { LocalDateTime.parse(session.startedAt) }.getOrNull() ?: return null
+        val minutes = java.time.Duration.between(start, end).toMinutes().toFloat()
+        return minutes.takeIf { it > 0f }
+    }
+
+    private fun registerRoutine(sessionRpe: Int? = null) {
         viewModelScope.launch {
             if (!sessionFinalized) {
                 val session = currentSession ?: return@launch
@@ -388,6 +428,13 @@ class ActiveRoutineViewModel @Inject constructor(
                         poincareSd2 = ecgResult.poincareSd2,
                         poincareRatio = ecgResult.poincareRatio,
                         afibSuspicionEpisodes = ecgResult.afibSuspicionEpisodes,
+                    )
+                }
+                if (sessionRpe != null) {
+                    val durationMinutes = sessionDurationMinutes(updated)
+                    updated = updated.copy(
+                        sessionRpe = sessionRpe,
+                        sessionLoad = durationMinutes?.let { sessionRpe * it },
                     )
                 }
                 try {

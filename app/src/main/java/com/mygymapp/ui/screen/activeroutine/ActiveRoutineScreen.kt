@@ -129,7 +129,8 @@ fun ActiveRoutineScreen(
         }
     }
 
-    BackHandler {
+    // Disabled while the mandatory RPE prompt is up — back must not be a way to bypass it.
+    BackHandler(enabled = !uiState.showRpePrompt) {
         viewModel.abandonSession()
         onBack()
     }
@@ -242,7 +243,7 @@ fun ActiveRoutineScreen(
                 // Register button — shown before progress chart
                 item(key = "register_button") {
                     Button(
-                        onClick = { viewModel.registerRoutine() },
+                        onClick = { viewModel.requestRegisterRoutine() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp, bottom = 8.dp),
@@ -284,7 +285,63 @@ fun ActiveRoutineScreen(
         PowerliftingWeekOverlay(onDismiss = { viewModel.dismissPowerliftingOverlay() })
     }
 
+    if (uiState.showRpePrompt) {
+        SessionRpeDialog(
+            onSubmit = { rpe -> viewModel.submitSessionRpe(rpe) },
+        )
+    }
+
     } // Box
+}
+
+/**
+ * Mandatory session-RPE prompt (Foster method, 0-9 "how hard was this session"), shown
+ * right after "Registra routine" is tapped. Not dismissible/skippable — a rating is
+ * required before the session can be registered. See docs/SYNC.md — internal-load signal
+ * that complements tonnage server-side.
+ */
+@Composable
+private fun SessionRpeDialog(
+    onSubmit: (Int) -> Boolean,
+) {
+    var selected by remember { mutableStateOf<Int?>(null) }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = {}, // mandatory — no dismiss via outside tap or back press
+        title = { Text("Quanto è stata dura questa sessione?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Da 0 (nessuno sforzo) a 9 (massimale)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                // Two rows of 5 so each chip stays tappable at normal phone widths.
+                for (row in 0..1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        for (col in 0..4) {
+                            val value = row * 5 + col
+                            FilterChip(
+                                selected = selected == value,
+                                onClick = { selected = value },
+                                label = { Text(value.toString()) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = selected != null,
+                onClick = { selected?.let { onSubmit(it) } },
+            ) { Text("Conferma") }
+        },
+    )
 }
 
 @Composable

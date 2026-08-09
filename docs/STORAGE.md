@@ -127,6 +127,13 @@ poincareRatio: 0.317
 cardiacDriftBpmMin: 0.42
 restingHr: 58
 hrr60s: 28
+# Session-RPE (Foster method): subjective 0-9 effort rating, asked right after the session
+# ends via a mandatory (non-skippable) prompt — registration is blocked until answered.
+# Omitted only for sessions saved before this field existed, or abandoned sessions that
+# never reach registration. sessionLoad = sessionRpe × duration in minutes
+# (startedAt→completedAt), computed whenever a valid duration exists.
+sessionRpe: 7
+sessionLoad: 350.0
 exercises:
   - exerciseId: ex-a1b2c3d4
     exerciseName: Bench Press   # denormalized

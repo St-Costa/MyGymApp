@@ -5,6 +5,7 @@ data class WorkoutSession(
     val routineId: String,
     val routineName: String,
     val date: String,
+    val startedAt: String = "",
     val completedAt: String = "",
     val totalTonnage: Double = 0.0,
     val tonnageByBodypart: Map<String, Double> = emptyMap(),
@@ -29,6 +30,16 @@ data class WorkoutSession(
     val poincareSd2: Double = 0.0,      // long-term scatter (ms)
     val poincareRatio: Double = 0.0,    // SD2/SD1 sympathovagal balance
     val afibSuspicionEpisodes: Int = 0, // sustained irregular segments
+    // Session-RPE (Foster method): subjective "how hard was this session" 0-9, asked right
+    // after the session ends via a mandatory (non-skippable) prompt. Null only transiently,
+    // before the prompt is answered — abandoned/ghost sessions never reach registration, so
+    // no completed session persists without one. Complements totalTonnage (external load)
+    // as the internal-load signal the server's ACWR monitoring uses to validate/enrich
+    // itself. See docs/SYNC.md.
+    val sessionRpe: Int? = null,
+    // sessionRpe * session duration in minutes (Foster's session-load method). Null unless
+    // both sessionRpe and a valid startedAt/completedAt pair are available.
+    val sessionLoad: Float? = null,
     val exercises: List<WorkoutExercise> = emptyList(),
     val notes: String = "",
 )

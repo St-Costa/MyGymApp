@@ -65,6 +65,30 @@ LaunchedEffect(completionSaved) {
 
 Navigation happens only after disk confirms the write. `onCleared()` is reserved for the mid-exercise back case and skips re-saving when `completionSaved` is already true.
 
+## Session-RPE prompt: apply after the reload, not before
+
+`ActiveRoutineViewModel.registerRoutine()` reloads the session from disk multiple times
+(once in `finalizeSession()`, again right before the final ECG-metrics save) — each reload
+overwrites `currentSession` with whatever is on disk at that moment. The session-RPE value
+the user picks in `SessionRpeDialog` is captured *before* any of those reloads run (the
+dialog is shown by `requestRegisterRoutine()`, which fires before `registerRoutine()` even
+starts), so it can't just be set on `currentSession` and expected to survive.
+
+Fix: `sessionRpe` is threaded through as a parameter (`registerRoutine(sessionRpe: Int?)`)
+and applied onto `updated` immediately before the final `workoutRepository.save(updated)`
+call — after every reload has already happened, so nothing overwrites it. `sessionLoad`
+(Foster method: RPE × duration in minutes) is derived from that same `updated` session's
+`startedAt`/`completedAt` at the same point, for the same reason. Same shape of bug as the
+`completionSaved` pattern above — a value set before an async reload gets silently dropped —
+just solved by "pass it through" instead of "wait for the write."
+
+The prompt is mandatory, not skippable: `SessionRpeDialog`'s `AlertDialog` has a no-op
+`onDismissRequest` (blocks outside-tap dismiss) and `ActiveRoutineScreen`'s `BackHandler`
+is disabled (`enabled = !uiState.showRpePrompt`) while it's showing — otherwise the
+existing "back abandons the session" handler would be an unintended skip path. The confirm
+button stays disabled until a chip is selected, so there is no way to close the dialog
+without a valid 0-9 rating.
+
 ## Untouched-exercise guard (completing without changing anything)
 
 Tapping "Complete Exercise"/"Complete Superset" without touching any pre-filled field no longer records last session's numbers as new work. Each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `repsTouched`/`weightTouched`, set `true` only by an explicit user action (`updateReps`/`updateWeight`/`confirmReps`/`confirmWeight`, or the stepper buttons that call them) — never by the prefill logic in `init`. Stretch sets have no prefill at all, so `done` itself (only ever flipped by an explicit toggle) is the touch signal.

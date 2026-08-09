@@ -15,6 +15,7 @@ object WorkoutParser {
             routineId = fm["routineId"]?.toString() ?: "",
             routineName = fm["routineName"]?.toString() ?: "",
             date = fm["date"]?.toString() ?: "",
+            startedAt = fm["startedAt"]?.toString() ?: "",
             completedAt = fm["completedAt"]?.toString() ?: "",
             totalTonnage = (fm["totalTonnage"] as? Number)?.toDouble() ?: 0.0,
             tonnageByBodypart = parseTonnageMap(fm["tonnageByBodypart"]),
@@ -37,6 +38,8 @@ object WorkoutParser {
             poincareSd2 = (fm["poincareSd2"] as? Number)?.toDouble() ?: 0.0,
             poincareRatio = (fm["poincareRatio"] as? Number)?.toDouble() ?: 0.0,
             afibSuspicionEpisodes = (fm["afibSuspicionEpisodes"] as? Number)?.toInt() ?: 0,
+            sessionRpe = (fm["sessionRpe"] as? Number)?.toInt(),
+            sessionLoad = (fm["sessionLoad"] as? Number)?.toFloat(),
             exercises = parseExercises(fm["exercises"]),
             notes = doc.body,
         )
@@ -77,6 +80,7 @@ object WorkoutParser {
             "routineId" to session.routineId,
             "routineName" to session.routineName,
             "date" to session.date,
+            "startedAt" to session.startedAt,
             "completedAt" to session.completedAt,
             "totalTonnage" to session.totalTonnage,
             "tonnageByBodypart" to session.tonnageByBodypart.filterValues { it > 0.0 },
@@ -101,6 +105,10 @@ object WorkoutParser {
             if (session.poincareSd2 > 0.0) put("poincareSd2", session.poincareSd2)
             if (session.poincareRatio > 0.0) put("poincareRatio", session.poincareRatio)
             if (session.afibSuspicionEpisodes > 0) put("afibSuspicionEpisodes", session.afibSuspicionEpisodes)
+            // Session-RPE: mandatory at registration time, but still nullable/omitted here —
+            // covers abandoned sessions and any session saved before the prompt runs.
+            session.sessionRpe?.let { put("sessionRpe", it) }
+            session.sessionLoad?.let { put("sessionLoad", it) }
             put("exercises", exerciseList)
         }
         return MarkdownParser.serialize(frontmatter, session.notes)
