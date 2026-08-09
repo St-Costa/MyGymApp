@@ -156,6 +156,10 @@ Tapping "Complete Exercise"/"Complete Superset" without changing anything used t
 - `SessionProgressViewModel` gained a small `ChartSeries(data, labels)` holder and a `cardioSeries()` reducer that drops zero/unset points so a metric a device didn't record doesn't render as a flat line at 0. No change to what gets saved to disk — this is display-only; `WorkoutSession` still persists every field it did before.
 - The screen's root `Column` is now `verticalScroll`-able (it wasn't before), since the cardio section can add several chart cards.
 
+## Phase 30 — VitaFit cloud history import (one-off)
+
+Imported ~2 years of pre-BLE weigh-in history (2024-11-13 → 2026-05-19, 106 days) from the official VitaFit app's cloud account into `gymdata/scale/`, since the app has no export feature and stores history server-side rather than in a local DB (confirmed via a failed `adb backup` and decompiling the APK). The undocumented cloud endpoint (`vitafit-api-eu.66vitafit.com/front/profile/{id}/body_index_per_day/`) was found by MITM-proxying the app's own HTTPS traffic — see [docs/vitafit-cloud-api.md](vitafit-cloud-api.md) for the endpoint, auth, and field mapping. Also deleted 65 days of leftover synthetic debug data (`gymdata/scale/2026/05/28` → `2026/07/31`, all sharing one fixed timestamp) that had been generated during earlier development and were being mistaken for real weigh-ins. This was a manual one-off import, not an in-app feature — no "Import from VitaFit" UI exists or is planned.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
