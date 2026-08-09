@@ -18,6 +18,7 @@ ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 | "How is the code laid out? Which ViewModel owns what?" | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | "Where is this stored on disk? What's the session YAML look like?" | [docs/STORAGE.md](docs/STORAGE.md) |
 | "How does the heart rate / ECG / readiness stuff work?" | [docs/POLAR.md](docs/POLAR.md) |
+| "How was old VitaFit scale history imported? Is there an official export?" | [docs/vitafit-cloud-api.md](docs/vitafit-cloud-api.md) |
 | "There's an odd pattern — is this intentional?" | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
 | "What happened over time?" | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 
