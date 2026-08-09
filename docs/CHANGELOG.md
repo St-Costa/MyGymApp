@@ -198,6 +198,32 @@ without external load, and evaluates to 0 for a bodyweight set regardless. See
 `docs/SYNC.md`'s note on this change for why no sync-layer code needed touching — the
 raw-file design absorbed the new field for free.
 
+## Phase 32 — Session-RPE (Foster method)
+
+Added subjective session-RPE collection at end-of-workout, driven by a server-side request
+(the self-hosted server's tonnage-based ACWR monitoring needed a matching internal-load
+signal to validate/enrich against — see `docs/SYNC.md`). `WorkoutSession` gained
+`sessionRpe: Int?` (0-9, null only transiently before the prompt is answered),
+`sessionLoad: Float?` (`sessionRpe × duration_minutes`, Foster's session-load method), and
+`startedAt: String` (previously only documented in STORAGE.md, not actually on the Kotlin
+model — now implemented and set at session creation, since `sessionLoad` needed a real
+duration). `ActiveRoutineScreen`'s "Registra routine" button now opens a mandatory
+`SessionRpeDialog` (two rows of 0-9 chips, no skip option, confirm disabled until a chip is
+picked, outside-tap dismiss and the screen's back handler both disabled while it's open)
+before the existing register flow runs; `ActiveRoutineViewModel.registerRoutine()` takes
+the rating as a parameter rather than stashing it on `currentSession`, because the function
+reloads the session from disk multiple times before its final save and an early write
+would get silently overwritten — see CONVENTIONS.md's "Session-RPE prompt: apply after the
+reload, not before" entry. Both fields are still nullable/omitted from the YAML when
+absent (covers abandoned sessions and pre-existing history), following the same
+omit-when-absent convention as every other optional session field, and sync automatically
+via the existing raw-file transport with no sync-layer changes needed (`docs/SYNC.md`'s
+second worked example of that design paying off). ACWR/readiness interpretation of this
+data stays server-side, out of scope for this repo.
+
+Note: the original server-side request explicitly asked for this to be optional/skippable;
+made mandatory instead per direct follow-up instruction from the user, overriding that.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

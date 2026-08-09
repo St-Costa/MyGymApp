@@ -47,6 +47,16 @@ field just started appearing in the same raw bytes already being sent, exactly a
 design intends. The server's raw-first parser already tolerated unknown fields, so
 `parse_failures` didn't even spike while the server-side column/filter update landed.
 
+**Second example, same pattern**: `sessionRpe`/`sessionLoad` (session-RPE, Foster method —
+subjective 0-9 "how hard was this session", asked via a mandatory prompt right after the
+session ends — registration is blocked until answered) were added the same way — new
+fields on `WorkoutSession`, still nullable/omitted at the model level (covers abandoned
+sessions and pre-existing history), no sync-layer changes. These exist to give the
+server's tonnage-based ACWR monitoring (external load) a matching internal-load signal to
+validate/enrich against, and could feed a server-side readiness score later. That
+interpretation is out of scope for this repo — see `MyGymApp_server`'s
+`docs/sync-ingestion/SPEC.md`.
+
 ## Architecture overview
 
 ```
