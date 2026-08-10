@@ -28,6 +28,7 @@ data class HeartRateUiState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val heartRate: Int? = null,
     val batteryLevel: Int? = null,
+    val batteryLow: Boolean = false,
     val discoveredDevices: List<DiscoveredDevice> = emptyList(),
     val isScanning: Boolean = false,
     val connectedDeviceId: String? = null,
@@ -85,6 +86,14 @@ class HeartRateViewModel @Inject constructor(
         viewModelScope.launch {
             val loaded = cardioMetricsTrendLoader.load()
             _uiState.update { it.copy(cardioMetricsTrend = loaded) }
+        }
+
+        // Collected on its own rather than folded into the combine below, which is
+        // already at the 9-flow vararg overload's practical limit.
+        viewModelScope.launch {
+            polarManager.batteryLow.collect { low ->
+                _uiState.update { it.copy(batteryLow = low) }
+            }
         }
 
         viewModelScope.launch {
