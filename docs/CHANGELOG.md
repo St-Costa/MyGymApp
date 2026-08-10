@@ -224,6 +224,35 @@ data stays server-side, out of scope for this repo.
 Note: the original server-side request explicitly asked for this to be optional/skippable;
 made mandatory instead per direct follow-up instruction from the user, overriding that.
 
+## Phase 33 — Polar battery warning at 70%
+
+Added an early low-battery warning for the H10, triggered at 70% rather than the usual
+20%. Prompted by a strap that stopped advertising entirely — invisible to every BLE scan,
+so the app logged endless failed reconnects — while its CR2025 still measured 3.0V on a
+multimeter and the last reported level had been above 50%. The cause is that a lithium
+coin cell holds near-nominal open-circuit voltage until it is almost spent; what actually
+kills it is internal resistance rising to the point where the ~10 mA transmit peak browns
+out the radio mid-advertisement. The H10 derives its percentage from voltage alone (BLE
+Battery Service 0x180F is a plain 0-100 integer, and there is no coulomb counter on the
+device), so the reported number stays high and then falls off a cliff — it cannot express
+the failure mode that matters. Hence `BATTERY_WARNING_THRESHOLD = 70`: below that the
+number carries no predictive value and should be read as "replace it soon".
+`PolarManager` gained a `batteryLow: StateFlow<Boolean>` alongside the existing
+`batteryLevel`, cleared on disconnect and on BLE power-off; `batteryLevelReceived` now
+also writes every reading to `app.log`, so the decay curve is recoverable across battery
+cycles instead of only the instantaneous value being visible. `HeartRateScreen` tints the
+existing battery row red and swaps in `BatteryAlert` below the threshold, plus an explicit
+warning line. `HeartRateViewModel` collects the new flow separately rather than extending
+its `combine`, which was already at the 9-flow overload.
+
+Note: no reconnect-logic changes were kept from this investigation. An earlier attempt had
+added a resident watchdog and an indefinite two-phase reconnect backoff on the theory that
+`api.connectToDevice()` silently no-ops on a cold SDK cache; `adb` tracing showed the scan
+was in fact reaching the BLE stack correctly and simply finding nothing, because the device
+was not transmitting. Those changes were discarded — they also had the resident watchdog
+sharing `reconnectHandler` with `scheduleReconnect()`, whose `removeCallbacksAndMessages`
+cancelled the watchdog permanently after its first tick.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
