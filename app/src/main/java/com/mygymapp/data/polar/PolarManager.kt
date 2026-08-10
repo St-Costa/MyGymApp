@@ -89,6 +89,13 @@ class PolarManager @Inject constructor(
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
+        // Warn about the CR2025 at 70%, not at the usual 20%. The H10 derives its
+        // percentage from cell voltage, and a lithium coin cell holds ~3V until it is
+        // nearly spent — what actually kills it is rising internal resistance, which
+        // the percentage never reflects. In practice the strap goes silent (can't
+        // complete a BLE advertisement) while still reporting 50-60%, so anything
+        // below this threshold means "replace it soon", not "still half full".
+        private const val BATTERY_WARNING_THRESHOLD = 70
     }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -99,6 +106,10 @@ class PolarManager @Inject constructor(
 
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel
+
+    /** True when the strap's battery is at or below [BATTERY_WARNING_THRESHOLD]. */
+    private val _batteryLow = MutableStateFlow(false)
+    val batteryLow: StateFlow<Boolean> = _batteryLow
 
     private val _discoveredDevices = MutableStateFlow<List<PolarDeviceInfo>>(emptyList())
     val discoveredDevices: StateFlow<List<PolarDeviceInfo>> = _discoveredDevices
@@ -240,6 +251,7 @@ class PolarManager @Inject constructor(
                     lastConnectedDeviceId = null
                     _heartRate.value = null
                     _batteryLevel.value = null
+                    _batteryLow.value = false
                     _connectionState.value = ConnectionState.DISCONNECTED
                     PolarStreamingService.stop(context)
                     PolarStreamingService.clearDisconnectAlert(context)
@@ -283,6 +295,7 @@ class PolarManager @Inject constructor(
                 connectedDeviceId = null
                 _heartRate.value = null
                 _batteryLevel.value = null
+                _batteryLow.value = false
                 hrDisposable?.dispose()
                 hrDisposable = null
                 ecgDisposable?.dispose()
@@ -352,6 +365,16 @@ class PolarManager @Inject constructor(
             override fun batteryLevelReceived(identifier: String, level: Int) {
                 Log.d(TAG, "Battery: $level%")
                 _batteryLevel.value = level
+                // Always log the level so app.log carries the decay curve across
+                // battery cycles — the H10 reports a voltage-derived percentage, which
+                // is nearly flat for most of a CR2025's life, so a single reading says
+                // little but the trend across sessions is readable.
+                appLogger.i(TAG, "Battery level on $identifier: $level%")
+                val low = level <= BATTERY_WARNING_THRESHOLD
+                _batteryLow.value = low
+                if (low) {
+                    appLogger.w(TAG, "Battery at $level% (<= $BATTERY_WARNING_THRESHOLD%) — replace the CR2025 soon")
+                }
             }
         })
     }
