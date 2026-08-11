@@ -21,6 +21,9 @@ import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
 import java.io.File
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
@@ -277,7 +280,7 @@ class PolarManager @Inject constructor(
                 if (!hrSeriesActive) {
                     _sessionCalories.value = 0.0
                     _sessionTrimp.value = 0.0
-                    startReadinessMeasurement()
+                    maybeStartAutoReadinessMeasurement()
                 }
                 startDataWatchdog()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
@@ -957,6 +960,41 @@ class PolarManager @Inject constructor(
 
     private fun stopDataWatchdog() {
         watchdogHandler.removeCallbacks(watchdogRunnable)
+    }
+
+    /** Latest cutoff hour for the automatic on-connect readiness measurement (local time). */
+    private val autoReadinessCutoff: LocalTime = LocalTime.of(10, 0)
+
+    /**
+     * Gates the automatic 60s readiness measurement that fires on first connect: only before
+     * 10:00 local time, and only if today doesn't already have a measurement (so a strap
+     * disconnect/reconnect later in the day reuses today's earlier result instead of
+     * re-measuring). Manual re-measurement (if ever exposed in the UI) can still call
+     * [startReadinessMeasurement] directly, bypassing these checks.
+     */
+    private fun maybeStartAutoReadinessMeasurement() {
+        if (LocalTime.now().isAfter(autoReadinessCutoff)) {
+            Log.d(TAG, "Skipping auto readiness measurement: after ${autoReadinessCutoff}")
+            return
+        }
+        readinessScope.launch {
+            val today = readinessRepository.getLatestForDate(LocalDate.now())
+            if (today != null) {
+                Log.d(TAG, "Skipping auto readiness measurement: already measured today (id=${today.id})")
+                _readinessResult.value = ReadinessResult(
+                    readiness = runCatching { Readiness.valueOf(today.readiness) }.getOrDefault(Readiness.NO_BASELINE),
+                    lnRmssd = today.lnRmssd,
+                    restingHr = today.restingHr,
+                    secondsRemaining = 0,
+                    recommendation = today.recommendation,
+                )
+                _vo2max.value = today.vo2max.takeIf { it > 0 }
+                restingHr = today.restingHr.takeIf { it > 0 } ?: restingHr
+                lowestObservedHr = today.restingHr.takeIf { it > 0 } ?: lowestObservedHr
+                return@launch
+            }
+            startReadinessMeasurement()
+        }
     }
 
     private fun startReadinessMeasurement() {

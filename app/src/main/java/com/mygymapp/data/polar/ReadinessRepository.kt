@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
 import javax.inject.Inject
@@ -65,6 +66,18 @@ class ReadinessRepository @Inject constructor(
             runCatching { fromMarkdown(file.readText(), file.nameWithoutExtension) }.getOrNull()
         }?.sortedBy { it.measuredAt } ?: emptyList()
     }
+
+    /**
+     * Most recent measurement already taken on [date] (default today), if any — used to
+     * skip the automatic on-connect measurement when one was already done today (e.g. the
+     * strap disconnects and reconnects). Reuses [getAll] rather than a bespoke index since
+     * there's at most one file per day in practice.
+     */
+    suspend fun getLatestForDate(date: LocalDate = LocalDate.now()): ReadinessEvent? =
+        getAll().lastOrNull { event ->
+            runCatching { LocalDateTime.parse(event.measuredAt).toLocalDate() == date }
+                .getOrDefault(false)
+        }
 
     private fun toMarkdown(e: ReadinessEvent): String = MarkdownParser.serialize(
         frontmatter = linkedMapOf(
