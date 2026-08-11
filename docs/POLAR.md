@@ -107,15 +107,40 @@ Stream errors trigger an auto-restart via `ecgRestartHandler` with a ≤2 s back
 
 ### Post-session analysis
 
+Deep ECG analysis (Pan-Tompkins QRS detection, RMSSD/SDNN/pNN50/Poincaré, arrhythmia
+markers) no longer runs on the phone at all — it moved server-side (see
+[SYNC.md](SYNC.md#fourth-record-type-raw-ecg)). `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()`
+still exist in the codebase (harmless, unused) but `ActiveRoutineViewModel` no longer calls
+them. The phone only computes and shows two metrics that are cheap and don't require the
+recorded waveform at all: **resting HR** and **VO2max**, both derived from live HR/readiness
+tracking during the session (see "HRV readiness" above), not from the `.ecg` file. TRIMP and
+kcal (Banister/Keytel) also keep being computed continuously during the session and shown,
+unchanged. Cardiac drift and HRR (below) are cheap HR-series computations, not deep
+waveform analysis, and also keep running locally.
+
 On session completion (or abandon), `ActiveRoutineViewModel`:
 
 1. Calls `PolarManager.stopEcgRecording()` → `EcgRecorder.close()`.
-2. Calls `EcgAnalyzer.analyze(sessionId)` off the main thread.
-   - Pan-Tompkins QRS detector → beat times.
-   - RR intervals → RMSSD, SDNN, pNN50, Poincaré SD1/SD2/ratio.
-   - Arrhythmia markers: PAC, pauses, irregular beats, AFib suspicion episodes.
-3. Writes the 14 derived metrics into the session's YAML frontmatter.
-4. Deletes `ecg/{sessionId}.ecg` — the raw waveform is not retained long-term.
+2. Saves `restingHr` (`PolarManager.sessionRestingHr()`), `hrr60s`
+   (`PolarManager.averageHrr60s()`), and `cardiacDriftBpmMin`
+   (`PolarManager.cardiacDriftBpmPerMinute()`) into the session's YAML frontmatter.
+   `vo2max`/`sessionCalories`/`sessionTrimp` are saved earlier, in `finalizeSession()`.
+3. Raw file handling depends on whether server sync is configured (see
+   [SYNC.md](SYNC.md#fourth-record-type-raw-ecg)):
+   - **Sync configured + enabled**: the raw `ecg/{sessionId}.ecg` file is queued in
+     `EcgSyncLedgerRepository` and uploaded (gzip-compressed) to the server, which runs the
+     deep analysis described above — more CPU than a phone, potentially ML/LLM-assisted
+     interpretation, and comparison against the user's full history rather than one
+     isolated session. Results live server-side only (`MyGymApp_server`); the phone never
+     receives them back. The local file is deleted only once `EcgSyncWorker` confirms the
+     upload succeeded. If the server stays unreachable for 30 days, the pending entry
+     expires and the file is deleted anyway (`EcgSyncLedgerRepository.expireStale()`) to
+     bound local storage growth — that session's raw waveform is then unrecoverable, with
+     no local-analysis fallback of any kind (the deep metrics no longer exist on the phone
+     at all).
+   - **Sync not configured/enabled**: the raw waveform is deleted immediately — with no
+     local analysis and no server to send it to, nothing on the phone would ever consume
+     it.
 
 ### HRR (heart rate recovery)
 
