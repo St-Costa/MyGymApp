@@ -10,7 +10,9 @@ data/polar/
 ├── EcgRecorder.kt          — Writes raw ECG samples to disk
 ├── EcgAnalyzer.kt          — Post-session analysis of a recorded file (Pan-Tompkins + arrhythmia)
 ├── LiveEcgAnalyzer.kt      — Incremental analyzer that updates while streaming
-├── UserProfile.kt          — Age / weight / sex (for Keytel, TRIMP, VO2max)
+├── UserProfile.kt          — Age / birth year / weight / sex (for Keytel, TRIMP, VO2max, HR zones)
+├── HrZoneCalculator.kt     — Live %HRR (Karvonen) Z1-Z5 zone boundaries + max-HR estimate
+├── HrZoneTracker.kt        — In-memory per-session time-in-zone accumulator
 └── (CardioTrendLoader.kt lives under data/repository/)
 
 ui/service/
@@ -45,6 +47,9 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 | `ecgWaveform` | `IntArray` (~520 samples) | Every ECG block (~100 ms) | LiveEcgCard canvas |
 | `liveEcgSnapshot` | beats/regular%/PAC/pause/irregular | Every ECG block | LiveEcgCard counters |
 | `liveCardiacDrift` | `Double` (BPM / min) | Every 30s of HR history | LiveEcgCard drift line |
+| `currentHrZone` | `HrZone?` | Every HR sample (once resolved) | HeartRateBar zone chip |
+| `currentHrZonePercent` | `Int` | Every HR sample | HeartRateBar zone chip ("Z3 · 74%") |
+| `hrZoneMinutes` | `HrZoneMinutes` | Every HR sample | HeartRateBar time-in-zone bar |
 
 All flows are hot and survive the `HeartRateViewModel` lifecycle — they live on the `@Singleton` manager, not on the VM.
 
@@ -165,6 +170,37 @@ PolarManager watches a rolling window for automatic peak detection:
 
 `startHrSeriesCapture()` is called by `ActiveRoutineViewModel.init` and appends every HR sample as `(elapsedMs, hr)` into an `ArrayDeque` capped at `HR_SERIES_MAX_ENTRIES = 28 800` (~8 h at 1 Hz). The cap is a safety net against lifecycle bugs that would otherwise let the series grow unbounded — real sessions are orders of magnitude shorter. Every 30 s, a linear regression on the series gives BPM/minute (positive = drift up, a proxy for dehydration / early fatigue). Requires ≥5 min and ≥60 samples before the regression runs.
 
+### Live HR-zone widget
+
+Pure on-device, real-time counterpart to the sync server's retrospective
+`compute_hr_zone_minutes` (see [SYNC.md](SYNC.md) and the server repo's
+`app/ecg_analysis.py`/`ECG_ADVANCED_ANALYSIS.md` §6) — no server round-trip, computed
+entirely from data already local: age/birth year, resting HR from readiness, and the
+live BPM stream.
+
+- **Zone math**: `HrZoneCalculator` — %HRR (Karvonen), same formula the server uses.
+  `max_hr` = unweighted mean of Fox/Tanaka/Gulati age-based formulas, recomputed from
+  `UserProfile.birthYear` (falls back to the manually-set `age` if no birth year is on
+  file) — never derived from the phone's own peak-HR data (see the design doc for why:
+  a resistance-training peak isn't a controlled maximal test). `resting_hr` = today's
+  readiness measurement if one exists, else a 7-day trailing average
+  (`ReadinessRepository.getRecentAverageRestingHr()`), else `null` — with no resting HR
+  at all, `HrZoneCalculator` falls back to plain %HRmax rather than blocking the widget.
+- **Accumulation**: `HrZoneTracker`, one instance per `PolarManager`, reset in
+  `startHrSeriesCapture()` alongside the other per-session counters. On every HR sample,
+  attributes the elapsed time since the previous tick to the *previous* tick's zone (same
+  coarse-but-standard approach as the server's retrospective version). In-memory only —
+  not persisted; the server-side ECG-derived analysis after sync remains the durable
+  historical record.
+- **Resolution timing**: `resolveHrZoneCalculator()` runs on `readinessScope` (fire-and-
+  forget, same scope used for readiness persistence) when a session starts, since reading
+  readiness history is suspendable IO. `currentHrZone` stays `null` until it completes —
+  typically sub-second.
+- **UI**: `HeartRateBar` shows a small colored zone chip ("Z3 · 74%") plus a thin stacked
+  bar of per-zone minutes so far, using the same zone palette as the server dashboard's
+  "Time in HR zone" chart (see `hrZoneColor` in `HeartRateBar.kt`). Auto-hides along with
+  the rest of the bar when Polar isn't connected.
+
 ### Calories & TRIMP
 
 Accumulated on every HR sample:
@@ -193,7 +229,7 @@ Manifest ([AndroidManifest.xml](../app/src/main/AndroidManifest.xml)):
 ## UI integration
 
 - **HeartRateScreen** wires ~9 PolarManager flows into a single UI state via `combine(...)` in `HeartRateViewModel`. It handles pairing, readiness display, VO2max, cardio-trend cards (from [CardioTrendLoader](../app/src/main/java/com/mygymapp/data/repository/CardioTrendLoader.kt)) and self-diagnosis.
-- **HeartRateBar** is rendered at the top of every exercise screen. It auto-hides when the device isn't connected.
+- **HeartRateBar** is rendered at the top of every exercise screen. It auto-hides when the device isn't connected. Also shows the live HR-zone chip + time-in-zone bar (see above).
 - **LiveEcgCard** is shown only during an active session (on HeartRateScreen only if a session is running). The waveform is a custom Canvas fed by `ecgWaveform`.
 
 ## Testing

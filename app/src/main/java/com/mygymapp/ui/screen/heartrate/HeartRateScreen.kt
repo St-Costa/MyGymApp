@@ -246,6 +246,7 @@ fun HeartRateScreen(
                 onAgeChange = { viewModel.updateAge(it) },
                 onGenderChange = { viewModel.updateGender(it) },
                 onHeightChange = { viewModel.updateHeight(it) },
+                onBirthYearChange = { viewModel.updateBirthYear(it) },
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -375,6 +376,7 @@ private fun ProfileSection(
     onAgeChange: (Int) -> Unit,
     onGenderChange: (Boolean) -> Unit,
     onHeightChange: (Int) -> Unit,
+    onBirthYearChange: (Int?) -> Unit,
 ) {
     Text(
         "Profile",
@@ -427,6 +429,23 @@ private fun ProfileSection(
                 modifier = Modifier.width(120.dp),
             )
         }
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    // Birth year: optional, preferred over the plain Age picker above wherever the app
+    // needs "current age" (e.g. HR-zone max-HR estimate) since it stays correct as years
+    // pass instead of needing a manual yearly bump. 0 = not set, falls back to Age.
+    val currentYear = java.time.Year.now().value
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+        Text("Birth year (optional, for HR zones)", style = MaterialTheme.typography.bodySmall)
+        ScrollPickerInput(
+            value = profile.birthYear ?: 0,
+            onValueChange = { onBirthYearChange(it.toInt().takeIf { y -> y in 1900..currentYear }) },
+            buttonStep = 1.0,
+            isModified = true,
+            modifier = Modifier.width(120.dp),
+        )
     }
 
     Spacer(modifier = Modifier.height(4.dp))
