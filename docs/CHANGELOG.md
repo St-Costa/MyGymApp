@@ -331,6 +331,110 @@ view built on the same 12 ECG fields, discovered to be dead code (never called f
 screen, confirmed via repo-wide search) while auditing what needed to change. Removed
 rather than updated, since nothing rendered it.
 
+## Phase 36 — ECG debug send button
+
+Added a manual "Registra e invia ECG di debug" button to Options' debug section, for
+exercising the `POST /v1/ecg` round-trip (docs/SYNC.md "Fourth record type: raw ECG")
+without running a full workout session: connect the Polar strap, open Options, press the
+button. `OptionsViewModel.sendDebugEcg()` calls `PolarManager.startEcgRecording()` with a
+synthetic id (`debug-{epoch millis}`, not a real 8-hex session id), waits 10 seconds,
+stops, then enqueues the recorded file through the exact same
+`EcgSyncLedgerRepository`/`EcgSyncWorker` pipeline a real session uses — no
+debug-specific transport code. Requires a connected Polar device and a configured sync
+server (same gating as "Invia tutti i dati in coda"); the button is disabled and an
+inline result message explains why otherwise. `PolarManager.startEcgRecording()`/
+`stopEcgRecording()` needed no changes — they were already generic (keyed only on the
+connected device, not tied to an active `ActiveRoutineViewModel` session).
+
+The `debug-` id prefix is a signal for the server team to tell debug uploads apart from
+genuine session recordings if that ever matters (e.g. excluding them from real analysis
+runs) — see the updated `ECG_SPEC.md` handoff note.
+
+## Phase 37 — Options screen crash fix + redesign
+
+Fixed a real crash: double-tapping "Invia tutti i dati in coda" fired
+`OptionsViewModel.resyncAll()` twice concurrently; the second run's ECG file loop had no
+`file.exists()` guard (unlike the other three record types' loops, which all had one) —
+`EcgSyncWorker` deleting the file mid-flight after the first run's confirmed send crashed
+the app with `FileNotFoundException` on `readBytes()`. Fixed with both a `file.exists()`
+check (matching the other three loops) and an entry guard on `resyncAll()` itself so a
+second tap while one run is in flight is a no-op instead of a second concurrent run.
+
+Redesigned the Options screen debug/sync sections based on direct feedback that the
+layout was cluttered:
+- Removed "Inserisci dati di debugging" (seed data) entirely from the screen — the
+  underlying `MainViewModel.seedDebugData()` is left in place, unused, in case it's
+  wanted again later.
+- Split the old single "Dati di debugging" card (seed button + Scale BLE Debug + ECG
+  debug all mixed together) into two focused cards: "Debug bilancia" (just the Scale BLE
+  Debug button) and "Debug ECG" (the record+send button from Phase 36).
+- Reordered top-to-bottom: Powerlifting → Debug bilancia → Debug ECG → Sincronizzazione
+  server — powerlifting first since it's the setting used most routinely, debug cards
+  grouped together, sync last since it bundles the most controls.
+- Pending-sync count changed from a single summed number to a per-type bullet list
+  (Sessioni / Pesate / ECG) — `OptionsUiState` now exposes `syncSessionsPending`/
+  `syncScalePending`/`syncEcgPending` alongside the existing summed `syncPendingCount`,
+  all populated by the same `refreshSyncStatus()`.
+- Added a 5s poll (`pollSyncStatusWhileScreenOpen()`) alongside the existing WorkManager-
+  completion observer as a safety net — the observer only fires when a *specific* unique
+  work name transitions to finished, which can miss a still-`ENQUEUED` job waiting on
+  network constraints or the periodic durability net firing in the background. Reported as
+  "doesn't seem to update well"; the poll is cheap (each ledger read is a small local YAML
+  file) and guarantees the pending list is never silently stale for more than a few seconds.
+- Unified button style: one filled `Button` per card for the primary/most-common action
+  ("Invia dati in coda", the seed button previously), everything else (Verifica
+  connessione, Test sincronizzazione, Scale BLE Debug, Registra e invia ECG, Disattiva
+  avviso powerlifting) as `OutlinedButton` — previously inconsistent (e.g. "Test
+  sincronizzazione" was filled, "Invia tutti i dati in coda" was outlined, with no
+  discernible reason for the difference).
+- Trimmed every description text to one short line; several were multi-sentence
+  paragraphs restating what the button below already said.
+
+## Phase 38 — ECG debug countdown + resync progress bar
+
+Two follow-ups to Phase 37's redesign, from direct usage feedback:
+
+- Moved the "Debug ECG" button from its own card into the sync card, directly below
+  "Verifica connessione" — grouped with the other server-reachability checks instead of
+  living in a separate card.
+- The button now shows a live countdown while recording (`"Registrazione ECG… 7s"`,
+  ticking down to 0) instead of a bare spinner — `OptionsViewModel.sendDebugEcg()` ticks
+  `ecgDebugSecondsLeft` down once per second via a loop instead of a single 10s `delay()`.
+- "Invia dati in coda" now shows a real determinate `LinearProgressIndicator` plus a
+  percentage in the button label, instead of an indeterminate spinner. `resyncAll()`
+  snapshots the total item count right after enqueueing (the denominator), then
+  `trackResyncProgress()` polls all four ledgers' pending counts once a second and derives
+  `syncResyncProgress` (0..1) from how much of that batch has drained, up to a 60s timeout
+  (workers keep retrying via their own backoff after that regardless — the timeout only
+  stops the UI from polling forever, it doesn't cancel the actual sync).
+
+Also clarified, on request, the difference between "Verifica connessione" and "Test
+sincronizzazione" (no code change, just for the record): the former is a bare `GET
+/health` reachability check; the latter (`SyncDiagnostics.run()`) actually POSTs a real or
+synthetic session and re-sends it to confirm the server's idempotency path answers
+`duplicate` — a deeper functional test, not a duplicate control.
+
+## Phase 39 — ECG analysis handoff doc for the server
+
+No phone-side code changes. Wrote `docs/sync-ingestion/ECG_ANALYSIS_HANDOFF.md` in the
+`MyGymApp_server` repo — a complete, formula-exact specification of the ECG analysis the
+phone used to run (`EcgAnalyzer.kt`: Pan-Tompkins R-peak detection, RMSSD/SDNN/pNN50/
+Poincaré, PAC/pause/irregular-beat/AFib-suspicion screening) before Phase 35 removed it
+from the phone. Prompted by discovering, while inspecting the 39 real raw ECG files the
+raw-sync backfill had sent to the server, that `ANALYSIS_SPEC.md` (server repo) still said
+these 12 fields "arrive pre-computed... do not recompute them" — no longer true since
+Phase 35, and left uncorrected until now, which would have misled anyone implementing
+server-side analysis into thinking the fields already existed in synced data.
+
+Corrected `ANALYSIS_SPEC.md`'s §"Already computed phone-side" and §6 accordingly (moved
+the 12 ECG fields out of the "already computed" list, reframed §6 from "optional/skip
+this" to "required — see handoff doc"). The handoff doc also explicitly separates what
+was actually shipped and working (§1–§5, transcribed verbatim from source) from what the
+original research doc (`docs/polar/implementation-guide.md`) sketched but never built
+(PVC/QRS-morphology detection, RSA-via-FFT, DFA alpha1, per-exercise HRV baselines) — so
+the server team doesn't assume a richer feature set exists than what's actually in
+`EcgAnalyzer.kt`.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
