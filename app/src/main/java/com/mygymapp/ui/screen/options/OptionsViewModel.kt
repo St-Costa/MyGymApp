@@ -4,10 +4,15 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.PowerliftingScheduleRepository
+import com.mygymapp.data.polar.ConnectionState
+import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.ReadinessRepository
+import com.mygymapp.data.repository.FileManager
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.sync.DiagnosticStep
+import com.mygymapp.data.sync.EcgSyncLedgerRepository
+import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessLedgerRepository
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
@@ -38,12 +43,21 @@ data class OptionsUiState(
     val syncBearerToken: String = "",
     val syncEnabled: Boolean = false,
     val syncPendingCount: Int = 0,
+    val syncSessionsPending: Int = 0,
+    val syncScalePending: Int = 0,
+    val syncEcgPending: Int = 0,
     val syncLastSuccessAt: String? = null,
     val syncIsTestingConnection: Boolean = false,
     val syncConnectionTestResult: Boolean? = null, // null = not tested yet this session
     val syncIsResyncing: Boolean = false,
+    // Set when syncIsResyncing starts, to 0..1 as ledgers drain — see resyncAll().
+    val syncResyncProgress: Float = 0f,
     val syncDiagnosticSteps: List<DiagnosticStep> = emptyList(),
     val syncDiagnosticRunning: Boolean = false,
+    // ECG debug send (docs/SYNC.md "Fourth record type: raw ECG")
+    val ecgDebugRecording: Boolean = false,
+    val ecgDebugSecondsLeft: Int = 0,
+    val ecgDebugResult: String? = null,
 )
 
 @HiltViewModel
@@ -58,6 +72,9 @@ class OptionsViewModel @Inject constructor(
     private val readinessLedgerRepository: ReadinessLedgerRepository,
     private val scaleHistoryRepository: ScaleHistoryRepository,
     private val scaleWeighInLedgerRepository: ScaleWeighInLedgerRepository,
+    private val ecgSyncLedgerRepository: EcgSyncLedgerRepository,
+    private val fileManager: FileManager,
+    private val polarManager: PolarManager,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -75,6 +92,7 @@ class OptionsViewModel @Inject constructor(
     init {
         refreshSyncStatus()
         observeSyncWorkerCompletion()
+        pollSyncStatusWhileScreenOpen()
     }
 
     /**
@@ -93,6 +111,7 @@ class OptionsViewModel @Inject constructor(
             SyncWorker.Scheduler.EXPEDITED_WORK_NAME,
             ReadinessSyncWorker.EXPEDITED_WORK_NAME,
             ScaleWeighInSyncWorker.EXPEDITED_WORK_NAME,
+            EcgSyncWorker.EXPEDITED_WORK_NAME,
         ).forEach { workName ->
             viewModelScope.launch {
                 workManager.getWorkInfosForUniqueWorkFlow(workName).collect { infos ->
@@ -100,6 +119,25 @@ class OptionsViewModel @Inject constructor(
                         refreshSyncStatus()
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Safety net alongside [observeSyncWorkerCompletion]: that observer only fires when a
+     * *specific* unique WorkManager job transitions to a finished state, which can miss
+     * cases where the pending count changed for another reason (e.g. a worker still
+     * `ENQUEUED` waiting on network constraints never reaches `isFinished` on this launch,
+     * or the periodic durability net running in the background fires while this screen
+     * isn't observing it at all). A light poll while the screen is open — cheap, since
+     * every ledger read is a small local YAML file — keeps the pending list from ever
+     * looking silently stuck.
+     */
+    private fun pollSyncStatusWhileScreenOpen() {
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(5_000L)
+                refreshSyncStatus()
             }
         }
     }
@@ -163,35 +201,58 @@ class OptionsViewModel @Inject constructor(
         }
     }
 
-    /** Sum across all three ledgers (sessions + readiness + scale) — one status line for everything queued. */
+    /**
+     * Reads all four ledgers (sessions + readiness + scale + ecg) fresh from disk — never
+     * cached — and exposes both the per-type breakdown (shown as a bullet list) and the
+     * summed total. Readiness has no dedicated UI bullet (no screen shows it standalone
+     * today) but is still folded into [OptionsUiState.syncPendingCount].
+     */
     private fun refreshSyncStatus() {
         viewModelScope.launch {
             val sessionsPending = syncLedgerRepository.pendingCount()
             val readinessPending = readinessLedgerRepository.getPending().size
             val scalePending = scaleWeighInLedgerRepository.getPending().size
+            val ecgPending = ecgSyncLedgerRepository.getPending().size
             val lastSuccess = syncLedgerRepository.lastSuccessfulSyncAt()
             _uiState.value = _uiState.value.copy(
-                syncPendingCount = sessionsPending + readinessPending + scalePending,
+                syncPendingCount = sessionsPending + readinessPending + scalePending + ecgPending,
+                syncSessionsPending = sessionsPending,
+                syncScalePending = scalePending,
+                syncEcgPending = ecgPending,
                 syncLastSuccessAt = lastSuccess,
             )
         }
     }
 
     /**
-     * Re-enqueues every session, readiness event, and scale weigh-in on disk for
-     * delivery, regardless of prior SENT status — a full backfill across all three
-     * independent sync pipelines (docs/SYNC.md §1.5/§3.5). Named "Invia tutti i dati in
-     * coda" in the UI. Useful whenever the server was offline/not-yet-built when some of
+     * Re-enqueues every session, readiness event, scale weigh-in, and still-on-disk raw
+     * ECG file for delivery, regardless of prior SENT status — a full backfill across all
+     * four independent sync pipelines (docs/SYNC.md §1.5/§3.5). Named "Invia tutti i dati
+     * in coda" in the UI. Useful whenever the server was offline/not-yet-built when some of
      * this data was created (the common case while developing the server side — data is
      * always persisted and queued locally regardless of whether the server exists yet),
      * or to resend everything after improving a server-side parser.
+     *
+     * ECG is the one pipeline where this can't be a true backfill: unlike sessions/
+     * readiness/scale (permanent local records), a raw `.ecg` file is deleted once
+     * [EcgSyncWorker] confirms SENT — so this only re-enqueues whatever `.ecg` files still
+     * happen to be sitting in `gymdata/ecg/` (pending/failed/not-yet-queued), not anything
+     * already delivered and cleaned up.
      */
     fun resyncAll() {
-        _uiState.value = _uiState.value.copy(syncIsResyncing = true)
+        // Guards against a double-tap firing this twice concurrently — Compose recomposes
+        // (and disables the button) only after this state write lands, so a second tap
+        // landing in that window would otherwise race the first run and could read a file
+        // the first run's EcgSyncWorker had already deleted (readBytes() on a gone file
+        // throws FileNotFoundException, crashing the app — this happened for real, see
+        // CHANGELOG).
+        if (_uiState.value.syncIsResyncing) return
+        _uiState.value = _uiState.value.copy(syncIsResyncing = true, syncResyncProgress = 0f)
         viewModelScope.launch {
             val sessions = workoutRepository.getAllCompletedSessions()
             val readinessEvents = readinessRepository.getAll()
             val weighIns = scaleHistoryRepository.getAll()
+            val ecgFiles = fileManager.getDir("ecg").listFiles { f -> f.extension == "ecg" }?.toList().orEmpty()
 
             withContext(Dispatchers.IO) {
                 sessions.forEach { session ->
@@ -216,14 +277,56 @@ class OptionsViewModel @Inject constructor(
                         )
                     }
                 }
+                ecgFiles.forEach { file ->
+                    // Unlike the other three, this file can vanish between the listFiles()
+                    // snapshot above and here — EcgSyncWorker deletes it as soon as a
+                    // concurrent send confirms SENT (see class doc: "not a true backfill").
+                    if (file.exists()) {
+                        val sessionId = file.nameWithoutExtension
+                        ecgSyncLedgerRepository.enqueue(sessionId, "ecg/${file.name}", file.readBytes())
+                    }
+                }
             }
+
+            // Snapshot the total just-enqueued count once, right after enqueueing — this is
+            // the denominator for the progress bar. Re-reading "pending" after this point
+            // would undercount if new items got queued concurrently (e.g. a session ending
+            // mid-resync) or overcount completed work as still-total, so the denominator is
+            // fixed at start and the numerator (below) is "how many of THIS batch drained."
+            val totalQueued = sessions.size + readinessEvents.size + weighIns.size + ecgFiles.size
 
             SyncWorker.Scheduler.runExpedited(appContext)
             ReadinessSyncWorker.Scheduler.runExpedited(appContext)
             ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext)
+            EcgSyncWorker.Scheduler.runExpedited(appContext)
+
+            if (totalQueued > 0) {
+                trackResyncProgress(totalQueued)
+            }
 
             refreshSyncStatus()
-            _uiState.value = _uiState.value.copy(syncIsResyncing = false)
+            _uiState.value = _uiState.value.copy(syncIsResyncing = false, syncResyncProgress = 1f)
+        }
+    }
+
+    /**
+     * Polls the four ledgers' pending counts every second and derives a 0..1 progress
+     * fraction from how much of [totalQueued] has drained, until either everything's gone
+     * or a 60s timeout elapses (workers retry on their own after that — this is a UI
+     * progress indicator, not a substitute for WorkManager's own retry/backoff).
+     */
+    private suspend fun trackResyncProgress(totalQueued: Int) {
+        val deadline = System.currentTimeMillis() + RESYNC_PROGRESS_TIMEOUT_MILLIS
+        while (System.currentTimeMillis() < deadline) {
+            val stillPending = syncLedgerRepository.pendingCount() +
+                readinessLedgerRepository.getPending().size +
+                scaleWeighInLedgerRepository.getPending().size +
+                ecgSyncLedgerRepository.getPending().size
+            val sent = (totalQueued - stillPending).coerceIn(0, totalQueued)
+            val progress = sent.toFloat() / totalQueued
+            _uiState.value = _uiState.value.copy(syncResyncProgress = progress)
+            if (stillPending <= 0) return
+            kotlinx.coroutines.delay(1_000L)
         }
     }
 
@@ -239,5 +342,74 @@ class OptionsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(syncDiagnosticRunning = false, syncDiagnosticSteps = steps)
             refreshSyncStatus()
         }
+    }
+
+    // ─── ECG debug send (docs/SYNC.md "Fourth record type: raw ECG") ────────
+
+    /**
+     * Records ~10s of raw ECG from the currently connected Polar device and immediately
+     * queues+sends it via the same [EcgSyncLedgerRepository]/[EcgSyncWorker] pipeline a
+     * real workout session uses — a manual way to exercise `POST /v1/ecg` end to end
+     * without needing to run a full session. Uses a synthetic id (`debug-{timestamp}`, not
+     * a real 8-hex session id) so the server can tell debug uploads apart from genuine
+     * session ECG recordings if it ever needs to.
+     *
+     * Requires a connected Polar device (checked via [PolarManager.connectionState]) and a
+     * configured sync server — same requirement as "Invia tutti i dati in coda", since a
+     * debug recording with nowhere to send it would just accumulate on disk.
+     */
+    fun sendDebugEcg() {
+        if (polarManager.connectionState.value != ConnectionState.CONNECTED) {
+            _uiState.value = _uiState.value.copy(ecgDebugResult = "Polar non connesso")
+            return
+        }
+        if (!syncConfigRepository.isConfigured()) {
+            _uiState.value = _uiState.value.copy(ecgDebugResult = "Server sync non configurato")
+            return
+        }
+
+        val debugId = "debug-${System.currentTimeMillis()}"
+        val totalSeconds = (DEBUG_ECG_RECORD_MILLIS / 1000L).toInt()
+        _uiState.value = _uiState.value.copy(
+            ecgDebugRecording = true,
+            ecgDebugSecondsLeft = totalSeconds,
+            ecgDebugResult = null,
+        )
+        viewModelScope.launch {
+            polarManager.startEcgRecording(debugId)
+            // Countdown shown in the button label — one tick per second, ticking down to 0
+            // rather than up, so what's on screen matches "time remaining" directly.
+            for (secondsLeft in totalSeconds - 1 downTo 0) {
+                kotlinx.coroutines.delay(1_000L)
+                _uiState.value = _uiState.value.copy(ecgDebugSecondsLeft = secondsLeft)
+            }
+            polarManager.stopEcgRecording()
+
+            val fileSize = polarManager.ecgFileSize(debugId)
+            if (fileSize <= 0L) {
+                _uiState.value = _uiState.value.copy(
+                    ecgDebugRecording = false,
+                    ecgDebugResult = "Nessun dato registrato (Polar non ha inviato campioni ECG)",
+                )
+                return@launch
+            }
+
+            withContext(Dispatchers.IO) {
+                val file = polarManager.ecgFileFor(debugId)
+                ecgSyncLedgerRepository.enqueue(debugId, "ecg/${debugId}.ecg", file.readBytes())
+            }
+            EcgSyncWorker.Scheduler.runExpedited(appContext)
+            refreshSyncStatus()
+
+            _uiState.value = _uiState.value.copy(
+                ecgDebugRecording = false,
+                ecgDebugResult = "Registrati $fileSize byte, in coda per l'invio ($debugId)",
+            )
+        }
+    }
+
+    companion object {
+        private const val DEBUG_ECG_RECORD_MILLIS = 10_000L
+        private const val RESYNC_PROGRESS_TIMEOUT_MILLIS = 60_000L
     }
 }

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,10 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,7 +34,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,7 +51,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.ui.screen.main.MainViewModel
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
@@ -67,28 +62,8 @@ fun OptionsScreen(
     onBack: () -> Unit,
     onNavigateToScaleDebug: () -> Unit = {},
     viewModel: OptionsViewModel = hiltViewModel(),
-    mainViewModel: MainViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val mainState by mainViewModel.uiState.collectAsState()
-    var showSeedDialog by remember { mutableStateOf(false) }
-
-    if (showSeedDialog) {
-        AlertDialog(
-            onDismissRequest = { showSeedDialog = false },
-            title = { Text("Inserisci dati di debugging") },
-            text = { Text("Questo cancellerà le sessioni della settimana corrente e rigenererà dati di debug. Continuare?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showSeedDialog = false
-                    mainViewModel.seedDebugData()
-                }) { Text("Conferma") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSeedDialog = false }) { Text("Annulla") }
-            },
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -110,11 +85,6 @@ fun OptionsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            DebugSection(
-                isSeeding = mainState.isSeedingData,
-                onSeedClick = { showSeedDialog = true },
-                onScaleDebugClick = onNavigateToScaleDebug,
-            )
             PowerliftingSection(
                 anchorMonday = uiState.anchorMonday,
                 intervalWeeks = uiState.intervalWeeks,
@@ -122,12 +92,14 @@ fun OptionsScreen(
                 onSetInterval = viewModel::setInterval,
                 onClear = viewModel::clearSchedule,
             )
+            ScaleDebugSection(onScaleDebugClick = onNavigateToScaleDebug)
             SyncSection(
                 uiState = uiState,
                 onServerUrlChange = viewModel::setSyncServerUrl,
                 onBearerTokenChange = viewModel::setSyncBearerToken,
                 onEnabledChange = viewModel::setSyncEnabled,
                 onTestConnection = viewModel::testConnection,
+                onSendDebugEcg = viewModel::sendDebugEcg,
                 onResyncAll = viewModel::resyncAll,
                 onRunDiagnostics = viewModel::runDiagnostics,
             )
@@ -142,9 +114,11 @@ private fun SyncSection(
     onBearerTokenChange: (String) -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onTestConnection: () -> Unit,
+    onSendDebugEcg: () -> Unit,
     onResyncAll: () -> Unit,
     onRunDiagnostics: () -> Unit,
 ) {
+    val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -155,9 +129,7 @@ private fun SyncSection(
         ) {
             Text("Sincronizzazione server", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Invia i dati delle sessioni al tuo server self-hosted via Tailscale, " +
-                    "per l'analisi settimanale. I dati vengono inviati alla fine di ogni " +
-                    "sessione; nulla viene inviato finché non è attivata.",
+                "Invia i dati al tuo server self-hosted via Tailscale.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -186,11 +158,7 @@ private fun SyncSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text("Sincronizzazione attiva", style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = uiState.syncEnabled,
-                    onCheckedChange = onEnabledChange,
-                    enabled = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank(),
-                )
+                Switch(checked = uiState.syncEnabled, onCheckedChange = onEnabledChange, enabled = configured)
             }
 
             Row(
@@ -223,45 +191,56 @@ private fun SyncSection(
                 }
             }
 
-            Text(
-                buildString {
-                    append("${uiState.syncPendingCount} elementi in attesa (sessioni, misurazioni, pesate)")
-                    if (uiState.syncLastSuccessAt != null) {
-                        append(" · ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}")
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             OutlinedButton(
+                onClick = onSendDebugEcg,
+                enabled = configured && !uiState.ecgDebugRecording,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.ecgDebugRecording) {
+                    Text("Registrazione ECG… ${uiState.ecgDebugSecondsLeft}s")
+                } else {
+                    Text("Debug ECG: registra e invia")
+                }
+            }
+            if (uiState.ecgDebugResult != null) {
+                Text(
+                    uiState.ecgDebugResult,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            PendingItemsList(uiState)
+
+            Button(
                 onClick = onResyncAll,
-                enabled = !uiState.syncIsResyncing &&
-                    uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank(),
+                enabled = !uiState.syncIsResyncing && configured,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.syncIsResyncing) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
                 } else {
-                    Text("Invia tutti i dati in coda")
+                    Text("Invia dati in coda")
                 }
+            }
+            if (uiState.syncIsResyncing) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { uiState.syncResyncProgress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             androidx.compose.material3.HorizontalDivider()
 
             Text("Test sincronizzazione", style = MaterialTheme.typography.titleSmall)
             Text(
-                "Esegue in sequenza: health check, invio di una sessione reale (o fittizia " +
-                    "se non ce ne sono), e reinvio della stessa sessione per verificare che " +
-                    "il server risponda 'duplicate'. Ogni passaggio viene anche scritto nel " +
-                    "log dell'app (adb: files/gymdata/logs/app.log).",
+                "Invio di prova con verifica duplicato.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(
+            OutlinedButton(
                 onClick = onRunDiagnostics,
-                enabled = !uiState.syncDiagnosticRunning &&
-                    uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank(),
+                enabled = !uiState.syncDiagnosticRunning && configured,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.syncDiagnosticRunning) {
@@ -278,6 +257,32 @@ private fun SyncSection(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Pending-sync counts as one bullet per record type, instead of a single summed number. */
+@Composable
+private fun PendingItemsList(uiState: OptionsUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("In coda:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf(
+            "Sessioni" to uiState.syncSessionsPending,
+            "Pesate" to uiState.syncScalePending,
+            "ECG" to uiState.syncEcgPending,
+        ).forEach { (label, count) ->
+            Text(
+                "• $label: $count",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (uiState.syncLastSuccessAt != null) {
+            Text(
+                "Ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -299,7 +304,7 @@ private fun DiagnosticStepRow(step: com.mygymapp.data.sync.DiagnosticStep) {
 }
 
 @Composable
-private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit, onScaleDebugClick: () -> Unit) {
+private fun ScaleDebugSection(onScaleDebugClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -308,23 +313,7 @@ private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit, onScaleDeb
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Dati di debugging", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Il pulsante qui sotto inserisce dati di debugging. Premendolo comparirà " +
-                    "l'avviso sulla cancellazione degli altri dati della settimana corrente.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Button(
-                onClick = onSeedClick,
-                enabled = !isSeeding,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (isSeeding) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Inserisci dati di debugging")
-                }
-            }
+            Text("Debug bilancia", style = MaterialTheme.typography.titleMedium)
             OutlinedButton(
                 onClick = onScaleDebugClick,
                 modifier = Modifier.fillMaxWidth(),
@@ -353,10 +342,9 @@ private fun PowerliftingSection(
         ) {
             Text("Settimana powerlifting", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Seleziona una settimana e un intervallo. A partire da quella settimana, ogni " +
-                    "X settimane, quando apri una sessione comparirà l'avviso \"SETTIMANA " +
-                    "POWERLIFTING\". Es: ogni 4 settimane = 3 senza avviso, 1 con avviso.",
-                style = MaterialTheme.typography.bodyMedium,
+                "Seleziona settimana e intervallo per l'avviso periodico in sessione.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             WeekCalendar(
