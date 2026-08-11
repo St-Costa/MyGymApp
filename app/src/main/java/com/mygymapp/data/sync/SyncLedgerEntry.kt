@@ -1,7 +1,14 @@
 package com.mygymapp.data.sync
 
-/** Delivery state of one queued session in the sync ledger (`gymdata/_sync/state.yml`). */
-enum class SyncStatus { PENDING, SENT, FAILED }
+/**
+ * Delivery state of one queued session in the sync ledger (`gymdata/_sync/state.yml`).
+ *
+ * [EXPIRED] is only ever produced by [EcgSyncLedgerRepository.expireStale] — the raw ECG
+ * pipeline is the only one whose source file is ephemeral, so it's the only one that needs
+ * a terminal "gave up" state distinct from `FAILED` (still retryable). The other three
+ * pipelines (sessions/readiness/scale) never assign this value.
+ */
+enum class SyncStatus { PENDING, SENT, FAILED, EXPIRED }
 
 /**
  * One row of the local sync ledger — the durable record of "has this exact session
@@ -19,4 +26,21 @@ data class SyncLedgerEntry(
     val lastAttemptAt: String = "",
     val lastError: String = "",
     val contentHash: String = "",
+)
+
+/**
+ * [EcgSyncLedgerRepository]'s row shape — same fields as [SyncLedgerEntry] plus
+ * [enqueuedAt], needed for [EcgSyncLedgerRepository.expireStale]'s 30-day age cap. Kept as
+ * a separate type rather than adding a nullable field to [SyncLedgerEntry] so the other
+ * three ledgers (which have no expiry concept) aren't forced to carry an unused field.
+ */
+data class EcgSyncLedgerEntry(
+    val sessionId: String,
+    val relPath: String,
+    val status: SyncStatus = SyncStatus.PENDING,
+    val attempts: Int = 0,
+    val lastAttemptAt: String = "",
+    val lastError: String = "",
+    val contentHash: String = "",
+    val enqueuedAt: String = "",
 )

@@ -166,14 +166,17 @@ fun SessionProgressScreen(
                 }
             }
 
-            // Cardio trend charts — one small chart per metric, only when it has data
+            // Cardio trend charts — one small chart per metric, only when it has data.
+            // Deep ECG-derived charts (avg HR from ECG, RMSSD, SDNN, Poincaré ratio) and
+            // the arrhythmia/AFib anomaly callouts were removed: that analysis now runs
+            // server-side on the uploaded raw waveform, not on the phone — see
+            // docs/SYNC.md "Fourth record type: raw ECG". Only metrics computed from live
+            // HR/readiness tracking remain here.
             val hasCardioData = listOf(
-                uiState.avgHrSeries, uiState.hrrSeries, uiState.vo2maxSeries, uiState.rmssdSeries,
-                uiState.sdnnSeries, uiState.poincareRatioSeries, uiState.restingHrSeries, uiState.cardiacDriftSeries,
+                uiState.hrrSeries, uiState.vo2maxSeries, uiState.restingHrSeries, uiState.cardiacDriftSeries,
             ).any { it.data.isNotEmpty() }
-            val anomalies = uiState.ecgPacCount + uiState.ecgPauseCount + uiState.ecgIrregularBeats
 
-            if (hasCardioData || anomalies > 0 || uiState.afibSuspicionEpisodes > 0) {
+            if (hasCardioData) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -188,29 +191,10 @@ fun SessionProgressScreen(
                     ) {
                         Text("Cardio", style = MaterialTheme.typography.titleMedium)
 
-                        CardioChart("HR medio", "bpm", uiState.avgHrSeries)
                         CardioChart("HRR (recupero 60s)", "bpm", uiState.hrrSeries)
                         CardioChart("VO2max", "", uiState.vo2maxSeries)
-                        CardioChart("HRV — RMSSD", "ms", uiState.rmssdSeries)
-                        CardioChart("HRV — SDNN", "ms", uiState.sdnnSeries)
-                        CardioChart("Poincare ratio", "", uiState.poincareRatioSeries)
                         CardioChart("HR a riposo", "bpm", uiState.restingHrSeries)
                         CardioChart("Deriva cardiaca", "bpm/min", uiState.cardiacDriftSeries)
-
-                        if (anomalies > 0) {
-                            Text(
-                                "PAC: ${uiState.ecgPacCount} • Pause: ${uiState.ecgPauseCount} • Irregolari: ${uiState.ecgIrregularBeats} — non diagnostico, consulta un medico se persiste.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (uiState.afibSuspicionEpisodes > 0) {
-                            Text(
-                                "AFib screening: ${uiState.afibSuspicionEpisodes} episodio/i sospetto/i — non diagnostico, consulta un medico se ricorrente.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFEF5350),
-                            )
-                        }
                     }
                 }
             }

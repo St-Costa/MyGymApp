@@ -603,6 +603,104 @@ A companion spec (`docs/sync-ingestion/SCALE_SPEC.md` in `MyGymApp_server`, same
 as the session and readiness specs) covers `POST /v1/scale-weighins` and the
 `scale_weighins` SQLite table.
 
+## Fourth record type: raw ECG
+
+Implemented (phone side), following the same dedicated-classes pattern as the other three
+— but with one structural difference from all of them that's worth calling out up front.
+
+### What it is
+
+Historically, the app ran the full ECG post-session analysis (Pan-Tompkins QRS detection,
+arrhythmia markers, HRV metrics — see [POLAR.md](POLAR.md#post-session-analysis)) entirely
+on the phone, wrote the 14 derived metrics into the session YAML, and **deleted the raw
+`ecg/{sessionId}.ecg` file** once analysis succeeded. This record type instead uploads the
+raw waveform to the server, so the server can run a heavier/more accurate analysis (more
+CPU than a phone, potentially ML/LLM-assisted interpretation, and comparison against the
+user's full history rather than one isolated session) — see
+[POLAR.md](POLAR.md#post-session-analysis) for what stays local vs. moves server-side.
+
+The phone still runs its own lightweight analysis unchanged (for the immediate at-a-glance
+metrics shown in the app and stored in the session YAML) — this is purely an *additional*
+upload of the raw bytes behind those metrics, not a replacement of the local analysis.
+
+### The structural difference: an ephemeral, not permanent, source file
+
+Sessions/readiness/scale all sync a file that is a **permanent local record** — it's never
+deleted, so a failed or delayed sync just means "not yet delivered," and the file is always
+there to retry from, indefinitely, no matter how long the server stays down.
+
+The raw `.ecg` file is different: it was already ephemeral before sync existed (deleted
+right after local analysis), and it still needs to be, since 130Hz raw waveform data adds
+up (~940 KB/session uncompressed) in a way YAML frontmatter doesn't. So this pipeline
+changes **when** the file is deleted, not whether:
+
+- **Before this feature**: deleted immediately once local analysis succeeded
+  (`ecgResult.hasAnything`), kept only if analysis failed.
+- **Now**: deleted only after `EcgSyncWorker` confirms a `SENT` upload. If sync isn't
+  configured/enabled, the old immediate-delete-on-success behavior is the fallback (so a
+  phone with no server configured doesn't accumulate `.ecg` files with nothing to ever
+  drain them).
+- **New: a 30-day age cap.** `EcgSyncLedgerRepository.expireStale()` marks any
+  `PENDING`/`FAILED` entry older than 30 days as `EXPIRED` and deletes its file — a
+  deliberate departure from the other three pipelines' "never give up, retry forever"
+  philosophy (docs/SYNC.md §3.2). That philosophy only works when the source file is
+  permanent; here it would mean unbounded local storage growth during an extended outage
+  (the server has been observed offline for multi-day stretches in practice). Once expired,
+  that session's raw ECG is unrecoverable — only the phone-computed summary metrics survive
+  (in the session YAML, synced separately via `/v1/sessions`).
+
+### Sync path
+
+| Sessions | Readiness | Scale weigh-ins | ECG |
+|---|---|---|---|
+| `SyncLedgerRepository` (`_sync/state.yml`) | `ReadinessLedgerRepository` (`_sync/readiness_state.yml`) | `ScaleWeighInLedgerRepository` (`_sync/scale_state.yml`) | `EcgSyncLedgerRepository` (`_sync/ecg_state.yml`) |
+| `SyncApi` (`POST /v1/sessions`) | `ReadinessSyncApi` (`POST /v1/readiness`) | `ScaleWeighInSyncApi` (`POST /v1/scale-weighins`) | `EcgSyncApi` (`POST /v1/ecg`) |
+| `SyncWorker` | `ReadinessSyncWorker` | `ScaleWeighInSyncWorker` | `EcgSyncWorker` |
+| `ActiveRoutineViewModel.registerRoutine()` | `PolarManager.finishReadinessMeasurement()` | `BleScaleManager.maybeSaveWeighIn()` | `ActiveRoutineViewModel.registerRoutine()` (enqueue only — deletion moved to `EcgSyncWorker`) |
+
+Same 4-hourly periodic durability net as the other three
+(`EcgSyncWorker.Scheduler.ensurePeriodic()`, scheduled alongside the others in
+`MyGymApp.onCreate()`).
+
+Two differences from the shared `SyncLedgerEntry`/multipart pattern:
+
+- **Gzip compression**: the file is gzip-compressed before upload (binary Int16 sample
+  streams compress well) — `EcgSyncApi.postEcg()` sends `application/gzip`, not
+  `text/markdown`, and `contentHash` is computed over the *compressed* bytes, checked
+  against what the server actually receives before it decompresses. The ledger's
+  `enqueue()`-time hash (computed over the raw file, since `ActiveRoutineViewModel` only
+  has the raw bytes at that point) is provisional — `EcgSyncWorker` recomputes the real hash
+  over the compressed bytes it transmits.
+- **Longer HTTP timeouts** (`writeTimeout` 90s / `readTimeout` 60s vs. 30s/30s for the
+  other three) — a compressed ~130Hz ECG stream is still larger than a session/readiness/
+  weigh-in YAML file even after compression.
+
+Same `isEnabled()` scoping rule as the other three (§1.5): gates the automatic enqueue only,
+not whether `EcgSyncWorker` drains what's already queued.
+
+"Invia tutti i dati in coda" also resends any `.ecg` file still present in `gymdata/ecg/`
+— but unlike the other three, this is not a true backfill: once a file has been uploaded
+and deleted, there's nothing left on the phone to resend. Only files that are still
+pending/failed/not-yet-queued get picked up.
+
+**Debug send**: Options' debug section has a "Registra e invia ECG di debug" button
+(`OptionsViewModel.sendDebugEcg()`) that records ~10s of ECG from the connected Polar
+device using a synthetic `debug-{epoch millis}` id instead of a real session id, then
+enqueues it through this exact same pipeline — a manual way to exercise `POST /v1/ecg`
+end to end without a full workout session. Requires a connected Polar device and a
+configured sync server. See the server-side spec below for how to tell these apart from
+genuine session recordings.
+
+### Server-side spec
+
+A companion spec (`docs/sync-ingestion/ECG_SPEC.md` in `MyGymApp_server`) covers
+`POST /v1/ecg`, the binary `.ecg` format (documented in
+[STORAGE.md](STORAGE.md#raw-ecg-ecgsessionidecg)), and the new `ecg_recordings` SQLite
+table. Unlike the other three record types, the server's raw store becomes the **only**
+copy of the waveform once the phone deletes its local file — server-side backup/retention
+of `raw/ecg/` matters more here than for sessions/readiness/scale, which all keep the phone
+as a permanent secondary copy.
+
 ---
 
 ## Implementation status
@@ -643,13 +741,22 @@ Phone side (this repo, package `data/sync/`):
       periodic durability net (`ensurePeriodic()`, scheduled together in
       `MyGymApp.onCreate()`) — added once it became clear the server would be offline for
       multi-day stretches during its own development, not just brief outages.
-- [x] "Invia tutti i dati in coda" (Options) now backfills and resends all three record
+- [x] "Invia tutti i dati in coda" (Options) now backfills and resends all four record
       types in one action — `OptionsViewModel.resyncAll()` re-enqueues every session,
-      readiness event, and scale weigh-in found on disk regardless of prior status, and
-      the pending-count status line sums all three ledgers.
-- [ ] Server side for readiness (`/v1/readiness`) and scale weigh-ins
-      (`/v1/scale-weighins`) — specs written (`READINESS_SPEC.md`, `SCALE_SPEC.md` in
-      `MyGymApp_server/docs/sync-ingestion/`), currently being implemented.
+      readiness event, scale weigh-in, and still-on-disk `.ecg` file regardless of prior
+      status, and the pending-count status line sums all four ledgers.
+- [x] Raw ECG: `EcgSyncLedgerRepository.kt` (`_sync/ecg_state.yml`, adds `enqueuedAt` +
+      `expireStale()` 30-day cap not present in the other ledgers)/`EcgSyncApi.kt`
+      (gzip, longer timeouts, `POST /v1/ecg`)/`EcgSyncWorker.kt` (drains ledger, gzips,
+      deletes the raw file only after confirmed `SENT`), hooked into
+      `ActiveRoutineViewModel.registerRoutine()` (enqueue) — deletion is no longer
+      triggered there, it moved into `EcgSyncWorker`. `PolarManager.ecgFileFor()` added
+      as a thin wrapper. Build-verified; not yet tested against a live session + server
+      round-trip.
+- [ ] Server side for readiness (`/v1/readiness`), scale weigh-ins
+      (`/v1/scale-weighins`), and ECG (`/v1/ecg`) — specs written (`READINESS_SPEC.md`,
+      `SCALE_SPEC.md`, `ECG_SPEC.md` in `MyGymApp_server/docs/sync-ingestion/`), currently
+      being implemented.
 
 New Gradle dependencies added: `com.squareup.okhttp3:okhttp`, `androidx.work:work-runtime-ktx`,
 `androidx.hilt:hilt-work` (+ `hilt-compiler` via KSP). `buildFeatures.buildConfig = true`
