@@ -443,6 +443,22 @@ fires before 10:00 local time, and only if no readiness event has been persisted
 after an accidental disconnect) reuses today's already-saved result instead of re-measuring —
 loaded back into `readinessResult`/`vo2max`/`restingHr` via `PolarManager.maybeStartAutoReadinessMeasurement()`.
 
+## Phase 41 — Live HR-zone widget
+
+Added a live, on-device %HRR (Karvonen) Z1-Z5 zone widget to `HeartRateBar`, following the
+spec drafted server-side (see [SYNC.md](SYNC.md)) alongside the sync server's retrospective
+`compute_hr_zone_minutes`. `HrZoneCalculator` mirrors the server's zone math exactly: `max_hr`
+is the unweighted mean of the Fox/Tanaka/Gulati age formulas (from `UserProfile.birthYear`,
+newly added to the profile — falls back to the existing `age` field for users who haven't set
+one), `resting_hr` comes from today's readiness measurement or a 7-day trailing average
+(`ReadinessRepository.getRecentAverageRestingHr()`, new), falling back to plain %HRmax if
+neither is available. `HrZoneTracker` accumulates per-zone minutes in memory for the
+in-progress session only (reset on `startHrSeriesCapture()`) — not persisted; the server-side
+ECG-derived analysis after sync remains the durable historical record. `HeartRateBar` gained a
+zone chip ("Z3 · 74%") and a thin time-in-zone stacked bar, using the same zone color palette
+as the server dashboard for visual consistency. Entirely local-first: no server reachability
+required at workout time.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
