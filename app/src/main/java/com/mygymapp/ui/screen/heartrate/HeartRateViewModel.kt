@@ -194,4 +194,11 @@ class HeartRateViewModel @Inject constructor(
         _uiState.update { it.copy(profile = profile) }
         profileRepo.save(profile)
     }
+
+    fun updateBirthYear(birthYear: Int?) {
+        val profile = _uiState.value.profile.copy(birthYear = birthYear)
+        _uiState.update { it.copy(profile = profile) }
+        profileRepo.save(profile)
+        polarManager.updateUserProfile(profile)
+    }
 }

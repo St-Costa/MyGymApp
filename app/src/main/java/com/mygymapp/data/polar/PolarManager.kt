@@ -167,6 +167,20 @@ class PolarManager @Inject constructor(
     val liveCardiacDrift: StateFlow<Double> = _liveCardiacDrift
     private var lastDriftComputeMs = 0L
 
+    // Live HR-zone widget (docs/POLAR.md's %HRR/Karvonen zones — see HrZoneCalculator).
+    // Purely on-device, no server round-trip: max_hr from age (or birthYear), resting_hr
+    // from today's readiness measurement or a 7-day trailing average, current BPM from
+    // the existing HR stream above. Null calculator = not enough data yet (before the
+    // session's async resolveHrZoneCalculator() completes).
+    private var hrZoneCalculator: HrZoneCalculator? = null
+    private val hrZoneTracker = HrZoneTracker()
+    private val _currentHrZone = MutableStateFlow<HrZone?>(null)
+    val currentHrZone: StateFlow<HrZone?> = _currentHrZone
+    private val _currentHrZonePercent = MutableStateFlow(0)
+    val currentHrZonePercent: StateFlow<Int> = _currentHrZonePercent
+    private val _hrZoneMinutes = MutableStateFlow(HrZoneMinutes())
+    val hrZoneMinutes: StateFlow<HrZoneMinutes> = _hrZoneMinutes
+
     private val _readinessResult = MutableStateFlow(ReadinessResult())
     val readinessResult: StateFlow<ReadinessResult> = _readinessResult
 
@@ -523,6 +537,17 @@ class PolarManager @Inject constructor(
                         _heartRate.value = sample.hr
                         PolarStreamingService.updateHr(context, sample.hr)
 
+                        // Live HR-zone widget: classify + accumulate time-in-zone
+                        if (hrSeriesActive) {
+                            hrZoneCalculator?.let { calc ->
+                                val zone = calc.classify(sample.hr)
+                                hrZoneTracker.onTick(zone)
+                                _currentHrZone.value = zone
+                                _currentHrZonePercent.value = calc.percent(sample.hr)
+                                _hrZoneMinutes.value = hrZoneTracker.current
+                            }
+                        }
+
                         // Capture HR series for cardiac drift analysis
                         if (hrSeriesActive) {
                             val now = System.currentTimeMillis()
@@ -741,6 +766,26 @@ class PolarManager @Inject constructor(
         hrrDeltas.clear()
         _liveHrrLast.value = null
         lastQueuedPeakAtMs = 0L
+
+        hrZoneTracker.reset()
+        _currentHrZone.value = null
+        _currentHrZonePercent.value = 0
+        _hrZoneMinutes.value = HrZoneMinutes()
+        hrZoneCalculator = null
+        readinessScope.launch { resolveHrZoneCalculator() }
+    }
+
+    /**
+     * Resolves [hrZoneCalculator] for the session: max_hr from birthYear/age (see
+     * [HrZoneCalculator.estimatedMaxHr]), resting_hr from today's readiness measurement
+     * if one exists, else a 7-day trailing average, else null (falls back to plain
+     * %HRmax inside [HrZoneCalculator] rather than blocking the feature).
+     */
+    private suspend fun resolveHrZoneCalculator() {
+        val maxHr = HrZoneCalculator.estimatedMaxHr(userProfile.birthYear, userProfile.age)
+        val restingHr = readinessRepository.getLatestForDate()?.restingHr?.takeIf { it > 0 }
+            ?: readinessRepository.getRecentAverageRestingHr()
+        hrZoneCalculator = HrZoneCalculator(maxHr, restingHr)
     }
 
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */
