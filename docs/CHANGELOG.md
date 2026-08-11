@@ -435,6 +435,14 @@ original research doc (`docs/polar/implementation-guide.md`) sketched but never 
 the server team doesn't assume a richer feature set exists than what's actually in
 `EcgAnalyzer.kt`.
 
+## Phase 40 — Gate automatic on-connect readiness measurement
+
+The 60s resting-HR/HRV readiness measurement that auto-starts on first Polar connect now only
+fires before 10:00 local time, and only if no readiness event has been persisted yet today
+(`ReadinessRepository.getLatestForDate()`). Reconnecting the strap later the same day (e.g.
+after an accidental disconnect) reuses today's already-saved result instead of re-measuring —
+loaded back into `readinessResult`/`vo2max`/`restingHr` via `PolarManager.maybeStartAutoReadinessMeasurement()`.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

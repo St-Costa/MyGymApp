@@ -68,6 +68,15 @@ connectToDevice(id)  ─► SDK callback deviceConnected()
 
 ### HRV readiness (60s after connect)
 
+The automatic on-connect measurement is gated by `PolarManager.maybeStartAutoReadinessMeasurement()`:
+it only starts before **10:00 local time**, and only if no readiness event has been persisted
+yet **today** (`ReadinessRepository.getLatestForDate()`) — so disconnecting and reconnecting the
+strap later the same day reuses today's earlier result (loaded back into `readinessResult`/
+`vo2max`/`restingHr`) instead of re-measuring. Outside the time window with no prior measurement,
+`readinessResult` simply stays at its default (`MEASURING`/never-run) until the next connect that
+qualifies. This gating only applies to the automatic first-connect trigger; a mid-session
+reconnect never re-measures regardless of time (see `hrSeriesActive` check below).
+
 1. RR intervals accumulate from each `PolarHrData` sample.
 2. Min HR is tracked as the session resting HR estimate.
 3. At 60s:
