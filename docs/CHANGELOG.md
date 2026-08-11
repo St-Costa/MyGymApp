@@ -253,6 +253,84 @@ was not transmitting. Those changes were discarded — they also had the residen
 sharing `reconnectHandler` with `scheduleReconnect()`, whose `removeCallbacksAndMessages`
 cancelled the watchdog permanently after its first tick.
 
+## Phase 34 — Raw ECG sync (fourth record type)
+
+Added `EcgSyncLedgerRepository`/`EcgSyncApi`/`EcgSyncWorker` under `data/sync/`, following
+the exact dedicated-classes pattern established for readiness and scale weigh-ins (see
+Phase 30). Moves the goal of ECG analysis from "phone computes everything, raw waveform
+discarded" toward "phone computes a lightweight local summary, server gets the raw
+waveform for a heavier/more accurate analysis" — motivated by wanting more CPU budget and
+potential ML/LLM-assisted interpretation than a phone can offer, informed by the user's
+full history rather than one isolated session.
+
+Structurally different from the other three sync pipelines because the source file
+(`ecg/{sessionId}.ecg`) is ephemeral by design, not a permanent local record:
+- The raw file is gzip-compressed before upload (`application/gzip`, longer OkHttp
+  timeouts than the other three APIs) and `contentHash` is computed over the compressed
+  bytes, verified against what the server actually receives.
+- Deletion moved from `ActiveRoutineViewModel.registerRoutine()` (previously: immediate,
+  once local analysis succeeded) into `EcgSyncWorker` (now: only after a confirmed `SENT`
+  upload) — but only when sync is configured/enabled; otherwise the original immediate-
+  delete-on-success behavior is unchanged, so phones without a server configured don't
+  accumulate `.ecg` files with nothing to drain them.
+- A new 30-day age cap (`EcgSyncLedgerRepository.expireStale()`) marks stale pending
+  entries `EXPIRED` and deletes their file regardless of upload status — a deliberate
+  departure from the other three pipelines' "retry forever" philosophy, needed because an
+  ephemeral source file can't be allowed to accumulate unboundedly during an extended
+  server outage (observed multi-day in practice — see Phase 30). `SyncStatus` gained this
+  `EXPIRED` value; the other three ledgers never assign it.
+
+`PolarManager.ecgFileFor()` added as a thin wrapper (mirrors `ecgFileSize`/
+`deleteEcgFile`/`analyzeSessionEcg`). `OptionsViewModel`'s pending-count status line and
+"Invia tutti i dati in coda" now cover all four pipelines — for ECG specifically, resync
+only picks up files still present in `gymdata/ecg/`, since a file already uploaded and
+deleted has nothing left on the phone to resend. `MyGymApp.onCreate()` schedules
+`EcgSyncWorker.Scheduler.ensurePeriodic()` alongside the other three.
+
+Server side (`MyGymApp_server`) not yet implemented — spec written
+(`docs/sync-ingestion/ECG_SPEC.md`) covering `POST /v1/ecg`, the binary `.ecg` format, and
+a new `ecg_recordings` SQLite table. See [SYNC.md](SYNC.md#fourth-record-type-raw-ecg) for
+the full design, including why the server's raw store becomes the *only* copy of the
+waveform once the phone deletes its local file (unlike sessions/readiness/scale, which all
+keep the phone as a permanent secondary copy).
+
+## Phase 35 — Drop local deep ECG analysis, keep only resting HR / VO2max
+
+Following Phase 34's raw-ECG-upload feature, removed local execution of deep ECG analysis
+entirely: `ActiveRoutineViewModel.registerRoutine()` no longer calls
+`PolarManager.analyzeSessionEcg()`, so Pan-Tompkins QRS detection, RMSSD/SDNN/pNN50/
+Poincaré, and arrhythmia markers (PAC/pause/irregular/AFib suspicion) never run on the
+phone anymore. That analysis is now exclusively a server-side concern, run against the raw
+waveform uploaded by Phase 34's sync pipeline. `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()`
+are left in the codebase unused rather than deleted — the raw file format they parse is
+unchanged, and they cost nothing while dormant.
+
+The phone keeps computing and showing only what doesn't require deep waveform analysis:
+resting HR and VO2max (both derived from live HR/readiness tracking, shown at session end
+and on the heart-rate/cardiovascular screen), plus TRIMP and kcal (Banister/Keytel,
+computed continuously during the session, unchanged) and cardiac drift / HRR60s (cheap
+HR-series computations, not deep waveform analysis — also unchanged).
+
+Raw `.ecg` file handling simplified to send-then-delete with no local-analysis fallback:
+if sync is configured, the file is unconditionally enqueued for upload (previously gated
+on `ecgResult.hasAnything`) and deleted only after a confirmed server `SENT`; if sync isn't
+configured, the file is now deleted immediately rather than conditionally kept for offline
+inspection — there's no local analysis left that would ever consume it.
+
+`WorkoutSession`'s 12 ECG-derived fields (`ecgBeats`, `ecgDurationSec`, `ecgAvgHr`,
+`ecgSessionRmssd`, `ecgPacCount`, `ecgPauseCount`, `ecgIrregularBeats`, `sdnn`, `pnn50`,
+`poincareSd1`, `poincareSd2`, `poincareRatio`, `afibSuspicionEpisodes`) are left declared
+at their zero defaults rather than removed, for backward compatibility with sessions saved
+before this change (the YAML parser and history views for old sessions keep working
+unchanged). `SessionProgressScreen`/`SessionProgressViewModel` dropped the charts/text that
+read those 12 fields (avg-HR-from-ECG, HRV RMSSD/SDNN, Poincaré ratio, PAC/pause/irregular
+counts, AFib suspicion callout), keeping only HRR/VO2max/resting-HR/cardiac-drift charts.
+
+Also deleted `CardioTrendLoader.kt`/`CardioTrendSection.kt` — a 4-week rolling cardio trend
+view built on the same 12 ECG fields, discovered to be dead code (never called from any
+screen, confirmed via repo-wide search) while auditing what needed to change. Removed
+rather than updated, since nothing rendered it.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

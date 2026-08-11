@@ -211,7 +211,7 @@ Binary, written by [EcgRecorder](../app/src/main/java/com/mygymapp/data/polar/Ec
 | 12 | 8 B | Start timestamp (Int64, ns since epoch) |
 | 20 | N×2 B | Sample stream (Int16, µV) |
 
-Flushed every 260 samples (~2s). Deleted immediately after post-session analysis in [EcgAnalyzer](../app/src/main/java/com/mygymapp/data/polar/EcgAnalyzer.kt); the 14 computed metrics are stored in the session frontmatter.
+Flushed every 260 samples (~2s). [EcgAnalyzer](../app/src/main/java/com/mygymapp/data/polar/EcgAnalyzer.kt) exists but is no longer called — deep ECG analysis (the 12 arrhythmia/HRV metrics it used to compute) moved server-side; the session frontmatter's ECG-derived fields (`ecgBeats`, `sdnn`, `poincareSd1`, etc., still declared in `WorkoutSession` for backward-compat with sessions saved before this change) are no longer populated and stay at their zero defaults going forward. Only `restingHr`, `hrr60s`, and `cardiacDriftBpmMin` — cheap HR-series computations, not deep waveform analysis — are still computed and saved locally, alongside `vo2max`/`sessionCalories`/`sessionTrimp`. The raw `.ecg` file itself: deleted after successful upload to the sync server (`EcgSyncWorker`, gzip-compressed, `POST /v1/ecg`) if sync is configured/enabled — capped at 30 days pending, after which it's deleted unrecovered even without a confirmed upload (`EcgSyncLedgerRepository.expireStale()`); if sync isn't configured, deleted immediately (nothing local would ever analyze or send it). See [SYNC.md](SYNC.md#fourth-record-type-raw-ecg) and [POLAR.md](POLAR.md#post-session-analysis).
 
 ## IDs
 

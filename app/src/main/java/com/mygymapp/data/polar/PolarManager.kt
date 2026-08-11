@@ -20,6 +20,7 @@ import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
@@ -827,6 +828,9 @@ class PolarManager @Inject constructor(
         val file = ecgRecorder.fileFor(sessionId)
         return if (file.exists()) file.length() else 0L
     }
+
+    /** The raw ECG file for [sessionId] (may not exist). Used by [com.mygymapp.data.sync.EcgSyncWorker]. */
+    fun ecgFileFor(sessionId: String): File = ecgRecorder.fileFor(sessionId)
 
     private fun startEcgStreamingInternal(deviceId: String, sessionId: String) {
         ecgDisposable?.dispose()

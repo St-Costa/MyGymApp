@@ -9,8 +9,6 @@ import com.mygymapp.data.polar.UserProfile
 import com.mygymapp.data.polar.UserProfileRepository
 import com.mygymapp.data.repository.CardioMetricsTrendLoader
 import com.mygymapp.data.repository.CardioMetricsTrendReport
-import com.mygymapp.data.repository.CardioTrendLoader
-import com.mygymapp.data.repository.CardioTrendReport
 import com.mygymapp.data.repository.ScaleTrendLoader
 import com.mygymapp.data.repository.ScaleTrendReport
 import com.mygymapp.data.scale.BleScaleManager
@@ -37,7 +35,6 @@ data class HeartRateUiState(
     val readiness: ReadinessResult = ReadinessResult(),
     val vo2max: Double? = null,
     val profile: UserProfile = UserProfile(),
-    val cardioTrend: CardioTrendReport = CardioTrendReport(),
     val scaleConnectionState: ScaleConnectionState = ScaleConnectionState.DISCONNECTED,
     val scaleReading: ScaleReading? = null,
     val scaleError: String? = null,
@@ -55,7 +52,6 @@ data class DiscoveredDevice(
 class HeartRateViewModel @Inject constructor(
     private val polarManager: PolarManager,
     private val profileRepo: UserProfileRepository,
-    private val cardioTrendLoader: CardioTrendLoader,
     private val scaleManager: BleScaleManager,
     private val scaleTrendLoader: ScaleTrendLoader,
     private val cardioMetricsTrendLoader: CardioMetricsTrendLoader,
@@ -72,11 +68,6 @@ class HeartRateViewModel @Inject constructor(
         // made the async-loaded trends disappear — the Polar flow emits
         // constantly and kept overwriting them.
         _uiState.update { it.copy(profile = profileRepo.get()) }
-
-        viewModelScope.launch {
-            val report = cardioTrendLoader.load()
-            _uiState.update { it.copy(cardioTrend = report) }
-        }
 
         viewModelScope.launch {
             val loaded = scaleTrendLoader.load()

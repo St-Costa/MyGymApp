@@ -35,7 +35,7 @@ Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementat
 - **Polar facade**: everything flows through `@Singleton PolarManager`. Screens observe its StateFlows — they do not own Rx disposables.
 - **Two image caches**: `cache/images/` (ImageCacheRepository, persistent) and `image_cache/` (Coil LRU, 100 MB). Not interchangeable.
 - **Ghost-session guard**: `ActiveRoutineViewModel.onCleared()` + `WorkoutRepository.cleanupGhostSessions()`. Shell sessions (no data, no completed exercises) and their `.ecg` files get deleted both on back-out and at boot. See [CONVENTIONS.md](docs/CONVENTIONS.md#ghost-session-prevention).
-- **ECG raw kept on analysis failure**: `registerRoutine` deletes `ecg/{id}.ecg` only when `ecgResult.hasAnything`. See [CONVENTIONS.md](docs/CONVENTIONS.md#ecg-analysis-keep-the-raw-file-on-failure).
+- **ECG raw file deletion**: `registerRoutine` no longer runs local ECG analysis at all (moved server-side) — if sync isn't configured, the raw `ecg/{id}.ecg` is deleted immediately (nothing local would ever consume it). If sync **is** configured, deletion is deferred to `EcgSyncWorker` — only after a confirmed server upload, or after 30 days pending. See [CONVENTIONS.md](docs/CONVENTIONS.md#ecg-raw-file-send-then-delete-no-local-analysis-fallback) and [SYNC.md](docs/SYNC.md#fourth-record-type-raw-ecg).
 
 ## Gotchas (the short list)
 

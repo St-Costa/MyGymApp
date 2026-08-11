@@ -7,6 +7,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncWorker
@@ -35,6 +36,7 @@ class MyGymApp : Application(), ImageLoaderFactory, Configuration.Provider {
         SyncWorker.Scheduler.ensurePeriodic(this)
         ReadinessSyncWorker.Scheduler.ensurePeriodic(this)
         ScaleWeighInSyncWorker.Scheduler.ensurePeriodic(this)
+        EcgSyncWorker.Scheduler.ensurePeriodic(this)
     }
 
     override fun newImageLoader(): ImageLoader {

@@ -230,9 +230,18 @@ Diagnosing it, in order:
 
 Corollary for battery life: the ~400 h Polar quotes is for plain HR streaming. This app also records ECG at 130 Hz, which is a far heavier radio duty cycle, so expect substantially less — roughly 3 months at ~10 h/week of ECG-recorded sessions.
 
-## ECG analysis: keep the raw file on failure
+## ECG raw file: send-then-delete, no local analysis fallback
 
-`ActiveRoutineViewModel.registerRoutine()` runs `analyzeSessionEcg` and then deletes the raw `.ecg`. Delete ONLY when `ecgResult != null && ecgResult.hasAnything` (i.e. ≥1 beat detected). On failure (file too short, too few peaks, too few valid RR intervals) the `.ecg` is preserved so it can be inspected offline. `EcgAnalyzer.analyze()` emits structured logs (`file too small`, `only N peaks`, `only N valid RR intervals`, or the success line `N peaks → M valid RR intervals`) to pinpoint the cause.
+`ActiveRoutineViewModel.registerRoutine()` no longer calls `analyzeSessionEcg` at all — deep ECG analysis (Pan-Tompkins, RMSSD/SDNN/pNN50/Poincaré, arrhythmia markers) moved server-side entirely (see [SYNC.md](SYNC.md#fourth-record-type-raw-ecg), [POLAR.md](POLAR.md#post-session-analysis)). `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()` still exist in the codebase, unused — left in place rather than deleted, since the raw file format they parse is unchanged and they cost nothing while dormant.
+
+Raw `.ecg` file handling is now a simple send-then-delete, with no "keep for offline inspection" fallback (that fallback existed only because local analysis could fail and you'd want to retry/inspect it — with no local analysis at all, there's nothing to retry):
+
+- **Sync configured + enabled**: enqueued in `EcgSyncLedgerRepository` unconditionally (no analysis result to gate on). `EcgSyncWorker` deletes the file only after a confirmed server upload (`SENT`), or after 30 days pending (`expireStale()`).
+- **Sync not configured**: the file is deleted immediately — with no local analysis and no server to send it to, nothing would ever consume it.
+
+`EcgAnalyzer.analyze()`'s structured logs (`file too small`, `only N peaks`, etc.) are dead code paths now — harmless, but don't expect to see them in `app.log` anymore since nothing calls `analyze()`.
+
+Gzip temp-file cleanup: `EcgSyncWorker` compresses in-memory (`ByteArrayOutputStream` + `GZIPOutputStream`), not via a temp file on disk, specifically to avoid needing a `try/finally` cleanup step — simpler than the alternative and there's no leaked file to worry about if the worker is killed mid-run.
 
 ## R-peak threshold must be local, not global-max
 
