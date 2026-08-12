@@ -1,6 +1,5 @@
 package com.mygymapp.data.polar
 
-import java.time.Year
 
 /** Z1-Z5 training zones, plus "below Z1" for rest-between-sets / pre-warmup HR. */
 enum class HrZone { BELOW_Z1, Z1, Z2, Z3, Z4, Z5 }
@@ -56,11 +55,10 @@ class HrZoneCalculator(
         /**
          * Mean of three published age-based formulas — mirrors the server's
          * `_estimated_max_hr` exactly (same three formulas, same unweighted mean).
-         * Recomputed from the current date each time, not cached, so it drifts forward
-         * automatically as the user ages.
+         * Takes an already-resolved age — callers pass [UserProfile.effectiveAge], the sole
+         * place birthYear-vs-default resolution happens, so it isn't duplicated here.
          */
-        fun estimatedMaxHr(birthYear: Int?, fallbackAge: Int): Int {
-            val age = birthYear?.let { Year.now().value - it } ?: fallbackAge
+        fun estimatedMaxHr(age: Int): Int {
             val fox = 220 - age
             val tanaka = 208 - 0.7 * age
             val gulati = 206 - 0.88 * age

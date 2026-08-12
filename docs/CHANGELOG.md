@@ -535,6 +535,55 @@ That picker also switched from plain `RoundStepButton` +/− to `ScrollPickerInp
 `longPressRepeatStep = 10.0`, so holding either button jumps 10 minutes at a time — same
 widget and behavior already used for the weight picker on strength sets (`SupersetScreen`).
 
+## Phase 45 — Birth year replaces the plain Age field
+
+Removed `UserProfile.age` entirely — birth year (`UserProfile.birthYear`) is now the sole
+source of age for every age-dependent formula (Keytel calories, Tanaka HRmax, Banister
+TRIMP, VO2max, BIA body-fat %), via the previously-unused `UserProfile.effectiveAge`
+(`birthYear`-derived, recomputed from the current year each time; falls back to a fixed
+default of 30 until `birthYear` is set — same practical default the old `age` field always
+shipped with). This also fixes a real, previously-undetected bug: `effectiveAge` existed
+since birth-year support was added but was never actually called anywhere — Keytel, TRIMP
+(via `UserProfile.hrMax`), VO2max (via `hrMax`), and BIA body-fat % all read the plain `age`
+field directly, silently ignoring `birthYear` even when set. Only the live HR-zone widget
+(`HrZoneCalculator.estimatedMaxHr`) already preferred `birthYear` correctly. Now all five
+consumers go through `effectiveAge`/`hrMax`, so setting birth year actually affects every
+formula, not just one.
+
+`ProfileSection` (`HeartRateScreen.kt`) lost its "Age" picker; "Birth year" is now the
+primary, always-shown field (no longer labeled "optional") alongside Height. The HRmax
+caption below distinguishes an unset birth year ("Imposta l'anno di nascita per calcoli
+accurati") from a real one, rather than silently showing a Tanaka estimate as if it were
+authoritative either way. `HrZoneCalculator.estimatedMaxHr` was simplified to take an
+already-resolved `age: Int` instead of duplicating the birthYear-vs-fallback resolution
+logic itself — `UserProfile.effectiveAge` is now the only place that resolution happens.
+
+## Phase 46 — PolarManager reads UserProfile fresh, no more stale weight
+
+Found while double-checking Phase 45's age fix for a similar bug with weight:
+`PolarManager.userProfile` was a manually-synced **cached copy** (`private var`, read once
+at construction), kept in sync only when `HeartRateViewModel` observed a scale weigh-in
+finishing (`ScaleConnectionState.CONNECTED → DISCONNECTED`) and explicitly called
+`polarManager.updateUserProfile(refreshedProfile)`. If an HR session was already running in
+the background (`PolarStreamingService`) when the user weighed in — or any time
+`HeartRateViewModel` simply wasn't alive/collecting at that moment — Keytel calorie
+calculations kept using the previous, stale weight instead of the just-recorded one, with no
+way for the user to notice.
+
+Fixed the same way as `effectiveAge`: `PolarManager.userProfile` is now a computed property
+that reads `UserProfileRepository.get()` fresh on every access instead of caching. This is
+cheap even at the ~1Hz HR-sample rate `accumulateCaloriesAndTrimp()` runs at, since
+SharedPreferences is already in-memory-cached by Android after the first read — no new IO
+cost, just removes the staleness window. `PolarManager.updateUserProfile()` became
+unreachable (nothing left to assign into a computed property) and was deleted, along with
+its three call sites in `HeartRateViewModel` (`updateGender`, `updateBirthYear`, and the
+scale-disconnect handler) — `profileRepo.save()`/`_uiState` updates there are unaffected,
+only the now-redundant `PolarManager` bridge call was removed.
+
+BIA body-fat % (`BodyCompositionCalculator`, via `BleScaleManager`) was already unaffected —
+it always used the freshly-averaged weight from the current BLE weigh-in session directly,
+never routing through `UserProfile.weightKg` at all.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

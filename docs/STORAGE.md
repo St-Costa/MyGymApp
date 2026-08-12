@@ -289,9 +289,10 @@ Two keys, both `MODE_PRIVATE`:
 
 | Prefs file | Key | Type | Owner | Purpose |
 |---|---|---|---|---|
-| `user_profile` | `age` | Int | [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt) | Used by calorie (Keytel) and VO2max formulas |
+| `user_profile` | `birthYear` | Int, absent if unset | [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt) | Sole source of age (`UserProfile.effectiveAge`, recomputed from the current year) for every age-dependent formula: calorie (Keytel), Tanaka HRmax, TRIMP, VO2max, BIA body-fat %. Falls back to a fixed default age until set — no separate "age" field exists |
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
+| `user_profile` | `heightCm` | Int | " | Used by BIA body-fat % (scale integration) |
 | `hrv_baseline` | `lnrmssd_values` | String (CSV, ≤14 doubles) | [PolarManager](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) | Rolling 14-day LnRMSSD baseline for HRV readiness z-score |
 | `sync_config` | `serverUrl` | String | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net` |
 | `sync_config` | `bearerToken` | String | " | Shared secret sent as `Authorization: Bearer` on every sync POST |

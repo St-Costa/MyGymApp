@@ -10,7 +10,7 @@ data/polar/
 ├── EcgRecorder.kt          — Writes raw ECG samples to disk
 ├── EcgAnalyzer.kt          — Post-session analysis of a recorded file (Pan-Tompkins + arrhythmia)
 ├── LiveEcgAnalyzer.kt      — Incremental analyzer that updates while streaming
-├── UserProfile.kt          — Age / birth year / weight / sex (for Keytel, TRIMP, VO2max, HR zones)
+├── UserProfile.kt          — Birth year / weight / sex / height (for Keytel, TRIMP, VO2max, HR zones)
 ├── HrZoneCalculator.kt     — Live %HRR (Karvonen) Z1-Z5 zone boundaries + max-HR estimate
 ├── HrZoneTracker.kt        — In-memory per-session time-in-zone accumulator
 └── (CardioTrendLoader.kt lives under data/repository/)
@@ -231,13 +231,14 @@ PolarManager watches a rolling window for automatic peak detection:
 Pure on-device, real-time counterpart to the sync server's retrospective
 `compute_hr_zone_minutes` (see [SYNC.md](SYNC.md) and the server repo's
 `app/ecg_analysis.py`/`ECG_ADVANCED_ANALYSIS.md` §6) — no server round-trip, computed
-entirely from data already local: age/birth year, resting HR from readiness, and the
+entirely from data already local: birth year, resting HR from readiness, and the
 live BPM stream.
 
 - **Zone math**: `HrZoneCalculator` — %HRR (Karvonen), same formula the server uses.
-  `max_hr` = unweighted mean of Fox/Tanaka/Gulati age-based formulas, recomputed from
-  `UserProfile.birthYear` (falls back to the manually-set `age` if no birth year is on
-  file) — never derived from the phone's own peak-HR data (see the design doc for why:
+  `max_hr` = unweighted mean of Fox/Tanaka/Gulati age-based formulas, computed from
+  `UserProfile.effectiveAge` — recomputed from `UserProfile.birthYear` each time (falls back
+  to a fixed default age until birth year is set — there is no separate manually-entered age
+  field) — never derived from the phone's own peak-HR data (see the design doc for why:
   a resistance-training peak isn't a controlled maximal test). `resting_hr` = today's
   readiness measurement if one exists, else a 7-day trailing average
   (`ReadinessRepository.getRecentAverageRestingHr()`), else `null` — with no resting HR
@@ -261,14 +262,14 @@ live BPM stream.
 
 Accumulated on every HR sample:
 
-- **Keytel** for calorie estimation — gender-specific formula using HR, weight, age; integrated over time since the previous sample.
+- **Keytel** for calorie estimation — gender-specific formula using HR, weight, and `UserProfile.effectiveAge` (derived from birth year); integrated over time since the previous sample.
 - **Banister TRIMP** — `duration × HRR_fraction × exp(k × HRR_fraction)`, with `k` gender-adjusted.
 
 Both reset to 0 on connect, saved in the session on completion.
 
 ## Configuration & persistence
 
-- **User profile** (`SharedPreferences("user_profile")`): `age` (Int), `weightKg` (Float), `isMale` (Boolean). Must be set before Keytel / VO2max give sensible numbers. See [UserProfile.kt](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt).
+- **User profile** (`SharedPreferences("user_profile")`): `birthYear` (Int, absent if unset — the sole source of age via `UserProfile.effectiveAge`, no separate age field), `weightKg` (Float), `isMale` (Boolean), `heightCm` (Int). Set `birthYear` before Keytel / TRIMP / VO2max / BIA body-fat % give sensible numbers — until then `effectiveAge` falls back to a fixed default (30) so formulas never crash, they just use a placeholder. See [UserProfile.kt](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt). `weightKg` is written only by the VitaFit scale integration (`BleScaleManager.maybeSaveWeighIn()`) — no manual entry exists. `PolarManager.userProfile` reads `UserProfileRepository.get()` fresh on every access (cheap — SharedPreferences is already in-memory-cached after the first read) rather than keeping a manually-synced cached copy, so Keytel calories always reflect the most recent scale weigh-in regardless of which screen is open when it happens.
 - **HRV baseline** (`SharedPreferences("hrv_baseline")`): CSV of ≤14 daily LnRMSSD values; oldest trimmed first.
 - **ECG files** are ephemeral — see [STORAGE.md](STORAGE.md#raw-ecg-ecgsessionidecg).
 

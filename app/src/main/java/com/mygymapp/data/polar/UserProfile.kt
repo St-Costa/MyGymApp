@@ -6,22 +6,26 @@ import java.time.Year
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Fallback age (years) used by every age-dependent formula when [UserProfile.birthYear]
+ *  hasn't been set yet — matches the old plain-[age]-field default, so a fresh profile keeps
+ *  producing the same numbers it always did until the user fills in a real birth year. */
+private const val DEFAULT_AGE = 30
+
 data class UserProfile(
-    val age: Int = 30,
     val weightKg: Double = 75.0,
     val isMale: Boolean = true,
     val heightCm: Int = 175,
-    // Real birth year, if the user has entered one. Preferred over [age] wherever a
-    // computation wants "current age" — it stays correct as the calendar year rolls over,
-    // instead of needing a manual yearly bump like the plain [age] field does. Null until
-    // the user fills it in (see ProfileSection); [age] remains the fallback everywhere.
+    // Real birth year — the sole source of age for every formula (Keytel calories, Tanaka
+    // HRmax, TRIMP, VO2max, BIA body-fat %). Null until the user fills it in (ProfileSection);
+    // effectiveAge falls back to DEFAULT_AGE until then.
     val birthYear: Int? = null,
 ) {
-    /** Tanaka formula: more accurate than 220-age */
-    val hrMax: Int get() = (208 - (0.7 * age)).toInt()
+    /** [birthYear]-derived age, recomputed from the current calendar year (never stale like a
+     *  manually-entered plain age field would be) — [DEFAULT_AGE] until birthYear is set. */
+    val effectiveAge: Int get() = birthYear?.let { Year.now().value - it } ?: DEFAULT_AGE
 
-    /** [birthYear]-derived age when available, else the manually-set [age]. */
-    val effectiveAge: Int get() = birthYear?.let { Year.now().value - it } ?: age
+    /** Tanaka formula: more accurate than 220-age. */
+    val hrMax: Int get() = (208 - (0.7 * effectiveAge)).toInt()
 }
 
 @Singleton
@@ -31,7 +35,6 @@ class UserProfileRepository @Inject constructor(
     private val prefs = context.getSharedPreferences("user_profile", Context.MODE_PRIVATE)
 
     fun get(): UserProfile = UserProfile(
-        age = prefs.getInt("age", 30),
         weightKg = prefs.getFloat("weightKg", 75f).toDouble(),
         isMale = prefs.getBoolean("isMale", true),
         heightCm = prefs.getInt("heightCm", 175),
@@ -40,7 +43,6 @@ class UserProfileRepository @Inject constructor(
 
     fun save(profile: UserProfile) {
         prefs.edit()
-            .putInt("age", profile.age)
             .putFloat("weightKg", profile.weightKg.toFloat())
             .putBoolean("isMale", profile.isMale)
             .putInt("heightCm", profile.heightCm)
