@@ -24,6 +24,10 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String, exerciseId: String): String =
             "workout/$sessionId/stretch/$exerciseId"
     }
+    data object CardioExercise : Screen("workout/{sessionId}/cardio/{exerciseId}") {
+        fun createRoute(sessionId: String, exerciseId: String): String =
+            "workout/$sessionId/cardio/$exerciseId"
+    }
     data object ExercisePicker : Screen("exercises/pick")
     data object Superset : Screen("workout/{sessionId}/superset/{exerciseId1}/{exerciseId2}") {
         fun createRoute(sessionId: String, exerciseId1: String, exerciseId2: String): String =

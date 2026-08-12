@@ -266,6 +266,8 @@ private fun ExerciseLabel(
     val color = when (type) {
         ExerciseType.FORZA -> ForzaColor
         ExerciseType.STRETCH -> StretchColor
+        // Cardio exercises can never be superset members — see SupersetViewModel.
+        ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
     }
     Text(
         text = name,
@@ -291,6 +293,7 @@ private fun SupersetSetItem(
     val borderColor = when (setUi.exerciseType) {
         ExerciseType.FORZA -> ForzaColor
         ExerciseType.STRETCH -> StretchColor
+        ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
     }
 
     Card(
@@ -394,6 +397,8 @@ private fun SupersetSetItem(
                         )
                     }
                 }
+
+                ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
             }
         }
     }

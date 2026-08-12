@@ -202,11 +202,17 @@ class ActiveRoutineViewModel @Inject constructor(
             // Create and save the workout session
             val workoutExercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
-                val sets = (1..re.sets).map { _ ->
-                    when (exercise.type) {
-                        ExerciseType.FORZA -> ExerciseSet.Strength(isBodyweight = exercise.isBodyweight)
-                        ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = re.timePerSetSeconds)
+                // Cardio has no pre-configured set count (re.sets is meaningless for it — the
+                // routine editor hides that field for CARDIO exercises) — blocks are appended
+                // one at a time from CardioExerciseScreen's "Inizia cardio"/"Termina cardio".
+                val sets = when (exercise.type) {
+                    ExerciseType.FORZA -> (1..re.sets).map {
+                        ExerciseSet.Strength(isBodyweight = exercise.isBodyweight)
                     }
+                    ExerciseType.STRETCH -> (1..re.sets).map {
+                        ExerciseSet.Stretch(timeSeconds = re.timePerSetSeconds)
+                    }
+                    ExerciseType.CARDIO -> emptyList()
                 }
                 WorkoutExercise(
                     exerciseId = exercise.id,
@@ -214,7 +220,9 @@ class ActiveRoutineViewModel @Inject constructor(
                     bodypart = exercise.bodypart,
                     type = exercise.type,
                     sets = sets,
-                    excludeFromTonnage = category != SessionExerciseCategory.NORMAL,
+                    // Cardio never contributes to tonnage, regardless of section.
+                    excludeFromTonnage = exercise.type == ExerciseType.CARDIO ||
+                        category != SessionExerciseCategory.NORMAL,
                     isDaily = category == SessionExerciseCategory.DAILY,
                 )
             }
@@ -613,6 +621,7 @@ class ActiveRoutineViewModel @Inject constructor(
                             when (set) {
                                 is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
                                 is ExerciseSet.Stretch -> set.done
+                                is ExerciseSet.Cardio -> set.startedAt.isNotBlank()
                             }
                         }
                     }
