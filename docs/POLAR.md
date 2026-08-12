@@ -156,6 +156,62 @@ On session completion (or abandon), `ActiveRoutineViewModel`:
      local analysis and no server to send it to, nothing on the phone would ever consume
      it.
 
+### Cardio blocks
+
+`ExerciseType.CARDIO` (`ui/screen/cardioexercise/CardioExerciseViewModel.kt`) lets a session
+mark "this part is cardio" explicitly instead of the whole session being one undifferentiated
+HR stream. A cardio exercise (e.g. "Corsa leggera", "Bici" — catalog entries like any other
+`Exercise`, created via the normal exercise editor) has no pre-configured sets: instead,
+`CardioExerciseScreen` shows "Inizia cardio" / "Termina cardio", and each press cycle appends
+one `ExerciseSet.Cardio` block (`startedAt`/`endedAt`/`avgHr`/`maxHr`) to that exercise's
+`sets` — see [STORAGE.md](STORAGE.md#workout-session-historyyyyymmyyyy-mm-dd_routineid_sessionidmd)
+for the YAML shape. Several blocks are supported per session (different cardio types, or the
+same one resumed later after e.g. stretching in between).
+
+- **HR tracking**: `CardioExerciseViewModel` collects `PolarManager.heartRate` while a block
+  is running and accumulates avg/max locally, in the ViewModel — not in `PolarManager` itself,
+  since a block is a concept of the exercise/session, not of the Polar subsystem. No new
+  `PolarManager` methods were needed for this: it reads `heartRate` the same way `HeartRateBar`
+  already does.
+- **Configured-duration countdown, not a count-up stopwatch**: `RoutineExercise
+  .timePerSetSeconds` is repurposed for CARDIO as a single total block duration (set in
+  `RoutineEditScreen`'s "Durata cardio" picker, minutes), fetched by `CardioExerciseViewModel`
+  from the owning routine the same way `SupersetViewModel` fetches rep ranges (including the
+  fixed-daily-routine special case). `startBlock()` counts *down* from that value once
+  every second and **keeps going past zero into negative/overtime** rather than
+  auto-stopping — the countdown is a pacing aid, not an enforced cutoff; only an explicit
+  "Termina cardio" tap ends the block (`stopBlock()`). If the routine exercise has no
+  configured duration (`timePerSetSeconds == 0`), the countdown just starts at 0 and
+  free-runs into overtime immediately — no separate count-up mode.
+- **Duration is set per routine only**, in `RoutineEditScreen`'s "Durata cardio" picker —
+  no catalog-level default on `Exercise` itself (tried and reverted; see CHANGELOG.md).
+  Long-press either +/− button to step by 10 minutes at once (`ScrollPickerInput`'s
+  `longPressRepeatStep`, same widget/behavior as the weight picker on strength sets).
+- **Never left half-open**: an `ExerciseSet.Cardio` with a blank `endedAt` is never persisted
+  against an exercise marked `completed`. `completeExercise()` force-closes a still-running
+  block before saving. A block left running because the app died mid-session (not a clean
+  "Termina cardio") is instead closed silently the next time the screen opens
+  (`CardioExerciseViewModel.init`), same "don't leave inconsistent state lying around" spirit
+  as the ghost-session guard (see [CONVENTIONS.md](CONVENTIONS.md#ghost-session-prevention)).
+- **Tonnage**: `excludeFromTonnage` is always `true` for CARDIO, regardless of section
+  (warmup/daily/normal) — cardio work never contributes to tonnage math.
+- **No superset**: a cardio exercise can never be linked into a superset —
+  `RoutineEditScreen`'s "Superset" button never shows for one (superset pairing is
+  strictly FORZA/STRETCH; `SupersetViewModel`/`SupersetScreen` only know how to interleave
+  reps/weight or timeSeconds/done).
+- **History**: `CardioExerciseScreen` shows a small panel of past sessions for the same
+  `exerciseId`, reusing `WorkoutRepository.getSessionsForExercise()` unchanged (no new
+  repository) — aggregated inline (summed block duration, averaged `avgHr`, maxed `maxHr`
+  across blocks), the same "repository exposes raw data, ViewModel aggregates inline" pattern
+  used throughout the app.
+- **ECG correlation, no binary format change**: the raw `.ecg` file stays one continuous
+  stream per session, exactly as before — `EcgRecorder`/`startEcgRecording`/
+  `stopEcgRecording` are untouched. The sync server instead derives cardio-block sample
+  ranges after the fact, by combining the block's absolute `startedAt`/`endedAt` (from the
+  synced session YAML, `/v1/sessions`) with the `.ecg` file's own `startTimestamp`+
+  `sampleRate` header (from `/v1/ecg`) for the same `sessionId` — see
+  [SYNC.md](SYNC.md#fourth-record-type-raw-ecg).
+
 ### HRR (heart rate recovery)
 
 PolarManager watches a rolling window for automatic peak detection:

@@ -459,6 +459,82 @@ zone chip ("Z3 · 74%") and a thin time-in-zone stacked bar, using the same zone
 as the server dashboard for visual consistency. Entirely local-first: no server reachability
 required at workout time.
 
+## Phase 42 — Cardio blocks: a third exercise type with explicit start/stop
+
+Added `ExerciseType.CARDIO` alongside FORZA/STRETCH, so a session can mark exactly when a
+cardio phase begins and ends instead of only having a session-wide, undifferentiated HR
+stream. Cardio exercises (e.g. "Corsa leggera", "Bici") are catalog entries like any other,
+created via the normal exercise editor (new third `FilterChip`). In a routine, they have no
+pre-configured set count — `RoutineEditScreen` hides the Sets/rep-range/time-per-set fields
+for CARDIO and, since a cardio exercise's data doesn't fit the reps/weight-or-timeSeconds/
+done shape `SupersetViewModel`/`SupersetScreen` know how to interleave, the "Superset" link
+button never shows next to one either (guarded with an explicit `error()` in both files'
+exhaustive `when` branches as defense-in-depth, on top of the upstream UI prevention).
+
+New `CardioExerciseScreen`/`CardioExerciseViewModel` (mirroring
+`StretchExerciseScreen`/`ViewModel`'s completionSaved/onCleared pattern) show "Inizia
+cardio"/"Termina cardio": each press cycle appends one `ExerciseSet.Cardio` block
+(`startedAt`/`endedAt`/`avgHr`/`maxHr`) to the exercise's `sets` — several blocks are
+supported per session (e.g. 10 min bike then 20 min run, or cardio resumed later after
+stretching in between). `avgHr`/`maxHr` are computed on-device from `PolarManager.heartRate`
+while a block runs, accumulated in the ViewModel (not `PolarManager` — a block is a session/
+exercise concept, not a Polar-subsystem one). A block still running when the app dies
+mid-session (not a clean "Termina cardio") is closed silently next time the screen opens,
+same spirit as the existing ghost-session guard, which itself was extended to treat a
+started-but-unfinished cardio block as real data (same treatment as a touched strength/
+stretch set). `excludeFromTonnage` is always `true` for CARDIO. The screen also shows a
+small history panel for the same `exerciseId` across past sessions, reusing
+`WorkoutRepository.getSessionsForExercise()` unchanged and aggregating inline (summed
+duration, averaged `avgHr`, maxed `maxHr`) — no new repository.
+
+**No change to the raw ECG pipeline.** `EcgRecorder`/`startEcgRecording`/`stopEcgRecording`
+and the binary `.ecg` format are untouched — still one continuous stream per session. Instead,
+the sync server (documentation only here; implementation is `MyGymApp_server`'s job) derives
+per-block sample ranges after the fact by combining each block's absolute `startedAt`/
+`endedAt` (from the synced session YAML) with the `.ecg` file's own `startTimestamp`+
+`sampleRate` header (from the separately-synced raw ECG) for the same `sessionId` — see
+SYNC.md's new "Cardio blocks" section. Absolute timestamps were chosen over a phone-computed
+sample offset specifically to avoid compounding sample-rate drift over a long recording.
+
+## Phase 43 — Cardio UX fixes: dedicated section, configured-duration countdown, no bodypart
+
+Three fixes to Phase 42's cardio exercises, from real on-device usage feedback:
+
+1. **Dedicated "Cardio" list section instead of bodypart grouping.** Cardio exercises have
+   no meaningful bodypart, so they used to land in a stray/blank `groupBy` bucket mixed in
+   wherever iteration order happened to place it — easy to miss unless searching by exact
+   name. `ExerciseListViewModel` now partitions CARDIO exercises into their own
+   `cardioExercises` list, always rendered by `ExerciseListScreen` as a fixed "Cardio"
+   section pinned above the bodypart groups (applies to both the plain list and the
+   routine-editor picker, since they share the same screen/VM). The `BodyPartAutocomplete`
+   field is now hidden entirely in `ExerciseEditScreen` for CARDIO, and `bodypart` is forced
+   to `""` on save (`ExerciseEditViewModel`) rather than left showing an unused field.
+2. **Configured-duration countdown, not a count-up stopwatch.** `RoutineEditScreen` gained a
+   "Durata cardio" (minutes) picker for CARDIO exercises, repurposing
+   `RoutineExercise.timePerSetSeconds` as a single total block duration instead of hiding it
+   entirely. `CardioExerciseViewModel` fetches this from the owning routine at session time
+   (same lookup pattern `SupersetViewModel` already used for rep ranges, including the
+   fixed-daily-routine case) and `startBlock()` now counts *down* from it instead of up from
+   zero — continuing into negative/overtime past zero rather than auto-stopping, since the
+   countdown is a pacing aid, not an enforced cutoff. Only an explicit "Termina cardio" tap
+   ends a block, exactly as before.
+3. **Fixed a real type-label bug in `ExerciseCard`**, found while implementing the above:
+   the exercise-type badge used `if (type == FORZA) "Strength" else "Stretch"` — a CARDIO
+   exercise silently showed "Stretch" as its label, since the check was a binary `if/else`
+   rather than an exhaustive `when` the compiler could have flagged. Fixed to a `when` over
+   all three types; see the new CONVENTIONS.md note about preferring exhaustive `when` over
+   `if/else` for any `ExerciseType` branch specifically to catch this class of bug at
+   compile time going forward.
+
+## Phase 44 — Cardio duration: routine-only, long-press ×10
+
+Reverted Phase 43's `Exercise.defaultDurationSeconds` (catalog-level default duration,
+`ExerciseEditScreen`'s "Durata cardio di default" picker) — the duration is set per routine
+only now, in `RoutineEditScreen`'s existing "Durata cardio" picker, no catalog-level field.
+That picker also switched from plain `RoundStepButton` +/− to `ScrollPickerInput` with
+`longPressRepeatStep = 10.0`, so holding either button jumps 10 minutes at a time — same
+widget and behavior already used for the weight picker on strength sets (`SupersetScreen`).
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

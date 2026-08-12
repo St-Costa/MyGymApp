@@ -434,7 +434,9 @@ class WorkoutRepository @Inject constructor(
 
     /**
      * True if a session has no real user data: no completedAt, no exercise marked completed,
-     * and every set is empty (reps==0 & weight==0 for strength, done==false for stretch).
+     * and every set is empty (reps==0 & weight==0 for strength, done==false for stretch,
+     * startedAt blank for cardio — a started-but-not-yet-finished cardio block still counts
+     * as real data, same treatment as a touched strength/stretch set).
      */
     private fun isGhostSession(session: WorkoutSession): Boolean {
         if (session.completedAt.isNotBlank()) return false
@@ -444,6 +446,7 @@ class WorkoutRepository @Inject constructor(
                 when (set) {
                     is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
                     is ExerciseSet.Stretch -> set.done
+                    is ExerciseSet.Cardio -> set.startedAt.isNotBlank()
                 }
             }
         }

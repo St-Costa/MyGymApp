@@ -115,7 +115,7 @@ private fun SessionSectionHeader(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveRoutineScreen(
-    onNavigateToExercise: (sessionId: String, exerciseId: String, isStretch: Boolean) -> Unit,
+    onNavigateToExercise: (sessionId: String, exerciseId: String, type: ExerciseType) -> Unit,
     onNavigateToSuperset: (sessionId: String, exerciseId1: String, exerciseId2: String) -> Unit,
     onBack: () -> Unit,
     onSessionRegistered: (sessionId: String, date: String) -> Unit,
@@ -204,7 +204,7 @@ fun ActiveRoutineScreen(
                                             onNavigateToExercise(
                                                 uiState.sessionId,
                                                 group.exercise.exerciseId,
-                                                group.exercise.type == ExerciseType.STRETCH,
+                                                group.exercise.type,
                                             )
                                         }
                                     },

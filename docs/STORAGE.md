@@ -47,7 +47,7 @@ All persistent files are Markdown with a YAML frontmatter block and an optional 
 ---
 id: ex-a1b2c3d4
 name: Bench Press
-type: FORZA                   # FORZA | STRETCH
+type: FORZA                   # FORZA | STRETCH | CARDIO
 bodypart: chest
 link: https://...             # optional image/YouTube URL
 defaultRepRangeMin: 8
@@ -159,14 +159,40 @@ exercises:
                                  # external weight" from "set never touched" (both are
                                  # weight=0 otherwise indistinguishable to any reader
                                  # that filters on weight > 0 — see SYNC.md)
+  - exerciseId: ex-c9d8e7f6
+    exerciseName: Corsa leggera
+    type: CARDIO
+    bodypart: cardio
+    excludeFromTonnage: true    # always true for CARDIO, regardless of section
+    sets:                       # one entry per "Inizia cardio"/"Termina cardio" block —
+                                 # several are possible in one session (e.g. 10min bike +
+                                 # 20min run), see docs/POLAR.md#cardio-blocks
+      - startedAt: "2026-08-12T10:15:03"
+        endedAt: "2026-08-12T10:45:10"
+        avgHr: 138               # computed on-device from the live HR stream, not user-entered
+        maxHr: 156
+      - startedAt: "2026-08-12T10:50:00"
+        endedAt: ""              # blank = block still running, or abandoned without an
+                                 # explicit "Termina cardio" (never left blank on a
+                                 # completed exercise — see CardioExerciseViewModel)
+        avgHr: 0
+        maxHr: 0
 ---
 
 Session notes
 ```
 
-`excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected.
+`excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected. `ExerciseType.CARDIO` exercises are always excluded from tonnage too, independent of section.
 
 `isDaily: true` marks an exercise performed as a fixed-daily exercise in this session. Exercise screens use it so daily progress (grey "previous" values) is compared only against prior sessions where the same exercise was *also* daily, and normal progress only against prior normal sessions — the same exercise can swing between the two roles across days without contaminating either history.
+
+**`ExerciseSet.Cardio`** (`type: CARDIO` only): `startedAt`/`endedAt` are absolute ISO
+`LocalDateTime` strings, not offsets — this is what lets the sync server correlate a block
+against the raw `.ecg` file's own `startTimestamp`+`sampleRate` header (see
+[POLAR.md](POLAR.md#cardio-blocks) and [SYNC.md](SYNC.md#fourth-record-type-raw-ecg)) to
+slice out the matching waveform segment, with zero change to the binary ECG format. `avgHr`/
+`maxHr` are computed on-device from `PolarManager.heartRate` while the block runs — never
+user-entered.
 
 ### Readiness event (`readiness/{id}.md`)
 

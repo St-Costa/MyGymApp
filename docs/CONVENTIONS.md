@@ -201,11 +201,53 @@ Entering an active routine creates the `.md` file eagerly (so `StrengthExerciseV
 `ActiveRoutineViewModel.onCleared()` reloads the session and deletes it if **all** hold:
 - `completedAt.isBlank()`
 - no exercise has `completed == true`
-- every set is empty (`reps == 0 && weight == 0` for strength, `done == false` for stretch)
+- every set is empty (`reps == 0 && weight == 0` for strength, `done == false` for stretch, `startedAt.isBlank()` for cardio — a started-but-not-yet-finished cardio block still counts as real data)
 
 The same ruleset lives server-side in `WorkoutRepository.cleanupGhostSessions()`, called at boot from `MainViewModel.init`, so shells created by older builds (or by a process killed before `onCleared`) still get scrubbed. `cleanupOrphanEcgFiles()` runs right after and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md`.
 
 **Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
+
+## Cardio blocks & "no superset" guard
+
+`ExerciseType.CARDIO` (see [POLAR.md](POLAR.md#cardio-blocks)) is a third exercise type
+alongside FORZA/STRETCH, but structurally different: no pre-configured set count, no rep
+range — `CardioExerciseScreen`'s "Inizia cardio"/"Termina cardio" appends one
+`ExerciseSet.Cardio` block at a time. Two things fall out of that:
+
+- **`RoutineEditScreen`'s "Sets"/rep-range fields are hidden for CARDIO, replaced by a
+  single "Durata cardio" (minutes) picker** — `ActiveRoutineViewModel` builds an empty set
+  list for a CARDIO exercise regardless of `RoutineExercise.sets`, since that field is
+  meaningless for it. `RoutineExercise.timePerSetSeconds` is repurposed to hold the total
+  configured block duration (not "per set" — CARDIO has no sets) that
+  `CardioExerciseViewModel`'s countdown reads at session time (see
+  [POLAR.md](POLAR.md#cardio-blocks)).
+- **Cardio exercises can never be superset members.** `SupersetViewModel`/`SupersetScreen`
+  only know how to interleave FORZA (reps/weight) or STRETCH (timeSeconds/done) sets — their
+  exhaustive `when(exerciseType)` branches hit an explicit `error("Cardio exercises cannot be
+  superset members")` for CARDIO rather than silently mishandling it. This is a defense-in-
+  depth guard: the actual prevention is upstream, in `RoutineEditScreen`, where the
+  "Superset" link button never appears next to a CARDIO exercise in the first place.
+- **No `bodypart`.** The `BodyPartAutocomplete` field is hidden in `ExerciseEditScreen` for
+  CARDIO — `bodypart` is forced to `""` on save regardless of stale UI state
+  (`ExerciseEditViewModel.saveNow()`/`onCleared()`). Grouping by bodypart wouldn't mean
+  anything for a cardio exercise anyway.
+- **Own fixed list section, not grouped by bodypart.** `ExerciseListViewModel.applyFilter()`
+  partitions CARDIO exercises out of the bodypart `groupBy` entirely, into their own
+  `cardioExercises` list (sorted by name), which `ExerciseListScreen` always renders as a
+  "Cardio" section pinned at the very top — ahead of the (arbitrarily-ordered, by
+  `groupBy` iteration order) bodypart groups. Without this, a CARDIO exercise's blank/
+  placeholder bodypart would land it in a stray group mixed in wherever `groupBy` happened
+  to place it, making it easy to miss when browsing (as opposed to searching by exact name).
+  Applies to both the plain exercise list and the routine-editor exercise picker, since both
+  share `ExerciseListScreen`/`ViewModel` (`pickerMode` flag).
+
+When any `when` on `ExerciseType`/`ExerciseSet` stops compiling after touching this area,
+that's the compiler doing its job — every exhaustive branch is a place that genuinely needs a
+decision for the new case, not a mechanical fixup. (`ExerciseCard`'s type-label `Text` was a
+near-miss here: an `if/else` on `type == FORZA` rather than a `when`, so CARDIO silently
+displayed "Stretch" — since it isn't an exhaustive `when`, the compiler had nothing to flag.
+Prefer exhaustive `when` over `if/else` for anything branching on `ExerciseType`, even a
+two-way UI choice, specifically so a third case can't silently fall into the wrong branch.)
 
 ## Polar foreground service + reconnection
 
