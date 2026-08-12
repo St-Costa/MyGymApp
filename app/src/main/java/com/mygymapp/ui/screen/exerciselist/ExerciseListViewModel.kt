@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.Exercise
+import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.repository.ExerciseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +13,11 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ExerciseListUiState(
+    // Cardio exercises have no meaningful bodypart (see ExerciseEditScreen — the field is
+    // hidden for them) — they'd otherwise land in a stray "Other"/blank group mixed
+    // alphabetically among real muscle groups and be easy to miss. Kept as its own list,
+    // always rendered as a fixed "Cardio" section at the top, ahead of the bodypart groups.
+    val cardioExercises: List<Exercise> = emptyList(),
     val exercisesByBodypart: Map<String, List<Exercise>> = emptyMap(),
     val isLoading: Boolean = true,
     val searchQuery: String = "",
@@ -56,8 +62,12 @@ class ExerciseListViewModel @Inject constructor(
         } else {
             allExercises.filter { fuzzyMatch(query, it.name) }
         }
-        val grouped = filtered.groupBy { it.bodypart.ifBlank { "Other" } }
-        _uiState.value = _uiState.value.copy(exercisesByBodypart = grouped)
+        val (cardio, rest) = filtered.partition { it.type == ExerciseType.CARDIO }
+        val grouped = rest.groupBy { it.bodypart.ifBlank { "Other" } }
+        _uiState.value = _uiState.value.copy(
+            cardioExercises = cardio.sortedBy { it.name },
+            exercisesByBodypart = grouped,
+        )
     }
 
     fun deleteExercise(id: String) {

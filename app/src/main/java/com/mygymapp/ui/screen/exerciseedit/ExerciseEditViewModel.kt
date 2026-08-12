@@ -133,7 +133,10 @@ class ExerciseEditViewModel @Inject constructor(
             id = state.id,
             name = state.name.trim(),
             type = state.type,
-            bodypart = state.bodypart.trim(),
+            // CARDIO exercises don't use bodypart — they live in their own dedicated section
+            // (ExerciseListViewModel), not grouped by muscle group. The field is hidden in the
+            // editor for CARDIO; force it blank here too in case of stale state.
+            bodypart = if (state.type == ExerciseType.CARDIO) "" else state.bodypart.trim(),
             link = state.link.trim(),
             notes = state.notes.trim(),
             defaultRepRangeMin = state.defaultRepRangeMin,
@@ -156,7 +159,7 @@ class ExerciseEditViewModel @Inject constructor(
                     id = state.id,
                     name = state.name.trim(),
                     type = state.type,
-                    bodypart = state.bodypart.trim(),
+                    bodypart = if (state.type == ExerciseType.CARDIO) "" else state.bodypart.trim(),
                     link = state.link.trim(),
                     notes = state.notes.trim(),
                     defaultRepRangeMin = state.defaultRepRangeMin,

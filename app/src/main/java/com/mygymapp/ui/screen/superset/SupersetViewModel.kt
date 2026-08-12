@@ -186,6 +186,10 @@ class SupersetViewModel @Inject constructor(
                             done = cs?.done ?: false,
                         )
                     }
+                    // Guarded at the source: RoutineEditScreen's "Superset" link button never
+                    // shows for a CARDIO exercise (a time-based block, not a set-based one —
+                    // this screen only knows how to interleave FORZA/STRETCH sets).
+                    ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                 }
             }
 
@@ -222,6 +226,7 @@ class SupersetViewModel @Inject constructor(
                             done = cs?.done ?: false,
                         )
                     }
+                    ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                 }
             }
 
@@ -393,6 +398,7 @@ class SupersetViewModel @Inject constructor(
                         when (setUi.exerciseType) {
                             ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight, isBodyweight = isBodyweight1)
                             ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                            ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                         }
                     },
                 )
@@ -405,6 +411,7 @@ class SupersetViewModel @Inject constructor(
                         when (setUi.exerciseType) {
                             ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight, isBodyweight = isBodyweight2)
                             ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
+                            ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                         }
                     },
                 )

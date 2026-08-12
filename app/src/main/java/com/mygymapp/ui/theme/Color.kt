@@ -15,6 +15,7 @@ val OnPrimary = Color(0xFF000000)
 
 val ForzaColor = Color(0xFFFCA105)
 val StretchColor = Color(0xFF42A5F5)
+val CardioColor = Color(0xFFE05A5A)
 val GitgraphGreen = Color(0xFF4CAF50)
 val GitgraphRed = Color(0xFFF44336)
 val GitgraphEmpty = Color(0xFF2C2C2C)
@@ -23,4 +24,5 @@ val GitgraphEmpty = Color(0xFF2C2C2C)
 fun ExerciseType.accentColor(): Color = when (this) {
     ExerciseType.FORZA -> ForzaColor
     ExerciseType.STRETCH -> StretchColor
+    ExerciseType.CARDIO -> CardioColor
 }
