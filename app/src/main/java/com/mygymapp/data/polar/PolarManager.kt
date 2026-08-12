@@ -190,9 +190,15 @@ class PolarManager @Inject constructor(
     var connectedDeviceId: String? = null
         private set
 
-    // User profile for calorie/TRIMP calculations
-    private var userProfile = profileRepo.get()
+    // User profile for calorie/TRIMP calculations. Always read fresh from SharedPreferences
+    // (already an in-memory-cached read after the first access, so this is cheap even at the
+    // ~1Hz HR-sample rate) rather than a manually-synced cached copy — a stale copy meant a
+    // just-recorded scale weigh-in wouldn't affect Keytel calories until some other screen
+    // (HeartRateViewModel) happened to observe the scale disconnect and call
+    // updateUserProfile(), which never happens if e.g. an HR session is already running
+    // unattended in the background when the user weighs in from elsewhere. See CHANGELOG.md.
     private val profileRepository = profileRepo
+    private val userProfile: UserProfile get() = profileRepository.get()
 
     // Calorie/TRIMP tracking
     private var lastHrTimestamp = 0L
@@ -731,9 +737,9 @@ class PolarManager @Inject constructor(
 
         // Keytel et al. (2005) calorie formula (kcal/min)
         val kcalPerMin = if (p.isMale) {
-            (-55.0969 + 0.6309 * hr + 0.1988 * p.weightKg + 0.2017 * p.age) / 4.184
+            (-55.0969 + 0.6309 * hr + 0.1988 * p.weightKg + 0.2017 * p.effectiveAge) / 4.184
         } else {
-            (-20.4022 + 0.4472 * hr - 0.1263 * p.weightKg + 0.074 * p.age) / 4.184
+            (-20.4022 + 0.4472 * hr - 0.1263 * p.weightKg + 0.074 * p.effectiveAge) / 4.184
         }
         if (kcalPerMin > 0) {
             _sessionCalories.value += kcalPerMin * elapsedMin
@@ -745,10 +751,6 @@ class PolarManager @Inject constructor(
         val genderExp = if (p.isMale) 1.92 else 1.67
         val trimpContribution = elapsedMin * clampedHrr * 0.64 * exp(genderExp * clampedHrr)
         _sessionTrimp.value += trimpContribution
-    }
-
-    fun updateUserProfile(profile: UserProfile) {
-        userProfile = profile
     }
 
     /** Start capturing the HR time series for the duration of a session. */
@@ -782,7 +784,7 @@ class PolarManager @Inject constructor(
      * %HRmax inside [HrZoneCalculator] rather than blocking the feature).
      */
     private suspend fun resolveHrZoneCalculator() {
-        val maxHr = HrZoneCalculator.estimatedMaxHr(userProfile.birthYear, userProfile.age)
+        val maxHr = HrZoneCalculator.estimatedMaxHr(userProfile.effectiveAge)
         val restingHr = readinessRepository.getLatestForDate()?.restingHr?.takeIf { it > 0 }
             ?: readinessRepository.getRecentAverageRestingHr()
         hrZoneCalculator = HrZoneCalculator(maxHr, restingHr)
