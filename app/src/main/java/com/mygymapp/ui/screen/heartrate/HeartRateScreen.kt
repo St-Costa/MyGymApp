@@ -119,25 +119,11 @@ fun HeartRateScreen(
         }
     }
 
-    // Fire-and-forget, not gated behind any button: the readiness measurement this
-    // permission serves starts on its own right after BLE connect
-    // (PolarManager.maybeStartAutoReadinessMeasurement), so there's no user action to hang
-    // the request off. Uses Health Connect's own permission contract, not
-    // ActivityResultContracts.RequestPermission() with a plain android.Manifest permission —
-    // step data on this project's real Samsung/One UI test device turned out to be gated by
-    // a separate OS-level "Health, fitness and wellness" permission reachable only through
-    // Health Connect's request flow, not android.permission.ACTIVITY_RECOGNITION (see
-    // HealthConnectStepsReader's class doc). No re-prompt mid-session on denial — same "ask
-    // once per screen visit" behavior as the BLE/scale permissions above.
-    val stepPermissionLauncher = rememberLauncherForActivityResult(
-        viewModel.stepPermissionContract
-    ) { /* no-op: PolarManager/OptionsViewModel check the permission fresh whenever they next read */ }
-
-    LaunchedEffect(Unit) {
-        if (viewModel.isHealthConnectAvailable() && !viewModel.hasStepsPermission()) {
-            stepPermissionLauncher.launch(setOf(viewModel.stepsReadPermission))
-        }
-    }
+    // Health Connect's steps permission is no longer requested from here — every runtime
+    // permission the app needs (BLE, Health Connect steps) is now requested once, centrally,
+    // from MainScreen right when the app opens (see MainScreen's PermissionRequests), so a
+    // permission revoked or never granted gets re-prompted from the Home screen the user
+    // always passes through, not only if/when they happen to open this specific screen.
 
     fun startScanWithPermissionCheck() {
         if (hasBlePermissions()) {
