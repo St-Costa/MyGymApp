@@ -90,6 +90,16 @@ reconnect never re-measures regardless of time (see `hrSeriesActive` check below
 
 Formula details and references in [polar/implementation-guide.md](polar/implementation-guide.md).
 
+### Daily step average (piggybacks on readiness)
+
+`PolarManager.finishReadinessMeasurement()` also takes one best-effort reading from the
+phone's own hardware step counter (unrelated to the Polar strap — `data/steps/`, not
+`data/polar/`) and folds it into the same `ReadinessEvent` as `stepsAvgPerDay`/
+`stepsDaysSpanned`. It's here rather than in its own section because it rides on the
+readiness trigger for the same reason described in SYNC.md: the morning readiness test is
+the app's one guaranteed daily touchpoint, so there's no separate trigger worth building.
+Full field semantics and the sync wire format: [SYNC.md § Daily step average](SYNC.md#daily-step-average).
+
 ### ECG streaming
 
 ECG follows a separate stream (`FEATURE_POLAR_ONLINE_STREAMING`), requested on top of HR.
