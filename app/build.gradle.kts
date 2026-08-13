@@ -73,5 +73,12 @@ dependencies {
     implementation(libs.androidx.hilt.work)
     ksp(libs.androidx.hilt.compiler)
 
+    // Daily step average (docs/SYNC.md § Daily step average): TYPE_STEP_COUNTER alone
+    // proved unreliable on Samsung/One UI — the OS gates the sensor behind a separate
+    // "Health, fitness and wellness" permission (Health Connect), not the standard
+    // ACTIVITY_RECOGNITION runtime permission. Health Connect is the vendor-agnostic way
+    // to read steps that actually works across OEMs.
+    implementation(libs.androidx.health.connect.client)
+
     debugImplementation(libs.androidx.ui.tooling)
 }
