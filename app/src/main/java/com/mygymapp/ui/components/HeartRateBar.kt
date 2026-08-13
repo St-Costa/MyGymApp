@@ -1,10 +1,8 @@
 package com.mygymapp.ui.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,7 +34,6 @@ import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.HrZone
 import com.mygymapp.data.polar.HrZoneMinutes
 import com.mygymapp.data.polar.PolarManager
-import com.mygymapp.data.polar.RecoveryState
 
 fun trimpColor(trimp: Double): Color = when {
     trimp < 50 -> Color(0xFF66BB6A)   // green
@@ -46,9 +43,6 @@ fun trimpColor(trimp: Double): Color = when {
 }
 
 private val RedLight = Color(0xFFEF5350)
-private val YellowLight = Color(0xFFFFCA28)
-private val GreenLight = Color(0xFF66BB6A)
-private val LightOff = Color(0xFF3A3A3A)
 
 // Same palette as the sync server's dashboard "Time in HR zone" chart, so the live
 // in-session widget and the post-sync retrospective view read consistently.
@@ -71,7 +65,7 @@ fun hrZoneLabel(zone: HrZone): String = when (zone) {
 }
 
 /**
- * Shows current HR + recovery semaphore. Hides itself when Polar is not connected.
+ * Shows current HR. Hides itself when Polar is not connected.
  * Call [PolarManager.onSetCompleted] to trigger recovery tracking.
  */
 @Composable
@@ -82,8 +76,6 @@ fun HeartRateBar(
     val polarManager = viewModel.polarManager
     val connectionState by polarManager.connectionState.collectAsState()
     val heartRate by polarManager.heartRate.collectAsState()
-    val recoveryState by polarManager.recoveryState.collectAsState()
-    val calories by polarManager.sessionCalories.collectAsState()
     val trimp by polarManager.sessionTrimp.collectAsState()
     val currentZone by polarManager.currentHrZone.collectAsState()
     val currentZonePercent by polarManager.currentHrZonePercent.collectAsState()
@@ -127,21 +119,6 @@ fun HeartRateBar(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Calories
-            Text(
-                text = "${calories.toInt()}",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFFF9800),
-            )
-            Text(
-                text = "kcal",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(modifier = Modifier.width(10.dp))
-
             // TRIMP
             Text(
                 text = "${trimp.toInt()}",
@@ -160,11 +137,7 @@ fun HeartRateBar(
             // Zone chip
             currentZone?.let { zone ->
                 ZoneChip(zone = zone, percent = currentZonePercent)
-                Spacer(modifier = Modifier.width(10.dp))
             }
-
-            // Semaphore
-            Semaphore(recoveryState = recoveryState)
         }
 
         // Time-in-zone bar: only once there's something to show
@@ -238,42 +211,4 @@ private fun TimeInZoneBar(minutes: HrZoneMinutes) {
             }
         }
     }
-}
-
-@Composable
-private fun Semaphore(recoveryState: RecoveryState) {
-    val redColor by animateColorAsState(
-        targetValue = if (recoveryState == RecoveryState.RECOVERING) RedLight else LightOff,
-        animationSpec = tween(300),
-        label = "red",
-    )
-    val yellowColor by animateColorAsState(
-        targetValue = if (recoveryState == RecoveryState.ALMOST_READY) YellowLight else LightOff,
-        animationSpec = tween(300),
-        label = "yellow",
-    )
-    val greenColor by animateColorAsState(
-        targetValue = if (recoveryState == RecoveryState.READY) GreenLight else LightOff,
-        animationSpec = tween(300),
-        label = "green",
-    )
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SemaphoreLight(color = redColor)
-        SemaphoreLight(color = yellowColor)
-        SemaphoreLight(color = greenColor)
-    }
-}
-
-@Composable
-private fun SemaphoreLight(color: Color) {
-    Box(
-        modifier = Modifier
-            .size(18.dp)
-            .clip(CircleShape)
-            .background(color),
-    )
 }

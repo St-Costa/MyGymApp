@@ -26,7 +26,8 @@ class HrZoneCalculator(
     private val maxHr: Int,
     private val restingHr: Int?,
 ) {
-    private val boundaries: List<Int> = listOf(0.50, 0.60, 0.70, 0.80, 0.90).map { pct ->
+    /** BPM cutoff between BELOW_Z1/Z1, Z1/Z2, Z2/Z3, Z3/Z4, Z4/Z5 — 5 values for 6 zones. */
+    val boundaries: List<Int> = ZONE_BOUNDARY_FRACTIONS.map { pct ->
         if (restingHr != null) {
             (restingHr + pct * (maxHr - restingHr)).toInt()
         } else {
@@ -52,6 +53,13 @@ class HrZoneCalculator(
     }
 
     companion object {
+        /**
+         * Lower bound of each of Z1..Z5 as a fraction of HRR. [classify] derives its BPM
+         * cutoffs from these, and the live zone-trace chart draws its coloured bands from
+         * the same list — so the bands always line up with the classifier's decisions.
+         */
+        val ZONE_BOUNDARY_FRACTIONS = listOf(0.50, 0.60, 0.70, 0.80, 0.90)
+
         /**
          * Mean of three published age-based formulas — mirrors the server's
          * `_estimated_max_hr` exactly (same three formulas, same unweighted mean).

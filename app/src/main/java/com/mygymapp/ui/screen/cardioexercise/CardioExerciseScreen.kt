@@ -34,6 +34,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
+import com.mygymapp.ui.components.HrZoneTraceChart
 import com.mygymapp.ui.components.MediaPreview
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,9 +77,11 @@ fun CardioExerciseScreen(
 
                 MediaPreview(link = uiState.exercise?.link ?: "")
 
-                // Heart rate + recovery semaphore (live, sourced from PolarManager same as
-                // every other exercise screen)
+                // Heart rate (live, sourced from PolarManager same as every other exercise
+                // screen), plus the zone-trace chart — cardio is where zone-holding matters
                 HeartRateBar()
+
+                HrZoneTraceChart()
 
                 // Countdown from the configured block duration (RoutineEditScreen) — keeps
                 // going negative (overtime) rather than auto-stopping at zero; the user must

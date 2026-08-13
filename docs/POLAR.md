@@ -19,7 +19,8 @@ ui/service/
 └── PolarStreamingService.kt  — Foreground service (connectedDevice type)
 
 ui/screen/heartrate/           — Heart rate screen (pairing + live metrics + trends)
-ui/components/HeartRateBar.kt  — In-workout HR + recovery semaphore
+ui/components/HeartRateBar.kt  — In-workout HR + TRIMP + zone chip (no calories, no recovery semaphore)
+ui/components/HrZoneTraceChart.kt — Live ~90s %HRR trace over proportional zone bands
 ui/components/LiveEcgCard.kt   — Live ECG waveform + beat counter
 ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 ```
@@ -37,9 +38,8 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 | `isScanning` | `Boolean` | `startScan` / `stopScan` | Spinner |
 | `heartRate` | `Int?` | Every HR sample | HeartRateBar, status-bar notification |
 | `batteryLevel` | `Int?` | SDK callback | UI indicator |
-| `recoveryState` | `RECOVERING` / `ALMOST_READY` / `READY` | Every HR sample | Recovery semaphore |
 | `rmssd` | `Double?` | During recovery tracking | HR bar secondary line |
-| `sessionCalories` | `Double` | Every HR sample (Keytel) | HR bar + session save |
+| `sessionCalories` | `Double` | Every HR sample (Keytel) | Session summary + session save (not shown during exercise execution) |
 | `sessionTrimp` | `Double` | Every HR sample (Banister) | HR bar + session save |
 | `liveHrrLast` | `Int?` | 60s after each detected peak | HR bar HRR badge |
 | `readinessResult` | `ReadinessResult` | 60s measurement + baseline | HR screen readiness card |
@@ -50,6 +50,7 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 | `currentHrZone` | `HrZone?` | Every HR sample (once resolved) | HeartRateBar zone chip |
 | `currentHrZonePercent` | `Int` | Every HR sample | HeartRateBar zone chip ("Z3 · 74%") |
 | `hrZoneMinutes` | `HrZoneMinutes` | Every HR sample | HeartRateBar time-in-zone bar |
+| `hrZoneTracePercents` | `List<Int>` (~90s of %HRR) | Every HR sample | HrZoneTraceChart (routine + cardio screens) |
 
 All flows are hot and survive the `HeartRateViewModel` lifecycle — they live on the `@Singleton` manager, not on the VM.
 
