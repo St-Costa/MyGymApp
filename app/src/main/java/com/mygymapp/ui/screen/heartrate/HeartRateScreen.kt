@@ -593,6 +593,18 @@ private fun ColumnScope.ConnectedContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // Lands a moment after the rest of readiness (Health Connect query
+                        // is async) — see PolarManager.finishReadinessMeasurement(). Absent
+                        // entirely (not "0") until then, and stays absent if there was no
+                        // previous checkpoint to diff against on a fresh install.
+                        if (readiness.stepsAvgPerDay != null) {
+                            Text(
+                                "Passi: ${readiness.stepsAvgPerDay.toInt()}" +
+                                    if (readiness.stepsDaysSpanned == 1) "" else " (media ${readiness.stepsDaysSpanned}gg)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 if (readiness.recommendation.isNotBlank()) {
