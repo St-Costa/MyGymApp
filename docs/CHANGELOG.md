@@ -584,6 +584,41 @@ BIA body-fat % (`BodyCompositionCalculator`, via `BleScaleManager`) was already 
 it always used the freshly-averaged weight from the current BLE weigh-in session directly,
 never routing through `UserProfile.weightKg` at all.
 
+## Phase 47 — Drop calorie count from in-workout HR bar; remove recovery semaphore
+
+Two `HeartRateBar` UI elements removed per user request. Calorie count: was shown live during
+exercise execution (every screen that embeds `HeartRateBar` — strength, cardio, superset,
+stretch, and the active-routine overview); the underlying `sessionCalories` StateFlow and its
+consumers elsewhere (session save, `SessionProgressScreen`'s own independent calorie card,
+`ActiveRoutineScreen`'s post-completion `ProgressSection`) are untouched — only the `HeartRateBar`
+display during exercise execution was removed, so calories are still visible on the session
+summary screen. Recovery semaphore: the red/yellow/green `Semaphore`/`SemaphoreLight`
+composables and their call site are deleted outright, along with the public `RecoveryState` enum
+and `PolarManager.recoveryState` StateFlow — nothing else in the codebase read that StateFlow.
+`PolarManager.updateRecoveryState()` is kept (renamed in spirit, not in name) as an internal-only
+function: it still drives `isRecovering` reset and the `rmssd` StateFlow (used elsewhere for HRV
+display), it just no longer computes or exposes a three-way recovery state. The independent HRR
+delta pipeline (`pendingHrrPeaks`, `_liveHrrLast`) and peak-detection loop are unaffected — they
+never depended on the semaphore.
+
+## Phase 48 — Live HR-zone trace chart
+
+New `HrZoneTraceChart` on the active-routine and cardio-exercise screens (always visible when
+the strap is connected, not gated on the cardio timer). Vertical axis is %HRR with the Z1-Z5
+bands drawn **proportionally** to their real Karvonen spans, so the dot's height agrees with
+the `Z3 · 74%` chip `HeartRateBar` already shows; horizontal axis is time, with "now" pinned at
+the right edge and the trace growing leftward over a ~90s window. The current-value dot is
+tinted with its zone's colour over a white backing ring so it stays legible against its own band.
+
+To avoid the two halves drifting apart, both share a single source of truth:
+`HrZoneCalculator.ZONE_BOUNDARY_FRACTIONS` (extracted from what was an inline literal list in
+the classifier) drives both the BPM cutoffs and the chart's bands, and
+`PolarManager.HR_ZONE_TRACE_MAX_POINTS` is public so the chart right-anchors on exactly the
+buffer size the manager fills. The rolling `hrZoneTracePercents` buffer lives on the
+`@Singleton` manager rather than in a screen/VM, so the trace survives navigation between the
+routine and cardio screens instead of restarting empty on each open. The axis runs to 110% HRR
+rather than 100% so a deep-Z5 effort isn't clipped flat when true max HR beats the age estimate.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
