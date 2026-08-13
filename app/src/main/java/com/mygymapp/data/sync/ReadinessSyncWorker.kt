@@ -82,6 +82,8 @@ class ReadinessSyncWorker @AssistedInject constructor(
                 contentHash = hashToSend,
                 appVersion = BuildConfig.VERSION_NAME,
                 file = file,
+                stepsAvgPerDay = event.stepsAvgPerDay,
+                stepsDaysSpanned = event.stepsDaysSpanned,
             )) {
                 is SyncResult.Success -> {
                     ledger.markSent(entry.sessionId)

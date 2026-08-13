@@ -36,6 +36,8 @@ class ReadinessSyncApi @Inject constructor() {
         contentHash: String,
         appVersion: String,
         file: File,
+        stepsAvgPerDay: Double? = null,
+        stepsDaysSpanned: Int? = null,
     ): SyncResult {
         val envelope = JSONObject().apply {
             put("eventId", eventId)
@@ -43,6 +45,14 @@ class ReadinessSyncApi @Inject constructor() {
             put("contentHash", contentHash)
             put("appVersion", appVersion)
             put("clientSentAt", Instant.now().toString())
+            // Also present in the attached file's frontmatter; duplicated here so the
+            // server can read/validate/store them without parsing the Markdown body first
+            // (same reasoning as the other envelope fields). JSONObject.put(String, null)
+            // would throw NullPointerException, hence NULL rather than omitting the key —
+            // see docs/SYNC.md for why the server must treat a present-but-null key as
+            // "no previous checkpoint to diff against" and not coerce it to 0.
+            put("stepsAvgPerDay", stepsAvgPerDay ?: JSONObject.NULL)
+            put("stepsDaysSpanned", stepsDaysSpanned ?: JSONObject.NULL)
         }.toString()
 
         val body = MultipartBody.Builder()
