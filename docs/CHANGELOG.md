@@ -497,6 +497,21 @@ The debug button stays in Options going forward: it's what actually caught this,
 before it would have otherwise surfaced (silently, as "steps always null") days later at
 the next readiness test.
 
+## Phase 43 — Centralize all runtime permission requests on the Home screen
+
+BLE (Polar/scale) and Health Connect steps permissions were each requested from the
+specific screen that needed them (`HeartRateScreen`). Moved to a single `LaunchedEffect` in
+`MainScreen` (`RequestAllRuntimePermissions`, backed by a new small `PermissionsViewModel`)
+that fires every time Home appears — so a permission the user revokes later, or one that
+was never granted because they simply never navigated to the screen that asks for it, gets
+re-prompted from the one screen every session always passes through, not silently left
+missing. Both requests stay fire-and-forget with no-op callbacks: BLE scanning and the
+Health Connect steps read both already check their own permission state lazily wherever
+they're actually used (`HeartRateScreen`'s scan buttons, `PolarManager`'s readiness flow),
+so Home's job is only to prompt, never to gate an action on the result. `POST_NOTIFICATIONS`
+stays where it was (`MainActivity.onCreate()`, before Compose even starts) — moving it
+wouldn't have changed behavior, only where it lives.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
