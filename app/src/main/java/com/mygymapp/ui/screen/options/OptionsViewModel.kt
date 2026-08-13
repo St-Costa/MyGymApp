@@ -20,7 +20,7 @@ import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncApi
 import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncDiagnostics
-import com.mygymapp.data.steps.StepCounterReader
+import com.mygymapp.data.steps.HealthConnectStepsReader
 import com.mygymapp.data.steps.StepLedgerRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
@@ -81,12 +81,9 @@ class OptionsViewModel @Inject constructor(
     private val fileManager: FileManager,
     private val polarManager: PolarManager,
     private val stepLedgerRepository: StepLedgerRepository,
+    private val healthConnectStepsReader: HealthConnectStepsReader,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
-
-    // Not injected: same reasoning as PolarManager's own instance — takes a Context
-    // directly, holds no state worth mocking beyond that.
-    private val stepCounterReader = StepCounterReader(appContext)
 
     private val _uiState = MutableStateFlow(
         OptionsUiState(
@@ -421,59 +418,44 @@ class OptionsViewModel @Inject constructor(
     // ─── Step-counter debug (SYNC.md § Daily step average) ───────────────────
 
     /**
-     * Confirms the step-counter path actually works end to end — sensor present, permission
-     * granted, a real value comes back — without waiting for the next readiness test.
+     * Confirms the Health Connect steps path actually works end to end — Health Connect
+     * installed, permission granted, a real value comes back — without waiting for the next
+     * readiness test. See [HealthConnectStepsReader]'s class doc for why this reads through
+     * Health Connect rather than the raw `TYPE_STEP_COUNTER` sensor.
+     *
      * Deliberately uses [StepLedgerRepository.peek] rather than
      * [StepLedgerRepository.recordReadingAndComputeAverage]: this button can be pressed any
      * number of times, and must never itself advance/consume the checkpoint the real
      * readiness flow diffs against, or it would corrupt the next real reading's day-span.
      *
      * "Ultime 24h" in the UI label is the delta since the last saved checkpoint (usually
-     * yesterday's readiness test), not a literal rolling 24h window — `TYPE_STEP_COUNTER`
-     * has no such window, only a cumulative-since-boot value (see SYNC.md).
+     * yesterday's readiness test), not a literal rolling 24h window (see SYNC.md).
      */
     fun checkStepCounterDebug() {
         if (_uiState.value.stepDebugRunning) return
         _uiState.value = _uiState.value.copy(stepDebugRunning = true, stepDebugResult = null)
         viewModelScope.launch {
-            if (!StepCounterReader.isAvailable(appContext)) {
+            if (!healthConnectStepsReader.isAvailable()) {
                 _uiState.value = _uiState.value.copy(
                     stepDebugRunning = false,
-                    stepDebugResult = "Sensore contapassi non presente su questo dispositivo",
+                    stepDebugResult = "Health Connect non disponibile su questo dispositivo",
                 )
                 return@launch
             }
-            val hasPermission = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q ||
-                androidx.core.content.ContextCompat.checkSelfPermission(
-                    appContext,
-                    android.Manifest.permission.ACTIVITY_RECOGNITION,
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!hasPermission) {
+            if (!healthConnectStepsReader.hasReadPermission()) {
                 _uiState.value = _uiState.value.copy(
                     stepDebugRunning = false,
-                    stepDebugResult = "Permesso ACTIVITY_RECOGNITION non concesso — riapri la schermata Cuore per richiederlo",
+                    stepDebugResult = "Permesso passi (Health Connect) non concesso — riapri la schermata Cuore per richiederlo",
                 )
                 return@launch
             }
 
-            val counterValue = stepCounterReader.readOnce()
-            if (counterValue == null) {
-                _uiState.value = _uiState.value.copy(
-                    stepDebugRunning = false,
-                    stepDebugResult = "Permesso ok ma nessuna lettura ricevuta dal sensore (timeout)",
-                )
-                return@launch
-            }
-
-            val reading = stepLedgerRepository.peek(counterValue)
-            val resultText = buildString {
-                append("OK — valore contatore attuale: $counterValue.")
-                if (reading != null) {
-                    append(" Passi dall'ultimo checkpoint: ${reading.avgStepsPerDay.toInt()}")
-                    append(if (reading.daysSpanned == 1) " (1 giorno)." else " su ${reading.daysSpanned} giorni (media).")
-                } else {
-                    append(" Nessun checkpoint precedente da confrontare (primo test readiness non ancora fatto, o telefono riavviato nel frattempo).")
-                }
+            val reading = stepLedgerRepository.peek(healthConnectStepsReader)
+            val resultText = if (reading != null) {
+                "OK — passi dall'ultimo checkpoint: ${reading.avgStepsPerDay.toInt()}" +
+                    if (reading.daysSpanned == 1) " (1 giorno)." else " su ${reading.daysSpanned} giorni (media)."
+            } else {
+                "OK, permesso concesso, ma nessun checkpoint precedente da confrontare (primo test readiness non ancora fatto)."
             }
             _uiState.value = _uiState.value.copy(stepDebugRunning = false, stepDebugResult = resultText)
         }

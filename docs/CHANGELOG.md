@@ -463,6 +463,40 @@ fire-and-forget when `HeartRateScreen` opens, alongside the existing BLE/scale p
 requests. Full field semantics and required server-side schema change:
 [SYNC.md § Daily step average](SYNC.md#daily-step-average).
 
+## Phase 42 — Steps: migrate from raw sensor to Health Connect, add debug button
+
+Phase 41's `TYPE_STEP_COUNTER`-based implementation turned out not to work on real
+hardware. Added an Options screen debug button ("Debug contapassi") to check the pipeline
+without waiting for the next morning's readiness test, and it immediately surfaced the
+problem: on this project's Samsung/One UI test device, `dumpsys sensorservice` showed the
+sensor delivering only 1 event in 4 days despite `ACTIVITY_RECOGNITION` being granted.
+Registering a persistent app-lifetime listener (`StepCounterManager`, started from
+`MyGymApp.onCreate()`) didn't fix it either — `dumpsys` kept reporting `has sensor access:
+false` for the app specifically, with every other app on the device reading `true`. Traced
+to a separate OS-level "Health, fitness and wellness" permission, gating the same sensor,
+that has **no manual toggle reachable from Settings** — Settings → Permission manager
+showed it, but tapping into it offered no way to grant it. The only way to request that
+permission is Health Connect's own flow.
+
+Replaced the whole step-reading path with `HealthConnectStepsReader`
+(`androidx.health.connect:connect-client`, new dependency — bumped `agp` from 8.7.3 to
+8.9.3 in `libs.versions.toml` since connect-client 1.1.0 requires AGP 8.9.1+) and deleted
+`StepCounterReader`/`StepCounterManager` entirely. `StepLedgerRepository` got simpler as a
+result: Health Connect aggregates over an explicit time range itself
+(`HealthConnectClient.aggregate`), so the checkpoint is now just "when was this last read"
+(an `Instant`) instead of a raw counter value needing manual diff-and-handle-reboot logic.
+The manifest permission changed from `android.permission.ACTIVITY_RECOGNITION` to
+`android.permission.health.READ_STEPS`; `HeartRateScreen`'s fire-and-forget permission
+request now uses `PermissionController.createRequestPermissionResultContract()` instead of
+`ActivityResultContracts.RequestPermission()`. `ReadinessEvent`'s two nullable fields
+(`stepsAvgPerDay`/`stepsDaysSpanned`) and the sync wire format are unchanged — this was a
+read-path swap, not a schema change. Full details:
+[SYNC.md § Daily step average](SYNC.md#daily-step-average).
+
+The debug button stays in Options going forward: it's what actually caught this, well
+before it would have otherwise surfaced (silently, as "steps always null") days later at
+the next readiness test.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

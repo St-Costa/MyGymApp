@@ -122,19 +122,20 @@ fun HeartRateScreen(
     // Fire-and-forget, not gated behind any button: the readiness measurement this
     // permission serves starts on its own right after BLE connect
     // (PolarManager.maybeStartAutoReadinessMeasurement), so there's no user action to hang
-    // the request off. Below Android 10 TYPE_STEP_COUNTER needs no runtime permission at
-    // all. A denial just means StepCounterReader.readOnce() returns null later — never
-    // re-prompted mid-session, same "ask once per screen visit" behavior as the BLE/scale
-    // permissions above.
+    // the request off. Uses Health Connect's own permission contract, not
+    // ActivityResultContracts.RequestPermission() with a plain android.Manifest permission —
+    // step data on this project's real Samsung/One UI test device turned out to be gated by
+    // a separate OS-level "Health, fitness and wellness" permission reachable only through
+    // Health Connect's request flow, not android.permission.ACTIVITY_RECOGNITION (see
+    // HealthConnectStepsReader's class doc). No re-prompt mid-session on denial — same "ask
+    // once per screen visit" behavior as the BLE/scale permissions above.
     val stepPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { /* no-op: PolarManager reads the sensor lazily whenever it next runs */ }
+        viewModel.stepPermissionContract
+    ) { /* no-op: PolarManager/OptionsViewModel check the permission fresh whenever they next read */ }
 
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED
-        ) {
-            stepPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+        if (viewModel.isHealthConnectAvailable() && !viewModel.hasStepsPermission()) {
+            stepPermissionLauncher.launch(setOf(viewModel.stepsReadPermission))
         }
     }
 

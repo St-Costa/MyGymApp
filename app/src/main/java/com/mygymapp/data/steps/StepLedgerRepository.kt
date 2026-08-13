@@ -8,19 +8,17 @@ import kotlinx.coroutines.withContext
 import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
 import java.io.File
-import java.time.LocalDate
+import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The raw `TYPE_STEP_COUNTER` value is cumulative since the device's last boot, so "steps
- * since the previous readiness test" requires remembering the counter value from that
- * previous test and subtracting. This repository is that one-row checkpoint
- * (`gymdata/_sync/step_checkpoint.yml`) — deliberately not folded into `ReadinessEvent`
- * itself, since a checkpoint is "the last raw counter reading" (a local computation aid,
- * never synced) while an event is "what got measured and synced" ([StepReading], produced by
- * [recordReadingAndComputeAverage] below).
+ * Local-only checkpoint (`gymdata/_sync/step_checkpoint.yml`) recording *when* steps were
+ * last read from Health Connect — never synced, purely a computation aid. Simpler than the
+ * original raw-sensor version of this class: Health Connect's [HealthConnectStepsReader]
+ * aggregates over an explicit time range itself, so this repository only needs to remember
+ * "since when", not a cumulative counter value to diff.
  */
 @Singleton
 class StepLedgerRepository @Inject constructor(
@@ -31,85 +29,66 @@ class StepLedgerRepository @Inject constructor(
 
     private fun checkpointFile(): File = File(fileManager.getDir("_sync"), "step_checkpoint.yml")
 
-    private data class Checkpoint(val counterValue: Long, val date: LocalDate)
-
-    private fun readUnlocked(): Checkpoint? {
+    private fun readUnlocked(): Instant? {
         val file = checkpointFile()
         if (!file.exists()) return null
         return try {
             val root = Load(loadSettings).loadFromString(file.readText()) as? Map<*, Any?>
                 ?: return null
-            val counterValue = (root["counterValue"] as? Number)?.toLong() ?: return null
-            val date = (root["date"] as? String)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-                ?: return null
-            Checkpoint(counterValue, date)
+            (root["lastReadAt"] as? String)?.let { runCatching { Instant.parse(it) }.getOrNull() }
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun writeUnlocked(checkpoint: Checkpoint) {
-        checkpointFile().writeText(
-            "counterValue: ${checkpoint.counterValue}\ndate: \"${checkpoint.date}\"\n"
-        )
+    private fun writeUnlocked(at: Instant) {
+        checkpointFile().writeText("lastReadAt: \"$at\"\n")
     }
 
     /**
-     * Reads the current step counter, compares it against the last saved checkpoint, and
-     * returns the average daily steps spanning however many days elapsed — then overwrites
-     * the checkpoint with today's reading so the *next* call diffs from today, not from
-     * whatever the gap was this time.
+     * Fetches steps from [reader] since the last saved checkpoint (or does nothing and
+     * returns `null` if this is the very first call ever — nothing to bound the query's
+     * start against), then advances the checkpoint to `now` so the *next* call picks up
+     * from here.
      *
-     * [StepReading.daysSpanned] is carried alongside the average (rather than collapsing to
-     * just the average) because it's data-quality information the server needs even though
-     * the app only ever displays/stores the single averaged value locally: a "150 steps/day"
-     * reading spanning 1 day and one spanning 5 skipped days are not equally trustworthy, and
-     * only the server sees enough history to decide how to weight or flag the difference.
-     *
-     * Returns `null` (nothing to sync) when: no previous checkpoint exists yet (first ever
-     * reading — nothing to diff against), the checkpoint is already dated today (readiness
-     * only runs once/day, so this is defensive rather than expected), or the counter went
-     * backwards (device rebooted between readings, which resets `TYPE_STEP_COUNTER` to 0 —
-     * treated as missing data rather than produced as a bogus negative average).
+     * [StepReading.daysSpanned] mirrors the original raw-sensor design's reasoning (see
+     * SYNC.md § Daily step average): if a day was skipped, the total gets divided across
+     * however many days actually elapsed rather than reported as if it were one day's count.
      */
     suspend fun recordReadingAndComputeAverage(
-        counterValue: Long,
-        today: LocalDate = LocalDate.now(),
+        reader: HealthConnectStepsReader,
+        now: Instant = Instant.now(),
     ): StepReading? = withContext(Dispatchers.IO) {
         mutex.withLock {
             val previous = readUnlocked()
-            writeUnlocked(Checkpoint(counterValue, today))
-            diffAgainst(previous, counterValue, today)
+            writeUnlocked(now)
+            previous?.let { fetchAndAverage(reader, it, now) }
         }
     }
 
     /**
-     * Same diff as [recordReadingAndComputeAverage] but read-only — does not overwrite the
+     * Same fetch as [recordReadingAndComputeAverage] but read-only — does not advance the
      * checkpoint. Used by the Options screen's step-counter debug button: pressing it must
-     * never consume/shift the checkpoint the real readiness flow relies on, especially since
-     * debug taps aren't restricted to once/day the way readiness is.
+     * never itself consume/shift the checkpoint the real readiness flow relies on.
      */
     suspend fun peek(
-        counterValue: Long,
-        today: LocalDate = LocalDate.now(),
+        reader: HealthConnectStepsReader,
+        now: Instant = Instant.now(),
     ): StepReading? = withContext(Dispatchers.IO) {
-        mutex.withLock { diffAgainst(readUnlocked(), counterValue, today) }
+        mutex.withLock { readUnlocked()?.let { fetchAndAverage(reader, it, now) } }
     }
 
-    private fun diffAgainst(previous: Checkpoint?, counterValue: Long, today: LocalDate): StepReading? {
-        if (previous == null) return null
-        if (!previous.date.isBefore(today)) return null
-        if (counterValue < previous.counterValue) return null
-
-        val days = ChronoUnit.DAYS.between(previous.date, today).toInt().coerceAtLeast(1)
-        val delta = counterValue - previous.counterValue
-        return StepReading(avgStepsPerDay = delta.toDouble() / days, daysSpanned = days)
+    private suspend fun fetchAndAverage(reader: HealthConnectStepsReader, since: Instant, now: Instant): StepReading? {
+        if (!since.isBefore(now)) return null
+        val total = reader.totalSteps(since, now) ?: return null
+        val days = ChronoUnit.DAYS.between(since, now).toInt().coerceAtLeast(1)
+        return StepReading(avgStepsPerDay = total.toDouble() / days, daysSpanned = days)
     }
 }
 
 /**
- * Result of diffing two step-counter checkpoints. [daysSpanned] is 1 on the common path (a
- * readiness test done every morning); anything greater means one or more days were skipped
- * and [avgStepsPerDay] is a multi-day average, not a true single-day count.
+ * Result of aggregating steps since the last checkpoint. [daysSpanned] is 1 on the common
+ * path (a readiness test done every morning); anything greater means one or more days were
+ * skipped and [avgStepsPerDay] is a multi-day average, not a true single-day count.
  */
 data class StepReading(val avgStepsPerDay: Double, val daysSpanned: Int)
