@@ -42,7 +42,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
-enum class RecoveryState { RECOVERING, ALMOST_READY, READY }
 
 enum class Readiness {
     MEASURING,          // 60s measurement in progress
@@ -85,7 +84,7 @@ class PolarManager @Inject constructor(
         private const val RMSSD_READY_THRESHOLD = 20.0
         private const val HR_RECOVERY_THRESHOLD = 0.70f
         private const val HR_WINDOW_SIZE = 8 // ~8 seconds of HR samples
-        private const val PEAK_MIN_RISE_BPM = 15 // HR must rise at least this much above resting to count as effort (recovery semaphore)
+        private const val PEAK_MIN_RISE_BPM = 15 // HR must rise at least this much above resting to count as effort (recovery/RMSSD tracking)
         // HRR-specific thresholds — stricter, to ensure only real "set" peaks count
         private const val HRR_PEAK_MIN_RISE_BPM = 25
         private const val HRR_PEAK_MIN_HRMAX_FRACTION = 0.6f
@@ -93,6 +92,11 @@ class PolarManager @Inject constructor(
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
+        // Live zone-trace window: 90 samples ≈ 90s at the H10's ~1 Hz HR rate. Long enough
+        // to show a full ramp into zone during a cardio block without flattening detail.
+        // Public because HrZoneTraceChart needs the same value to right-anchor "now" at the
+        // chart's right edge — if the two disagreed the trace would be mis-scaled.
+        const val HR_ZONE_TRACE_MAX_POINTS = 90
         // Warn about the CR2025 at 70%, not at the usual 20%. The H10 derives its
         // percentage from cell voltage, and a lithium coin cell holds ~3V until it is
         // nearly spent — what actually kills it is rising internal resistance, which
@@ -120,9 +124,6 @@ class PolarManager @Inject constructor(
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning
-
-    private val _recoveryState = MutableStateFlow(RecoveryState.READY)
-    val recoveryState: StateFlow<RecoveryState> = _recoveryState
 
     private val _rmssd = MutableStateFlow<Double?>(null)
     val rmssd: StateFlow<Double?> = _rmssd
@@ -180,6 +181,18 @@ class PolarManager @Inject constructor(
     val currentHrZonePercent: StateFlow<Int> = _currentHrZonePercent
     private val _hrZoneMinutes = MutableStateFlow(HrZoneMinutes())
     val hrZoneMinutes: StateFlow<HrZoneMinutes> = _hrZoneMinutes
+    // BPM cutoffs between zones (5 values for 6 zones), for HrZoneTraceChart's y-axis labels.
+    // Empty until resolveHrZoneCalculator() completes, same as hrZoneCalculator itself.
+    private val _hrZoneBoundaries = MutableStateFlow<List<Int>>(emptyList())
+    val hrZoneBoundaries: StateFlow<List<Int>> = _hrZoneBoundaries
+
+    // Rolling %HRR history for the live zone-trace widget (HrZoneTraceChart). Kept here
+    // rather than in a screen/VM so the trace survives navigation between the routine and
+    // cardio screens instead of restarting empty on every screen open. Oldest first,
+    // newest last; the chart draws it left-to-right with "now" pinned at the right edge.
+    private val hrZoneTrace = ArrayDeque<Int>(HR_ZONE_TRACE_MAX_POINTS)
+    private val _hrZoneTracePercents = MutableStateFlow<List<Int>>(emptyList())
+    val hrZoneTracePercents: StateFlow<List<Int>> = _hrZoneTracePercents
 
     private val _readinessResult = MutableStateFlow(ReadinessResult())
     val readinessResult: StateFlow<ReadinessResult> = _readinessResult
@@ -547,10 +560,18 @@ class PolarManager @Inject constructor(
                         if (hrSeriesActive) {
                             hrZoneCalculator?.let { calc ->
                                 val zone = calc.classify(sample.hr)
+                                val percent = calc.percent(sample.hr)
                                 hrZoneTracker.onTick(zone)
                                 _currentHrZone.value = zone
-                                _currentHrZonePercent.value = calc.percent(sample.hr)
+                                _currentHrZonePercent.value = percent
                                 _hrZoneMinutes.value = hrZoneTracker.current
+
+                                // Rolling %HRR trace for the live zone chart
+                                if (hrZoneTrace.size >= HR_ZONE_TRACE_MAX_POINTS) {
+                                    hrZoneTrace.removeFirst()
+                                }
+                                hrZoneTrace.addLast(percent)
+                                _hrZoneTracePercents.value = hrZoneTrace.toList()
                             }
                         }
 
@@ -656,12 +677,11 @@ class PolarManager @Inject constructor(
             val peakHr = hrWindow.max()
             if (peakHr - restingHr >= PEAK_MIN_RISE_BPM) {
                 val now = System.currentTimeMillis()
-                // Recovery-state peak: only one active at a time (semaphore logic)
+                // Recovery peak: only one active at a time
                 if (!isRecovering) {
                     peakHrAfterSet = peakHr
                     isRecovering = true
                     recentRR.clear()
-                    _recoveryState.value = RecoveryState.RECOVERING
                     _rmssd.value = null
                     Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
                 }
@@ -696,10 +716,7 @@ class PolarManager @Inject constructor(
     }
 
     private fun updateRecoveryState(hr: Int) {
-        if (!isRecovering) {
-            _recoveryState.value = RecoveryState.READY
-            return
-        }
+        if (!isRecovering) return
 
         // HR-based recovery: has HR dropped enough toward resting?
         val hrDelta = peakHrAfterSet - restingHr
@@ -713,14 +730,7 @@ class PolarManager @Inject constructor(
         _rmssd.value = currentRmssd
         val rmssdReady = currentRmssd > RMSSD_READY_THRESHOLD && recentRR.size >= 15
 
-        val state = when {
-            hrReady && rmssdReady -> RecoveryState.READY
-            hrReady || rmssdReady -> RecoveryState.ALMOST_READY
-            else -> RecoveryState.RECOVERING
-        }
-        _recoveryState.value = state
-
-        if (state == RecoveryState.READY) {
+        if (hrReady && rmssdReady) {
             isRecovering = false
         }
     }
@@ -773,7 +783,10 @@ class PolarManager @Inject constructor(
         _currentHrZone.value = null
         _currentHrZonePercent.value = 0
         _hrZoneMinutes.value = HrZoneMinutes()
+        hrZoneTrace.clear()
+        _hrZoneTracePercents.value = emptyList()
         hrZoneCalculator = null
+        _hrZoneBoundaries.value = emptyList()
         readinessScope.launch { resolveHrZoneCalculator() }
     }
 
@@ -787,7 +800,9 @@ class PolarManager @Inject constructor(
         val maxHr = HrZoneCalculator.estimatedMaxHr(userProfile.effectiveAge)
         val restingHr = readinessRepository.getLatestForDate()?.restingHr?.takeIf { it > 0 }
             ?: readinessRepository.getRecentAverageRestingHr()
-        hrZoneCalculator = HrZoneCalculator(maxHr, restingHr)
+        val calc = HrZoneCalculator(maxHr, restingHr)
+        hrZoneCalculator = calc
+        _hrZoneBoundaries.value = calc.boundaries
     }
 
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */

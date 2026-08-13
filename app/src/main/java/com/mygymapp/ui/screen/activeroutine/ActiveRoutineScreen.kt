@@ -52,6 +52,7 @@ import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
+import com.mygymapp.ui.components.HrZoneTraceChart
 import com.mygymapp.ui.components.LiveEcgCard
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.components.trimpColor
@@ -230,9 +231,14 @@ fun ActiveRoutineScreen(
                     }
                 }
 
-                // Heart rate bar (live BPM + kcal + TRIMP + semaphore)
+                // Heart rate bar (live BPM + TRIMP)
                 item(key = "hr_bar") {
                     HeartRateBar()
+                }
+
+                // Live %HRR trace over the coloured zone bands
+                item(key = "hr_zone_trace") {
+                    HrZoneTraceChart()
                 }
 
                 // Live ECG card (between HR bar and register button, per user spec)
