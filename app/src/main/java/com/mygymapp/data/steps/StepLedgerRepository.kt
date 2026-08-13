@@ -46,10 +46,15 @@ class StepLedgerRepository @Inject constructor(
     }
 
     /**
-     * Fetches steps from [reader] since the last saved checkpoint (or does nothing and
-     * returns `null` if this is the very first call ever — nothing to bound the query's
-     * start against), then advances the checkpoint to `now` so the *next* call picks up
-     * from here.
+     * Fetches steps from [reader] since the last saved checkpoint, then advances the
+     * checkpoint to `now` so the *next* call picks up from here.
+     *
+     * On the very first call ever (no checkpoint saved yet — e.g. the day the user first
+     * grants the permission), there's no "previous" instant to diff against, but Health
+     * Connect still has real historical data (steps tracked before this app ever had
+     * permission to read them) — so instead of returning `null` and making day one look
+     * broken, this queries the last 24h directly ([FIRST_READ_LOOKBACK]) as a real time
+     * range rather than a diff. Every read after that goes back to normal checkpoint-diffing.
      *
      * [StepReading.daysSpanned] mirrors the original raw-sensor design's reasoning (see
      * SYNC.md § Daily step average): if a day was skipped, the total gets divided across
@@ -62,7 +67,7 @@ class StepLedgerRepository @Inject constructor(
         mutex.withLock {
             val previous = readUnlocked()
             writeUnlocked(now)
-            previous?.let { fetchAndAverage(reader, it, now) }
+            fetchAndAverage(reader, previous ?: now.minus(FIRST_READ_LOOKBACK), now)
         }
     }
 
@@ -75,7 +80,10 @@ class StepLedgerRepository @Inject constructor(
         reader: HealthConnectStepsReader,
         now: Instant = Instant.now(),
     ): StepReading? = withContext(Dispatchers.IO) {
-        mutex.withLock { readUnlocked()?.let { fetchAndAverage(reader, it, now) } }
+        mutex.withLock {
+            val previous = readUnlocked()
+            fetchAndAverage(reader, previous ?: now.minus(FIRST_READ_LOOKBACK), now)
+        }
     }
 
     private suspend fun fetchAndAverage(reader: HealthConnectStepsReader, since: Instant, now: Instant): StepReading? {
@@ -83,6 +91,10 @@ class StepLedgerRepository @Inject constructor(
         val total = reader.totalSteps(since, now) ?: return null
         val days = ChronoUnit.DAYS.between(since, now).toInt().coerceAtLeast(1)
         return StepReading(avgStepsPerDay = total.toDouble() / days, daysSpanned = days)
+    }
+
+    companion object {
+        private val FIRST_READ_LOOKBACK = java.time.Duration.ofHours(24)
     }
 }
 

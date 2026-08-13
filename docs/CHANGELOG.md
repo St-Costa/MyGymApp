@@ -539,6 +539,18 @@ self-closing, and after granting, `dumpsys package` shows
 `android.permission.health.READ_STEPS: granted=true`. The Options debug button (Phase 41)
 confirmed the full path end to end afterward.
 
+## Phase 45 — Steps: show a real number on the very first read, not just from day two
+
+After Phase 44 fixed the permission dialog, granting it still showed nothing — expected
+given the checkpoint-diff design (first-ever read has no "previous" checkpoint to diff
+against), but a needlessly bad first impression: Health Connect already has historical step
+data from before the app ever had permission to read it, so there was no real reason to
+wait a full day for the first number. `StepLedgerRepository.recordReadingAndComputeAverage()`
+and `.peek()` both now fall back to querying the last 24h directly (a real Health Connect
+time-range query, not a diff) when no checkpoint exists yet, reporting `daysSpanned=1` for
+that reading same as any single-day reading. Every subsequent read goes back to normal
+checkpoint-diffing. No schema/wire-format change.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
