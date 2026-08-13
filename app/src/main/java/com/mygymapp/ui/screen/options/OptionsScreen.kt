@@ -93,6 +93,11 @@ fun OptionsScreen(
                 onClear = viewModel::clearSchedule,
             )
             ScaleDebugSection(onScaleDebugClick = onNavigateToScaleDebug)
+            StepDebugSection(
+                running = uiState.stepDebugRunning,
+                result = uiState.stepDebugResult,
+                onCheckClick = viewModel::checkStepCounterDebug,
+            )
             SyncSection(
                 uiState = uiState,
                 onServerUrlChange = viewModel::setSyncServerUrl,
@@ -319,6 +324,53 @@ private fun ScaleDebugSection(onScaleDebugClick: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Scale BLE Debug")
+            }
+        }
+    }
+}
+
+/**
+ * Confirms the step-counter sensor + `ACTIVITY_RECOGNITION` permission actually work,
+ * without waiting for the next morning's readiness test to find out. "Ultime 24h" is loose
+ * phrasing for "since the last saved checkpoint" — see [OptionsViewModel.checkStepCounterDebug].
+ */
+@Composable
+private fun StepDebugSection(
+    running: Boolean,
+    result: String?,
+    onCheckClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Debug contapassi", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Verifica sensore e permesso leggendo i passi delle ultime 24h.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onCheckClick,
+                enabled = !running,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (running) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Controlla passi ultime 24h")
+                }
+            }
+            if (result != null) {
+                Text(
+                    result,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
