@@ -41,14 +41,34 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Lets Health Connect's own app list MyGymApp under "Data access" /
-                 "Connected apps" so the user can review/revoke the steps permission from
-                 there too, not just from our own request flow. Not required for the
-                 permission request itself to work, but the documented convention. -->
+        </activity>
+
+        <!-- Required by Health Connect, not by this app's own navigation — see
+             PermissionsRationaleActivity's class doc. Without BOTH of the two
+             declarations below, Health Connect's permission dialog does not merely fail
+             to explain itself: it doesn't appear at all (PermissionsActivity opens and
+             immediately self-closes, no dialog, no error) — confirmed on real hardware,
+             see CHANGELOG. -->
+        <activity
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true">
+            <!-- Android 13 and below. -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".PermissionsRationaleActivity"
+            android:permission="android.permission.health.START_VIEW_PERMISSION_USAGE">
+            <!-- Android 14+. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".ui.service.StopwatchService"
             android:foregroundServiceType="specialUse"
