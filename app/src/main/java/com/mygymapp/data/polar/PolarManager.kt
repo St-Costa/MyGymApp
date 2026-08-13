@@ -1033,12 +1033,13 @@ class PolarManager @Inject constructor(
      * disconnect/reconnect later in the day reuses today's earlier result instead of
      * re-measuring). Manual re-measurement (if ever exposed in the UI) can still call
      * [startReadinessMeasurement] directly, bypassing these checks.
+     *
+     * Always resolves today's existing measurement first, regardless of the cutoff — an
+     * afternoon connect must show that morning's result (or a neutral "not measured today"
+     * state), not silently leave [_readinessResult] parked at its `MEASURING` default with a
+     * countdown that never ticks (nothing ever calls [startReadinessMeasurement] to drive it).
      */
     private fun maybeStartAutoReadinessMeasurement() {
-        if (LocalTime.now().isAfter(autoReadinessCutoff)) {
-            Log.d(TAG, "Skipping auto readiness measurement: after ${autoReadinessCutoff}")
-            return
-        }
         readinessScope.launch {
             val today = readinessRepository.getLatestForDate(LocalDate.now())
             if (today != null) {
@@ -1053,6 +1054,14 @@ class PolarManager @Inject constructor(
                 _vo2max.value = today.vo2max.takeIf { it > 0 }
                 restingHr = today.restingHr.takeIf { it > 0 } ?: restingHr
                 lowestObservedHr = today.restingHr.takeIf { it > 0 } ?: lowestObservedHr
+                return@launch
+            }
+            if (LocalTime.now().isAfter(autoReadinessCutoff)) {
+                Log.d(TAG, "Skipping auto readiness measurement: after ${autoReadinessCutoff}, no measurement today")
+                _readinessResult.value = ReadinessResult(
+                    readiness = Readiness.NO_BASELINE,
+                    secondsRemaining = 0,
+                )
                 return@launch
             }
             startReadinessMeasurement()

@@ -1,8 +1,7 @@
 package com.mygymapp.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,13 +25,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.HrZone
-import com.mygymapp.data.polar.HrZoneMinutes
 import com.mygymapp.data.polar.PolarManager
 
 fun trimpColor(trimp: Double): Color = when {
@@ -43,6 +44,21 @@ fun trimpColor(trimp: Double): Color = when {
 }
 
 private val RedLight = Color(0xFFEF5350)
+
+// Compose's default Text reserves extra space below the baseline for font metrics
+// (includeFontPadding), which reads as visibly lopsided next to a 22dp icon at this font
+// size — more empty space under the number than above it. Trimming that padding and
+// pinning lineHeight to the font size keeps the row's visual center where CenterVertically
+// expects it to be.
+private fun tightNumberStyle(fontSize: androidx.compose.ui.unit.TextUnit) = TextStyle(
+    fontSize = fontSize,
+    lineHeight = fontSize,
+    lineHeightStyle = LineHeightStyle(
+        alignment = LineHeightStyle.Alignment.Center,
+        trim = LineHeightStyle.Trim.Both,
+    ),
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+)
 
 // Same palette as the sync server's dashboard "Time in HR zone" chart, so the live
 // in-session widget and the post-sync retrospective view read consistently.
@@ -79,7 +95,6 @@ fun HeartRateBar(
     val trimp by polarManager.sessionTrimp.collectAsState()
     val currentZone by polarManager.currentHrZone.collectAsState()
     val currentZonePercent by polarManager.currentHrZonePercent.collectAsState()
-    val zoneMinutes by polarManager.hrZoneMinutes.collectAsState()
 
     if (connectionState != ConnectionState.CONNECTED) return
 
@@ -93,57 +108,56 @@ fun HeartRateBar(
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Heart icon
-            Icon(
-                Icons.Default.Favorite,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = RedLight,
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // BPM
-            Text(
-                text = "$hr",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "BPM",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.alignByBaseline(),
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // TRIMP
-            Text(
-                text = "${trimp.toInt()}",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = trimpColor(trimp),
-            )
-            Text(
-                text = "T",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Zone chip
-            currentZone?.let { zone ->
-                ZoneChip(zone = zone, percent = currentZonePercent)
+            // Heart icon + BPM, left-aligned
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Favorite,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = RedLight,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "$hr",
+                    style = tightNumberStyle(28.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
-        }
 
-        // Time-in-zone bar: only once there's something to show
-        if (zoneMinutes.total > 0.0) {
-            Spacer(modifier = Modifier.height(8.dp))
-            TimeInZoneBar(zoneMinutes)
+            // TRIMP, horizontally centered
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "${trimp.toInt()}",
+                    style = tightNumberStyle(16.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = trimpColor(trimp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "T",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Zone chip, right-aligned
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                currentZone?.let { zone ->
+                    ZoneChip(zone = zone, percent = currentZonePercent)
+                }
+            }
         }
     }
 }
@@ -171,44 +185,5 @@ private fun ZoneChip(zone: HrZone, percent: Int) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )
-    }
-}
-
-/**
- * Thin stacked bar of per-zone minutes accumulated so far this session — the live,
- * in-progress-session counterpart to the dashboard's "Time in HR zone" chart.
- */
-@Composable
-private fun TimeInZoneBar(minutes: HrZoneMinutes) {
-    val total = minutes.total.coerceAtLeast(0.01)
-    val segments = listOf(
-        HrZone.BELOW_Z1 to minutes.belowZone1,
-        HrZone.Z1 to minutes.zone1,
-        HrZone.Z2 to minutes.zone2,
-        HrZone.Z3 to minutes.zone3,
-        HrZone.Z4 to minutes.zone4,
-        HrZone.Z5 to minutes.zone5,
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp)),
-    ) {
-        segments.forEach { (zone, value) ->
-            if (value > 0.0) {
-                val fraction by animateFloatAsState(
-                    targetValue = (value / total).toFloat(),
-                    animationSpec = tween(300),
-                    label = "zoneFraction",
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(fraction.coerceAtLeast(0.001f))
-                        .fillMaxWidth()
-                        .background(hrZoneColor(zone)),
-                )
-            }
-        }
     }
 }
