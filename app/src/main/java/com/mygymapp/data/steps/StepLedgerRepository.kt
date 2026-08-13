@@ -79,15 +79,31 @@ class StepLedgerRepository @Inject constructor(
         mutex.withLock {
             val previous = readUnlocked()
             writeUnlocked(Checkpoint(counterValue, today))
-
-            if (previous == null) return@withLock null
-            if (!previous.date.isBefore(today)) return@withLock null
-            if (counterValue < previous.counterValue) return@withLock null
-
-            val days = ChronoUnit.DAYS.between(previous.date, today).toInt().coerceAtLeast(1)
-            val delta = counterValue - previous.counterValue
-            StepReading(avgStepsPerDay = delta.toDouble() / days, daysSpanned = days)
+            diffAgainst(previous, counterValue, today)
         }
+    }
+
+    /**
+     * Same diff as [recordReadingAndComputeAverage] but read-only — does not overwrite the
+     * checkpoint. Used by the Options screen's step-counter debug button: pressing it must
+     * never consume/shift the checkpoint the real readiness flow relies on, especially since
+     * debug taps aren't restricted to once/day the way readiness is.
+     */
+    suspend fun peek(
+        counterValue: Long,
+        today: LocalDate = LocalDate.now(),
+    ): StepReading? = withContext(Dispatchers.IO) {
+        mutex.withLock { diffAgainst(readUnlocked(), counterValue, today) }
+    }
+
+    private fun diffAgainst(previous: Checkpoint?, counterValue: Long, today: LocalDate): StepReading? {
+        if (previous == null) return null
+        if (!previous.date.isBefore(today)) return null
+        if (counterValue < previous.counterValue) return null
+
+        val days = ChronoUnit.DAYS.between(previous.date, today).toInt().coerceAtLeast(1)
+        val delta = counterValue - previous.counterValue
+        return StepReading(avgStepsPerDay = delta.toDouble() / days, daysSpanned = days)
     }
 }
 
