@@ -551,6 +551,21 @@ time-range query, not a diff) when no checkpoint exists yet, reporting `daysSpan
 that reading same as any single-day reading. Every subsequent read goes back to normal
 checkpoint-diffing. No schema/wire-format change.
 
+## Phase 46 — Show step count on the readiness card
+
+The synced `stepsAvgPerDay`/`stepsDaysSpanned` had no on-screen representation anywhere —
+the only way to see them was the Options debug button or reading the raw `.md` file. Added
+them to `PolarManager.ReadinessResult` (previously only carried HRV/resting-HR/VO2max) and
+to the readiness card in `HeartRateScreen`, next to VO2max. Since the Health Connect steps
+query is async and slightly slower than the rest of readiness (see
+`finishReadinessMeasurement()`), the steps fields patch onto the already-published
+`_readinessResult` a moment later rather than holding up the HRV UI update for them — guarded
+by a `readiness` value match so a slow steps read can't clobber a newer measurement if the
+user re-tests within the same session. Absent (not `0`) until that patch lands, and stays
+absent if there's no prior checkpoint. Lets the user confirm on their own device, right on
+the readiness screen, that a real number shows up the morning after granting the Health
+Connect permission — the thing Phase 44/45 fixed.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

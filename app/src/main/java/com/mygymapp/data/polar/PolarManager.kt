@@ -60,6 +60,11 @@ data class ReadinessResult(
     val restingHr: Int = 0,
     val secondsRemaining: Int = 60,
     val recommendation: String = "",
+    // Best-effort, filled in only after finishReadinessMeasurement()'s Health Connect read
+    // completes (fire-and-forget on readinessScope — see there) — stays null until then,
+    // same "null means no data" rule as the persisted ReadinessEvent fields these mirror.
+    val stepsAvgPerDay: Double? = null,
+    val stepsDaysSpanned: Int? = null,
 )
 
 @Singleton
@@ -1113,6 +1118,18 @@ class PolarManager @Inject constructor(
                 val stepReading = runCatching {
                     stepLedgerRepository.recordReadingAndComputeAverage(healthConnectStepsReader)
                 }.getOrNull()
+
+                // Steps land a moment after the rest of readiness (Health Connect query is
+                // async) — patch them onto the already-published result rather than holding
+                // up the readiness/HRV UI update above for it. Guarded by readiness match so
+                // a stale steps read from a previous measurement can't overwrite a newer one
+                // if the user re-measures in the same session.
+                if (_readinessResult.value.readiness == readiness) {
+                    _readinessResult.value = _readinessResult.value.copy(
+                        stepsAvgPerDay = stepReading?.avgStepsPerDay,
+                        stepsDaysSpanned = stepReading?.daysSpanned,
+                    )
+                }
 
                 val event = readinessRepository.save(
                     readiness = readiness.name,
