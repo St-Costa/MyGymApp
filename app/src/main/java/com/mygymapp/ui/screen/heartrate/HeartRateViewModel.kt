@@ -14,7 +14,6 @@ import com.mygymapp.data.repository.ScaleTrendReport
 import com.mygymapp.data.scale.BleScaleManager
 import com.mygymapp.data.scale.ScaleConnectionState
 import com.mygymapp.data.scale.ScaleReading
-import com.mygymapp.data.steps.HealthConnectStepsReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,7 +55,6 @@ class HeartRateViewModel @Inject constructor(
     private val scaleManager: BleScaleManager,
     private val scaleTrendLoader: ScaleTrendLoader,
     private val cardioMetricsTrendLoader: CardioMetricsTrendLoader,
-    private val healthConnectStepsReader: HealthConnectStepsReader,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HeartRateUiState())
@@ -177,11 +175,6 @@ class HeartRateViewModel @Inject constructor(
     fun stopScaleScan() = scaleManager.stopScan()
     fun disconnectScale() = scaleManager.disconnect()
 
-    // ─── Health Connect steps permission (see HeartRateScreen's LaunchedEffect) ──────
-    val stepPermissionContract = healthConnectStepsReader.permissionRequestContract
-    val stepsReadPermission: String = HealthConnectStepsReader.READ_STEPS_PERMISSION
-    fun isHealthConnectAvailable(): Boolean = healthConnectStepsReader.isAvailable()
-    suspend fun hasStepsPermission(): Boolean = healthConnectStepsReader.hasReadPermission()
 
     fun updateAge(age: Int) {
         val profile = _uiState.value.profile.copy(age = age)
