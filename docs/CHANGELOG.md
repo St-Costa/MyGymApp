@@ -512,6 +512,33 @@ so Home's job is only to prompt, never to gate an action on the result. `POST_NO
 stays where it was (`MainActivity.onCreate()`, before Compose even starts) — moving it
 wouldn't have changed behavior, only where it lives.
 
+## Phase 44 — Fix Health Connect permission dialog not appearing at all
+
+Phase 42/43's Health Connect integration compiled and ran, but the permission dialog
+itself never showed up: `PermissionsActivity` (Health Connect's own) opened and
+self-closed within ~30ms, with no dialog, no error, and no logcat trace explaining why —
+confirmed via `dumpsys activity activities` showing the activity transition completing and
+immediately reversing. Root cause: Health Connect requires the requesting app to declare a
+"permissions rationale" activity — its explanation of what the app does with health data —
+and refuses to show the permission dialog at all if that declaration is missing or
+incomplete, rather than failing loudly. Two separate manifest declarations are required,
+one per Android version range (confirmed against Android's own Health Connect
+documentation): an `<activity>` with an `androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE`
+intent-filter for Android 13 and below, AND an `<activity-alias name="ViewPermissionUsageActivity">`
+(with `android:permission="android.permission.health.START_VIEW_PERMISSION_USAGE"` and a
+`VIEW_PERMISSION_USAGE`/`HEALTH_PERMISSIONS` intent-filter) for Android 14+ — the test
+device is Android 16, so only the alias was actually exercised, but both are needed for
+real device coverage. Phase 42 had added only a same-intent-filter-on-MainActivity
+half-measure, which doesn't satisfy either requirement.
+
+Added `PermissionsRationaleActivity` — a real Compose screen explaining what steps data is
+read, when, and where it goes (self-hosted sync only, opt-in) — and wired both manifest
+declarations to it. Confirmed fixed on hardware: `dumpsys activity activities` now shows
+Health Connect's `PermissionsActivity` staying resumed (dialog visible) instead of
+self-closing, and after granting, `dumpsys package` shows
+`android.permission.health.READ_STEPS: granted=true`. The Options debug button (Phase 41)
+confirmed the full path end to end afterward.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
