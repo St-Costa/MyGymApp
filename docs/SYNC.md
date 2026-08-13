@@ -554,21 +554,26 @@ last read (an `Instant`), not a counter value:
 
 - Each readiness test asks Health Connect for the step total between the last saved
   checkpoint and now (`gymdata/_sync/step_checkpoint.yml`, local-only, never synced), then
-  advances the checkpoint to now.
-- `stepsAvgPerDay` = (steps in that range) / (days elapsed since the previous test). On the
-  common path — a test done every morning — that's 1 day, i.e. a true daily count. If a day
-  (or several) was skipped, the same total gets divided across however many days actually
-  elapsed, so the number is an **average**, not a guaranteed single-day count.
+  advances the checkpoint to now. On the very first read ever (no checkpoint saved yet —
+  e.g. the day the permission is first granted), there's no "previous" instant to diff
+  against, but Health Connect still has real historical data from before the app had
+  permission to read it — so this case queries the last 24h directly (a real time range,
+  not a diff) instead of returning nothing and making day one look broken.
+- `stepsAvgPerDay` = (steps in that range) / (days elapsed since the previous test, or 1 on
+  the first-ever read). On the common path — a test done every morning — that's 1 day, i.e.
+  a true daily count. If a day (or several) was skipped, the same total gets divided across
+  however many days actually elapsed, so the number is an **average**, not a guaranteed
+  single-day count.
 - `stepsDaysSpanned` says which case applies: `1` means the value is a real single-day
   reading; anything greater means N days were collapsed into one average. The app itself
   only ever shows/stores the single averaged number, but the server receives both fields
   because it has the cross-day history to decide how to weight, flag, or chart a
   multi-day-average point differently from a clean single-day one — that distinction would
   be unrecoverable if only the averaged value were sent.
-- Both fields are `null` together — never `0`/`1` as a fallback — whenever there's nothing
-  to diff against yet: the very first readiness test ever, Health Connect not installed on
-  this device, or the permission not granted. A `null` here means "no data", not "zero
-  steps" — the server must not coerce it to `0`.
+- Both fields are `null` together — never `0`/`1` as a fallback — whenever Health Connect
+  itself can't answer: not installed on this device, permission not granted, or the query
+  failing. A `null` here means "no data", not "zero steps" — the server must not coerce it
+  to `0`.
 
 ### Sync path
 
