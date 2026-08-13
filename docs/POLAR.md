@@ -92,13 +92,14 @@ Formula details and references in [polar/implementation-guide.md](polar/implemen
 
 ### Daily step average (piggybacks on readiness)
 
-`PolarManager.finishReadinessMeasurement()` also takes one best-effort reading from the
-phone's own hardware step counter (unrelated to the Polar strap — `data/steps/`, not
-`data/polar/`) and folds it into the same `ReadinessEvent` as `stepsAvgPerDay`/
-`stepsDaysSpanned`. It's here rather than in its own section because it rides on the
-readiness trigger for the same reason described in SYNC.md: the morning readiness test is
-the app's one guaranteed daily touchpoint, so there's no separate trigger worth building.
-Full field semantics and the sync wire format: [SYNC.md § Daily step average](SYNC.md#daily-step-average).
+`PolarManager.finishReadinessMeasurement()` also takes one best-effort reading of step data
+from Health Connect (unrelated to the Polar strap — `data/steps/`, not `data/polar/`; not
+the raw `TYPE_STEP_COUNTER` sensor either, see SYNC.md for why) and folds it into the same
+`ReadinessEvent` as `stepsAvgPerDay`/`stepsDaysSpanned`. It's here rather than in its own
+section because it rides on the readiness trigger for the same reason described in
+SYNC.md: the morning readiness test is the app's one guaranteed daily touchpoint, so
+there's no separate trigger worth building. Full field semantics and the sync wire format:
+[SYNC.md § Daily step average](SYNC.md#daily-step-average).
 
 ### ECG streaming
 

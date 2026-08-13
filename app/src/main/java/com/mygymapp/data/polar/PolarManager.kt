@@ -74,10 +74,8 @@ class PolarManager @Inject constructor(
     private val syncConfigRepository: SyncConfigRepository,
     private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
     private val stepLedgerRepository: com.mygymapp.data.steps.StepLedgerRepository,
+    private val healthConnectStepsReader: com.mygymapp.data.steps.HealthConnectStepsReader,
 ) {
-    // Not injected: StepCounterReader takes a Context directly and holds no state worth
-    // sharing/mocking beyond that, unlike the @Singleton repositories above.
-    private val stepCounterReader = com.mygymapp.data.steps.StepCounterReader(context)
     // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
     // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
     // explicit cancellation — unlike the per-screen `clearScope` pattern in edit
@@ -1106,14 +1104,14 @@ class PolarManager @Inject constructor(
         // never crash a BLE callback thread.
         readinessScope.launch {
             try {
-                // Best-effort: no permission, no sensor on this device, or no previous
-                // checkpoint to diff against all surface as null, never as a thrown
+                // Best-effort: Health Connect unavailable/not permitted, or no previous
+                // checkpoint to diff against, all surface as null, never as a thrown
                 // exception or a bogus 0 — steps are a bonus riding along on the readiness
-                // event, never something that should block or fail it.
+                // event, never something that should block or fail it. See
+                // HealthConnectStepsReader's class doc for why this reads through Health
+                // Connect rather than the raw TYPE_STEP_COUNTER sensor.
                 val stepReading = runCatching {
-                    stepCounterReader.readOnce()?.let { counterValue ->
-                        stepLedgerRepository.recordReadingAndComputeAverage(counterValue)
-                    }
+                    stepLedgerRepository.recordReadingAndComputeAverage(healthConnectStepsReader)
                 }.getOrNull()
 
                 val event = readinessRepository.save(

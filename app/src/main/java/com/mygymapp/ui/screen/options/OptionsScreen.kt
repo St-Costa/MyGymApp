@@ -330,9 +330,11 @@ private fun ScaleDebugSection(onScaleDebugClick: () -> Unit) {
 }
 
 /**
- * Confirms the step-counter sensor + `ACTIVITY_RECOGNITION` permission actually work,
- * without waiting for the next morning's readiness test to find out. "Ultime 24h" is loose
- * phrasing for "since the last saved checkpoint" — see [OptionsViewModel.checkStepCounterDebug].
+ * Confirms Health Connect + its steps read permission actually work, without waiting for
+ * the next morning's readiness test to find out — this is what caught Phase 41's
+ * `TYPE_STEP_COUNTER` approach not working on real hardware, see CHANGELOG Phase 42.
+ * "Ultime 24h" is loose phrasing for "since the last saved checkpoint" — see
+ * [OptionsViewModel.checkStepCounterDebug].
  */
 @Composable
 private fun StepDebugSection(

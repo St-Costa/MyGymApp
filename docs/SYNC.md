@@ -527,15 +527,35 @@ discarded, never written, since it's a failed measurement, not a data point.
 
 Piggybacks on the readiness event rather than being its own record type, because the
 morning readiness test is already the app's one guaranteed daily touchpoint — see
-`StepLedgerRepository` (`data/steps/`). The raw Android `TYPE_STEP_COUNTER` sensor reports
-a value cumulative since the device's last boot, not "steps today", so the app diffs two
-checkpoints itself:
+`StepLedgerRepository` (`data/steps/`).
 
-- Each readiness test reads the current counter value (`StepCounterReader.readOnce()`,
-  one-shot, `ACTIVITY_RECOGNITION` permission on Android 10+) and compares it against the
-  counter value + date saved at the *previous* test (`gymdata/_sync/step_checkpoint.yml`,
-  local-only, never synced).
-- `stepsAvgPerDay` = (counter delta) / (days elapsed since the previous test). On the
+**Reads through Health Connect, not the raw `TYPE_STEP_COUNTER` sensor.** The first
+implementation used `SensorManager`/`TYPE_STEP_COUNTER` directly (a plain
+`ACTIVITY_RECOGNITION` runtime permission, one-shot or persistent listener). That was
+abandoned after real-device testing: on this project's Samsung/One UI test phone,
+`dumpsys sensorservice` showed the hardware sensor reporting `has sensor access: false` for
+the app even with `ACTIVITY_RECOGNITION` granted and a listener held open continuously. The
+actual gate turned out to be a separate OS-level "Health, fitness and wellness" permission
+with **no manual toggle reachable from Settings** — Health Connect's own permission-request
+flow is the only way to grant it. This is very likely not Samsung-specific (modern Android
+increasingly routes health-adjacent sensor data through Health Connect regardless of OEM),
+so `HealthConnectStepsReader` (`data/steps/`) is the permanent design, not a workaround.
+Requires `androidx.health.connect:connect-client` (bumped `agp` to 8.9.3 in
+`libs.versions.toml` — 1.1.0 of that library requires AGP 8.9.1+) and the
+`android.permission.health.READ_STEPS` manifest permission, requested at runtime via
+`PermissionController.createRequestPermissionResultContract()` (a Health Connect-specific
+contract, not `ActivityResultContracts.RequestPermission()`).
+
+Health Connect aggregates over an explicit time range natively
+(`HealthConnectClient.aggregate(AggregateRequest(...))`), so unlike a raw cumulative-since-
+boot sensor value, there's no manual "diff two counter readings, handle the counter going
+backwards on reboot" logic needed — `StepLedgerRepository` only remembers *when* steps were
+last read (an `Instant`), not a counter value:
+
+- Each readiness test asks Health Connect for the step total between the last saved
+  checkpoint and now (`gymdata/_sync/step_checkpoint.yml`, local-only, never synced), then
+  advances the checkpoint to now.
+- `stepsAvgPerDay` = (steps in that range) / (days elapsed since the previous test). On the
   common path — a test done every morning — that's 1 day, i.e. a true daily count. If a day
   (or several) was skipped, the same total gets divided across however many days actually
   elapsed, so the number is an **average**, not a guaranteed single-day count.
@@ -546,10 +566,9 @@ checkpoints itself:
   multi-day-average point differently from a clean single-day one — that distinction would
   be unrecoverable if only the averaged value were sent.
 - Both fields are `null` together — never `0`/`1` as a fallback — whenever there's nothing
-  to diff against yet: the very first readiness test ever, the sensor missing on this
-  device, the permission not granted, or the counter having gone backwards (device
-  rebooted between tests, which resets `TYPE_STEP_COUNTER` to 0). A `null` here means "no
-  data", not "zero steps" — the server must not coerce it to `0`.
+  to diff against yet: the very first readiness test ever, Health Connect not installed on
+  this device, or the permission not granted. A `null` here means "no data", not "zero
+  steps" — the server must not coerce it to `0`.
 
 ### Sync path
 

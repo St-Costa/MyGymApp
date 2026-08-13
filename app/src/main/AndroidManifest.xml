@@ -19,10 +19,12 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Daily step average, read via the device's hardware step counter alongside the
-         morning readiness test (Android 10+ requires this runtime permission to read
-         TYPE_STEP_COUNTER; below that it's a normal sensor, no gate). -->
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- Daily step average, read via Health Connect alongside the morning readiness test.
+         Not the raw TYPE_STEP_COUNTER sensor: on real Samsung/One UI hardware that sensor
+         turned out to be gated behind this same Health Connect permission anyway, with no
+         way to grant it other than through Health Connect's own request flow — see
+         HealthConnectStepsReader's class doc (docs/SYNC.md § Daily step average). -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
 
     <application
         android:name=".MyGymApp"
@@ -38,6 +40,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Lets Health Connect's own app list MyGymApp under "Data access" /
+                 "Connected apps" so the user can review/revoke the steps permission from
+                 there too, not just from our own request flow. Not required for the
+                 permission request itself to work, but the documented convention. -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
         <service
