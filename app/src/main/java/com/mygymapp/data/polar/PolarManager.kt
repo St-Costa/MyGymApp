@@ -73,7 +73,11 @@ class PolarManager @Inject constructor(
     private val readinessLedgerRepository: com.mygymapp.data.sync.ReadinessLedgerRepository,
     private val syncConfigRepository: SyncConfigRepository,
     private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
+    private val stepLedgerRepository: com.mygymapp.data.steps.StepLedgerRepository,
 ) {
+    // Not injected: StepCounterReader takes a Context directly and holds no state worth
+    // sharing/mocking beyond that, unlike the @Singleton repositories above.
+    private val stepCounterReader = com.mygymapp.data.steps.StepCounterReader(context)
     // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
     // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
     // explicit cancellation — unlike the per-screen `clearScope` pattern in edit
@@ -1102,12 +1106,24 @@ class PolarManager @Inject constructor(
         // never crash a BLE callback thread.
         readinessScope.launch {
             try {
+                // Best-effort: no permission, no sensor on this device, or no previous
+                // checkpoint to diff against all surface as null, never as a thrown
+                // exception or a bogus 0 — steps are a bonus riding along on the readiness
+                // event, never something that should block or fail it.
+                val stepReading = runCatching {
+                    stepCounterReader.readOnce()?.let { counterValue ->
+                        stepLedgerRepository.recordReadingAndComputeAverage(counterValue)
+                    }
+                }.getOrNull()
+
                 val event = readinessRepository.save(
                     readiness = readiness.name,
                     lnRmssd = lnRmssd,
                     restingHr = measuredRestingHr,
                     vo2max = vo2 ?: 0.0,
                     recommendation = recommendation,
+                    stepsAvgPerDay = stepReading?.avgStepsPerDay,
+                    stepsDaysSpanned = stepReading?.daysSpanned,
                 )
                 appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
                 // Sync enqueue is gated the same way session sync is (docs/SYNC.md §1.5):

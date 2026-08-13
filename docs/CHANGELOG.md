@@ -443,6 +443,26 @@ fires before 10:00 local time, and only if no readiness event has been persisted
 after an accidental disconnect) reuses today's already-saved result instead of re-measuring —
 loaded back into `readinessResult`/`vo2max`/`restingHr` via `PolarManager.maybeStartAutoReadinessMeasurement()`.
 
+## Phase 41 — Daily step average, piggybacked on readiness
+
+Added a passive daily step count, read from the phone's own hardware `TYPE_STEP_COUNTER`
+sensor (not the Polar strap) at the same moment the morning readiness test runs, since
+that's the app's one guaranteed daily touchpoint and didn't justify a separate
+trigger/service. New `data/steps/` package: `StepCounterReader` does a one-shot sensor
+read (returns `null` on missing sensor/permission/timeout, never throws), and
+`StepLedgerRepository` diffs it against a local-only checkpoint
+(`gymdata/_sync/step_checkpoint.yml`, the counter is cumulative since last boot, not
+"steps today") to produce an average-per-day figure that correctly spreads the total
+across however many days were skipped since the last test, rather than reporting a
+skipped multi-day total as if it were one day's steps. `ReadinessEvent` gained two
+nullable fields, `stepsAvgPerDay`/`stepsDaysSpanned`, synced to the server through the
+existing readiness pipeline (`ReadinessSyncApi`/`ReadinessSyncWorker`) untouched
+otherwise — both fields ride the same envelope and file as the rest of the readiness
+event. `ACTIVITY_RECOGNITION` (Android 10+ runtime permission) is requested
+fire-and-forget when `HeartRateScreen` opens, alongside the existing BLE/scale permission
+requests. Full field semantics and required server-side schema change:
+[SYNC.md § Daily step average](SYNC.md#daily-step-average).
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

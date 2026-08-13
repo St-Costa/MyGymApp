@@ -514,12 +514,42 @@ lnRmssd: 4.30
 restingHr: 65
 vo2max: 45.2
 recommendation: "HRV above baseline. Good day to push intensity."
+stepsAvgPerDay: 8214.5         # nullable — see "Daily step average" below
+stepsDaysSpanned: 1            # nullable — always present together with stepsAvgPerDay
 ---
 ```
 
 Only persisted (and thus only synced) for measurements that produce a real result —
 the early-return case (`cleanRR.size < 20`, "not enough clean data, try again") is
 discarded, never written, since it's a failed measurement, not a data point.
+
+#### Daily step average
+
+Piggybacks on the readiness event rather than being its own record type, because the
+morning readiness test is already the app's one guaranteed daily touchpoint — see
+`StepLedgerRepository` (`data/steps/`). The raw Android `TYPE_STEP_COUNTER` sensor reports
+a value cumulative since the device's last boot, not "steps today", so the app diffs two
+checkpoints itself:
+
+- Each readiness test reads the current counter value (`StepCounterReader.readOnce()`,
+  one-shot, `ACTIVITY_RECOGNITION` permission on Android 10+) and compares it against the
+  counter value + date saved at the *previous* test (`gymdata/_sync/step_checkpoint.yml`,
+  local-only, never synced).
+- `stepsAvgPerDay` = (counter delta) / (days elapsed since the previous test). On the
+  common path — a test done every morning — that's 1 day, i.e. a true daily count. If a day
+  (or several) was skipped, the same total gets divided across however many days actually
+  elapsed, so the number is an **average**, not a guaranteed single-day count.
+- `stepsDaysSpanned` says which case applies: `1` means the value is a real single-day
+  reading; anything greater means N days were collapsed into one average. The app itself
+  only ever shows/stores the single averaged number, but the server receives both fields
+  because it has the cross-day history to decide how to weight, flag, or chart a
+  multi-day-average point differently from a clean single-day one — that distinction would
+  be unrecoverable if only the averaged value were sent.
+- Both fields are `null` together — never `0`/`1` as a fallback — whenever there's nothing
+  to diff against yet: the very first readiness test ever, the sensor missing on this
+  device, the permission not granted, or the counter having gone backwards (device
+  rebooted between tests, which resets `TYPE_STEP_COUNTER` to 0). A `null` here means "no
+  data", not "zero steps" — the server must not coerce it to `0`.
 
 ### Sync path
 
@@ -561,7 +591,17 @@ error). A companion spec for the server repo (`MyGymApp_server`, mirroring
 `docs/sync-ingestion/SPEC.md`'s structure there) should be written before implementing
 `/v1/readiness` — same multipart envelope shape (`eventId` instead of `sessionId`, no
 `exercises`/`sets` child tables needed, just a flat `readiness_events` table mirroring the
-YAML fields above).
+YAML fields above.
+
+The multipart `envelope` JSON part additionally carries `stepsAvgPerDay` (number or
+JSON `null`) and `stepsDaysSpanned` (integer or JSON `null`) — duplicated from the
+attached file's frontmatter so the server can validate/store them without parsing
+Markdown first, same reasoning as every other envelope field. Both keys are always
+*present*, holding JSON `null` rather than being omitted, when there was nothing to
+diff against on the phone (see "Daily step average" above) — the server-side column(s)
+must be nullable and a `null` must be stored/treated as "no data for this event", never
+coerced to `0`. `readiness_events` needs two new nullable columns for this:
+`steps_avg_per_day` (float/numeric) and `steps_days_spanned` (integer).
 
 ## Third record type: scale weigh-ins
 
