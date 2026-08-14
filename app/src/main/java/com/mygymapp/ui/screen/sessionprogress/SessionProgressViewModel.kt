@@ -8,12 +8,15 @@ import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.bestEstimated1RM
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.steps.HealthConnectStepsReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
@@ -41,12 +44,20 @@ data class SessionProgressUiState(
     val vo2maxSeries: ChartSeries = ChartSeries(),
     val restingHrSeries: ChartSeries = ChartSeries(),
     val cardiacDriftSeries: ChartSeries = ChartSeries(),
+    // Display-only, never persisted/synced: steps walked during this specific session
+    // (startedAt..completedAt), queried fresh from Health Connect each time this screen
+    // loads — distinct from the daily-average figure that DOES get saved/synced via the
+    // readiness pipeline (docs/SYNC.md § Daily step average), which is a whole-day total,
+    // not scoped to a session. Null when unavailable (Health Connect not installed,
+    // permission not granted, or startedAt missing on an old/legacy session).
+    val sessionSteps: Long? = null,
 )
 
 @HiltViewModel
 class SessionProgressViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val workoutRepository: WorkoutRepository,
+    private val healthConnectStepsReader: HealthConnectStepsReader,
 ) : ViewModel() {
 
     private val sessionId: String = checkNotNull(savedStateHandle["sessionId"])
@@ -96,6 +107,8 @@ class SessionProgressViewModel @Inject constructor(
             .filter { it.completedAt.isNotBlank() }
         val cardioLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
+        val sessionSteps = stepsDuringSession(session)
+
         _uiState.value = SessionProgressUiState(
             isLoading = false,
             routineName = session.routineName,
@@ -109,7 +122,25 @@ class SessionProgressViewModel @Inject constructor(
             vo2maxSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.vo2max },
             restingHrSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.restingHr.toDouble() },
             cardiacDriftSeries = cardioSeries(allCompletedSessions, cardioLabels, hasData = { it != 0.0 }) { it.cardiacDriftBpmMin },
+            sessionSteps = sessionSteps,
         )
+    }
+
+    /**
+     * Steps walked during this specific session's own time window, read fresh from Health
+     * Connect — display-only (see [SessionProgressUiState.sessionSteps]), nothing here gets
+     * saved back onto the session or synced. Returns `null` rather than `0` whenever the
+     * window can't be established or the query fails, so the UI can tell "no data" apart
+     * from "zero steps really were taken."
+     */
+    private suspend fun stepsDuringSession(session: WorkoutSession): Long? {
+        if (session.startedAt.isBlank() || session.completedAt.isBlank()) return null
+        if (!healthConnectStepsReader.isAvailable()) return null
+        val zone = ZoneId.systemDefault()
+        val start = runCatching { LocalDateTime.parse(session.startedAt).atZone(zone).toInstant() }.getOrNull() ?: return null
+        val end = runCatching { LocalDateTime.parse(session.completedAt).atZone(zone).toInstant() }.getOrNull() ?: return null
+        if (!start.isBefore(end)) return null
+        return healthConnectStepsReader.totalSteps(start, end)
     }
 
     /** Builds a chart series from sessions, keeping only points where [hasData] accepts the selected value. */
