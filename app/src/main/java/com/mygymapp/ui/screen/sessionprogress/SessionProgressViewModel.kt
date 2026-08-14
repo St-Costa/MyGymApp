@@ -32,20 +32,15 @@ data class SessionProgressUiState(
     val sessionTonnage: List<Double> = emptyList(),
     val sessionBestE1RM: List<Double> = emptyList(),
     val sessionLabels: List<String> = emptyList(),
-    // Cardio trend charts (one point per past session that recorded the metric)
-    val avgHrSeries: ChartSeries = ChartSeries(),
+    // Cardio trend charts (one point per past session that recorded the metric).
+    // Deep ECG-derived series (avg HR from ECG, RMSSD, SDNN, Poincaré ratio, arrhythmia
+    // counts) were removed when that analysis moved server-side — see docs/SYNC.md
+    // "Fourth record type: raw ECG". Only metrics computed from live HR/readiness
+    // tracking remain.
     val hrrSeries: ChartSeries = ChartSeries(),
     val vo2maxSeries: ChartSeries = ChartSeries(),
-    val rmssdSeries: ChartSeries = ChartSeries(),
-    val sdnnSeries: ChartSeries = ChartSeries(),
-    val poincareRatioSeries: ChartSeries = ChartSeries(),
     val restingHrSeries: ChartSeries = ChartSeries(),
     val cardiacDriftSeries: ChartSeries = ChartSeries(),
-    // This session's anomaly counts — shown only if any are non-zero
-    val ecgPacCount: Int = 0,
-    val ecgPauseCount: Int = 0,
-    val ecgIrregularBeats: Int = 0,
-    val afibSuspicionEpisodes: Int = 0,
 )
 
 @HiltViewModel
@@ -110,18 +105,10 @@ class SessionProgressViewModel @Inject constructor(
             sessionTonnage = sessionTonnage,
             sessionBestE1RM = sessionBestE1RM,
             sessionLabels = sessionLabels,
-            avgHrSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.ecgAvgHr },
             hrrSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.hrr60s },
             vo2maxSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.vo2max },
-            rmssdSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.ecgSessionRmssd },
-            sdnnSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.sdnn },
-            poincareRatioSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.poincareRatio },
             restingHrSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.restingHr.toDouble() },
             cardiacDriftSeries = cardioSeries(allCompletedSessions, cardioLabels, hasData = { it != 0.0 }) { it.cardiacDriftBpmMin },
-            ecgPacCount = session.ecgPacCount,
-            ecgPauseCount = session.ecgPauseCount,
-            ecgIrregularBeats = session.ecgIrregularBeats,
-            afibSuspicionEpisodes = session.afibSuspicionEpisodes,
         )
     }
 

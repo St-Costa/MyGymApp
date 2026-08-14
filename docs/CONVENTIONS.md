@@ -65,6 +65,30 @@ LaunchedEffect(completionSaved) {
 
 Navigation happens only after disk confirms the write. `onCleared()` is reserved for the mid-exercise back case and skips re-saving when `completionSaved` is already true.
 
+## Session-RPE prompt: apply after the reload, not before
+
+`ActiveRoutineViewModel.registerRoutine()` reloads the session from disk multiple times
+(once in `finalizeSession()`, again right before the final ECG-metrics save) — each reload
+overwrites `currentSession` with whatever is on disk at that moment. The session-RPE value
+the user picks in `SessionRpeDialog` is captured *before* any of those reloads run (the
+dialog is shown by `requestRegisterRoutine()`, which fires before `registerRoutine()` even
+starts), so it can't just be set on `currentSession` and expected to survive.
+
+Fix: `sessionRpe` is threaded through as a parameter (`registerRoutine(sessionRpe: Int?)`)
+and applied onto `updated` immediately before the final `workoutRepository.save(updated)`
+call — after every reload has already happened, so nothing overwrites it. `sessionLoad`
+(Foster method: RPE × duration in minutes) is derived from that same `updated` session's
+`startedAt`/`completedAt` at the same point, for the same reason. Same shape of bug as the
+`completionSaved` pattern above — a value set before an async reload gets silently dropped —
+just solved by "pass it through" instead of "wait for the write."
+
+The prompt is mandatory, not skippable: `SessionRpeDialog`'s `AlertDialog` has a no-op
+`onDismissRequest` (blocks outside-tap dismiss) and `ActiveRoutineScreen`'s `BackHandler`
+is disabled (`enabled = !uiState.showRpePrompt`) while it's showing — otherwise the
+existing "back abandons the session" handler would be an unintended skip path. The confirm
+button stays disabled until a chip is selected, so there is no way to close the dialog
+without a valid 0-9 rating.
+
 ## Untouched-exercise guard (completing without changing anything)
 
 Tapping "Complete Exercise"/"Complete Superset" without touching any pre-filled field no longer records last session's numbers as new work. Each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `repsTouched`/`weightTouched`, set `true` only by an explicit user action (`updateReps`/`updateWeight`/`confirmReps`/`confirmWeight`, or the stepper buttons that call them) — never by the prefill logic in `init`. Stretch sets have no prefill at all, so `done` itself (only ever flipped by an explicit toggle) is the touch signal.
@@ -193,9 +217,31 @@ Disconnect handling in `PolarManager`:
 - Session counters reset at **session start** (`startHrSeriesCapture`), NOT on `deviceConnected` — otherwise a mid-session reconnect would wipe accumulated `sessionCalories`/`sessionTrimp` (this is what produced the 14 kcal session on a yesterday's drop). The 60s readiness measurement is likewise skipped on a mid-session reconnect (`if (!hrSeriesActive)`).
 - `stopHrSeriesCapture()` cancels reconnection and clears the alert; the disconnect alert is cleared on the next `deviceConnected`.
 
-## ECG analysis: keep the raw file on failure
+## "Polar won't connect" is usually a dead CR2025, not a code bug
 
-`ActiveRoutineViewModel.registerRoutine()` runs `analyzeSessionEcg` and then deletes the raw `.ecg`. Delete ONLY when `ecgResult != null && ecgResult.hasAnything` (i.e. ≥1 beat detected). On failure (file too short, too few peaks, too few valid RR intervals) the `.ecg` is preserved so it can be inspected offline. `EcgAnalyzer.analyze()` emits structured logs (`file too small`, `only N peaks`, `only N valid RR intervals`, or the success line `N peaks → M valid RR intervals`) to pinpoint the cause.
+Before touching reconnect logic, rule out the battery — this failure mode looks exactly like a software bug and has burned real debugging time. A H10 whose cell is spent **stops advertising entirely**: it is invisible to every BLE scan, so `api.searchForDevice()` emits nothing, `deviceConnecting` never fires, and the UI shows no state change at all (not even the "searching" indicator). The reconnect loop then logs attempts forever against a device that isn't there.
+
+The trap is that the cell still measures ~3.0V on a multimeter. A multimeter draws microamps; what kills the strap is internal resistance (~15Ω new, hundreds of ohms spent) dropping the rail below brownout during the ~10 mA transmit peak. Open-circuit voltage stays nominal to the very end. For the same reason the reported percentage is useless below ~70% — see `BATTERY_WARNING_THRESHOLD` in `PolarManager`.
+
+Diagnosing it, in order:
+1. `adb logcat | grep -i "BluetoothLeScanner\|bt_shim_scanner"` — if `Start Scan with callback` and `Scan: in shim layer started` appear, the app is doing its job and the silence is the device's.
+2. `adb shell dumpsys bluetooth_manager | grep -A30 "Bonded devices"` — the H10 line shows `[ACL BR/EDR:N LE:N]` when not connected, plus a last-seen timestamp. A timestamp days old with the strap supposedly in range means it isn't transmitting.
+3. Wet the electrodes and wear it. The H10 has no power switch — it wakes on conductivity between the electrodes and is genuinely off when dry, so a bench test with the strap on a table proves nothing.
+
+Corollary for battery life: the ~400 h Polar quotes is for plain HR streaming. This app also records ECG at 130 Hz, which is a far heavier radio duty cycle, so expect substantially less — roughly 3 months at ~10 h/week of ECG-recorded sessions.
+
+## ECG raw file: send-then-delete, no local analysis fallback
+
+`ActiveRoutineViewModel.registerRoutine()` no longer calls `analyzeSessionEcg` at all — deep ECG analysis (Pan-Tompkins, RMSSD/SDNN/pNN50/Poincaré, arrhythmia markers) moved server-side entirely (see [SYNC.md](SYNC.md#fourth-record-type-raw-ecg), [POLAR.md](POLAR.md#post-session-analysis)). `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()` still exist in the codebase, unused — left in place rather than deleted, since the raw file format they parse is unchanged and they cost nothing while dormant.
+
+Raw `.ecg` file handling is now a simple send-then-delete, with no "keep for offline inspection" fallback (that fallback existed only because local analysis could fail and you'd want to retry/inspect it — with no local analysis at all, there's nothing to retry):
+
+- **Sync configured + enabled**: enqueued in `EcgSyncLedgerRepository` unconditionally (no analysis result to gate on). `EcgSyncWorker` deletes the file only after a confirmed server upload (`SENT`), or after 30 days pending (`expireStale()`).
+- **Sync not configured**: the file is deleted immediately — with no local analysis and no server to send it to, nothing would ever consume it.
+
+`EcgAnalyzer.analyze()`'s structured logs (`file too small`, `only N peaks`, etc.) are dead code paths now — harmless, but don't expect to see them in `app.log` anymore since nothing calls `analyze()`.
+
+Gzip temp-file cleanup: `EcgSyncWorker` compresses in-memory (`ByteArrayOutputStream` + `GZIPOutputStream`), not via a temp file on disk, specifically to avoid needing a `try/finally` cleanup step — simpler than the alternative and there's no leaked file to worry about if the worker is killed mid-run.
 
 ## R-peak threshold must be local, not global-max
 

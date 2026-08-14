@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- BLE: Polar H10 heart rate monitor -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
@@ -18,6 +19,13 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Daily step average, read via Health Connect alongside the morning readiness test.
+         Not the raw TYPE_STEP_COUNTER sensor: on real Samsung/One UI hardware that sensor
+         turned out to be gated behind this same Health Connect permission anyway, with no
+         way to grant it other than through Health Connect's own request flow — see
+         HealthConnectStepsReader's class doc (docs/SYNC.md § Daily step average). -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+
     <application
         android:name=".MyGymApp"
         android:allowBackup="true"
@@ -34,6 +42,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Required by Health Connect, not by this app's own navigation — see
+             PermissionsRationaleActivity's class doc. Without BOTH of the two
+             declarations below, Health Connect's permission dialog does not merely fail
+             to explain itself: it doesn't appear at all (PermissionsActivity opens and
+             immediately self-closes, no dialog, no error) — confirmed on real hardware,
+             see CHANGELOG. -->
+        <activity
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true">
+            <!-- Android 13 and below. -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".PermissionsRationaleActivity"
+            android:permission="android.permission.health.START_VIEW_PERMISSION_USAGE">
+            <!-- Android 14+. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".ui.service.StopwatchService"
             android:foregroundServiceType="specialUse"
@@ -46,6 +81,21 @@
             android:name=".ui.service.PolarStreamingService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
+
+        <!-- Disable WorkManager's default initializer: MyGymApp is a Configuration.Provider
+             (see MyGymApp.kt) so Hilt-injected workers like SyncWorker can be constructed
+             with their dependencies. Without this, WorkManager self-initializes before
+             Hilt is ready and SyncWorker can never be instantiated. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

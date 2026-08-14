@@ -18,6 +18,24 @@ class ScaleHistoryRepository @Inject constructor(
     private fun dirFor(date: LocalDate): File =
         fileManager.getDir("scale/${date.year}/${date.monthValue.toString().padStart(2, '0')}")
 
+    /** Absolute file for a weigh-in, e.g. for the sync worker to read+hash. [id] is the ISO date string. */
+    fun fileFor(id: String): File {
+        val date = LocalDate.parse(id, DateTimeFormatter.ISO_LOCAL_DATE)
+        return File(dirFor(date), "$id.md")
+    }
+
+    /** Relative path from `scale/` root, mirroring [WorkoutRepository.relPathFor]'s convention. */
+    fun relPathFor(id: String): String {
+        val date = LocalDate.parse(id, DateTimeFormatter.ISO_LOCAL_DATE)
+        return "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$id.md"
+    }
+
+    suspend fun getById(id: String): ScaleWeighIn? = withContext(Dispatchers.IO) {
+        val file = fileFor(id)
+        if (!file.exists()) return@withContext null
+        runCatching { ScaleWeighInParser.fromMarkdown(file.readText()) }.getOrNull()
+    }
+
     /** One weigh-in per calendar day: saving again on the same day overwrites the previous entry. */
     suspend fun save(
         weightKg: Double,
@@ -77,5 +95,29 @@ class ScaleHistoryRepository @Inject constructor(
             current = current.plusMonths(1)
         }
         weighIns.sortedBy { it.recordedAt }
+    }
+
+    /**
+     * All weigh-ins across the entire `scale/` tree, unfiltered. Used only by the sync
+     * "Invia tutti i dati in coda" action to re-enqueue every weigh-in for server
+     * delivery — not for anything performance-sensitive, mirrors
+     * [WorkoutRepository.getAllCompletedSessions].
+     */
+    suspend fun getAll(): List<ScaleWeighIn> = withContext(Dispatchers.IO) {
+        val root = File(fileManager.root, "scale")
+        if (!root.exists()) return@withContext emptyList()
+        val weighIns = mutableListOf<ScaleWeighIn>()
+        root.listFiles()?.forEach { yearDir ->
+            if (!yearDir.isDirectory) return@forEach
+            yearDir.listFiles()?.forEach { monthDir ->
+                if (!monthDir.isDirectory) return@forEach
+                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                    try {
+                        weighIns.add(ScaleWeighInParser.fromMarkdown(file.readText()))
+                    } catch (_: Exception) { /* Skip malformed */ }
+                }
+            }
+        }
+        weighIns
     }
 }

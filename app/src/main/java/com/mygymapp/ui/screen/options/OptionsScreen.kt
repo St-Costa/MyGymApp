@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,7 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,9 +30,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,12 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.ui.screen.main.MainViewModel
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
@@ -60,28 +62,8 @@ fun OptionsScreen(
     onBack: () -> Unit,
     onNavigateToScaleDebug: () -> Unit = {},
     viewModel: OptionsViewModel = hiltViewModel(),
-    mainViewModel: MainViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val mainState by mainViewModel.uiState.collectAsState()
-    var showSeedDialog by remember { mutableStateOf(false) }
-
-    if (showSeedDialog) {
-        AlertDialog(
-            onDismissRequest = { showSeedDialog = false },
-            title = { Text("Inserisci dati di debugging") },
-            text = { Text("Questo cancellerà le sessioni della settimana corrente e rigenererà dati di debug. Continuare?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showSeedDialog = false
-                    mainViewModel.seedDebugData()
-                }) { Text("Conferma") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSeedDialog = false }) { Text("Annulla") }
-            },
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -103,11 +85,6 @@ fun OptionsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            DebugSection(
-                isSeeding = mainState.isSeedingData,
-                onSeedClick = { showSeedDialog = true },
-                onScaleDebugClick = onNavigateToScaleDebug,
-            )
             PowerliftingSection(
                 anchorMonday = uiState.anchorMonday,
                 intervalWeeks = uiState.intervalWeeks,
@@ -115,12 +92,38 @@ fun OptionsScreen(
                 onSetInterval = viewModel::setInterval,
                 onClear = viewModel::clearSchedule,
             )
+            ScaleDebugSection(onScaleDebugClick = onNavigateToScaleDebug)
+            StepDebugSection(
+                running = uiState.stepDebugRunning,
+                result = uiState.stepDebugResult,
+                onCheckClick = viewModel::checkStepCounterDebug,
+            )
+            SyncSection(
+                uiState = uiState,
+                onServerUrlChange = viewModel::setSyncServerUrl,
+                onBearerTokenChange = viewModel::setSyncBearerToken,
+                onEnabledChange = viewModel::setSyncEnabled,
+                onTestConnection = viewModel::testConnection,
+                onSendDebugEcg = viewModel::sendDebugEcg,
+                onResyncAll = viewModel::resyncAll,
+                onRunDiagnostics = viewModel::runDiagnostics,
+            )
         }
     }
 }
 
 @Composable
-private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit, onScaleDebugClick: () -> Unit) {
+private fun SyncSection(
+    uiState: OptionsUiState,
+    onServerUrlChange: (String) -> Unit,
+    onBearerTokenChange: (String) -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+    onTestConnection: () -> Unit,
+    onSendDebugEcg: () -> Unit,
+    onResyncAll: () -> Unit,
+    onRunDiagnostics: () -> Unit,
+) {
+    val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -129,28 +132,247 @@ private fun DebugSection(isSeeding: Boolean, onSeedClick: () -> Unit, onScaleDeb
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Dati di debugging", style = MaterialTheme.typography.titleMedium)
+            Text("Sincronizzazione server", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Il pulsante qui sotto inserisce dati di debugging. Premendolo comparirà " +
-                    "l'avviso sulla cancellazione degli altri dati della settimana corrente.",
+                "Invia i dati al tuo server self-hosted via Tailscale.",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Button(
-                onClick = onSeedClick,
-                enabled = !isSeeding,
+
+            OutlinedTextField(
+                value = uiState.syncServerUrl,
+                onValueChange = onServerUrlChange,
+                label = { Text("URL server (Tailscale)") },
+                placeholder = { Text("https://tuo-host.tailnet.ts.net") },
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = uiState.syncBearerToken,
+                onValueChange = onBearerTokenChange,
+                label = { Text("Token condiviso (bearer)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                if (isSeeding) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Inserisci dati di debugging")
+                Text("Sincronizzazione attiva", style = MaterialTheme.typography.bodyLarge)
+                Switch(checked = uiState.syncEnabled, onCheckedChange = onEnabledChange, enabled = configured)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onTestConnection,
+                    enabled = uiState.syncServerUrl.isNotBlank() && !uiState.syncIsTestingConnection,
+                ) {
+                    if (uiState.syncIsTestingConnection) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Verifica connessione")
+                    }
+                }
+                when (uiState.syncConnectionTestResult) {
+                    true -> Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = "Raggiungibile",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    false -> Icon(
+                        Icons.Default.Error,
+                        contentDescription = "Non raggiungibile",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    null -> {}
                 }
             }
+
+            OutlinedButton(
+                onClick = onSendDebugEcg,
+                enabled = configured && !uiState.ecgDebugRecording,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.ecgDebugRecording) {
+                    Text("Registrazione ECG… ${uiState.ecgDebugSecondsLeft}s")
+                } else {
+                    Text("Debug ECG: registra e invia")
+                }
+            }
+            if (uiState.ecgDebugResult != null) {
+                Text(
+                    uiState.ecgDebugResult,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            PendingItemsList(uiState)
+
+            Button(
+                onClick = onResyncAll,
+                enabled = !uiState.syncIsResyncing && configured,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.syncIsResyncing) {
+                    Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
+                } else {
+                    Text("Invia dati in coda")
+                }
+            }
+            if (uiState.syncIsResyncing) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { uiState.syncResyncProgress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            Text("Test sincronizzazione", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Invio di prova con verifica duplicato.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onRunDiagnostics,
+                enabled = !uiState.syncDiagnosticRunning && configured,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.syncDiagnosticRunning) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Test sincronizzazione")
+                }
+            }
+
+            if (uiState.syncDiagnosticSteps.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    uiState.syncDiagnosticSteps.forEach { step ->
+                        DiagnosticStepRow(step)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Pending-sync counts as one bullet per record type, instead of a single summed number. */
+@Composable
+private fun PendingItemsList(uiState: OptionsUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("In coda:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf(
+            "Sessioni" to uiState.syncSessionsPending,
+            "Pesate" to uiState.syncScalePending,
+            "ECG" to uiState.syncEcgPending,
+        ).forEach { (label, count) ->
+            Text(
+                "• $label: $count",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (uiState.syncLastSuccessAt != null) {
+            Text(
+                "Ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticStepRow(step: com.mygymapp.data.sync.DiagnosticStep) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(
+            imageVector = if (step.ok) Icons.Default.CheckCircle else Icons.Default.Error,
+            contentDescription = if (step.ok) "OK" else "Errore",
+            tint = if (step.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(20.dp),
+        )
+        Column {
+            Text(step.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(step.detail, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun ScaleDebugSection(onScaleDebugClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Debug bilancia", style = MaterialTheme.typography.titleMedium)
             OutlinedButton(
                 onClick = onScaleDebugClick,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Scale BLE Debug")
+            }
+        }
+    }
+}
+
+/**
+ * Confirms Health Connect + its steps read permission actually work, without waiting for
+ * the next morning's readiness test to find out — this is what caught Phase 41's
+ * `TYPE_STEP_COUNTER` approach not working on real hardware, see CHANGELOG Phase 42.
+ * "Ultime 24h" is loose phrasing for "since the last saved checkpoint" — see
+ * [OptionsViewModel.checkStepCounterDebug].
+ */
+@Composable
+private fun StepDebugSection(
+    running: Boolean,
+    result: String?,
+    onCheckClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Debug contapassi", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Verifica sensore e permesso leggendo i passi delle ultime 24h.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onCheckClick,
+                enabled = !running,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (running) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Controlla passi ultime 24h")
+                }
+            }
+            if (result != null) {
+                Text(
+                    result,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -174,10 +396,9 @@ private fun PowerliftingSection(
         ) {
             Text("Settimana powerlifting", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Seleziona una settimana e un intervallo. A partire da quella settimana, ogni " +
-                    "X settimane, quando apri una sessione comparirà l'avviso \"SETTIMANA " +
-                    "POWERLIFTING\". Es: ogni 4 settimane = 3 senza avviso, 1 con avviso.",
-                style = MaterialTheme.typography.bodyMedium,
+                "Seleziona settimana e intervallo per l'avviso periodico in sessione.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             WeekCalendar(
