@@ -753,6 +753,10 @@ buffer size the manager fills. The rolling `hrZoneTracePercents` buffer lives on
 routine and cardio screens instead of restarting empty on each open. The axis runs to 110% HRR
 rather than 100% so a deep-Z5 effort isn't clipped flat when true max HR beats the age estimate.
 
+## Phase 56 — Recupero ECG via riconnessione
+
+- **Escalation a disconnect+reconnect quando l'ECG non parte**: il 2026-07-08 il Polar H10 si è connesso ma l'ECG non è mai partito — i log mostravano un loop infinito `REQUEST_MEASUREMENT_START → ERROR_ALREADY_IN_STATE → restart` ogni ~2 s per l'intera sessione, con un file ECG finale di 20 byte. Causa: il `dispose()` Rx dello stream non manda uno STOP al sensore, che resta bloccato nello stato "measuring"; ritentare lo stesso START fallisce identico all'infinito. `PolarManager` ora conta i restart consecutivi senza sample (`ecgRestartAttempts`) e, oltre `ECG_MAX_RESTARTS` (3) — o immediatamente su `ALREADY_IN_STATE` — chiama `escalateEcgRecovery()`, che forza `api.disconnectFromDevice()`. Non essendo user-initiated e con sessione attiva, parte il loop di riconnessione involontaria già esistente; al ritorno del feature ONLINE_STREAMING l'ECG riparte pulito. Il contatore si azzera su ogni sample reale e a inizio sessione. Anche i restart del watchdog passano ora per `scheduleEcgRestart` così contano verso l'escalation. Vedi [POLAR.md](POLAR.md#ecg-streaming).
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
