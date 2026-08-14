@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryFull
@@ -583,11 +584,19 @@ private fun ColumnScope.ConnectedContent(
                         )
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            "Resting HR: ${readiness.restingHr}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Favorite,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = Color.Red,
+                            )
+                            Text(
+                                " ${readiness.restingHr} bpm",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         if (readiness.lnRmssd > 0) {
                             Text(
                                 "LnRMSSD: %.1f".format(readiness.lnRmssd),
@@ -607,12 +616,20 @@ private fun ColumnScope.ConnectedContent(
                         // entirely (not "0") until then, and stays absent if there was no
                         // previous checkpoint to diff against on a fresh install.
                         if (readiness.stepsAvgPerDay != null) {
-                            Text(
-                                "Passi: ${readiness.stepsAvgPerDay.toInt()}" +
-                                    if (readiness.stepsDaysSpanned == 1) "" else " (media ${readiness.stepsDaysSpanned}gg)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.DirectionsWalk,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    " ${readiness.stepsAvgPerDay.toInt()}" +
+                                        if (readiness.stepsDaysSpanned == 1) "" else " (media ${readiness.stepsDaysSpanned}gg)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
