@@ -36,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -64,6 +65,20 @@ dependencies {
     implementation(libs.polar.ble.sdk)
     implementation(libs.rxjava3)
     implementation(libs.rxandroid3)
+
+    // Server sync (docs/SYNC.md): raw session files pushed to a self-hosted
+    // server over Tailscale via WorkManager-driven retry.
+    implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
+    // Daily step average (docs/SYNC.md § Daily step average): TYPE_STEP_COUNTER alone
+    // proved unreliable on Samsung/One UI — the OS gates the sensor behind a separate
+    // "Health, fitness and wellness" permission (Health Connect), not the standard
+    // ACTIVITY_RECOGNITION runtime permission. Health Connect is the vendor-agnostic way
+    // to read steps that actually works across OEMs.
+    implementation(libs.androidx.health.connect.client)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

@@ -156,6 +156,416 @@ Tapping "Complete Exercise"/"Complete Superset" without changing anything used t
 - `SessionProgressViewModel` gained a small `ChartSeries(data, labels)` holder and a `cardioSeries()` reducer that drops zero/unset points so a metric a device didn't record doesn't render as a flat line at 0. No change to what gets saved to disk — this is display-only; `WorkoutSession` still persists every field it did before.
 - The screen's root `Column` is now `verticalScroll`-able (it wasn't before), since the cardio section can add several chart cards.
 
+## Phase 30 — Server sync (phone-side transport)
+
+Added `data/sync/` — pushes raw session `.md` files to a self-hosted server over Tailscale
+at the end of every session, for weekly analysis. Design lives in `docs/SYNC.md`; the core
+decision it's built around is sending the session file's exact bytes unmodified, with all
+interpretation on the server side, so the sync code never breaks when the on-disk YAML
+schema changes (which happens most phases in this project). `SyncLedgerRepository`
+maintains a local durable ledger (`gymdata/_sync/state.yml`, PENDING/SENT/FAILED per
+session ID + content hash) so delivery survives app kills, offline phones, and a
+temporarily-down server without losing anything — retried via `SyncWorker`
+(`@HiltWorker`/`CoroutineWorker`, WorkManager) both as an expedited one-off right after
+each session and a 4-hourly periodic durability net, both with exponential backoff.
+`ActiveRoutineViewModel.registerRoutine()` enqueues right after the session's final save;
+`WorkoutRepository`'s rename-sync paths requeue an already-SENT session if a later edit
+changes its content hash. `OptionsScreen` gained a sync section: server URL + bearer token
+fields, an enabled switch (off by default until both are filled in), a connection test
+button, a pending-count/last-sync status line, and a "resync all" backfill action. New
+deps: OkHttp (multipart POST), WorkManager + Hilt-Work (`MyGymApp` is now a
+`Configuration.Provider`; WorkManager's default `androidx.startup` initializer is disabled
+in the manifest so Hilt can construct the worker). The server side is a separate
+repository (`MyGymApp_server`, spec at `docs/sync-ingestion/SPEC.md` there) — not part of
+this codebase; not yet tested end-to-end against a live server from a phone.
+
+## Phase 31 — `Exercise.isBodyweight`
+
+Server-side analysis work (implementing the tonnage/PR/e1RM logic from `ANALYSIS_SPEC.md`
+against synced session data) surfaced a real gap: `weight: 0.0` on a set is ambiguous
+between "never touched" and "genuinely bodyweight work" (plank, push-ups — zero external
+load by design), and any filter on `weight > 0` silently drops all bodyweight tonnage.
+Added `isBodyweight: Boolean` to `Exercise` (toggled once per exercise in
+`ExerciseEditScreen`, next to the rep-range picker, FORZA only), propagated onto each
+`ExerciseSet.Strength` when a session's sets are built or re-saved
+(`ActiveRoutineViewModel`, `StrengthExerciseViewModel`, `SupersetViewModel`) and persisted
+per-set (`WorkoutParser`, omitted when false). Also fixed a related pre-existing bug in
+`StrengthExerciseViewModel.updateSet()`: `allSetsFilled` required `weight > 0`
+unconditionally, so it could never become true for a bodyweight exercise — now accepts
+`reps > 0` alone when the exercise is marked bodyweight. `bestEstimated1RM`'s `weight > 0`
+filter was deliberately left as-is: an Epley 1RM estimate is conceptually inapplicable
+without external load, and evaluates to 0 for a bodyweight set regardless. See
+`docs/SYNC.md`'s note on this change for why no sync-layer code needed touching — the
+raw-file design absorbed the new field for free.
+
+## Phase 32 — Session-RPE (Foster method)
+
+Added subjective session-RPE collection at end-of-workout, driven by a server-side request
+(the self-hosted server's tonnage-based ACWR monitoring needed a matching internal-load
+signal to validate/enrich against — see `docs/SYNC.md`). `WorkoutSession` gained
+`sessionRpe: Int?` (0-9, null only transiently before the prompt is answered),
+`sessionLoad: Float?` (`sessionRpe × duration_minutes`, Foster's session-load method), and
+`startedAt: String` (previously only documented in STORAGE.md, not actually on the Kotlin
+model — now implemented and set at session creation, since `sessionLoad` needed a real
+duration). `ActiveRoutineScreen`'s "Registra routine" button now opens a mandatory
+`SessionRpeDialog` (two rows of 0-9 chips, no skip option, confirm disabled until a chip is
+picked, outside-tap dismiss and the screen's back handler both disabled while it's open)
+before the existing register flow runs; `ActiveRoutineViewModel.registerRoutine()` takes
+the rating as a parameter rather than stashing it on `currentSession`, because the function
+reloads the session from disk multiple times before its final save and an early write
+would get silently overwritten — see CONVENTIONS.md's "Session-RPE prompt: apply after the
+reload, not before" entry. Both fields are still nullable/omitted from the YAML when
+absent (covers abandoned sessions and pre-existing history), following the same
+omit-when-absent convention as every other optional session field, and sync automatically
+via the existing raw-file transport with no sync-layer changes needed (`docs/SYNC.md`'s
+second worked example of that design paying off). ACWR/readiness interpretation of this
+data stays server-side, out of scope for this repo.
+
+Note: the original server-side request explicitly asked for this to be optional/skippable;
+made mandatory instead per direct follow-up instruction from the user, overriding that.
+
+## Phase 33 — Polar battery warning at 70%
+
+Added an early low-battery warning for the H10, triggered at 70% rather than the usual
+20%. Prompted by a strap that stopped advertising entirely — invisible to every BLE scan,
+so the app logged endless failed reconnects — while its CR2025 still measured 3.0V on a
+multimeter and the last reported level had been above 50%. The cause is that a lithium
+coin cell holds near-nominal open-circuit voltage until it is almost spent; what actually
+kills it is internal resistance rising to the point where the ~10 mA transmit peak browns
+out the radio mid-advertisement. The H10 derives its percentage from voltage alone (BLE
+Battery Service 0x180F is a plain 0-100 integer, and there is no coulomb counter on the
+device), so the reported number stays high and then falls off a cliff — it cannot express
+the failure mode that matters. Hence `BATTERY_WARNING_THRESHOLD = 70`: below that the
+number carries no predictive value and should be read as "replace it soon".
+`PolarManager` gained a `batteryLow: StateFlow<Boolean>` alongside the existing
+`batteryLevel`, cleared on disconnect and on BLE power-off; `batteryLevelReceived` now
+also writes every reading to `app.log`, so the decay curve is recoverable across battery
+cycles instead of only the instantaneous value being visible. `HeartRateScreen` tints the
+existing battery row red and swaps in `BatteryAlert` below the threshold, plus an explicit
+warning line. `HeartRateViewModel` collects the new flow separately rather than extending
+its `combine`, which was already at the 9-flow overload.
+
+Note: no reconnect-logic changes were kept from this investigation. An earlier attempt had
+added a resident watchdog and an indefinite two-phase reconnect backoff on the theory that
+`api.connectToDevice()` silently no-ops on a cold SDK cache; `adb` tracing showed the scan
+was in fact reaching the BLE stack correctly and simply finding nothing, because the device
+was not transmitting. Those changes were discarded — they also had the resident watchdog
+sharing `reconnectHandler` with `scheduleReconnect()`, whose `removeCallbacksAndMessages`
+cancelled the watchdog permanently after its first tick.
+
+## Phase 34 — Raw ECG sync (fourth record type)
+
+Added `EcgSyncLedgerRepository`/`EcgSyncApi`/`EcgSyncWorker` under `data/sync/`, following
+the exact dedicated-classes pattern established for readiness and scale weigh-ins (see
+Phase 30). Moves the goal of ECG analysis from "phone computes everything, raw waveform
+discarded" toward "phone computes a lightweight local summary, server gets the raw
+waveform for a heavier/more accurate analysis" — motivated by wanting more CPU budget and
+potential ML/LLM-assisted interpretation than a phone can offer, informed by the user's
+full history rather than one isolated session.
+
+Structurally different from the other three sync pipelines because the source file
+(`ecg/{sessionId}.ecg`) is ephemeral by design, not a permanent local record:
+- The raw file is gzip-compressed before upload (`application/gzip`, longer OkHttp
+  timeouts than the other three APIs) and `contentHash` is computed over the compressed
+  bytes, verified against what the server actually receives.
+- Deletion moved from `ActiveRoutineViewModel.registerRoutine()` (previously: immediate,
+  once local analysis succeeded) into `EcgSyncWorker` (now: only after a confirmed `SENT`
+  upload) — but only when sync is configured/enabled; otherwise the original immediate-
+  delete-on-success behavior is unchanged, so phones without a server configured don't
+  accumulate `.ecg` files with nothing to drain them.
+- A new 30-day age cap (`EcgSyncLedgerRepository.expireStale()`) marks stale pending
+  entries `EXPIRED` and deletes their file regardless of upload status — a deliberate
+  departure from the other three pipelines' "retry forever" philosophy, needed because an
+  ephemeral source file can't be allowed to accumulate unboundedly during an extended
+  server outage (observed multi-day in practice — see Phase 30). `SyncStatus` gained this
+  `EXPIRED` value; the other three ledgers never assign it.
+
+`PolarManager.ecgFileFor()` added as a thin wrapper (mirrors `ecgFileSize`/
+`deleteEcgFile`/`analyzeSessionEcg`). `OptionsViewModel`'s pending-count status line and
+"Invia tutti i dati in coda" now cover all four pipelines — for ECG specifically, resync
+only picks up files still present in `gymdata/ecg/`, since a file already uploaded and
+deleted has nothing left on the phone to resend. `MyGymApp.onCreate()` schedules
+`EcgSyncWorker.Scheduler.ensurePeriodic()` alongside the other three.
+
+Server side (`MyGymApp_server`) not yet implemented — spec written
+(`docs/sync-ingestion/ECG_SPEC.md`) covering `POST /v1/ecg`, the binary `.ecg` format, and
+a new `ecg_recordings` SQLite table. See [SYNC.md](SYNC.md#fourth-record-type-raw-ecg) for
+the full design, including why the server's raw store becomes the *only* copy of the
+waveform once the phone deletes its local file (unlike sessions/readiness/scale, which all
+keep the phone as a permanent secondary copy).
+
+## Phase 35 — Drop local deep ECG analysis, keep only resting HR / VO2max
+
+Following Phase 34's raw-ECG-upload feature, removed local execution of deep ECG analysis
+entirely: `ActiveRoutineViewModel.registerRoutine()` no longer calls
+`PolarManager.analyzeSessionEcg()`, so Pan-Tompkins QRS detection, RMSSD/SDNN/pNN50/
+Poincaré, and arrhythmia markers (PAC/pause/irregular/AFib suspicion) never run on the
+phone anymore. That analysis is now exclusively a server-side concern, run against the raw
+waveform uploaded by Phase 34's sync pipeline. `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()`
+are left in the codebase unused rather than deleted — the raw file format they parse is
+unchanged, and they cost nothing while dormant.
+
+The phone keeps computing and showing only what doesn't require deep waveform analysis:
+resting HR and VO2max (both derived from live HR/readiness tracking, shown at session end
+and on the heart-rate/cardiovascular screen), plus TRIMP and kcal (Banister/Keytel,
+computed continuously during the session, unchanged) and cardiac drift / HRR60s (cheap
+HR-series computations, not deep waveform analysis — also unchanged).
+
+Raw `.ecg` file handling simplified to send-then-delete with no local-analysis fallback:
+if sync is configured, the file is unconditionally enqueued for upload (previously gated
+on `ecgResult.hasAnything`) and deleted only after a confirmed server `SENT`; if sync isn't
+configured, the file is now deleted immediately rather than conditionally kept for offline
+inspection — there's no local analysis left that would ever consume it.
+
+`WorkoutSession`'s 12 ECG-derived fields (`ecgBeats`, `ecgDurationSec`, `ecgAvgHr`,
+`ecgSessionRmssd`, `ecgPacCount`, `ecgPauseCount`, `ecgIrregularBeats`, `sdnn`, `pnn50`,
+`poincareSd1`, `poincareSd2`, `poincareRatio`, `afibSuspicionEpisodes`) are left declared
+at their zero defaults rather than removed, for backward compatibility with sessions saved
+before this change (the YAML parser and history views for old sessions keep working
+unchanged). `SessionProgressScreen`/`SessionProgressViewModel` dropped the charts/text that
+read those 12 fields (avg-HR-from-ECG, HRV RMSSD/SDNN, Poincaré ratio, PAC/pause/irregular
+counts, AFib suspicion callout), keeping only HRR/VO2max/resting-HR/cardiac-drift charts.
+
+Also deleted `CardioTrendLoader.kt`/`CardioTrendSection.kt` — a 4-week rolling cardio trend
+view built on the same 12 ECG fields, discovered to be dead code (never called from any
+screen, confirmed via repo-wide search) while auditing what needed to change. Removed
+rather than updated, since nothing rendered it.
+
+## Phase 36 — ECG debug send button
+
+Added a manual "Registra e invia ECG di debug" button to Options' debug section, for
+exercising the `POST /v1/ecg` round-trip (docs/SYNC.md "Fourth record type: raw ECG")
+without running a full workout session: connect the Polar strap, open Options, press the
+button. `OptionsViewModel.sendDebugEcg()` calls `PolarManager.startEcgRecording()` with a
+synthetic id (`debug-{epoch millis}`, not a real 8-hex session id), waits 10 seconds,
+stops, then enqueues the recorded file through the exact same
+`EcgSyncLedgerRepository`/`EcgSyncWorker` pipeline a real session uses — no
+debug-specific transport code. Requires a connected Polar device and a configured sync
+server (same gating as "Invia tutti i dati in coda"); the button is disabled and an
+inline result message explains why otherwise. `PolarManager.startEcgRecording()`/
+`stopEcgRecording()` needed no changes — they were already generic (keyed only on the
+connected device, not tied to an active `ActiveRoutineViewModel` session).
+
+The `debug-` id prefix is a signal for the server team to tell debug uploads apart from
+genuine session recordings if that ever matters (e.g. excluding them from real analysis
+runs) — see the updated `ECG_SPEC.md` handoff note.
+
+## Phase 37 — Options screen crash fix + redesign
+
+Fixed a real crash: double-tapping "Invia tutti i dati in coda" fired
+`OptionsViewModel.resyncAll()` twice concurrently; the second run's ECG file loop had no
+`file.exists()` guard (unlike the other three record types' loops, which all had one) —
+`EcgSyncWorker` deleting the file mid-flight after the first run's confirmed send crashed
+the app with `FileNotFoundException` on `readBytes()`. Fixed with both a `file.exists()`
+check (matching the other three loops) and an entry guard on `resyncAll()` itself so a
+second tap while one run is in flight is a no-op instead of a second concurrent run.
+
+Redesigned the Options screen debug/sync sections based on direct feedback that the
+layout was cluttered:
+- Removed "Inserisci dati di debugging" (seed data) entirely from the screen — the
+  underlying `MainViewModel.seedDebugData()` is left in place, unused, in case it's
+  wanted again later.
+- Split the old single "Dati di debugging" card (seed button + Scale BLE Debug + ECG
+  debug all mixed together) into two focused cards: "Debug bilancia" (just the Scale BLE
+  Debug button) and "Debug ECG" (the record+send button from Phase 36).
+- Reordered top-to-bottom: Powerlifting → Debug bilancia → Debug ECG → Sincronizzazione
+  server — powerlifting first since it's the setting used most routinely, debug cards
+  grouped together, sync last since it bundles the most controls.
+- Pending-sync count changed from a single summed number to a per-type bullet list
+  (Sessioni / Pesate / ECG) — `OptionsUiState` now exposes `syncSessionsPending`/
+  `syncScalePending`/`syncEcgPending` alongside the existing summed `syncPendingCount`,
+  all populated by the same `refreshSyncStatus()`.
+- Added a 5s poll (`pollSyncStatusWhileScreenOpen()`) alongside the existing WorkManager-
+  completion observer as a safety net — the observer only fires when a *specific* unique
+  work name transitions to finished, which can miss a still-`ENQUEUED` job waiting on
+  network constraints or the periodic durability net firing in the background. Reported as
+  "doesn't seem to update well"; the poll is cheap (each ledger read is a small local YAML
+  file) and guarantees the pending list is never silently stale for more than a few seconds.
+- Unified button style: one filled `Button` per card for the primary/most-common action
+  ("Invia dati in coda", the seed button previously), everything else (Verifica
+  connessione, Test sincronizzazione, Scale BLE Debug, Registra e invia ECG, Disattiva
+  avviso powerlifting) as `OutlinedButton` — previously inconsistent (e.g. "Test
+  sincronizzazione" was filled, "Invia tutti i dati in coda" was outlined, with no
+  discernible reason for the difference).
+- Trimmed every description text to one short line; several were multi-sentence
+  paragraphs restating what the button below already said.
+
+## Phase 38 — ECG debug countdown + resync progress bar
+
+Two follow-ups to Phase 37's redesign, from direct usage feedback:
+
+- Moved the "Debug ECG" button from its own card into the sync card, directly below
+  "Verifica connessione" — grouped with the other server-reachability checks instead of
+  living in a separate card.
+- The button now shows a live countdown while recording (`"Registrazione ECG… 7s"`,
+  ticking down to 0) instead of a bare spinner — `OptionsViewModel.sendDebugEcg()` ticks
+  `ecgDebugSecondsLeft` down once per second via a loop instead of a single 10s `delay()`.
+- "Invia dati in coda" now shows a real determinate `LinearProgressIndicator` plus a
+  percentage in the button label, instead of an indeterminate spinner. `resyncAll()`
+  snapshots the total item count right after enqueueing (the denominator), then
+  `trackResyncProgress()` polls all four ledgers' pending counts once a second and derives
+  `syncResyncProgress` (0..1) from how much of that batch has drained, up to a 60s timeout
+  (workers keep retrying via their own backoff after that regardless — the timeout only
+  stops the UI from polling forever, it doesn't cancel the actual sync).
+
+Also clarified, on request, the difference between "Verifica connessione" and "Test
+sincronizzazione" (no code change, just for the record): the former is a bare `GET
+/health` reachability check; the latter (`SyncDiagnostics.run()`) actually POSTs a real or
+synthetic session and re-sends it to confirm the server's idempotency path answers
+`duplicate` — a deeper functional test, not a duplicate control.
+
+## Phase 39 — ECG analysis handoff doc for the server
+
+No phone-side code changes. Wrote `docs/sync-ingestion/ECG_ANALYSIS_HANDOFF.md` in the
+`MyGymApp_server` repo — a complete, formula-exact specification of the ECG analysis the
+phone used to run (`EcgAnalyzer.kt`: Pan-Tompkins R-peak detection, RMSSD/SDNN/pNN50/
+Poincaré, PAC/pause/irregular-beat/AFib-suspicion screening) before Phase 35 removed it
+from the phone. Prompted by discovering, while inspecting the 39 real raw ECG files the
+raw-sync backfill had sent to the server, that `ANALYSIS_SPEC.md` (server repo) still said
+these 12 fields "arrive pre-computed... do not recompute them" — no longer true since
+Phase 35, and left uncorrected until now, which would have misled anyone implementing
+server-side analysis into thinking the fields already existed in synced data.
+
+Corrected `ANALYSIS_SPEC.md`'s §"Already computed phone-side" and §6 accordingly (moved
+the 12 ECG fields out of the "already computed" list, reframed §6 from "optional/skip
+this" to "required — see handoff doc"). The handoff doc also explicitly separates what
+was actually shipped and working (§1–§5, transcribed verbatim from source) from what the
+original research doc (`docs/polar/implementation-guide.md`) sketched but never built
+(PVC/QRS-morphology detection, RSA-via-FFT, DFA alpha1, per-exercise HRV baselines) — so
+the server team doesn't assume a richer feature set exists than what's actually in
+`EcgAnalyzer.kt`.
+
+## Phase 40 — Gate automatic on-connect readiness measurement
+
+The 60s resting-HR/HRV readiness measurement that auto-starts on first Polar connect now only
+fires before 10:00 local time, and only if no readiness event has been persisted yet today
+(`ReadinessRepository.getLatestForDate()`). Reconnecting the strap later the same day (e.g.
+after an accidental disconnect) reuses today's already-saved result instead of re-measuring —
+loaded back into `readinessResult`/`vo2max`/`restingHr` via `PolarManager.maybeStartAutoReadinessMeasurement()`.
+
+## Phase 41 — Daily step average, piggybacked on readiness
+
+Added a passive daily step count, read from the phone's own hardware `TYPE_STEP_COUNTER`
+sensor (not the Polar strap) at the same moment the morning readiness test runs, since
+that's the app's one guaranteed daily touchpoint and didn't justify a separate
+trigger/service. New `data/steps/` package: `StepCounterReader` does a one-shot sensor
+read (returns `null` on missing sensor/permission/timeout, never throws), and
+`StepLedgerRepository` diffs it against a local-only checkpoint
+(`gymdata/_sync/step_checkpoint.yml`, the counter is cumulative since last boot, not
+"steps today") to produce an average-per-day figure that correctly spreads the total
+across however many days were skipped since the last test, rather than reporting a
+skipped multi-day total as if it were one day's steps. `ReadinessEvent` gained two
+nullable fields, `stepsAvgPerDay`/`stepsDaysSpanned`, synced to the server through the
+existing readiness pipeline (`ReadinessSyncApi`/`ReadinessSyncWorker`) untouched
+otherwise — both fields ride the same envelope and file as the rest of the readiness
+event. `ACTIVITY_RECOGNITION` (Android 10+ runtime permission) is requested
+fire-and-forget when `HeartRateScreen` opens, alongside the existing BLE/scale permission
+requests. Full field semantics and required server-side schema change:
+[SYNC.md § Daily step average](SYNC.md#daily-step-average).
+
+## Phase 42 — Steps: migrate from raw sensor to Health Connect, add debug button
+
+Phase 41's `TYPE_STEP_COUNTER`-based implementation turned out not to work on real
+hardware. Added an Options screen debug button ("Debug contapassi") to check the pipeline
+without waiting for the next morning's readiness test, and it immediately surfaced the
+problem: on this project's Samsung/One UI test device, `dumpsys sensorservice` showed the
+sensor delivering only 1 event in 4 days despite `ACTIVITY_RECOGNITION` being granted.
+Registering a persistent app-lifetime listener (`StepCounterManager`, started from
+`MyGymApp.onCreate()`) didn't fix it either — `dumpsys` kept reporting `has sensor access:
+false` for the app specifically, with every other app on the device reading `true`. Traced
+to a separate OS-level "Health, fitness and wellness" permission, gating the same sensor,
+that has **no manual toggle reachable from Settings** — Settings → Permission manager
+showed it, but tapping into it offered no way to grant it. The only way to request that
+permission is Health Connect's own flow.
+
+Replaced the whole step-reading path with `HealthConnectStepsReader`
+(`androidx.health.connect:connect-client`, new dependency — bumped `agp` from 8.7.3 to
+8.9.3 in `libs.versions.toml` since connect-client 1.1.0 requires AGP 8.9.1+) and deleted
+`StepCounterReader`/`StepCounterManager` entirely. `StepLedgerRepository` got simpler as a
+result: Health Connect aggregates over an explicit time range itself
+(`HealthConnectClient.aggregate`), so the checkpoint is now just "when was this last read"
+(an `Instant`) instead of a raw counter value needing manual diff-and-handle-reboot logic.
+The manifest permission changed from `android.permission.ACTIVITY_RECOGNITION` to
+`android.permission.health.READ_STEPS`; `HeartRateScreen`'s fire-and-forget permission
+request now uses `PermissionController.createRequestPermissionResultContract()` instead of
+`ActivityResultContracts.RequestPermission()`. `ReadinessEvent`'s two nullable fields
+(`stepsAvgPerDay`/`stepsDaysSpanned`) and the sync wire format are unchanged — this was a
+read-path swap, not a schema change. Full details:
+[SYNC.md § Daily step average](SYNC.md#daily-step-average).
+
+The debug button stays in Options going forward: it's what actually caught this, well
+before it would have otherwise surfaced (silently, as "steps always null") days later at
+the next readiness test.
+
+## Phase 43 — Centralize all runtime permission requests on the Home screen
+
+BLE (Polar/scale) and Health Connect steps permissions were each requested from the
+specific screen that needed them (`HeartRateScreen`). Moved to a single `LaunchedEffect` in
+`MainScreen` (`RequestAllRuntimePermissions`, backed by a new small `PermissionsViewModel`)
+that fires every time Home appears — so a permission the user revokes later, or one that
+was never granted because they simply never navigated to the screen that asks for it, gets
+re-prompted from the one screen every session always passes through, not silently left
+missing. Both requests stay fire-and-forget with no-op callbacks: BLE scanning and the
+Health Connect steps read both already check their own permission state lazily wherever
+they're actually used (`HeartRateScreen`'s scan buttons, `PolarManager`'s readiness flow),
+so Home's job is only to prompt, never to gate an action on the result. `POST_NOTIFICATIONS`
+stays where it was (`MainActivity.onCreate()`, before Compose even starts) — moving it
+wouldn't have changed behavior, only where it lives.
+
+## Phase 44 — Fix Health Connect permission dialog not appearing at all
+
+Phase 42/43's Health Connect integration compiled and ran, but the permission dialog
+itself never showed up: `PermissionsActivity` (Health Connect's own) opened and
+self-closed within ~30ms, with no dialog, no error, and no logcat trace explaining why —
+confirmed via `dumpsys activity activities` showing the activity transition completing and
+immediately reversing. Root cause: Health Connect requires the requesting app to declare a
+"permissions rationale" activity — its explanation of what the app does with health data —
+and refuses to show the permission dialog at all if that declaration is missing or
+incomplete, rather than failing loudly. Two separate manifest declarations are required,
+one per Android version range (confirmed against Android's own Health Connect
+documentation): an `<activity>` with an `androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE`
+intent-filter for Android 13 and below, AND an `<activity-alias name="ViewPermissionUsageActivity">`
+(with `android:permission="android.permission.health.START_VIEW_PERMISSION_USAGE"` and a
+`VIEW_PERMISSION_USAGE`/`HEALTH_PERMISSIONS` intent-filter) for Android 14+ — the test
+device is Android 16, so only the alias was actually exercised, but both are needed for
+real device coverage. Phase 42 had added only a same-intent-filter-on-MainActivity
+half-measure, which doesn't satisfy either requirement.
+
+Added `PermissionsRationaleActivity` — a real Compose screen explaining what steps data is
+read, when, and where it goes (self-hosted sync only, opt-in) — and wired both manifest
+declarations to it. Confirmed fixed on hardware: `dumpsys activity activities` now shows
+Health Connect's `PermissionsActivity` staying resumed (dialog visible) instead of
+self-closing, and after granting, `dumpsys package` shows
+`android.permission.health.READ_STEPS: granted=true`. The Options debug button (Phase 41)
+confirmed the full path end to end afterward.
+
+## Phase 45 — Steps: show a real number on the very first read, not just from day two
+
+After Phase 44 fixed the permission dialog, granting it still showed nothing — expected
+given the checkpoint-diff design (first-ever read has no "previous" checkpoint to diff
+against), but a needlessly bad first impression: Health Connect already has historical step
+data from before the app ever had permission to read it, so there was no real reason to
+wait a full day for the first number. `StepLedgerRepository.recordReadingAndComputeAverage()`
+and `.peek()` both now fall back to querying the last 24h directly (a real Health Connect
+time-range query, not a diff) when no checkpoint exists yet, reporting `daysSpanned=1` for
+that reading same as any single-day reading. Every subsequent read goes back to normal
+checkpoint-diffing. No schema/wire-format change.
+
+## Phase 46 — Show step count on the readiness card
+
+The synced `stepsAvgPerDay`/`stepsDaysSpanned` had no on-screen representation anywhere —
+the only way to see them was the Options debug button or reading the raw `.md` file. Added
+them to `PolarManager.ReadinessResult` (previously only carried HRV/resting-HR/VO2max) and
+to the readiness card in `HeartRateScreen`, next to VO2max. Since the Health Connect steps
+query is async and slightly slower than the rest of readiness (see
+`finishReadinessMeasurement()`), the steps fields patch onto the already-published
+`_readinessResult` a moment later rather than holding up the HRV UI update for them — guarded
+by a `readiness` value match so a slow steps read can't clobber a newer measurement if the
+user re-tests within the same session. Absent (not `0`) until that patch lands, and stays
+absent if there's no prior checkpoint. Lets the user confirm on their own device, right on
+the readiness screen, that a real number shows up the morning after granting the Health
+Connect permission — the thing Phase 44/45 fixed.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

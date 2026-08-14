@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -117,6 +118,12 @@ fun HeartRateScreen(
             viewModel.startScaleScan()
         }
     }
+
+    // Health Connect's steps permission is no longer requested from here — every runtime
+    // permission the app needs (BLE, Health Connect steps) is now requested once, centrally,
+    // from MainScreen right when the app opens (see MainScreen's PermissionRequests), so a
+    // permission revoked or never granted gets re-prompted from the Home screen the user
+    // always passes through, not only if/when they happen to open this specific screen.
 
     fun startScanWithPermissionCheck() {
         if (hasBlePermissions()) {
@@ -586,6 +593,18 @@ private fun ColumnScope.ConnectedContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // Lands a moment after the rest of readiness (Health Connect query
+                        // is async) — see PolarManager.finishReadinessMeasurement(). Absent
+                        // entirely (not "0") until then, and stays absent if there was no
+                        // previous checkpoint to diff against on a fresh install.
+                        if (readiness.stepsAvgPerDay != null) {
+                            Text(
+                                "Passi: ${readiness.stepsAvgPerDay.toInt()}" +
+                                    if (readiness.stepsDaysSpanned == 1) "" else " (media ${readiness.stepsDaysSpanned}gg)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 if (readiness.recommendation.isNotBlank()) {
@@ -613,19 +632,47 @@ private fun ColumnScope.ConnectedContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (uiState.batteryLevel != null) {
+            val batteryColor = if (uiState.batteryLow) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.BatteryFull,
+                    if (uiState.batteryLow) Icons.Default.BatteryAlert else Icons.Default.BatteryFull,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = batteryColor,
                 )
                 Text(
                     "${uiState.batteryLevel}%",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = batteryColor,
                 )
             }
+        }
+    }
+
+    // The H10's percentage comes from cell voltage, which stays near 3V until the
+    // CR2025 is nearly spent — the strap typically goes silent while still reporting
+    // 50-60%. Hence the warning at 70% rather than the usual 20%.
+    if (uiState.batteryLow) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Text(
+                "Batteria fascia al ${uiState.batteryLevel}% — sostituisci la CR2025 a breve",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 

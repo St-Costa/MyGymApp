@@ -3,6 +3,7 @@ package com.mygymapp.data.repository
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.parser.WorkoutParser
+import com.mygymapp.data.sync.SyncLedgerRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,6 +36,7 @@ import javax.inject.Singleton
 @Singleton
 class WorkoutRepository @Inject constructor(
     private val fileManager: FileManager,
+    private val syncLedgerRepository: SyncLedgerRepository,
 ) {
     private val mutex = Mutex()
 
@@ -148,6 +150,20 @@ class WorkoutRepository @Inject constructor(
     private fun relPath(session: WorkoutSession): String {
         val date = LocalDate.parse(session.date)
         return "${date.year}/${date.monthValue.toString().padStart(2, '0')}/${sessionFileName(session)}"
+    }
+
+    /**
+     * Public variant of [relPath], for callers outside this repository that need to
+     * locate a session's file without duplicating the naming scheme — e.g. the sync
+     * ledger (`data/sync/`), which stores this alongside each queued session ID.
+     */
+    fun relPathFor(session: WorkoutSession): String = relPath(session)
+
+    /** Absolute [File] for [session], derived the same way [save] locates it. */
+    fun fileFor(session: WorkoutSession): File {
+        val date = LocalDate.parse(session.date)
+        val dir = fileManager.getHistoryDir(date.year, date.monthValue)
+        return File(dir, sessionFileName(session))
     }
 
     // ─── Migration ────────────────────────────────────────────────────────────
@@ -354,6 +370,30 @@ class WorkoutRepository @Inject constructor(
             .take(maxSessions)
     }
 
+    /**
+     * All completed sessions across the entire `history/` tree, unfiltered. Used only by
+     * the sync "Resync all" action (`OptionsScreen`) to re-enqueue every session for
+     * server delivery — not for anything performance-sensitive, so a full scan is fine.
+     */
+    suspend fun getAllCompletedSessions(): List<WorkoutSession> = withContext(Dispatchers.IO) {
+        val historyRoot = File(fileManager.root, "history")
+        if (!historyRoot.exists()) return@withContext emptyList()
+        val sessions = mutableListOf<WorkoutSession>()
+        historyRoot.listFiles()?.forEach { yearDir ->
+            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+            yearDir.listFiles()?.forEach { monthDir ->
+                if (!monthDir.isDirectory) return@forEach
+                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                    try {
+                        val session = WorkoutParser.fromMarkdown(file.readText())
+                        if (session.completedAt.isNotBlank()) sessions.add(session)
+                    } catch (_: Exception) { /* Skip malformed */ }
+                }
+            }
+        }
+        sessions
+    }
+
     // ─── Maintenance ─────────────────────────────────────────────────────────
 
     /**
@@ -491,6 +531,9 @@ class WorkoutRepository @Inject constructor(
                                 }
                             )
                             file.writeText(WorkoutParser.toMarkdown(updated))
+                            // Content changed under an already-synced session — requeue it
+                            // so the server gets the renamed content too. See docs/SYNC.md §3.4.
+                            syncLedgerRepository.requeueIfChanged(session.id, file)
                         }
                     } catch (_: Exception) { /* Skip */ }
                 }
@@ -511,6 +554,7 @@ class WorkoutRepository @Inject constructor(
                         val session = WorkoutParser.fromMarkdown(file.readText())
                         if (session.routineName != newName) {
                             file.writeText(WorkoutParser.toMarkdown(session.copy(routineName = newName)))
+                            syncLedgerRepository.requeueIfChanged(session.id, file)
                         }
                     } catch (_: Exception) { /* Skip */ }
                 }
