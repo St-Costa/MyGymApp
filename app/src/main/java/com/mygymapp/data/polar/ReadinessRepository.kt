@@ -83,6 +83,23 @@ class ReadinessRepository @Inject constructor(
                 .getOrDefault(false)
         }
 
+    /**
+     * Trailing 7-day average resting HR, used by [HrZoneCalculator] as a backup when
+     * today's own reading is missing (readiness skipped, app not opened yet). Resting HR
+     * moves only a few bpm day to day in a stable, regularly-training person, so a
+     * week-long average is an acceptable stand-in — same reasoning as the sync server's
+     * `resting_hr_7day_average` (see ECG_ADVANCED_ANALYSIS.md §6 in the server repo).
+     */
+    suspend fun getRecentAverageRestingHr(days: Long = 7): Int? {
+        val cutoff = LocalDate.now().minusDays(days)
+        val recent = getAll().filter { event ->
+            runCatching { !LocalDateTime.parse(event.measuredAt).toLocalDate().isBefore(cutoff) }
+                .getOrDefault(false) && event.restingHr > 0
+        }
+        if (recent.isEmpty()) return null
+        return recent.map { it.restingHr }.average().toInt()
+    }
+
     private fun toMarkdown(e: ReadinessEvent): String = MarkdownParser.serialize(
         frontmatter = linkedMapOf(
             "id" to e.id,

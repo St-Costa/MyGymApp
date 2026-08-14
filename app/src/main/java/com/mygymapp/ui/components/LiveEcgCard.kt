@@ -48,9 +48,11 @@ fun LiveEcgCard(
     val connectionState by polarManager.connectionState.collectAsState()
     val waveform by polarManager.ecgWaveform.collectAsState()
     val snapshot by polarManager.liveEcgSnapshot.collectAsState()
-    val drift by polarManager.liveCardiacDrift.collectAsState()
     // HRR intentionally not shown live — it's more meaningful aggregated
     // post-session and in the 4-week trend card.
+    // Irregularities (premature/pauses/uneven) and cardiac drift are still computed and
+    // saved (LiveEcgAnalyzer / PolarManager.liveCardiacDrift) — just not surfaced here
+    // per user request. Only beats + regular% stay on this card.
 
     if (connectionState != ConnectionState.CONNECTED) return
 
@@ -96,48 +98,9 @@ fun LiveEcgCard(
                     SemaphoreDot(color = regularColor(snapshot.regularPct))
                 }
             }
-
-            // Irregularities in one line
-            Text(
-                text = "Irregularities: ${snapshot.irregularities} " +
-                        "(Premature: ${snapshot.premature} · Pauses: ${snapshot.pauses} · Uneven: ${snapshot.uneven})",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            // Cardiac drift with semaphore + emoji
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SemaphoreDot(color = driftColor(drift))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (drift == 0.0) "Drift: —"
-                    else "Drift: %+.2f BPM/min".format(drift),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                val driftEmoji = driftEmoji(drift)
-                if (driftEmoji.isNotEmpty()) {
-                    Text(
-                        text = driftEmoji,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-            }
-
         }
     }
 }
-
-private fun driftEmoji(bpmPerMin: Double): String = when {
-    bpmPerMin == 0.0 -> ""
-    bpmPerMin < 0.5 -> ""
-    bpmPerMin < 1.0 -> "💧"
-    else -> "🥵"
-}
-
 
 @Composable
 private fun SemaphoreDot(color: Color) {
@@ -152,13 +115,6 @@ private fun SemaphoreDot(color: Color) {
 private fun regularColor(pct: Double): Color = when {
     pct >= 98.0 -> SemaphoreGreen
     pct >= 95.0 -> SemaphoreYellow
-    else -> SemaphoreRed
-}
-
-private fun driftColor(bpmPerMin: Double): Color = when {
-    bpmPerMin == 0.0 -> Color(0xFF3A3A3A)
-    bpmPerMin < 0.5 -> SemaphoreGreen
-    bpmPerMin < 1.0 -> SemaphoreYellow
     else -> SemaphoreRed
 }
 

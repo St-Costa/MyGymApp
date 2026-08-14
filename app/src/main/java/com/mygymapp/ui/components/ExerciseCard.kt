@@ -51,7 +51,11 @@ fun ExerciseCard(
                 )
             }
             Text(
-                text = if (exercise.type == ExerciseType.FORZA) "Strength" else "Stretch",
+                text = when (exercise.type) {
+                    ExerciseType.FORZA -> "Strength"
+                    ExerciseType.STRETCH -> "Stretch"
+                    ExerciseType.CARDIO -> "Cardio"
+                },
                 style = MaterialTheme.typography.labelLarge,
                 color = borderColor,
             )

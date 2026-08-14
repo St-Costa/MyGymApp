@@ -52,6 +52,7 @@ import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
+import com.mygymapp.ui.components.HrZoneTraceChart
 import com.mygymapp.ui.components.LiveEcgCard
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.components.trimpColor
@@ -115,7 +116,7 @@ private fun SessionSectionHeader(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActiveRoutineScreen(
-    onNavigateToExercise: (sessionId: String, exerciseId: String, isStretch: Boolean) -> Unit,
+    onNavigateToExercise: (sessionId: String, exerciseId: String, type: ExerciseType) -> Unit,
     onNavigateToSuperset: (sessionId: String, exerciseId1: String, exerciseId2: String) -> Unit,
     onBack: () -> Unit,
     onSessionRegistered: (sessionId: String, date: String) -> Unit,
@@ -204,7 +205,7 @@ fun ActiveRoutineScreen(
                                             onNavigateToExercise(
                                                 uiState.sessionId,
                                                 group.exercise.exerciseId,
-                                                group.exercise.type == ExerciseType.STRETCH,
+                                                group.exercise.type,
                                             )
                                         }
                                     },
@@ -230,9 +231,14 @@ fun ActiveRoutineScreen(
                     }
                 }
 
-                // Heart rate bar (live BPM + kcal + TRIMP + semaphore)
+                // Heart rate bar (live BPM + TRIMP)
                 item(key = "hr_bar") {
                     HeartRateBar()
+                }
+
+                // Live %HRR trace over the coloured zone bands
+                item(key = "hr_zone_trace") {
+                    HrZoneTraceChart()
                 }
 
                 // Live ECG card (between HR bar and register button, per user spec)
