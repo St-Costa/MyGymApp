@@ -47,7 +47,7 @@ All persistent files are Markdown with a YAML frontmatter block and an optional 
 ---
 id: ex-a1b2c3d4
 name: Bench Press
-type: FORZA                   # FORZA | STRETCH
+type: FORZA                   # FORZA | STRETCH | CARDIO
 bodypart: chest
 link: https://...             # optional image/YouTube URL
 defaultRepRangeMin: 8
@@ -159,14 +159,40 @@ exercises:
                                  # external weight" from "set never touched" (both are
                                  # weight=0 otherwise indistinguishable to any reader
                                  # that filters on weight > 0 — see SYNC.md)
+  - exerciseId: ex-c9d8e7f6
+    exerciseName: Corsa leggera
+    type: CARDIO
+    bodypart: cardio
+    excludeFromTonnage: true    # always true for CARDIO, regardless of section
+    sets:                       # one entry per "Inizia cardio"/"Termina cardio" block —
+                                 # several are possible in one session (e.g. 10min bike +
+                                 # 20min run), see docs/POLAR.md#cardio-blocks
+      - startedAt: "2026-08-12T10:15:03"
+        endedAt: "2026-08-12T10:45:10"
+        avgHr: 138               # computed on-device from the live HR stream, not user-entered
+        maxHr: 156
+      - startedAt: "2026-08-12T10:50:00"
+        endedAt: ""              # blank = block still running, or abandoned without an
+                                 # explicit "Termina cardio" (never left blank on a
+                                 # completed exercise — see CardioExerciseViewModel)
+        avgHr: 0
+        maxHr: 0
 ---
 
 Session notes
 ```
 
-`excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected.
+`excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected. `ExerciseType.CARDIO` exercises are always excluded from tonnage too, independent of section.
 
 `isDaily: true` marks an exercise performed as a fixed-daily exercise in this session. Exercise screens use it so daily progress (grey "previous" values) is compared only against prior sessions where the same exercise was *also* daily, and normal progress only against prior normal sessions — the same exercise can swing between the two roles across days without contaminating either history.
+
+**`ExerciseSet.Cardio`** (`type: CARDIO` only): `startedAt`/`endedAt` are absolute ISO
+`LocalDateTime` strings, not offsets — this is what lets the sync server correlate a block
+against the raw `.ecg` file's own `startTimestamp`+`sampleRate` header (see
+[POLAR.md](POLAR.md#cardio-blocks) and [SYNC.md](SYNC.md#fourth-record-type-raw-ecg)) to
+slice out the matching waveform segment, with zero change to the binary ECG format. `avgHr`/
+`maxHr` are computed on-device from `PolarManager.heartRate` while the block runs — never
+user-entered.
 
 ### Readiness event (`readiness/{id}.md`)
 
@@ -263,9 +289,10 @@ Two keys, both `MODE_PRIVATE`:
 
 | Prefs file | Key | Type | Owner | Purpose |
 |---|---|---|---|---|
-| `user_profile` | `age` | Int | [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt) | Used by calorie (Keytel) and VO2max formulas |
+| `user_profile` | `birthYear` | Int, absent if unset | [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt) | Sole source of age (`UserProfile.effectiveAge`, recomputed from the current year) for every age-dependent formula: calorie (Keytel), Tanaka HRmax, TRIMP, VO2max, BIA body-fat %. Falls back to a fixed default age until set — no separate "age" field exists |
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
+| `user_profile` | `heightCm` | Int | " | Used by BIA body-fat % (scale integration) |
 | `hrv_baseline` | `lnrmssd_values` | String (CSV, ≤14 doubles) | [PolarManager](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) | Rolling 14-day LnRMSSD baseline for HRV readiness z-score |
 | `sync_config` | `serverUrl` | String | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net` |
 | `sync_config` | `bearerToken` | String | " | Shared secret sent as `Authorization: Bearer` on every sync POST |

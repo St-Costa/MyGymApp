@@ -73,7 +73,7 @@ class ScaleDebugViewModel @Inject constructor(
                 val composition = BodyCompositionCalculator.calculate(
                     weightKg = weight,
                     heightCm = profile.heightCm,
-                    age = profile.age,
+                    age = profile.effectiveAge,
                     isMale = profile.isMale,
                     impedanceOhm = impedance,
                 )

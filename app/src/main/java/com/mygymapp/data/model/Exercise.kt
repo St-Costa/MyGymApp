@@ -22,12 +22,14 @@ data class Exercise(
 
 enum class ExerciseType {
     FORZA,
-    STRETCH;
+    STRETCH,
+    CARDIO;
 
     companion object {
         fun fromString(value: String): ExerciseType =
             when (value.lowercase()) {
                 "stretch" -> STRETCH
+                "cardio" -> CARDIO
                 else -> FORZA
             }
     }
@@ -35,5 +37,6 @@ enum class ExerciseType {
     fun toFileString(): String = when (this) {
         FORZA -> "forza"
         STRETCH -> "stretch"
+        CARDIO -> "cardio"
     }
 }

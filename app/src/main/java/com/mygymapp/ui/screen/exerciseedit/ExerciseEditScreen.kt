@@ -46,6 +46,7 @@ import com.mygymapp.ui.components.BodyPartAutocomplete
 import com.mygymapp.ui.components.DeleteConfirmationDialog
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.RoundStepButton
+import com.mygymapp.ui.theme.CardioColor
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
 
@@ -155,6 +156,15 @@ fun ExerciseEditScreen(
                         selectedLabelColor = StretchColor,
                     ),
                 )
+                FilterChip(
+                    selected = uiState.type == ExerciseType.CARDIO,
+                    onClick = { viewModel.onTypeChange(ExerciseType.CARDIO) },
+                    label = { Text("Cardio") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = CardioColor.copy(alpha = 0.2f),
+                        selectedLabelColor = CardioColor,
+                    ),
+                )
             }
 
             if (uiState.type == ExerciseType.FORZA) {
@@ -213,12 +223,18 @@ fun ExerciseEditScreen(
                 }
             }
 
-            BodyPartAutocomplete(
-                value = uiState.bodypart,
-                onValueChange = viewModel::onBodypartChange,
-                existingBodyparts = uiState.existingBodyparts,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // Cardio exercises live in their own dedicated "Cardio" section (ExerciseListScreen)
+            // instead of being grouped by muscle group — bodypart is meaningless for them, so
+            // the field is hidden rather than shown-but-unused (see ExerciseEditViewModel /
+            // ExerciseListViewModel, which force bodypart = "" for CARDIO on save).
+            if (uiState.type != ExerciseType.CARDIO) {
+                BodyPartAutocomplete(
+                    value = uiState.bodypart,
+                    onValueChange = viewModel::onBodypartChange,
+                    existingBodyparts = uiState.existingBodyparts,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             OutlinedTextField(
                 value = uiState.notes,

@@ -18,6 +18,8 @@ import com.mygymapp.ui.screen.weekview.WeekViewScreen
 import com.mygymapp.ui.screen.activeroutine.ActiveRoutineScreen
 import com.mygymapp.ui.screen.strengthexercise.StrengthExerciseScreen
 import com.mygymapp.ui.screen.stretchexercise.StretchExerciseScreen
+import com.mygymapp.ui.screen.cardioexercise.CardioExerciseScreen
+import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.screen.superset.SupersetScreen
 import com.mygymapp.ui.screen.sessionprogress.SessionProgressScreen
 import com.mygymapp.ui.screen.heartrate.HeartRateScreen
@@ -143,11 +145,11 @@ fun AppNavigation(navController: NavHostController) {
             }
 
             ActiveRoutineScreen(
-                onNavigateToExercise = { sessionId, exerciseId, isStretch ->
-                    val route = if (isStretch) {
-                        Screen.StretchExercise.createRoute(sessionId, exerciseId)
-                    } else {
-                        Screen.StrengthExercise.createRoute(sessionId, exerciseId)
+                onNavigateToExercise = { sessionId, exerciseId, type ->
+                    val route = when (type) {
+                        ExerciseType.STRETCH -> Screen.StretchExercise.createRoute(sessionId, exerciseId)
+                        ExerciseType.CARDIO -> Screen.CardioExercise.createRoute(sessionId, exerciseId)
+                        ExerciseType.FORZA -> Screen.StrengthExercise.createRoute(sessionId, exerciseId)
                     }
                     navController.navigate(route)
                 },
@@ -194,6 +196,25 @@ fun AppNavigation(navController: NavHostController) {
         ) { backStackEntry ->
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
             StretchExerciseScreen(
+                onBack = { navController.popBackStack() },
+                onComplete = {
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("completedExerciseId", exerciseId)
+                    navController.popBackStack()
+                },
+            )
+        }
+
+        composable(
+            route = Screen.CardioExercise.route,
+            arguments = listOf(
+                navArgument("sessionId") { type = NavType.StringType },
+                navArgument("exerciseId") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
+            CardioExerciseScreen(
                 onBack = { navController.popBackStack() },
                 onComplete = {
                     navController.previousBackStackEntry

@@ -443,7 +443,7 @@ fires before 10:00 local time, and only if no readiness event has been persisted
 after an accidental disconnect) reuses today's already-saved result instead of re-measuring —
 loaded back into `readinessResult`/`vo2max`/`restingHr` via `PolarManager.maybeStartAutoReadinessMeasurement()`.
 
-## Phase 41 — Daily step average, piggybacked on readiness
+## Phase 49 — Daily step average, piggybacked on readiness
 
 Added a passive daily step count, read from the phone's own hardware `TYPE_STEP_COUNTER`
 sensor (not the Polar strap) at the same moment the morning readiness test runs, since
@@ -463,7 +463,7 @@ fire-and-forget when `HeartRateScreen` opens, alongside the existing BLE/scale p
 requests. Full field semantics and required server-side schema change:
 [SYNC.md § Daily step average](SYNC.md#daily-step-average).
 
-## Phase 42 — Steps: migrate from raw sensor to Health Connect, add debug button
+## Phase 50 — Steps: migrate from raw sensor to Health Connect, add debug button
 
 Phase 41's `TYPE_STEP_COUNTER`-based implementation turned out not to work on real
 hardware. Added an Options screen debug button ("Debug contapassi") to check the pipeline
@@ -497,7 +497,7 @@ The debug button stays in Options going forward: it's what actually caught this,
 before it would have otherwise surfaced (silently, as "steps always null") days later at
 the next readiness test.
 
-## Phase 43 — Centralize all runtime permission requests on the Home screen
+## Phase 51 — Centralize all runtime permission requests on the Home screen
 
 BLE (Polar/scale) and Health Connect steps permissions were each requested from the
 specific screen that needed them (`HeartRateScreen`). Moved to a single `LaunchedEffect` in
@@ -512,7 +512,7 @@ so Home's job is only to prompt, never to gate an action on the result. `POST_NO
 stays where it was (`MainActivity.onCreate()`, before Compose even starts) — moving it
 wouldn't have changed behavior, only where it lives.
 
-## Phase 44 — Fix Health Connect permission dialog not appearing at all
+## Phase 52 — Fix Health Connect permission dialog not appearing at all
 
 Phase 42/43's Health Connect integration compiled and ran, but the permission dialog
 itself never showed up: `PermissionsActivity` (Health Connect's own) opened and
@@ -539,7 +539,7 @@ self-closing, and after granting, `dumpsys package` shows
 `android.permission.health.READ_STEPS: granted=true`. The Options debug button (Phase 41)
 confirmed the full path end to end afterward.
 
-## Phase 45 — Steps: show a real number on the very first read, not just from day two
+## Phase 53 — Steps: show a real number on the very first read, not just from day two
 
 After Phase 44 fixed the permission dialog, granting it still showed nothing — expected
 given the checkpoint-diff design (first-ever read has no "previous" checkpoint to diff
@@ -551,7 +551,7 @@ time-range query, not a diff) when no checkpoint exists yet, reporting `daysSpan
 that reading same as any single-day reading. Every subsequent read goes back to normal
 checkpoint-diffing. No schema/wire-format change.
 
-## Phase 46 — Show step count on the readiness card
+## Phase 54 — Show step count on the readiness card
 
 The synced `stepsAvgPerDay`/`stepsDaysSpanned` had no on-screen representation anywhere —
 the only way to see them was the Options debug button or reading the raw `.md` file. Added
@@ -566,7 +566,7 @@ absent if there's no prior checkpoint. Lets the user confirm on their own device
 the readiness screen, that a real number shows up the morning after granting the Health
 Connect permission — the thing Phase 44/45 fixed.
 
-## Phase 47 — Show steps walked during the session, display-only
+## Phase 55 — Show steps walked during the session, display-only
 
 Session-end summary (`SessionProgressScreen`, the kcal/TRIMP/VO2max card) now also shows
 steps walked during that specific session's own `startedAt..completedAt` window — queried
@@ -576,6 +576,182 @@ does get persisted/synced is `stepsAvgPerDay` on the readiness event, a whole-da
 a different number measuring a different thing. This is purely informational for the user
 in the moment, nothing server-side needs or expects it. Null (not shown) when Health
 Connect is unavailable or the session predates `startedAt` being recorded.
+
+## Phase 41 — Live HR-zone widget
+
+Added a live, on-device %HRR (Karvonen) Z1-Z5 zone widget to `HeartRateBar`, following the
+spec drafted server-side (see [SYNC.md](SYNC.md)) alongside the sync server's retrospective
+`compute_hr_zone_minutes`. `HrZoneCalculator` mirrors the server's zone math exactly: `max_hr`
+is the unweighted mean of the Fox/Tanaka/Gulati age formulas (from `UserProfile.birthYear`,
+newly added to the profile — falls back to the existing `age` field for users who haven't set
+one), `resting_hr` comes from today's readiness measurement or a 7-day trailing average
+(`ReadinessRepository.getRecentAverageRestingHr()`, new), falling back to plain %HRmax if
+neither is available. `HrZoneTracker` accumulates per-zone minutes in memory for the
+in-progress session only (reset on `startHrSeriesCapture()`) — not persisted; the server-side
+ECG-derived analysis after sync remains the durable historical record. `HeartRateBar` gained a
+zone chip ("Z3 · 74%") and a thin time-in-zone stacked bar, using the same zone color palette
+as the server dashboard for visual consistency. Entirely local-first: no server reachability
+required at workout time.
+
+## Phase 42 — Cardio blocks: a third exercise type with explicit start/stop
+
+Added `ExerciseType.CARDIO` alongside FORZA/STRETCH, so a session can mark exactly when a
+cardio phase begins and ends instead of only having a session-wide, undifferentiated HR
+stream. Cardio exercises (e.g. "Corsa leggera", "Bici") are catalog entries like any other,
+created via the normal exercise editor (new third `FilterChip`). In a routine, they have no
+pre-configured set count — `RoutineEditScreen` hides the Sets/rep-range/time-per-set fields
+for CARDIO and, since a cardio exercise's data doesn't fit the reps/weight-or-timeSeconds/
+done shape `SupersetViewModel`/`SupersetScreen` know how to interleave, the "Superset" link
+button never shows next to one either (guarded with an explicit `error()` in both files'
+exhaustive `when` branches as defense-in-depth, on top of the upstream UI prevention).
+
+New `CardioExerciseScreen`/`CardioExerciseViewModel` (mirroring
+`StretchExerciseScreen`/`ViewModel`'s completionSaved/onCleared pattern) show "Inizia
+cardio"/"Termina cardio": each press cycle appends one `ExerciseSet.Cardio` block
+(`startedAt`/`endedAt`/`avgHr`/`maxHr`) to the exercise's `sets` — several blocks are
+supported per session (e.g. 10 min bike then 20 min run, or cardio resumed later after
+stretching in between). `avgHr`/`maxHr` are computed on-device from `PolarManager.heartRate`
+while a block runs, accumulated in the ViewModel (not `PolarManager` — a block is a session/
+exercise concept, not a Polar-subsystem one). A block still running when the app dies
+mid-session (not a clean "Termina cardio") is closed silently next time the screen opens,
+same spirit as the existing ghost-session guard, which itself was extended to treat a
+started-but-unfinished cardio block as real data (same treatment as a touched strength/
+stretch set). `excludeFromTonnage` is always `true` for CARDIO. The screen also shows a
+small history panel for the same `exerciseId` across past sessions, reusing
+`WorkoutRepository.getSessionsForExercise()` unchanged and aggregating inline (summed
+duration, averaged `avgHr`, maxed `maxHr`) — no new repository.
+
+**No change to the raw ECG pipeline.** `EcgRecorder`/`startEcgRecording`/`stopEcgRecording`
+and the binary `.ecg` format are untouched — still one continuous stream per session. Instead,
+the sync server (documentation only here; implementation is `MyGymApp_server`'s job) derives
+per-block sample ranges after the fact by combining each block's absolute `startedAt`/
+`endedAt` (from the synced session YAML) with the `.ecg` file's own `startTimestamp`+
+`sampleRate` header (from the separately-synced raw ECG) for the same `sessionId` — see
+SYNC.md's new "Cardio blocks" section. Absolute timestamps were chosen over a phone-computed
+sample offset specifically to avoid compounding sample-rate drift over a long recording.
+
+## Phase 43 — Cardio UX fixes: dedicated section, configured-duration countdown, no bodypart
+
+Three fixes to Phase 42's cardio exercises, from real on-device usage feedback:
+
+1. **Dedicated "Cardio" list section instead of bodypart grouping.** Cardio exercises have
+   no meaningful bodypart, so they used to land in a stray/blank `groupBy` bucket mixed in
+   wherever iteration order happened to place it — easy to miss unless searching by exact
+   name. `ExerciseListViewModel` now partitions CARDIO exercises into their own
+   `cardioExercises` list, always rendered by `ExerciseListScreen` as a fixed "Cardio"
+   section pinned above the bodypart groups (applies to both the plain list and the
+   routine-editor picker, since they share the same screen/VM). The `BodyPartAutocomplete`
+   field is now hidden entirely in `ExerciseEditScreen` for CARDIO, and `bodypart` is forced
+   to `""` on save (`ExerciseEditViewModel`) rather than left showing an unused field.
+2. **Configured-duration countdown, not a count-up stopwatch.** `RoutineEditScreen` gained a
+   "Durata cardio" (minutes) picker for CARDIO exercises, repurposing
+   `RoutineExercise.timePerSetSeconds` as a single total block duration instead of hiding it
+   entirely. `CardioExerciseViewModel` fetches this from the owning routine at session time
+   (same lookup pattern `SupersetViewModel` already used for rep ranges, including the
+   fixed-daily-routine case) and `startBlock()` now counts *down* from it instead of up from
+   zero — continuing into negative/overtime past zero rather than auto-stopping, since the
+   countdown is a pacing aid, not an enforced cutoff. Only an explicit "Termina cardio" tap
+   ends a block, exactly as before.
+3. **Fixed a real type-label bug in `ExerciseCard`**, found while implementing the above:
+   the exercise-type badge used `if (type == FORZA) "Strength" else "Stretch"` — a CARDIO
+   exercise silently showed "Stretch" as its label, since the check was a binary `if/else`
+   rather than an exhaustive `when` the compiler could have flagged. Fixed to a `when` over
+   all three types; see the new CONVENTIONS.md note about preferring exhaustive `when` over
+   `if/else` for any `ExerciseType` branch specifically to catch this class of bug at
+   compile time going forward.
+
+## Phase 44 — Cardio duration: routine-only, long-press ×10
+
+Reverted Phase 43's `Exercise.defaultDurationSeconds` (catalog-level default duration,
+`ExerciseEditScreen`'s "Durata cardio di default" picker) — the duration is set per routine
+only now, in `RoutineEditScreen`'s existing "Durata cardio" picker, no catalog-level field.
+That picker also switched from plain `RoundStepButton` +/− to `ScrollPickerInput` with
+`longPressRepeatStep = 10.0`, so holding either button jumps 10 minutes at a time — same
+widget and behavior already used for the weight picker on strength sets (`SupersetScreen`).
+
+## Phase 45 — Birth year replaces the plain Age field
+
+Removed `UserProfile.age` entirely — birth year (`UserProfile.birthYear`) is now the sole
+source of age for every age-dependent formula (Keytel calories, Tanaka HRmax, Banister
+TRIMP, VO2max, BIA body-fat %), via the previously-unused `UserProfile.effectiveAge`
+(`birthYear`-derived, recomputed from the current year each time; falls back to a fixed
+default of 30 until `birthYear` is set — same practical default the old `age` field always
+shipped with). This also fixes a real, previously-undetected bug: `effectiveAge` existed
+since birth-year support was added but was never actually called anywhere — Keytel, TRIMP
+(via `UserProfile.hrMax`), VO2max (via `hrMax`), and BIA body-fat % all read the plain `age`
+field directly, silently ignoring `birthYear` even when set. Only the live HR-zone widget
+(`HrZoneCalculator.estimatedMaxHr`) already preferred `birthYear` correctly. Now all five
+consumers go through `effectiveAge`/`hrMax`, so setting birth year actually affects every
+formula, not just one.
+
+`ProfileSection` (`HeartRateScreen.kt`) lost its "Age" picker; "Birth year" is now the
+primary, always-shown field (no longer labeled "optional") alongside Height. The HRmax
+caption below distinguishes an unset birth year ("Imposta l'anno di nascita per calcoli
+accurati") from a real one, rather than silently showing a Tanaka estimate as if it were
+authoritative either way. `HrZoneCalculator.estimatedMaxHr` was simplified to take an
+already-resolved `age: Int` instead of duplicating the birthYear-vs-fallback resolution
+logic itself — `UserProfile.effectiveAge` is now the only place that resolution happens.
+
+## Phase 46 — PolarManager reads UserProfile fresh, no more stale weight
+
+Found while double-checking Phase 45's age fix for a similar bug with weight:
+`PolarManager.userProfile` was a manually-synced **cached copy** (`private var`, read once
+at construction), kept in sync only when `HeartRateViewModel` observed a scale weigh-in
+finishing (`ScaleConnectionState.CONNECTED → DISCONNECTED`) and explicitly called
+`polarManager.updateUserProfile(refreshedProfile)`. If an HR session was already running in
+the background (`PolarStreamingService`) when the user weighed in — or any time
+`HeartRateViewModel` simply wasn't alive/collecting at that moment — Keytel calorie
+calculations kept using the previous, stale weight instead of the just-recorded one, with no
+way for the user to notice.
+
+Fixed the same way as `effectiveAge`: `PolarManager.userProfile` is now a computed property
+that reads `UserProfileRepository.get()` fresh on every access instead of caching. This is
+cheap even at the ~1Hz HR-sample rate `accumulateCaloriesAndTrimp()` runs at, since
+SharedPreferences is already in-memory-cached by Android after the first read — no new IO
+cost, just removes the staleness window. `PolarManager.updateUserProfile()` became
+unreachable (nothing left to assign into a computed property) and was deleted, along with
+its three call sites in `HeartRateViewModel` (`updateGender`, `updateBirthYear`, and the
+scale-disconnect handler) — `profileRepo.save()`/`_uiState` updates there are unaffected,
+only the now-redundant `PolarManager` bridge call was removed.
+
+BIA body-fat % (`BodyCompositionCalculator`, via `BleScaleManager`) was already unaffected —
+it always used the freshly-averaged weight from the current BLE weigh-in session directly,
+never routing through `UserProfile.weightKg` at all.
+
+## Phase 47 — Drop calorie count from in-workout HR bar; remove recovery semaphore
+
+Two `HeartRateBar` UI elements removed per user request. Calorie count: was shown live during
+exercise execution (every screen that embeds `HeartRateBar` — strength, cardio, superset,
+stretch, and the active-routine overview); the underlying `sessionCalories` StateFlow and its
+consumers elsewhere (session save, `SessionProgressScreen`'s own independent calorie card,
+`ActiveRoutineScreen`'s post-completion `ProgressSection`) are untouched — only the `HeartRateBar`
+display during exercise execution was removed, so calories are still visible on the session
+summary screen. Recovery semaphore: the red/yellow/green `Semaphore`/`SemaphoreLight`
+composables and their call site are deleted outright, along with the public `RecoveryState` enum
+and `PolarManager.recoveryState` StateFlow — nothing else in the codebase read that StateFlow.
+`PolarManager.updateRecoveryState()` is kept (renamed in spirit, not in name) as an internal-only
+function: it still drives `isRecovering` reset and the `rmssd` StateFlow (used elsewhere for HRV
+display), it just no longer computes or exposes a three-way recovery state. The independent HRR
+delta pipeline (`pendingHrrPeaks`, `_liveHrrLast`) and peak-detection loop are unaffected — they
+never depended on the semaphore.
+
+## Phase 48 — Live HR-zone trace chart
+
+New `HrZoneTraceChart` on the active-routine and cardio-exercise screens (always visible when
+the strap is connected, not gated on the cardio timer). Vertical axis is %HRR with the Z1-Z5
+bands drawn **proportionally** to their real Karvonen spans, so the dot's height agrees with
+the `Z3 · 74%` chip `HeartRateBar` already shows; horizontal axis is time, with "now" pinned at
+the right edge and the trace growing leftward over a ~90s window. The current-value dot is
+tinted with its zone's colour over a white backing ring so it stays legible against its own band.
+
+To avoid the two halves drifting apart, both share a single source of truth:
+`HrZoneCalculator.ZONE_BOUNDARY_FRACTIONS` (extracted from what was an inline literal list in
+the classifier) drives both the BPM cutoffs and the chart's bands, and
+`PolarManager.HR_ZONE_TRACE_MAX_POINTS` is public so the chart right-anchors on exactly the
+buffer size the manager fills. The rolling `hrZoneTracePercents` buffer lives on the
+`@Singleton` manager rather than in a screen/VM, so the trace survives navigation between the
+routine and cardio screens instead of restarting empty on each open. The axis runs to 110% HRR
+rather than 100% so a deep-Z5 effort isn't clipped flat when true max HR beats the age estimate.
 
 ## Future enhancements
 
