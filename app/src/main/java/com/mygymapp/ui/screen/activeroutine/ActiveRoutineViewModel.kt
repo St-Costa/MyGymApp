@@ -121,6 +121,13 @@ class ActiveRoutineViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
     private var previousTonnageByExercise: Map<String, Double> = emptyMap()
     private var previousBestE1RMByExercise: Map<String, Double> = emptyMap()
+    // Exercise IDs that have at least one *earlier* session with real tonnage recorded (i.e.
+    // not just completed-empty/skipped). Built by scanning each exercise's own history
+    // (workoutRepository.getSessionsForExercise), not just the immediately previous session of
+    // this routine — a single completed-empty session right before this one must not make a
+    // well-tracked exercise look like "first time" again, and conversely an exercise with no
+    // history at all must be flagged as first time even if it wasn't in the previous session.
+    private var exercisesWithPriorTonnage: Set<String> = emptySet()
     private var sessionFinalized = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -188,6 +195,25 @@ class ActiveRoutineViewModel @Inject constructor(
                     ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM()
                         ?.let { ex.exerciseId to it }
                 }?.toMap() ?: emptyMap()
+
+            // For each exercise in this routine, check its own history (across all routines,
+            // not just this one) for any earlier session with real tonnage recorded. A session
+            // where the exercise was completed empty (skipped/untouched) doesn't count — see
+            // exercisesWithPriorTonnage doc comment above.
+            exercisesWithPriorTonnage = exercises
+                .filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
+                .filter { ex ->
+                    workoutRepository.getSessionsForExercise(ex.exerciseId).any { session ->
+                        session.exercises
+                            .filter { it.exerciseId == ex.exerciseId && !it.excludeFromTonnage }
+                            .any { we ->
+                                we.sets.filterIsInstance<ExerciseSet.Strength>()
+                                    .sumOf { it.reps * it.weight } > 0.0
+                            }
+                    }
+                }
+                .map { it.exerciseId }
+                .toSet()
 
             // Compute previous tonnage using only exercises common to the current session,
             // so it matches the chart (which also filters to current exercise IDs).
@@ -283,11 +309,11 @@ class ActiveRoutineViewModel @Inject constructor(
             val changePct: Double? = if (prevExTonnage != null && prevExTonnage > 0) {
                 ((currentExTonnage - prevExTonnage) / prevExTonnage) * 100.0
             } else null
-            // True when the exercise was in the previous session but with no data entered —
-            // distinct from "exercise is new to this routine" (where the key is absent).
-            val isFirstTime = previousTonnageByExercise.containsKey(exerciseId) &&
-                (prevExTonnage == null || prevExTonnage == 0.0) &&
-                currentExTonnage > 0
+            // True when this is the first time real tonnage has ever been recorded for this
+            // exercise (checked against its full history via exercisesWithPriorTonnage, not just
+            // the immediately previous session — a completed-empty/skipped previous session must
+            // not make a well-tracked exercise look like "first time" again).
+            val isFirstTime = exerciseId !in exercisesWithPriorTonnage && currentExTonnage > 0
 
             val currentBestE1RM = reloadedExercise
                 .sets.filterIsInstance<ExerciseSet.Strength>()
