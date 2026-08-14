@@ -89,7 +89,7 @@ fun SessionProgressScreen(
                 )
             }
             // Calories + TRIMP summary (if recorded)
-            if (uiState.sessionCalories > 0 || uiState.sessionTrimp > 0) {
+            if (uiState.sessionCalories > 0 || uiState.sessionTrimp > 0 || uiState.sessionSteps != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -125,6 +125,19 @@ fun SessionProgressScreen(
                                     style = MaterialTheme.typography.headlineMedium,
                                 )
                                 Text("VO2max", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        // Display-only — read fresh from Health Connect for this session's
+                        // own time window, never saved onto the session or synced (the
+                        // figure that IS synced is a whole-day average, a different number
+                        // entirely — see SessionProgressUiState.sessionSteps).
+                        if (uiState.sessionSteps != null) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "${uiState.sessionSteps}",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                )
+                                Text("passi", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
