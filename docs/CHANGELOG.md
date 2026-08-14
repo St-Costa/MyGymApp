@@ -566,6 +566,17 @@ absent if there's no prior checkpoint. Lets the user confirm on their own device
 the readiness screen, that a real number shows up the morning after granting the Health
 Connect permission — the thing Phase 44/45 fixed.
 
+## Phase 47 — Show steps walked during the session, display-only
+
+Session-end summary (`SessionProgressScreen`, the kcal/TRIMP/VO2max card) now also shows
+steps walked during that specific session's own `startedAt..completedAt` window — queried
+fresh from Health Connect (`HealthConnectStepsReader.totalSteps`) each time the screen
+loads. Deliberately **not** saved onto `WorkoutSession` or synced anywhere: the figure that
+does get persisted/synced is `stepsAvgPerDay` on the readiness event, a whole-day average,
+a different number measuring a different thing. This is purely informational for the user
+in the moment, nothing server-side needs or expects it. Null (not shown) when Health
+Connect is unavailable or the session predates `startedAt` being recorded.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
