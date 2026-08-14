@@ -765,6 +765,33 @@ copy of the waveform once the phone deletes its local file — server-side backu
 of `raw/ecg/` matters more here than for sessions/readiness/scale, which all keep the phone
 as a permanent secondary copy.
 
+### Cardio blocks — deriving ECG segments without touching the binary format
+
+`ExerciseType.CARDIO` (see [POLAR.md](POLAR.md#cardio-blocks)) lets a session mark one or
+more explicit cardio intervals via `ExerciseSet.Cardio.startedAt`/`endedAt` (absolute ISO
+`LocalDateTime`, per block — see [STORAGE.md](STORAGE.md) for the YAML shape). This adds
+**zero** change to the raw ECG pipeline described above: the `.ecg` file is still one
+continuous stream per session, sent exactly as before.
+
+Instead, the server derives per-block sample ranges after the fact, once it has received
+*both* record types for the same `sessionId` (order doesn't matter — the existing
+upsert-by-id/update-by-hash logic in §2.2 already tolerates either arriving first):
+
+```
+startSample = (block.startedAt - ecg.startTimestamp) * ecg.sampleRate
+endSample   = (block.endedAt   - ecg.startTimestamp) * ecg.sampleRate
+```
+
+where `ecg.startTimestamp`/`ecg.sampleRate` come from the `.ecg` file's own header (see
+[STORAGE.md](STORAGE.md#raw-ecg-ecgsessionidecg)) and `block.startedAt`/`block.endedAt` come
+from the synced session YAML's `exercises[].sets[]` for that `CARDIO` exercise. Using
+absolute timestamps rather than a phone-computed sample offset avoids compounding any drift
+between the ECG stream's nominal vs. actual sample rate over a long recording.
+
+This is documentation only on the phone side — the actual slicing/tagging logic belongs in
+`MyGymApp_server`'s `ECG_SPEC.md`/analysis code, to be coordinated there, the same way
+readiness/scale/ECG each got a companion spec above.
+
 ---
 
 ## Implementation status

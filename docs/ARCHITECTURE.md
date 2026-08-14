@@ -98,7 +98,8 @@ The `ExerciseEditViewModel` and `RoutineEditViewModel` auto-save in `onCleared()
 | `ExerciseCard` | Card with FORZA orange / STRETCH blue border |
 | `TonnageLineChart` | Pure-Canvas line chart for tonnage progression |
 | `GitgraphView` | 4×7 grid of day statuses with tonnage % overlay |
-| `HeartRateBar` | In-workout HR + recovery semaphore (hidden if disconnected) |
+| `HeartRateBar` | In-workout HR + TRIMP + zone chip (hidden if disconnected; no calories, no recovery semaphore) |
+| `HrZoneTraceChart` | Live ~90s %HRR trace over proportional Z1-Z5 bands (routine + cardio screens) |
 | `LiveEcgCard` | Live ECG waveform + beat counter + arrhythmia flags |
 | `CardioTrendSection` | 4-week cardio sparklines + self-diagnosis (HeartRateScreen) |
 | `SupersetPairContainer` | Primary-bordered wrapper for paired exercises in edit/active |

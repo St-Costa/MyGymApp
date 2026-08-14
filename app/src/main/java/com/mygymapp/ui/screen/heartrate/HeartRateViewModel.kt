@@ -152,14 +152,15 @@ class HeartRateViewModel @Inject constructor(
                 // Reload the trend once the scale session ends — a weigh-in was
                 // likely just persisted (BleScaleManager saves on stable weight
                 // and also updates UserProfile.weightKg, the only source of
-                // body weight now that manual entry is gone).
+                // body weight now that manual entry is gone). No need to push this
+                // into PolarManager separately — it now reads UserProfileRepository
+                // fresh on every access instead of keeping its own cached copy.
                 if (previousState == ScaleConnectionState.CONNECTED &&
                     connectionState == ScaleConnectionState.DISCONNECTED
                 ) {
                     val reloaded = scaleTrendLoader.load()
                     val refreshedProfile = profileRepo.get()
                     _uiState.update { it.copy(scaleTrend = reloaded, profile = refreshedProfile) }
-                    polarManager.updateUserProfile(refreshedProfile)
                 }
                 previousState = connectionState
             }
@@ -175,23 +176,20 @@ class HeartRateViewModel @Inject constructor(
     fun stopScaleScan() = scaleManager.stopScan()
     fun disconnectScale() = scaleManager.disconnect()
 
-
-    fun updateAge(age: Int) {
-        val profile = _uiState.value.profile.copy(age = age)
-        _uiState.update { it.copy(profile = profile) }
-        profileRepo.save(profile)
-        polarManager.updateUserProfile(profile)
-    }
-
     fun updateGender(isMale: Boolean) {
         val profile = _uiState.value.profile.copy(isMale = isMale)
         _uiState.update { it.copy(profile = profile) }
         profileRepo.save(profile)
-        polarManager.updateUserProfile(profile)
     }
 
     fun updateHeight(heightCm: Int) {
         val profile = _uiState.value.profile.copy(heightCm = heightCm)
+        _uiState.update { it.copy(profile = profile) }
+        profileRepo.save(profile)
+    }
+
+    fun updateBirthYear(birthYear: Int?) {
+        val profile = _uiState.value.profile.copy(birthYear = birthYear)
         _uiState.update { it.copy(profile = profile) }
         profileRepo.save(profile)
     }

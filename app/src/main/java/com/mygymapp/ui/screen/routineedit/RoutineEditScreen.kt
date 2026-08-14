@@ -67,6 +67,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.DeleteConfirmationDialog
 import com.mygymapp.ui.components.RoundStepButton
+import com.mygymapp.ui.components.ScrollPickerInput
+import com.mygymapp.ui.theme.CardioColor
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
 import kotlin.math.roundToInt
@@ -301,9 +303,14 @@ private fun ExerciseDragDropList(
                         val exIdx = segment.index
                         // Show superset link button only when the next segment is also a Single,
                         // and never across the warmup line (would straddle warmup/normal).
-                        val canLink = segIdx + 1 < segments.size &&
-                            segments[segIdx + 1] is ExerciseSegment.Single &&
-                            exIdx + 1 != warmupCount
+                        // Cardio exercises can never be linked into a superset — they're a
+                        // time-based block (see CardioExerciseScreen), not a set-based one, and
+                        // SupersetViewModel/Screen only know how to interleave FORZA/STRETCH sets.
+                        val nextSegment = segments.getOrNull(segIdx + 1) as? ExerciseSegment.Single
+                        val canLink = nextSegment != null &&
+                            exIdx + 1 != warmupCount &&
+                            exercises[exIdx].exerciseType != ExerciseType.CARDIO &&
+                            exercises[nextSegment.index].exerciseType != ExerciseType.CARDIO
                         RoutineExerciseItem(
                             exercise = exercises[exIdx],
                             isDragging = isDragging,
@@ -572,6 +579,7 @@ private fun RoutineExerciseItem(
     val borderColor = when (exercise.exerciseType) {
         ExerciseType.FORZA -> ForzaColor
         ExerciseType.STRETCH -> StretchColor
+        ExerciseType.CARDIO -> CardioColor
     }
 
     Card(
@@ -631,55 +639,81 @@ private fun RoutineExerciseItem(
                 }
             }
 
-            // Sets row
-            NumberRow(
-                label = "Sets",
-                value = exercise.sets,
-                onValueChange = onSetsChange,
-            )
-
-            if (exercise.exerciseType == ExerciseType.FORZA) {
-                // Rep range: label + centered pickers with large numbers
+            // Sets/rep-range are meaningless for CARDIO — no pre-configured set count, blocks
+            // are appended live from "Inizia cardio"/"Termina cardio" in CardioExerciseScreen
+            // (ActiveRoutineViewModel builds an empty set list for CARDIO regardless of
+            // exercise.sets here). It reuses timePerSetSeconds instead, but as a single total
+            // countdown duration for the whole block rather than "per set" — CardioExerciseScreen
+            // counts down from this value once "Inizia cardio" is pressed, continuing into
+            // overtime rather than auto-stopping if the user doesn't tap "Termina cardio" first.
+            if (exercise.exerciseType == ExerciseType.CARDIO) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("Rep range:", style = MaterialTheme.typography.bodyMedium)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        RoundStepButton("-") { onRepMinChange(exercise.repRangeMin - 1) }
-                        Text(
-                            text = exercise.repRangeMin.toString(),
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.width(40.dp),
-                            textAlign = TextAlign.Center,
-                        )
-                        RoundStepButton("+") { onRepMinChange(exercise.repRangeMin + 1) }
-                        Text(
-                            text = "–",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.padding(horizontal = 2.dp),
-                        )
-                        RoundStepButton("-") { onRepMaxChange(exercise.repRangeMax - 1) }
-                        Text(
-                            text = exercise.repRangeMax.toString(),
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.width(40.dp),
-                            textAlign = TextAlign.Center,
-                        )
-                        RoundStepButton("+") { onRepMaxChange(exercise.repRangeMax + 1) }
-                    }
+                    Text("Durata cardio (min):", style = MaterialTheme.typography.bodyMedium)
+                    // Long-press either button to jump by 10 min at once — same widget/behavior
+                    // as the weight picker on strength sets (SupersetScreen).
+                    ScrollPickerInput(
+                        value = exercise.timePerSetSeconds / 60,
+                        onValueChange = { onTimeChange(it.toInt() * 60) },
+                        buttonStep = 1.0,
+                        minValue = 0.0,
+                        longPressRepeatStep = 10.0,
+                        enableScroll = false,
+                    )
                 }
             } else {
                 NumberRow(
-                    label = "Time per set (sec)",
-                    value = exercise.timePerSetSeconds,
-                    onValueChange = onTimeChange,
-                    step = 5,
+                    label = "Sets",
+                    value = exercise.sets,
+                    onValueChange = onSetsChange,
                 )
+
+                if (exercise.exerciseType == ExerciseType.FORZA) {
+                    // Rep range: label + centered pickers with large numbers
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("Rep range:", style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            RoundStepButton("-") { onRepMinChange(exercise.repRangeMin - 1) }
+                            Text(
+                                text = exercise.repRangeMin.toString(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.width(40.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                            RoundStepButton("+") { onRepMinChange(exercise.repRangeMin + 1) }
+                            Text(
+                                text = "–",
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.padding(horizontal = 2.dp),
+                            )
+                            RoundStepButton("-") { onRepMaxChange(exercise.repRangeMax - 1) }
+                            Text(
+                                text = exercise.repRangeMax.toString(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.width(40.dp),
+                                textAlign = TextAlign.Center,
+                            )
+                            RoundStepButton("+") { onRepMaxChange(exercise.repRangeMax + 1) }
+                        }
+                    }
+                } else {
+                    NumberRow(
+                        label = "Time per set (sec)",
+                        value = exercise.timePerSetSeconds,
+                        onValueChange = onTimeChange,
+                        step = 5,
+                    )
+                }
             }
 
             // Superset link button (shown for Single segments that have a next Single)

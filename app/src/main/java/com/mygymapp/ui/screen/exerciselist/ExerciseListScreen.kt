@@ -86,9 +86,10 @@ fun ExerciseListScreen(
                 },
                 singleLine = true,
             )
+            val isEmpty = uiState.cardioExercises.isEmpty() && uiState.exercisesByBodypart.isEmpty()
             when {
                 uiState.isLoading -> FullscreenLoading(PaddingValues())
-                uiState.exercisesByBodypart.isEmpty() -> EmptyStateBox(
+                isEmpty -> EmptyStateBox(
                     message = if (uiState.searchQuery.isNotBlank()) {
                         "No exercises match \"${uiState.searchQuery}\"."
                     } else {
@@ -102,6 +103,34 @@ fun ExerciseListScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                    // Cardio always first, as its own fixed section — never grouped by
+                    // bodypart (see ExerciseListViewModel).
+                    if (uiState.cardioExercises.isNotEmpty()) {
+                        item(key = "header_cardio") {
+                            Text(
+                                text = "Cardio",
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(
+                            items = uiState.cardioExercises,
+                            key = { it.id },
+                        ) { exercise ->
+                            ExerciseCard(
+                                exercise = exercise,
+                                onClick = {
+                                    if (pickerMode) {
+                                        onExercisePicked(exercise.id)
+                                    } else {
+                                        onNavigateToEdit(exercise.id)
+                                    }
+                                },
+                            )
+                        }
+                    }
                     uiState.exercisesByBodypart.forEach { (bodypart, exercises) ->
                         item(key = "header_$bodypart") {
                             Text(

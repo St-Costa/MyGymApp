@@ -143,6 +143,9 @@ class RoutineEditViewModel @Inject constructor(
                 exerciseType = exercise.type,
                 repRangeMin = exercise.defaultRepRangeMin,
                 repRangeMax = exercise.defaultRepRangeMax,
+                // CARDIO has no per-exercise default duration — it's set per routine, in
+                // RoutineEditScreen's own "Durata cardio" picker (RoutineExerciseUi's default
+                // of 60s, meant for STRETCH's "per set" seconds, applies here too until edited).
             )
             _uiState.value = _uiState.value.copy(
                 exercises = _uiState.value.exercises + newItem,

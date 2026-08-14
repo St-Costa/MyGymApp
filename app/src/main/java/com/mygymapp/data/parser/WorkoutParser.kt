@@ -59,6 +59,12 @@ object WorkoutParser {
                         "timeSeconds" to set.timeSeconds,
                         "done" to set.done,
                     )
+                    is ExerciseSet.Cardio -> linkedMapOf<String, Any?>(
+                        "startedAt" to set.startedAt,
+                        "endedAt" to set.endedAt,
+                        "avgHr" to set.avgHr,
+                        "maxHr" to set.maxHr,
+                    )
                 }
             }
             linkedMapOf<String, Any?>(
@@ -154,6 +160,12 @@ object WorkoutParser {
                 ExerciseType.STRETCH -> ExerciseSet.Stretch(
                     timeSeconds = (map["timeSeconds"] as? Number)?.toInt() ?: 0,
                     done = map["done"] as? Boolean ?: false,
+                )
+                ExerciseType.CARDIO -> ExerciseSet.Cardio(
+                    startedAt = map["startedAt"]?.toString() ?: "",
+                    endedAt = map["endedAt"]?.toString() ?: "",
+                    avgHr = (map["avgHr"] as? Number)?.toInt() ?: 0,
+                    maxHr = (map["maxHr"] as? Number)?.toInt() ?: 0,
                 )
             }
         }

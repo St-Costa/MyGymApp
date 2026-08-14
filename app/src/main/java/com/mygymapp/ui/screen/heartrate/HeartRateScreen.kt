@@ -249,9 +249,9 @@ fun HeartRateScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             ProfileSection(
                 profile = uiState.profile,
-                onAgeChange = { viewModel.updateAge(it) },
                 onGenderChange = { viewModel.updateGender(it) },
                 onHeightChange = { viewModel.updateHeight(it) },
+                onBirthYearChange = { viewModel.updateBirthYear(it) },
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -378,9 +378,9 @@ private fun ScaleStatusIcon(
 @Composable
 private fun ProfileSection(
     profile: com.mygymapp.data.polar.UserProfile,
-    onAgeChange: (Int) -> Unit,
     onGenderChange: (Boolean) -> Unit,
     onHeightChange: (Int) -> Unit,
+    onBirthYearChange: (Int?) -> Unit,
 ) {
     Text(
         "Profile",
@@ -407,19 +407,24 @@ private fun ProfileSection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // Age and Weight pickers
+    // Birth year and Weight pickers — birth year is the sole source of age for every
+    // formula (Keytel calories, Tanaka HRmax, TRIMP, VO2max, BIA body-fat %,
+    // UserProfile.effectiveAge), replacing the old plain "Age" field entirely: it stays
+    // correct as years pass instead of needing a manual yearly bump. Null until the user
+    // fills it in — effectiveAge falls back to a fixed default until then.
+    val currentYear = java.time.Year.now().value
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Age", style = MaterialTheme.typography.bodySmall)
+            Text("Birth year", style = MaterialTheme.typography.bodySmall)
             ScrollPickerInput(
-                value = profile.age,
-                onValueChange = { onAgeChange(it.toInt()) },
+                value = profile.birthYear ?: (currentYear - 30),
+                onValueChange = { onBirthYearChange(it.toInt().takeIf { y -> y in 1900..currentYear }) },
                 buttonStep = 1.0,
-                isModified = true,
+                isModified = profile.birthYear != null,
                 modifier = Modifier.width(120.dp),
             )
         }
@@ -437,7 +442,11 @@ private fun ProfileSection(
 
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        "HRmax: ${profile.hrMax} BPM (Tanaka formula)",
+        if (profile.birthYear != null) {
+            "HRmax: ${profile.hrMax} BPM (Tanaka formula)"
+        } else {
+            "Imposta l'anno di nascita per calcoli accurati (HRmax stimato: ${profile.hrMax} BPM)"
+        },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
