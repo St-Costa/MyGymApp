@@ -68,6 +68,15 @@ connectToDevice(id)  ─► SDK callback deviceConnected()
 
 ### HRV readiness (60s after connect)
 
+The automatic on-connect measurement is gated by `PolarManager.maybeStartAutoReadinessMeasurement()`:
+it only starts before **10:00 local time**, and only if no readiness event has been persisted
+yet **today** (`ReadinessRepository.getLatestForDate()`) — so disconnecting and reconnecting the
+strap later the same day reuses today's earlier result (loaded back into `readinessResult`/
+`vo2max`/`restingHr`) instead of re-measuring. Outside the time window with no prior measurement,
+`readinessResult` simply stays at its default (`MEASURING`/never-run) until the next connect that
+qualifies. This gating only applies to the automatic first-connect trigger; a mid-session
+reconnect never re-measures regardless of time (see `hrSeriesActive` check below).
+
 1. RR intervals accumulate from each `PolarHrData` sample.
 2. Min HR is tracked as the session resting HR estimate.
 3. At 60s:
@@ -80,6 +89,17 @@ connectToDevice(id)  ─► SDK callback deviceConnected()
 5. VO2max is estimated via the Uth-Sørensen-Overgaard formula using `HRmax` (Tanaka) and `min(HRrest)` over the last 7 readings (falls back to today's value when the baseline is shorter). Using the 7-reading minimum reduces day-to-day noise (caffeine, sleep, stress) vs. picking a single session's value.
 
 Formula details and references in [polar/implementation-guide.md](polar/implementation-guide.md).
+
+### Daily step average (piggybacks on readiness)
+
+`PolarManager.finishReadinessMeasurement()` also takes one best-effort reading of step data
+from Health Connect (unrelated to the Polar strap — `data/steps/`, not `data/polar/`; not
+the raw `TYPE_STEP_COUNTER` sensor either, see SYNC.md for why) and folds it into the same
+`ReadinessEvent` as `stepsAvgPerDay`/`stepsDaysSpanned`. It's here rather than in its own
+section because it rides on the readiness trigger for the same reason described in
+SYNC.md: the morning readiness test is the app's one guaranteed daily touchpoint, so
+there's no separate trigger worth building. Full field semantics and the sync wire format:
+[SYNC.md § Daily step average](SYNC.md#daily-step-average).
 
 ### ECG streaming
 
@@ -107,15 +127,40 @@ Stream errors trigger an auto-restart via `ecgRestartHandler` with a ≤2 s back
 
 ### Post-session analysis
 
+Deep ECG analysis (Pan-Tompkins QRS detection, RMSSD/SDNN/pNN50/Poincaré, arrhythmia
+markers) no longer runs on the phone at all — it moved server-side (see
+[SYNC.md](SYNC.md#fourth-record-type-raw-ecg)). `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()`
+still exist in the codebase (harmless, unused) but `ActiveRoutineViewModel` no longer calls
+them. The phone only computes and shows two metrics that are cheap and don't require the
+recorded waveform at all: **resting HR** and **VO2max**, both derived from live HR/readiness
+tracking during the session (see "HRV readiness" above), not from the `.ecg` file. TRIMP and
+kcal (Banister/Keytel) also keep being computed continuously during the session and shown,
+unchanged. Cardiac drift and HRR (below) are cheap HR-series computations, not deep
+waveform analysis, and also keep running locally.
+
 On session completion (or abandon), `ActiveRoutineViewModel`:
 
 1. Calls `PolarManager.stopEcgRecording()` → `EcgRecorder.close()`.
-2. Calls `EcgAnalyzer.analyze(sessionId)` off the main thread.
-   - Pan-Tompkins QRS detector → beat times.
-   - RR intervals → RMSSD, SDNN, pNN50, Poincaré SD1/SD2/ratio.
-   - Arrhythmia markers: PAC, pauses, irregular beats, AFib suspicion episodes.
-3. Writes the 14 derived metrics into the session's YAML frontmatter.
-4. Deletes `ecg/{sessionId}.ecg` — the raw waveform is not retained long-term.
+2. Saves `restingHr` (`PolarManager.sessionRestingHr()`), `hrr60s`
+   (`PolarManager.averageHrr60s()`), and `cardiacDriftBpmMin`
+   (`PolarManager.cardiacDriftBpmPerMinute()`) into the session's YAML frontmatter.
+   `vo2max`/`sessionCalories`/`sessionTrimp` are saved earlier, in `finalizeSession()`.
+3. Raw file handling depends on whether server sync is configured (see
+   [SYNC.md](SYNC.md#fourth-record-type-raw-ecg)):
+   - **Sync configured + enabled**: the raw `ecg/{sessionId}.ecg` file is queued in
+     `EcgSyncLedgerRepository` and uploaded (gzip-compressed) to the server, which runs the
+     deep analysis described above — more CPU than a phone, potentially ML/LLM-assisted
+     interpretation, and comparison against the user's full history rather than one
+     isolated session. Results live server-side only (`MyGymApp_server`); the phone never
+     receives them back. The local file is deleted only once `EcgSyncWorker` confirms the
+     upload succeeded. If the server stays unreachable for 30 days, the pending entry
+     expires and the file is deleted anyway (`EcgSyncLedgerRepository.expireStale()`) to
+     bound local storage growth — that session's raw waveform is then unrecoverable, with
+     no local-analysis fallback of any kind (the deep metrics no longer exist on the phone
+     at all).
+   - **Sync not configured/enabled**: the raw waveform is deleted immediately — with no
+     local analysis and no server to send it to, nothing on the phone would ever consume
+     it.
 
 ### HRR (heart rate recovery)
 

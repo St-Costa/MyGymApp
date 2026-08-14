@@ -20,8 +20,17 @@ filesDir/gymdata/              ← FileManager.root
 │   └── {sessionId}.ecg
 ├── cache/images/              ← ImageCacheRepository (exercise link previews)
 │   └── {sha256[:16]}.img
-└── image_cache/               ← Coil disk cache (100 MB, LRU)
-    └── (Coil-managed)
+├── image_cache/               ← Coil disk cache (100 MB, LRU)
+│   └── (Coil-managed)
+├── readiness/                 ← One file per 60s HRV readiness measurement
+│   └── {8hex}.md
+├── scale/                     ← VitaFit VT701 weigh-ins (one per calendar day)
+│   └── YYYY/MM/
+│       └── YYYY-MM-DD.md
+└── _sync/                     ← Server sync ledgers (see SYNC.md)
+    ├── state.yml               (sessions)
+    ├── readiness_state.yml     (readiness events)
+    └── scale_state.yml         (scale weigh-ins)
 ```
 
 The two image caches serve different purposes:
@@ -43,6 +52,7 @@ bodypart: chest
 link: https://...             # optional image/YouTube URL
 defaultRepRangeMin: 8
 defaultRepRangeMax: 12
+isBodyweight: true            # omitted when false — FORZA only, no external weight by design
 created: 2025-03-15T10:22:14
 updated: 2025-04-18T09:00:00
 ---
@@ -117,6 +127,13 @@ poincareRatio: 0.317
 cardiacDriftBpmMin: 0.42
 restingHr: 58
 hrr60s: 28
+# Session-RPE (Foster method): subjective 0-9 effort rating, asked right after the session
+# ends via a mandatory (non-skippable) prompt — registration is blocked until answered.
+# Omitted only for sessions saved before this field existed, or abandoned sessions that
+# never reach registration. sessionLoad = sessionRpe × duration in minutes
+# (startedAt→completedAt), computed whenever a valid duration exists.
+sessionRpe: 7
+sessionLoad: 350.0
 exercises:
   - exerciseId: ex-a1b2c3d4
     exerciseName: Bench Press   # denormalized
@@ -130,6 +147,18 @@ exercises:
       - reps: 6
         weight: 85.0
       ...
+  - exerciseId: ex-c3d4e5f6
+    exerciseName: Plank
+    type: FORZA
+    bodypart: core
+    sets:
+      - reps: 45
+        weight: 0.0
+        isBodyweight: true      # omitted when false — copied from Exercise.isBodyweight
+                                 # at session-build time; distinguishes "genuinely no
+                                 # external weight" from "set never touched" (both are
+                                 # weight=0 otherwise indistinguishable to any reader
+                                 # that filters on weight > 0 — see SYNC.md)
 ---
 
 Session notes
@@ -138,6 +167,38 @@ Session notes
 `excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected.
 
 `isDaily: true` marks an exercise performed as a fixed-daily exercise in this session. Exercise screens use it so daily progress (grey "previous" values) is compared only against prior sessions where the same exercise was *also* daily, and normal progress only against prior normal sessions — the same exercise can swing between the two roles across days without contaminating either history.
+
+### Readiness event (`readiness/{id}.md`)
+
+```yaml
+---
+id: a1b2c3d4
+measuredAt: "2026-08-05T07:04:10.123"
+readiness: "GOOD"
+lnRmssd: 4.30
+restingHr: 65
+vo2max: 45.2
+recommendation: "HRV above baseline. Good day to push intensity."
+---
+```
+
+Written by [ReadinessRepository](../app/src/main/java/com/mygymapp/data/polar/ReadinessRepository.kt) at the end of [PolarManager.finishReadinessMeasurement()](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) — the 60s HRV measurement that already ran on every HR connect, but was previously only held in an in-memory StateFlow for the UI and never persisted. Only successful measurements are saved (`cleanRR.size >= 20`); a failed "not enough clean data" attempt is discarded, not written. See [POLAR.md](POLAR.md) for the readiness algorithm and [SYNC.md](SYNC.md) for how these get synced to the server immediately, independent of session sync.
+
+### Scale weigh-in (`scale/YYYY/MM/{date}.md`)
+
+```yaml
+---
+id: "2026-08-05"
+date: "2026-08-05"
+recordedAt: "2026-08-05T07:12:34"
+weightKg: 78.4
+bmi: 24.1
+bodyFatPercent: 16.8
+leanMassPercent: 81.2
+---
+```
+
+Written by [ScaleHistoryRepository](../app/src/main/java/com/mygymapp/data/repository/ScaleHistoryRepository.kt) from [BleScaleManager.maybeSaveWeighIn()](../app/src/main/java/com/mygymapp/data/scale/BleScaleManager.kt) — parses the VitaFit VT701's weight + bioimpedance notify packets, computes BMI/body-fat/lean-mass via [BodyCompositionCalculator](../app/src/main/java/com/mygymapp/data/scale/BodyCompositionCalculator.kt), and also updates `UserProfile.weightKg` (the scale is the sole source of body weight — no manual entry). **`id` is an ISO date string, not an `{8hex}` UUID** — one weigh-in per calendar day; re-weighing the same day overwrites the existing file rather than creating a second entry. See [SYNC.md](SYNC.md) for how these get synced to the server immediately.
 
 ### Raw ECG (`ecg/{sessionId}.ecg`)
 
@@ -150,7 +211,7 @@ Binary, written by [EcgRecorder](../app/src/main/java/com/mygymapp/data/polar/Ec
 | 12 | 8 B | Start timestamp (Int64, ns since epoch) |
 | 20 | N×2 B | Sample stream (Int16, µV) |
 
-Flushed every 260 samples (~2s). Deleted immediately after post-session analysis in [EcgAnalyzer](../app/src/main/java/com/mygymapp/data/polar/EcgAnalyzer.kt); the 14 computed metrics are stored in the session frontmatter.
+Flushed every 260 samples (~2s). [EcgAnalyzer](../app/src/main/java/com/mygymapp/data/polar/EcgAnalyzer.kt) exists but is no longer called — deep ECG analysis (the 12 arrhythmia/HRV metrics it used to compute) moved server-side; the session frontmatter's ECG-derived fields (`ecgBeats`, `sdnn`, `poincareSd1`, etc., still declared in `WorkoutSession` for backward-compat with sessions saved before this change) are no longer populated and stay at their zero defaults going forward. Only `restingHr`, `hrr60s`, and `cardiacDriftBpmMin` — cheap HR-series computations, not deep waveform analysis — are still computed and saved locally, alongside `vo2max`/`sessionCalories`/`sessionTrimp`. The raw `.ecg` file itself: deleted after successful upload to the sync server (`EcgSyncWorker`, gzip-compressed, `POST /v1/ecg`) if sync is configured/enabled — capped at 30 days pending, after which it's deleted unrecovered even without a confirmed upload (`EcgSyncLedgerRepository.expireStale()`); if sync isn't configured, deleted immediately (nothing local would ever analyze or send it). See [SYNC.md](SYNC.md#fourth-record-type-raw-ecg) and [POLAR.md](POLAR.md#post-session-analysis).
 
 ## IDs
 
@@ -206,8 +267,33 @@ Two keys, both `MODE_PRIVATE`:
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
 | `hrv_baseline` | `lnrmssd_values` | String (CSV, ≤14 doubles) | [PolarManager](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) | Rolling 14-day LnRMSSD baseline for HRV readiness z-score |
+| `sync_config` | `serverUrl` | String | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net` |
+| `sync_config` | `bearerToken` | String | " | Shared secret sent as `Authorization: Bearer` on every sync POST |
+| `sync_config` | `enabled` | Boolean | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |
 
 Nothing else is persisted outside `gymdata/`.
+
+## Server sync ledger (`_sync/state.yml`)
+
+Tracks delivery status per session ID for the self-hosted server sync feature — see
+[SYNC.md](SYNC.md). Not session content; purely "has this session's current content been
+handed to the server yet."
+
+```yaml
+sessions:
+  3c4d5e6f:
+    relPath: "2026/08/2026-08-05_rt-b2c3d4e5_3c4d5e6f.md"
+    status: SENT              # PENDING | SENT | FAILED
+    attempts: 1
+    lastAttemptAt: "2026-08-05T10:05:42"
+    lastError: ""
+    contentHash: "sha256:9f8e7d6c..."
+```
+
+Owned by [SyncLedgerRepository](../app/src/main/java/com/mygymapp/data/sync/SyncLedgerRepository.kt),
+read/written with the same hand-rolled snakeyaml `Load` + manual-write approach as
+[MarkdownParser](../app/src/main/java/com/mygymapp/data/parser/MarkdownParser.kt), since
+this is a flat map rather than a frontmatter+body document.
 
 ## Backup / export
 

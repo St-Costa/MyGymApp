@@ -20,13 +20,23 @@ import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.service.PolarStreamingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.reactivex.rxjava3.disposables.Disposable
+import java.io.File
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
+import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +60,11 @@ data class ReadinessResult(
     val restingHr: Int = 0,
     val secondsRemaining: Int = 60,
     val recommendation: String = "",
+    // Best-effort, filled in only after finishReadinessMeasurement()'s Health Connect read
+    // completes (fire-and-forget on readinessScope — see there) — stays null until then,
+    // same "null means no data" rule as the persisted ReadinessEvent fields these mirror.
+    val stepsAvgPerDay: Double? = null,
+    val stepsDaysSpanned: Int? = null,
 )
 
 @Singleton
@@ -59,8 +74,18 @@ class PolarManager @Inject constructor(
     private val ecgRecorder: EcgRecorder,
     private val ecgAnalyzer: EcgAnalyzer,
     private val appLogger: AppLogger,
+    private val readinessRepository: ReadinessRepository,
+    private val readinessLedgerRepository: com.mygymapp.data.sync.ReadinessLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
     private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
+    private val stepLedgerRepository: com.mygymapp.data.steps.StepLedgerRepository,
+    private val healthConnectStepsReader: com.mygymapp.data.steps.HealthConnectStepsReader,
 ) {
+    // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
+    // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
+    // explicit cancellation — unlike the per-screen `clearScope` pattern in edit
+    // ViewModels (see CONVENTIONS.md), there is no "cleared" moment to race against.
+    private val readinessScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     companion object {
         private const val TAG = "PolarManager"
         private const val RR_BUFFER_SIZE = 30
@@ -75,6 +100,13 @@ class PolarManager @Inject constructor(
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
+        // Warn about the CR2025 at 70%, not at the usual 20%. The H10 derives its
+        // percentage from cell voltage, and a lithium coin cell holds ~3V until it is
+        // nearly spent — what actually kills it is rising internal resistance, which
+        // the percentage never reflects. In practice the strap goes silent (can't
+        // complete a BLE advertisement) while still reporting 50-60%, so anything
+        // below this threshold means "replace it soon", not "still half full".
+        private const val BATTERY_WARNING_THRESHOLD = 70
     }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -85,6 +117,10 @@ class PolarManager @Inject constructor(
 
     private val _batteryLevel = MutableStateFlow<Int?>(null)
     val batteryLevel: StateFlow<Int?> = _batteryLevel
+
+    /** True when the strap's battery is at or below [BATTERY_WARNING_THRESHOLD]. */
+    private val _batteryLow = MutableStateFlow(false)
+    val batteryLow: StateFlow<Boolean> = _batteryLow
 
     private val _discoveredDevices = MutableStateFlow<List<PolarDeviceInfo>>(emptyList())
     val discoveredDevices: StateFlow<List<PolarDeviceInfo>> = _discoveredDevices
@@ -226,6 +262,7 @@ class PolarManager @Inject constructor(
                     lastConnectedDeviceId = null
                     _heartRate.value = null
                     _batteryLevel.value = null
+                    _batteryLow.value = false
                     _connectionState.value = ConnectionState.DISCONNECTED
                     PolarStreamingService.stop(context)
                     PolarStreamingService.clearDisconnectAlert(context)
@@ -250,7 +287,7 @@ class PolarManager @Inject constructor(
                 if (!hrSeriesActive) {
                     _sessionCalories.value = 0.0
                     _sessionTrimp.value = 0.0
-                    startReadinessMeasurement()
+                    maybeStartAutoReadinessMeasurement()
                 }
                 startDataWatchdog()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
@@ -269,6 +306,7 @@ class PolarManager @Inject constructor(
                 connectedDeviceId = null
                 _heartRate.value = null
                 _batteryLevel.value = null
+                _batteryLow.value = false
                 hrDisposable?.dispose()
                 hrDisposable = null
                 ecgDisposable?.dispose()
@@ -338,6 +376,16 @@ class PolarManager @Inject constructor(
             override fun batteryLevelReceived(identifier: String, level: Int) {
                 Log.d(TAG, "Battery: $level%")
                 _batteryLevel.value = level
+                // Always log the level so app.log carries the decay curve across
+                // battery cycles — the H10 reports a voltage-derived percentage, which
+                // is nearly flat for most of a CR2025's life, so a single reading says
+                // little but the trend across sessions is readable.
+                appLogger.i(TAG, "Battery level on $identifier: $level%")
+                val low = level <= BATTERY_WARNING_THRESHOLD
+                _batteryLow.value = low
+                if (low) {
+                    appLogger.w(TAG, "Battery at $level% (<= $BATTERY_WARNING_THRESHOLD%) — replace the CR2025 soon")
+                }
             }
         })
     }
@@ -791,6 +839,9 @@ class PolarManager @Inject constructor(
         return if (file.exists()) file.length() else 0L
     }
 
+    /** The raw ECG file for [sessionId] (may not exist). Used by [com.mygymapp.data.sync.EcgSyncWorker]. */
+    fun ecgFileFor(sessionId: String): File = ecgRecorder.fileFor(sessionId)
+
     private fun startEcgStreamingInternal(deviceId: String, sessionId: String) {
         ecgDisposable?.dispose()
         // Reset live analyzer + waveform for a fresh session
@@ -918,6 +969,41 @@ class PolarManager @Inject constructor(
         watchdogHandler.removeCallbacks(watchdogRunnable)
     }
 
+    /** Latest cutoff hour for the automatic on-connect readiness measurement (local time). */
+    private val autoReadinessCutoff: LocalTime = LocalTime.of(10, 0)
+
+    /**
+     * Gates the automatic 60s readiness measurement that fires on first connect: only before
+     * 10:00 local time, and only if today doesn't already have a measurement (so a strap
+     * disconnect/reconnect later in the day reuses today's earlier result instead of
+     * re-measuring). Manual re-measurement (if ever exposed in the UI) can still call
+     * [startReadinessMeasurement] directly, bypassing these checks.
+     */
+    private fun maybeStartAutoReadinessMeasurement() {
+        if (LocalTime.now().isAfter(autoReadinessCutoff)) {
+            Log.d(TAG, "Skipping auto readiness measurement: after ${autoReadinessCutoff}")
+            return
+        }
+        readinessScope.launch {
+            val today = readinessRepository.getLatestForDate(LocalDate.now())
+            if (today != null) {
+                Log.d(TAG, "Skipping auto readiness measurement: already measured today (id=${today.id})")
+                _readinessResult.value = ReadinessResult(
+                    readiness = runCatching { Readiness.valueOf(today.readiness) }.getOrDefault(Readiness.NO_BASELINE),
+                    lnRmssd = today.lnRmssd,
+                    restingHr = today.restingHr,
+                    secondsRemaining = 0,
+                    recommendation = today.recommendation,
+                )
+                _vo2max.value = today.vo2max.takeIf { it > 0 }
+                restingHr = today.restingHr.takeIf { it > 0 } ?: restingHr
+                lowestObservedHr = today.restingHr.takeIf { it > 0 } ?: lowestObservedHr
+                return@launch
+            }
+            startReadinessMeasurement()
+        }
+    }
+
     private fun startReadinessMeasurement() {
         readinessMeasuring = true
         readinessStartTime = System.currentTimeMillis()
@@ -1016,6 +1102,60 @@ class PolarManager @Inject constructor(
 
         Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
         appLogger.i(TAG, "Readiness: $readiness lnRMSSD=${"%.2f".format(lnRmssd)} restingHr=$measuredRestingHr vo2max=${vo2?.let { "%.1f".format(it) } ?: "n/a"} rrSamples=${cleanRR.size}")
+
+        // Persist + sync immediately (docs/SYNC.md) — independent of whether the user
+        // goes on to complete a workout session today. Fire-and-forget on readinessScope:
+        // must never block/delay the UI update above, and a save/sync failure here must
+        // never crash a BLE callback thread.
+        readinessScope.launch {
+            try {
+                // Best-effort: Health Connect unavailable/not permitted, or no previous
+                // checkpoint to diff against, all surface as null, never as a thrown
+                // exception or a bogus 0 — steps are a bonus riding along on the readiness
+                // event, never something that should block or fail it. See
+                // HealthConnectStepsReader's class doc for why this reads through Health
+                // Connect rather than the raw TYPE_STEP_COUNTER sensor.
+                val stepReading = runCatching {
+                    stepLedgerRepository.recordReadingAndComputeAverage(healthConnectStepsReader)
+                }.getOrNull()
+
+                // Steps land a moment after the rest of readiness (Health Connect query is
+                // async) — patch them onto the already-published result rather than holding
+                // up the readiness/HRV UI update above for it. Guarded by readiness match so
+                // a stale steps read from a previous measurement can't overwrite a newer one
+                // if the user re-measures in the same session.
+                if (_readinessResult.value.readiness == readiness) {
+                    _readinessResult.value = _readinessResult.value.copy(
+                        stepsAvgPerDay = stepReading?.avgStepsPerDay,
+                        stepsDaysSpanned = stepReading?.daysSpanned,
+                    )
+                }
+
+                val event = readinessRepository.save(
+                    readiness = readiness.name,
+                    lnRmssd = lnRmssd,
+                    restingHr = measuredRestingHr,
+                    vo2max = vo2 ?: 0.0,
+                    recommendation = recommendation,
+                    stepsAvgPerDay = stepReading?.avgStepsPerDay,
+                    stepsDaysSpanned = stepReading?.daysSpanned,
+                )
+                appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
+                // Sync enqueue is gated the same way session sync is (docs/SYNC.md §1.5):
+                // only the automatic path respects the enabled toggle. A manual resync
+                // action for readiness events can be added later the same way "Resync
+                // all" works for sessions, if that's ever needed.
+                if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                    val file = readinessRepository.fileFor(event)
+                    if (file.exists()) {
+                        readinessLedgerRepository.enqueue(event.id, "readiness/${event.id}.md", file)
+                        ReadinessSyncWorker.Scheduler.runExpedited(context)
+                    }
+                }
+            } catch (e: Throwable) {
+                appLogger.e(TAG, "Failed to persist/queue readiness event", e)
+            }
+        }
     }
 
     /** Short vibration + beep, fired when the 60s post-connection readiness window ends. */

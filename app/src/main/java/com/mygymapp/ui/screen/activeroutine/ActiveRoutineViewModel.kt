@@ -14,9 +14,16 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import android.content.Context
 import android.util.Log
+import com.mygymapp.data.sync.EcgSyncLedgerRepository
+import com.mygymapp.data.sync.EcgSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
+import com.mygymapp.data.sync.SyncLedgerRepository
+import com.mygymapp.data.sync.SyncWorker
 import com.mygymapp.data.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,7 +31,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -53,6 +59,9 @@ data class ActiveRoutineUiState(
     val sessionRegistered: Boolean = false,
     val registeredSessionId: String = "",
     val registeredSessionDate: String = "",
+    // Session-RPE prompt: shown once, right after "Registra routine" is tapped and before
+    // the session is actually finalized/synced. Skippable — see docs/CONVENTIONS.md.
+    val showRpePrompt: Boolean = false,
     // Cross-routine charts (all sessions, not filtered by routine)
     val allSessionCalories: List<Double> = emptyList(),
     val allSessionTrimp: List<Double> = emptyList(),
@@ -94,6 +103,10 @@ class ActiveRoutineViewModel @Inject constructor(
     private val polarManager: PolarManager,
     private val appLogger: AppLogger,
     private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
+    private val syncLedgerRepository: SyncLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
+    private val ecgSyncLedgerRepository: EcgSyncLedgerRepository,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     companion object {
@@ -191,7 +204,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
                 val sets = (1..re.sets).map { _ ->
                     when (exercise.type) {
-                        ExerciseType.FORZA -> ExerciseSet.Strength()
+                        ExerciseType.FORZA -> ExerciseSet.Strength(isBodyweight = exercise.isBodyweight)
                         ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = re.timePerSetSeconds)
                     }
                 }
@@ -211,6 +224,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 routineId = routineId,
                 routineName = routine.name,
                 date = LocalDate.now().toString(),
+                startedAt = LocalDateTime.now().toString(),
                 exercises = workoutExercises,
                 notes = routine.notes,
             )
@@ -321,7 +335,43 @@ class ActiveRoutineViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(selectedChartFilter = filter)
     }
 
-    fun registerRoutine() {
+    /**
+     * Entry point from the "Registra routine" button. Shows the mandatory session-RPE prompt
+     * first (docs/SYNC.md — internal-load signal complementing tonnage); the actual
+     * finalize+sync flow ([registerRoutine]) runs only after the user answers it, via
+     * [submitSessionRpe]. No skip option — a rating is required to proceed.
+     */
+    fun requestRegisterRoutine() {
+        _uiState.value = _uiState.value.copy(showRpePrompt = true)
+    }
+
+    /**
+     * Submits the session-RPE (Foster method, 0-9) and proceeds to register the session.
+     * Validated client-side before being stored: values outside [0, 9] are rejected and the
+     * prompt stays open rather than silently clamping or dropping the rating.
+     * @return true if accepted, false if invalid (caller should keep the prompt open).
+     */
+    fun submitSessionRpe(rpe: Int): Boolean {
+        if (rpe !in 0..9) return false
+        _uiState.value = _uiState.value.copy(showRpePrompt = false)
+        registerRoutine(sessionRpe = rpe)
+        return true
+    }
+
+    /** Session duration in whole minutes from startedAt/completedAt, or null if unavailable. */
+    private fun sessionDurationMinutes(session: WorkoutSession): Float? {
+        if (session.startedAt.isBlank()) return null
+        val end = if (session.completedAt.isNotBlank()) {
+            runCatching { LocalDateTime.parse(session.completedAt) }.getOrNull()
+        } else {
+            LocalDateTime.now()
+        } ?: return null
+        val start = runCatching { LocalDateTime.parse(session.startedAt) }.getOrNull() ?: return null
+        val minutes = java.time.Duration.between(start, end).toMinutes().toFloat()
+        return minutes.takeIf { it > 0f }
+    }
+
+    private fun registerRoutine(sessionRpe: Int? = null) {
         viewModelScope.launch {
             if (!sessionFinalized) {
                 val session = currentSession ?: return@launch
@@ -334,24 +384,17 @@ class ActiveRoutineViewModel @Inject constructor(
             polarManager.stopHrSeriesCapture()
             val session = currentSession
             if (session != null) {
-                // Heavy analysis (Pan-Tompkins on the whole file) runs on IO and is
-                // guarded — a failure here must NOT crash the register flow.
+                // Local deep ECG analysis (Pan-Tompkins, RMSSD/SDNN/pNN50/Poincaré,
+                // arrhythmia markers) has moved server-side (docs/SYNC.md "Fourth record
+                // type: raw ECG") — the phone no longer runs EcgAnalyzer.analyze() here.
+                // Only the lightweight, non-ECG-derived metrics are computed locally:
+                // resting HR and VO2max (both from live HR/readiness tracking, not the
+                // recorded waveform), plus cardiac drift and HRR which are cheap HR-series
+                // computations, not heavy waveform analysis. TRIMP/kcal are computed
+                // continuously during the session (PolarManager) and saved unchanged below.
                 val ecgFileSize = polarManager.ecgFileSize(session.id)
                 Log.i(TAG, "ECG file for ${session.id}: $ecgFileSize bytes")
                 appLogger.i(TAG, "ECG file size for ${session.id}: $ecgFileSize bytes")
-                val ecgResult = try {
-                    withContext(Dispatchers.IO) { polarManager.analyzeSessionEcg(session.id) }
-                } catch (e: Throwable) {
-                    Log.e(TAG, "ECG analysis failed: ${e.message}", e)
-                    appLogger.e(TAG, "ECG analysis exception for ${session.id}: ${e.message}")
-                    null
-                }
-                Log.i(TAG, "ECG analysis result: ecgResult=$ecgResult")
-                if (ecgResult == null) {
-                    appLogger.w(TAG, "ECG analysis: no result for ${session.id} (file too short or exception)")
-                } else {
-                    appLogger.i(TAG, "ECG analysis: hasAnything=${ecgResult.hasAnything} beats=${ecgResult.beatsDetected} durationSec=${ecgResult.durationSeconds} rmssd=${"%.1f".format(ecgResult.sessionRmssd)} pacs=${ecgResult.pacCount} pauses=${ecgResult.pauseCount}")
-                }
                 val drift = try {
                     polarManager.cardiacDriftBpmPerMinute()
                 } catch (e: Throwable) {
@@ -365,36 +408,61 @@ class ActiveRoutineViewModel @Inject constructor(
                     hrr60s = polarManager.averageHrr60s(),
                     restingHr = polarManager.sessionRestingHr(),
                 )
-                if (ecgResult != null && ecgResult.hasAnything) {
+                if (sessionRpe != null) {
+                    val durationMinutes = sessionDurationMinutes(updated)
                     updated = updated.copy(
-                        ecgBeats = ecgResult.beatsDetected,
-                        ecgDurationSec = ecgResult.durationSeconds,
-                        ecgAvgHr = ecgResult.avgHr,
-                        ecgSessionRmssd = ecgResult.sessionRmssd,
-                        ecgPacCount = ecgResult.pacCount,
-                        ecgPauseCount = ecgResult.pauseCount,
-                        ecgIrregularBeats = ecgResult.irregularBeats,
-                        sdnn = ecgResult.sdnn,
-                        pnn50 = ecgResult.pnn50,
-                        poincareSd1 = ecgResult.poincareSd1,
-                        poincareSd2 = ecgResult.poincareSd2,
-                        poincareRatio = ecgResult.poincareRatio,
-                        afibSuspicionEpisodes = ecgResult.afibSuspicionEpisodes,
+                        sessionRpe = sessionRpe,
+                        sessionLoad = durationMinutes?.let { sessionRpe * it },
                     )
                 }
                 try {
-                    workoutRepository.save(updated)
-                    currentSession = updated
+                    val saved = workoutRepository.save(updated)
+                    currentSession = saved
+                    // Enqueue for server sync (docs/SYNC.md §1.1) — after the durable save,
+                    // never inline. The actual send happens async via WorkManager so a
+                    // flaky/offline/unreachable server can never block this flow. Gated on
+                    // isEnabled(): this is the *automatic* per-session path, distinct from
+                    // the user's explicit "Resync all" action in Options (which enqueues
+                    // regardless, since pressing that button is itself the opt-in).
+                    if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                        val relPath = workoutRepository.relPathFor(saved)
+                        val file = workoutRepository.fileFor(saved)
+                        if (file.exists()) {
+                            syncLedgerRepository.enqueue(saved.id, relPath, file)
+                            SyncWorker.Scheduler.runExpedited(appContext)
+                        }
+                    }
                 } catch (e: Throwable) {
                     Log.e("ActiveRoutineVM", "Save session failed", e)
                 }
-                // Only delete the raw ECG file when analysis succeeded. If it failed,
-                // keep the file so the session can be re-analyzed or inspected offline.
-                if (ecgResult != null && ecgResult.hasAnything) {
-                    try { polarManager.deleteEcgFile(session.id) } catch (_: Throwable) {}
+                // Raw ECG handling (docs/SYNC.md "Fourth record type: raw ECG"): when sync
+                // is configured, the raw file is queued for upload and EcgSyncWorker
+                // deletes it only after a confirmed SENT — never here. This is what makes
+                // the raw waveform available for the server's own analysis (deep ECG
+                // analysis no longer runs on the phone at all, see above), not just the
+                // lightweight metrics computed locally.
+                // When sync isn't configured/enabled, fall back to deleting the file
+                // immediately — with no local analysis and no server to send it to, there's
+                // nothing left that would ever consume it, so there's no reason to keep it.
+                // (Previously this branch was gated on ecgResult.hasAnything — i.e. "keep
+                // only if local analysis failed, for offline inspection." That no longer
+                // applies since local analysis doesn't run.)
+                if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                    val ecgFile = polarManager.ecgFileFor(session.id)
+                    if (ecgFile.exists()) {
+                        try {
+                            // Ledger records the hash of the raw bytes here just to mark
+                            // "queued"; EcgSyncWorker recomputes the hash over the actual
+                            // gzip-compressed bytes it transmits and updates the entry
+                            // (via markSent/markFailed) — see EcgSyncWorker.doWork().
+                            ecgSyncLedgerRepository.enqueue(session.id, "ecg/${session.id}.ecg", ecgFile.readBytes())
+                            EcgSyncWorker.Scheduler.runExpedited(appContext)
+                        } catch (e: Throwable) {
+                            Log.e(TAG, "ECG sync enqueue failed for ${session.id}: ${e.message}", e)
+                        }
+                    }
                 } else {
-                    Log.w(TAG, "Keeping ECG file for ${session.id}: analysis produced no metrics")
-                    appLogger.w(TAG, "ECG file kept (no metrics) for ${session.id}")
+                    try { polarManager.deleteEcgFile(session.id) } catch (_: Throwable) {}
                 }
             }
             appLogger.i(TAG, "Session registered: id=${session?.id} tonnage=${session?.totalTonnage} kcal=${"%.1f".format(session?.sessionCalories ?: 0.0)} trimp=${"%.1f".format(session?.sessionTrimp ?: 0.0)}")

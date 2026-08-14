@@ -372,6 +372,8 @@ class SupersetViewModel @Inject constructor(
     ): WorkoutSession {
         val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
         val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
+        val isBodyweight1 = _uiState.value.exercise1?.isBodyweight ?: false
+        val isBodyweight2 = _uiState.value.exercise2?.isBodyweight ?: false
         fun anyTouched(sideSets: List<SupersetSetUi>) = sideSets.any {
             it.repsTouched || it.weightTouched || (it.exerciseType == ExerciseType.STRETCH && it.done)
         }
@@ -389,7 +391,7 @@ class SupersetViewModel @Inject constructor(
                     completedEmpty = false,
                     sets = sets1.map { setUi ->
                         when (setUi.exerciseType) {
-                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight, isBodyweight = isBodyweight1)
                             ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
                         }
                     },
@@ -401,7 +403,7 @@ class SupersetViewModel @Inject constructor(
                     completedEmpty = false,
                     sets = sets2.map { setUi ->
                         when (setUi.exerciseType) {
-                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight, isBodyweight = isBodyweight2)
                             ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
                         }
                     },

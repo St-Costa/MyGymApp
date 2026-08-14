@@ -26,6 +26,9 @@ data class ExerciseEditUiState(
     val notes: String = "",
     val defaultRepRangeMin: Int = 8,
     val defaultRepRangeMax: Int = 12,
+    // FORZA only: no external weight by design (plank, push-ups, mobility work). See
+    // Exercise.isBodyweight for why this matters to tonnage/PR/e1RM analysis.
+    val isBodyweight: Boolean = false,
     val existingBodyparts: List<String> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
@@ -60,6 +63,7 @@ class ExerciseEditViewModel @Inject constructor(
                         notes = exercise.notes,
                         defaultRepRangeMin = exercise.defaultRepRangeMin,
                         defaultRepRangeMax = exercise.defaultRepRangeMax,
+                        isBodyweight = exercise.isBodyweight,
                         existingBodyparts = bodyparts,
                         isNew = false,
                     )
@@ -76,6 +80,10 @@ class ExerciseEditViewModel @Inject constructor(
 
     fun onTypeChange(type: ExerciseType) {
         _uiState.value = _uiState.value.copy(type = type)
+    }
+
+    fun onBodyweightChange(value: Boolean) {
+        _uiState.value = _uiState.value.copy(isBodyweight = value)
     }
 
     fun onBodypartChange(value: String) {
@@ -130,6 +138,7 @@ class ExerciseEditViewModel @Inject constructor(
             notes = state.notes.trim(),
             defaultRepRangeMin = state.defaultRepRangeMin,
             defaultRepRangeMax = state.defaultRepRangeMax,
+            isBodyweight = state.isBodyweight,
         )
         exerciseRepository.save(exercise)
         dataChangedSignal.notifyExercisesChanged()
