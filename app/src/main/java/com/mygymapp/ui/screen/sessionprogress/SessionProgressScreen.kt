@@ -9,11 +9,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -87,6 +92,7 @@ fun SessionProgressScreen(
                     text = uiState.routineName,
                     style = MaterialTheme.typography.titleLarge,
                 )
+                SyncStatusBox(uiState.syncStatus)
             }
             // Calories + TRIMP summary (if recorded)
             if (uiState.sessionCalories > 0 || uiState.sessionTrimp > 0 || uiState.sessionSteps != null) {
@@ -220,6 +226,52 @@ fun SessionProgressScreen(
                     Text("Fatto")
                 }
             }
+        }
+    }
+}
+
+/**
+ * Small reassurance strip confirming the just-finished session made it to the server —
+ * or flagging that it didn't, so a failed upload doesn't go unnoticed until "Options" is
+ * opened days later. Always shown, even when sync is off — otherwise its absence could be
+ * mistaken for a bug rather than for the deliberate off state.
+ */
+@Composable
+private fun SyncStatusBox(status: SessionSyncStatus) {
+    val (icon, text, color) = when (status) {
+        SessionSyncStatus.SENT -> Triple(
+            Icons.Default.CheckCircle,
+            "Sessione inviata al server",
+            Color(0xFF4CAF50),
+        )
+        SessionSyncStatus.FAILED -> Triple(
+            Icons.Default.Error,
+            "Invio al server fallito — verrà ritentato",
+            MaterialTheme.colorScheme.error,
+        )
+        SessionSyncStatus.PENDING -> Triple(null, "Invio al server in corso…", MaterialTheme.colorScheme.onSurfaceVariant)
+        SessionSyncStatus.SYNC_OFF -> Triple(
+            Icons.Default.CloudOff,
+            "Sync col server disattivata",
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+            } else {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+            }
+            Text(text, style = MaterialTheme.typography.bodySmall, color = color)
         }
     }
 }
