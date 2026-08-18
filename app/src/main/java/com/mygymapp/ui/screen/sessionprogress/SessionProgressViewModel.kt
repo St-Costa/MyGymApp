@@ -28,7 +28,7 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 /** State of the small "invio al server" reassurance box shown right after finishing a session. */
-enum class SessionSyncStatus { NOT_CONFIGURED, PENDING, SENT, FAILED }
+enum class SessionSyncStatus { SYNC_OFF, PENDING, SENT, FAILED }
 
 /** A chart-ready trend across recent sessions: parallel data/label lists, zero/missing points dropped. */
 data class ChartSeries(
@@ -61,11 +61,11 @@ data class SessionProgressUiState(
     // not scoped to a session. Null when unavailable (Health Connect not installed,
     // permission not granted, or startedAt missing on an old/legacy session).
     val sessionSteps: Long? = null,
-    // Small reassurance box shown only right after finishing a session (justCompleted).
-    // NOT_CONFIGURED hides the box entirely — nothing was ever sent, so there's nothing to
-    // report. Re-derived from the sync ledger, not a one-shot snapshot: refreshed whenever
-    // the expedited SyncWorker (enqueued by ActiveRoutineViewModel.registerRoutine()) finishes.
-    val syncStatus: SessionSyncStatus = SessionSyncStatus.NOT_CONFIGURED,
+    // Small reassurance box shown right after finishing a session (justCompleted) — always
+    // shown, even when sync is off (SYNC_OFF), so its absence is never mistaken for a bug.
+    // Re-derived from the sync ledger, not a one-shot snapshot: refreshed whenever the
+    // expedited SyncWorker (enqueued by ActiveRoutineViewModel.registerRoutine()) finishes.
+    val syncStatus: SessionSyncStatus = SessionSyncStatus.SYNC_OFF,
 )
 
 @HiltViewModel
@@ -124,7 +124,7 @@ class SessionProgressViewModel @Inject constructor(
 
     private suspend fun refreshSyncStatus() {
         if (!syncConfigRepository.isConfigured() || !syncConfigRepository.isEnabled()) {
-            _uiState.value = _uiState.value.copy(syncStatus = SessionSyncStatus.NOT_CONFIGURED)
+            _uiState.value = _uiState.value.copy(syncStatus = SessionSyncStatus.SYNC_OFF)
             return
         }
         val entry = syncLedgerRepository.getAll().find { it.sessionId == sessionId }
