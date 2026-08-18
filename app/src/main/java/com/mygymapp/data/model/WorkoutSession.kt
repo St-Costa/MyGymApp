@@ -66,6 +66,15 @@ data class WorkoutExercise(
      * data, so the UI flags it (red border, warning icon) instead of showing a tonnage change.
      */
     val completedEmpty: Boolean = false,
+    /**
+     * Set when this slot was swapped mid-session for a different exercise of the same
+     * bodypart+type via "Switch exercise" (see docs/CONVENTIONS.md#switch-exercise). Holds the
+     * originally-planned exerciseId — the slot itself now carries the NEW exercise's id/name/
+     * bodypart/type/sets. This is purely a per-session record: the routine on disk is never
+     * touched, so the next session from the same routine proposes the original exercise again.
+     * Null for every exercise that was never switched (the overwhelming majority).
+     */
+    val substitutedFor: String? = null,
 ) {
     /**
      * True when the lifter never touched a pre-filled value for this exercise AND never tapped
@@ -73,4 +82,61 @@ data class WorkoutExercise(
      * [completedEmpty], which is the same "no data" case but explicitly closed out by the user.
      */
     fun isUntouched(): Boolean = !completed && sets.isEmpty()
+
+    /**
+     * True when no set in this slot carries any real data yet — same "did the lifter actually
+     * start this" check used by the ghost-session guard (see
+     * docs/CONVENTIONS.md#ghost-session-prevention) and reused here as the switch-exercise
+     * eligibility guard, so both stay in sync by construction instead of by two copies of the
+     * same per-set-type logic drifting apart.
+     */
+    fun hasNoRecordedSets(): Boolean = sets.none { set ->
+        when (set) {
+            is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
+            is ExerciseSet.Stretch -> set.done
+            is ExerciseSet.Cardio -> set.startedAt.isNotBlank()
+        }
+    }
+
+    /**
+     * "Switch exercise" is allowed only before the lifter has recorded anything in this slot,
+     * and only once per slot per session — once switched (or once real data exists), the slot
+     * is locked for the rest of this session. See docs/CONVENTIONS.md#switch-exercise.
+     */
+    fun isSwitchEligible(): Boolean = substitutedFor == null && hasNoRecordedSets() && !completed
+}
+
+/**
+ * Replaces the slot currently holding [oldExerciseId] with [newExercise] — see
+ * docs/CONVENTIONS.md#switch-exercise. Returns `this` unchanged if the slot doesn't exist or
+ * isn't eligible (see [WorkoutExercise.isSwitchEligible]), so callers can check the result
+ * for "did anything change" instead of duplicating the eligibility check themselves.
+ *
+ * The slot keeps its position in [WorkoutSession.exercises] and its warmup/daily/tonnage
+ * flags (switch is only ever offered for plain NORMAL slots to begin with) — only
+ * exerciseId/exerciseName/bodypart/type/sets change, plus `substitutedFor` recording the
+ * original id for history/sync. Shared by ActiveRoutineViewModel and the three exercise
+ * ViewModels so the mutation logic lives in exactly one place.
+ */
+fun WorkoutSession.withExerciseSwitched(oldExerciseId: String, newExercise: Exercise): WorkoutSession {
+    val slot = exercises.find { it.exerciseId == oldExerciseId } ?: return this
+    if (!slot.isSwitchEligible()) return this
+    // Regenerate empty sets matching the new exercise's type (same shape the session-creation
+    // path in ActiveRoutineViewModel.init builds for a freshly-started slot). STRETCH defaults
+    // to 60s per set — mirrors StretchExerciseViewModel's own fallback when no sets exist yet
+    // — rather than 0s, which would show a stopwatch target of zero.
+    val newSets = when (newExercise.type) {
+        ExerciseType.FORZA -> slot.sets.map { ExerciseSet.Strength(isBodyweight = newExercise.isBodyweight) }
+        ExerciseType.STRETCH -> slot.sets.map { ExerciseSet.Stretch(timeSeconds = 60) }
+        ExerciseType.CARDIO -> emptyList()
+    }
+    val newSlot = slot.copy(
+        exerciseId = newExercise.id,
+        exerciseName = newExercise.name,
+        bodypart = newExercise.bodypart,
+        type = newExercise.type,
+        sets = newSets,
+        substitutedFor = oldExerciseId,
+    )
+    return copy(exercises = exercises.map { if (it.exerciseId == oldExerciseId) newSlot else it })
 }
