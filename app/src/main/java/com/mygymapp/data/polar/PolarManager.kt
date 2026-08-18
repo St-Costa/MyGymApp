@@ -471,6 +471,10 @@ class PolarManager @Inject constructor(
 
     fun connectToDevice(deviceId: String) {
         stopScan()
+        // Undo the disconnect()-time opt-out so a mid-workout BLE drop (screen lock, brief
+        // out-of-range) still auto-recovers via the SDK's own reconnection layer, on top of
+        // our app-level scheduleReconnect().
+        api.setAutomaticReconnection(true)
         api.connectToDevice(deviceId)
     }
 
@@ -498,6 +502,13 @@ class PolarManager @Inject constructor(
         lastConnectedDeviceId = null
         if (deviceId != null) {
             try {
+                // The Polar SDK's own connection layer auto-reconnects on a dropped link by
+                // default, independent of our app-level scheduleReconnect(). Without disabling
+                // it here, a genuine disconnect (e.g. onTaskRemoved after swiping the app away)
+                // gets silently undone moments later — the SDK reconnects to the still-powered
+                // H10, deviceConnected() fires, and PolarStreamingService.start() resurrects the
+                // foreground notification after the user believes the app is closed.
+                api.setAutomaticReconnection(false)
                 api.disconnectFromDevice(deviceId)
             } catch (t: Throwable) {
                 Log.w(TAG, "Disconnect failed: $t")
