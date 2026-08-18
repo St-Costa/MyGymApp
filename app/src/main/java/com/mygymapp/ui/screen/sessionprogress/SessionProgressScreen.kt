@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Card
@@ -232,13 +233,11 @@ fun SessionProgressScreen(
 /**
  * Small reassurance strip confirming the just-finished session made it to the server —
  * or flagging that it didn't, so a failed upload doesn't go unnoticed until "Options" is
- * opened days later. Hidden entirely when sync isn't configured/enabled, since nothing
- * was ever attempted.
+ * opened days later. Always shown, even when sync is off — otherwise its absence could be
+ * mistaken for a bug rather than for the deliberate off state.
  */
 @Composable
 private fun SyncStatusBox(status: SessionSyncStatus) {
-    if (status == SessionSyncStatus.NOT_CONFIGURED) return
-
     val (icon, text, color) = when (status) {
         SessionSyncStatus.SENT -> Triple(
             Icons.Default.CheckCircle,
@@ -251,7 +250,11 @@ private fun SyncStatusBox(status: SessionSyncStatus) {
             MaterialTheme.colorScheme.error,
         )
         SessionSyncStatus.PENDING -> Triple(null, "Invio al server in corso…", MaterialTheme.colorScheme.onSurfaceVariant)
-        SessionSyncStatus.NOT_CONFIGURED -> return
+        SessionSyncStatus.SYNC_OFF -> Triple(
+            Icons.Default.CloudOff,
+            "Sync col server disattivata",
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 
     Card(
