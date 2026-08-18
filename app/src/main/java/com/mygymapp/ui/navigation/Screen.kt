@@ -28,7 +28,31 @@ sealed class Screen(val route: String) {
         fun createRoute(sessionId: String, exerciseId: String): String =
             "workout/$sessionId/cardio/$exerciseId"
     }
-    data object ExercisePicker : Screen("exercises/pick")
+    data object ExercisePicker : Screen(
+        "exercises/pick?bodypart={bodypart}&type={type}&excludeIds={excludeIds}&resultKeySide={resultKeySide}"
+    ) {
+        /**
+         * Filtered picker for "Switch exercise" (docs/CONVENTIONS.md#switch-exercise):
+         * [bodypart]/[type] restrict candidates to the slot being switched, [excludeIds]
+         * (comma-separated exerciseIds) excludes exercises already occupying a slot in the
+         * current session. The unfiltered `ExercisePicker.route` (used by RoutineEdit) still
+         * works as-is — all query params default to empty/no-op.
+         *
+         * [resultKeySide]: for the Superset screen only, which side (1 or 2) opened the
+         * picker — the result is written back under `pickedExerciseIdSide{1,2}` instead of the
+         * plain `pickedExerciseId` key, so the two independent slots can never cross-apply a
+         * switch meant for the other side. 0 (default) means "not a superset side" and uses
+         * the plain key.
+         */
+        fun createRoute(
+            bodypart: String,
+            type: String,
+            excludeIds: Set<String>,
+            resultKeySide: Int = 0,
+        ): String =
+            "exercises/pick?bodypart=$bodypart&type=$type" +
+                "&excludeIds=${excludeIds.joinToString(",")}&resultKeySide=$resultKeySide"
+    }
     data object Superset : Screen("workout/{sessionId}/superset/{exerciseId1}/{exerciseId2}") {
         fun createRoute(sessionId: String, exerciseId1: String, exerciseId2: String): String =
             "workout/$sessionId/superset/$exerciseId1/$exerciseId2"

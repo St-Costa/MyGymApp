@@ -7,6 +7,7 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -60,6 +61,12 @@ data class SupersetUiState(
     val prWeight1: Double = 0.0,
     val prReps2: Int = 0,
     val prWeight2: Double = 0.0,
+    // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): each side of a superset is an
+    // independent slot — side 1 can be switched even if side 2 already has recorded sets, and
+    // vice versa. excludeIds covers both sides plus every other exercise in the session.
+    val switchEligible1: Boolean = false,
+    val switchEligible2: Boolean = false,
+    val excludeIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -238,6 +245,10 @@ class SupersetViewModel @Inject constructor(
                 if (i < sets2.size) interleaved.add(sets2[i])
             }
 
+            // Switch is offered per side, only for a plain NORMAL slot with nothing recorded yet.
+            val switchEligible1 = workoutEx1?.isSwitchEligible() == true && !isDaily1 && !isWarmup1
+            val switchEligible2 = workoutEx2?.isSwitchEligible() == true && !isDaily2 && !isWarmup2
+
             _uiState.value = SupersetUiState(
                 exercise1 = ex1,
                 exercise2 = ex2,
@@ -253,6 +264,9 @@ class SupersetViewModel @Inject constructor(
                 prWeight1 = prSet1?.weight ?: 0.0,
                 prReps2 = prSet2?.reps ?: 0,
                 prWeight2 = prSet2?.weight ?: 0.0,
+                switchEligible1 = switchEligible1,
+                switchEligible2 = switchEligible2,
+                excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
         }
     }
@@ -345,6 +359,38 @@ class SupersetViewModel @Inject constructor(
                     .let { workoutRepository.save(it) }
             }
             _completionSaved.value = true
+        }
+    }
+
+    // "Switch exercise": each side reports its own new exerciseId once durably saved, since
+    // the two sides are independent slots and the screen needs to know which side changed to
+    // re-navigate to the right Superset route (see StrengthExerciseViewModel for the pattern).
+    private val _switchedExerciseId1 = MutableStateFlow<String?>(null)
+    val switchedExerciseId1: StateFlow<String?> = _switchedExerciseId1
+    private val _switchedExerciseId2 = MutableStateFlow<String?>(null)
+    val switchedExerciseId2: StateFlow<String?> = _switchedExerciseId2
+
+    fun switchExercise1(newExerciseId: String) {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
+            val updated = session.withExerciseSwitched(exerciseId1, newExercise)
+            if (updated === session) return@launch
+            workoutRepository.save(updated)
+            supersetCompleted = true
+            _switchedExerciseId1.value = newExerciseId
+        }
+    }
+
+    fun switchExercise2(newExerciseId: String) {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
+            val updated = session.withExerciseSwitched(exerciseId2, newExercise)
+            if (updated === session) return@launch
+            workoutRepository.save(updated)
+            supersetCompleted = true
+            _switchedExerciseId2.value = newExerciseId
         }
     }
 

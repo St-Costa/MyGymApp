@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -42,6 +43,12 @@ data class StrengthExerciseUiState(
     val isLoading: Boolean = true,
     val allSetsFilled: Boolean = false,
     val tonnagePr: TonnagePr? = null,
+    // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): true only for a plain NORMAL
+    // slot with zero recorded sets so far — warmup/daily/completed/already-switched slots
+    // never show the button. excludeIds is every exerciseId already occupying a slot in this
+    // session, passed to the filtered picker so it can never offer a duplicate.
+    val switchEligible: Boolean = false,
+    val excludeIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -154,6 +161,11 @@ class StrengthExerciseViewModel @Inject constructor(
                 .maxByOrNull { it.reps * it.weight }
                 ?.let { TonnagePr(reps = it.reps, weight = it.weight) }
 
+            // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
+            // never reaches this screen) that hasn't recorded anything yet, matching
+            // WorkoutExercise.isSwitchEligible().
+            val switchEligible = workoutExercise?.isSwitchEligible() == true && !isDaily && !isWarmup
+
             _uiState.value = StrengthExerciseUiState(
                 exercise = exercise,
                 sets = sets,
@@ -162,6 +174,8 @@ class StrengthExerciseViewModel @Inject constructor(
                 description = exercise.notes,
                 isLoading = false,
                 tonnagePr = tonnagePr,
+                switchEligible = switchEligible,
+                excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
         }
     }
@@ -231,6 +245,30 @@ class StrengthExerciseViewModel @Inject constructor(
                 workoutRepository.save(session.copy(exercises = exercises))
             }
             _completionSaved.value = true
+        }
+    }
+
+    // "Switch exercise": holds the new exerciseId once the swap is durably saved, so the
+    // screen navigates to the same route with the new id only after the write is confirmed —
+    // same race-avoidance reasoning as completionSaved (see its doc comment).
+    private val _switchedExerciseId = MutableStateFlow<String?>(null)
+    val switchedExerciseId: StateFlow<String?> = _switchedExerciseId
+
+    /**
+     * Applies the switch chosen from the filtered ExercisePicker. Re-verifies eligibility
+     * against the freshly-reloaded session (not just the UI flag) via
+     * [withExerciseSwitched] before saving.
+     */
+    fun switchExercise(newExerciseId: String) {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
+            val updated = session.withExerciseSwitched(exerciseId, newExercise)
+            if (updated === session) return@launch // no longer eligible — ignore stale result
+            workoutRepository.save(updated)
+            // This VM instance's own slot is gone now; nothing left to save from onCleared().
+            exerciseCompleted = true
+            _switchedExerciseId.value = newExerciseId
         }
     }
 

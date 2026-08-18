@@ -77,6 +77,7 @@ object WorkoutParser {
                 if (ex.excludeFromTonnage) put("excludeFromTonnage", true)
                 if (ex.isDaily) put("isDaily", true)
                 if (ex.completedEmpty) put("completedEmpty", true)
+                ex.substitutedFor?.let { put("substitutedFor", it) }
                 put("sets", sets)
             }
         }
@@ -142,6 +143,7 @@ object WorkoutParser {
                 excludeFromTonnage = map["excludeFromTonnage"] as? Boolean ?: false,
                 isDaily = map["isDaily"] as? Boolean ?: false,
                 completedEmpty = map["completedEmpty"] as? Boolean ?: false,
+                substitutedFor = map["substitutedFor"]?.toString(),
             )
         }
     }
