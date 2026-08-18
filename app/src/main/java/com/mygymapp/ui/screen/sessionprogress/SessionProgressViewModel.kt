@@ -1,15 +1,22 @@
 package com.mygymapp.ui.screen.sessionprogress
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.bestEstimated1RM
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.steps.HealthConnectStepsReader
+import com.mygymapp.data.sync.SyncConfigRepository
+import com.mygymapp.data.sync.SyncLedgerRepository
+import com.mygymapp.data.sync.SyncStatus
+import com.mygymapp.data.sync.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -19,6 +26,9 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+
+/** State of the small "invio al server" reassurance box shown right after finishing a session. */
+enum class SessionSyncStatus { NOT_CONFIGURED, PENDING, SENT, FAILED }
 
 /** A chart-ready trend across recent sessions: parallel data/label lists, zero/missing points dropped. */
 data class ChartSeries(
@@ -51,6 +61,11 @@ data class SessionProgressUiState(
     // not scoped to a session. Null when unavailable (Health Connect not installed,
     // permission not granted, or startedAt missing on an old/legacy session).
     val sessionSteps: Long? = null,
+    // Small reassurance box shown only right after finishing a session (justCompleted).
+    // NOT_CONFIGURED hides the box entirely — nothing was ever sent, so there's nothing to
+    // report. Re-derived from the sync ledger, not a one-shot snapshot: refreshed whenever
+    // the expedited SyncWorker (enqueued by ActiveRoutineViewModel.registerRoutine()) finishes.
+    val syncStatus: SessionSyncStatus = SessionSyncStatus.NOT_CONFIGURED,
 )
 
 @HiltViewModel
@@ -58,6 +73,9 @@ class SessionProgressViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val workoutRepository: WorkoutRepository,
     private val healthConnectStepsReader: HealthConnectStepsReader,
+    private val syncConfigRepository: SyncConfigRepository,
+    private val syncLedgerRepository: SyncLedgerRepository,
+    @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     private val sessionId: String = checkNotNull(savedStateHandle["sessionId"])
@@ -68,6 +86,56 @@ class SessionProgressViewModel @Inject constructor(
 
     init {
         viewModelScope.launch { load() }
+        viewModelScope.launch { refreshSyncStatus() }
+        observeSyncWorkerCompletion()
+        pollSyncStatusWhilePending()
+    }
+
+    /**
+     * Safety net alongside [observeSyncWorkerCompletion], same reasoning as
+     * OptionsViewModel's poll: catches the case where the expedited worker already
+     * finished before this screen started observing it (real race — registerRoutine()
+     * calls runExpedited() and navigates here in the same breath). Only polls while still
+     * PENDING so it settles down on its own once the result is known.
+     */
+    private fun pollSyncStatusWhilePending() {
+        viewModelScope.launch {
+            while (_uiState.value.syncStatus == SessionSyncStatus.PENDING || _uiState.value.isLoading) {
+                kotlinx.coroutines.delay(2_000L)
+                refreshSyncStatus()
+            }
+        }
+    }
+
+    /**
+     * Mirrors OptionsViewModel.observeSyncWorkerCompletion(): the ledger entry for this
+     * session flips PENDING → SENT/FAILED asynchronously once SyncWorker actually runs, so
+     * the box needs to react to that instead of only reading a snapshot taken at screen load.
+     */
+    private fun observeSyncWorkerCompletion() {
+        viewModelScope.launch {
+            WorkManager.getInstance(appContext)
+                .getWorkInfosForUniqueWorkFlow(SyncWorker.Scheduler.EXPEDITED_WORK_NAME)
+                .collect { infos ->
+                    if (infos.any { it.state.isFinished }) refreshSyncStatus()
+                }
+        }
+    }
+
+    private suspend fun refreshSyncStatus() {
+        if (!syncConfigRepository.isConfigured() || !syncConfigRepository.isEnabled()) {
+            _uiState.value = _uiState.value.copy(syncStatus = SessionSyncStatus.NOT_CONFIGURED)
+            return
+        }
+        val entry = syncLedgerRepository.getAll().find { it.sessionId == sessionId }
+        val status = when (entry?.status) {
+            SyncStatus.SENT -> SessionSyncStatus.SENT
+            SyncStatus.FAILED, SyncStatus.EXPIRED -> SessionSyncStatus.FAILED
+            SyncStatus.PENDING -> SessionSyncStatus.PENDING
+            // Not in the ledger yet (enqueue() hasn't landed the write) — treat as still in flight.
+            null -> SessionSyncStatus.PENDING
+        }
+        _uiState.value = _uiState.value.copy(syncStatus = status)
     }
 
     private suspend fun load() {
