@@ -96,6 +96,16 @@ class PolarManager @Inject constructor(
         private const val HRR_PEAK_MIN_RISE_BPM = 25
         private const val HRR_PEAK_MIN_HRMAX_FRACTION = 0.6f
         private const val HRR_QUEUE_DEBOUNCE_MS = 90_000L
+        // bpm of net rebound (rise back up from the lowest point reached partway through the
+        // peak->+60s window) tolerated before an HRR delta is treated as unreliable and
+        // discarded. True passive recovery is monotonically decreasing; a rebound past this
+        // margin means HR climbed again inside the window instead of continuing to fall — the
+        // user resumed activity (another exercise, walking, talking) rather than actually
+        // resting, so the delta to the +60s sample no longer measures recovery at all.
+        // Mirrors MyGymApp_server's app/ecg_analysis.py _HRR_REBOUND_TOLERANCE_BPM (5 bpm there),
+        // but set higher here: the server value is tuned for a 12s-smoothed HR series, while
+        // hrSeries here holds raw instantaneous H10 samples (~1 Hz), which are noisier.
+        private const val HRR_REBOUND_TOLERANCE_BPM = 8
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
@@ -153,6 +163,10 @@ class PolarManager @Inject constructor(
     // At ~60s after each peak we record the delta = peakHr - currentHr.
     private val pendingHrrPeaks = mutableListOf<Pair<Int, Long>>()
     private val hrrDeltas = mutableListOf<Int>()
+    // Count of peak→+60s deltas discarded by the monotonicity/rebound check (see
+    // detectPeakAndTriggerRecovery) — i.e. the user didn't actually rest during that window.
+    // Surfaced via hrrDiscardedCount() so callers/logs can see how often this happens.
+    private var hrrDeltasDiscarded = 0
 
     /** Last computed HRR (BPM dropped 60s after the most recent peak). null = no peak yet. */
     private val _liveHrrLast = MutableStateFlow<Int?>(null)
@@ -733,13 +747,37 @@ class PolarManager @Inject constructor(
             if (now - peakTs >= 60_000) {
                 val delta = peakHr - hr
                 if (delta in 0..120) {
-                    hrrDeltas.add(delta)
-                    _liveHrrLast.value = delta
+                    if (isMonotonicRecovery(peakHr, peakTs, now)) {
+                        hrrDeltas.add(delta)
+                        _liveHrrLast.value = delta
+                    } else {
+                        hrrDeltasDiscarded++
+                        Log.d(
+                            TAG,
+                            "HRR delta discarded (rebound > $HRR_REBOUND_TOLERANCE_BPM bpm " +
+                                "within peak+60s window): peak=$peakHr delta=$delta " +
+                                "totalDiscarded=$hrrDeltasDiscarded"
+                        )
+                    }
                 }
                 iter.remove()
             }
         }
     }
+
+    /**
+     * True passive HR recovery is monotonically decreasing. Checks [hrSeries] between `peakTs`
+     * and `sampleTs` (peak+60s) for a rebound past [HRR_REBOUND_TOLERANCE_BPM] — see
+     * [isMonotonicHrRecovery] for the (pure, unit-tested) walk itself.
+     */
+    private fun isMonotonicRecovery(peakHr: Int, peakTs: Long, sampleTs: Long): Boolean =
+        isMonotonicHrRecovery(
+            series = hrSeries,
+            peakHr = peakHr,
+            peakElapsedMs = peakTs - hrSeriesStart,
+            sampleElapsedMs = sampleTs - hrSeriesStart,
+            toleranceBpm = HRR_REBOUND_TOLERANCE_BPM,
+        )
 
     private fun updateRecoveryState(hr: Int) {
         if (!isRecovering) return
@@ -802,6 +840,7 @@ class PolarManager @Inject constructor(
         _liveCardiacDrift.value = 0.0
         pendingHrrPeaks.clear()
         hrrDeltas.clear()
+        hrrDeltasDiscarded = 0
         _liveHrrLast.value = null
         lastQueuedPeakAtMs = 0L
 
@@ -833,6 +872,13 @@ class PolarManager @Inject constructor(
 
     /** Average HR recovery (BPM) 60s after each detected peak during the session. */
     fun averageHrr60s(): Double = if (hrrDeltas.isNotEmpty()) hrrDeltas.average() else 0.0
+
+    /**
+     * Number of peak→+60s deltas discarded this session because HR rebounded during the
+     * recovery window (see [isMonotonicRecovery]) — i.e. the user didn't actually rest.
+     * Useful to gauge how often that happens without affecting [averageHrr60s].
+     */
+    fun hrrDiscardedCount(): Int = hrrDeltasDiscarded
 
     /** Resting HR observed during the readiness measurement (or fallback to lowest seen). */
     fun sessionRestingHr(): Int = restingHr
