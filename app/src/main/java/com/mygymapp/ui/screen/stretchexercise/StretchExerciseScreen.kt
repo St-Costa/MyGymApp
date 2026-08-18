@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -46,12 +47,18 @@ import com.mygymapp.ui.service.StopwatchService
 fun StretchExerciseScreen(
     onBack: () -> Unit,
     onComplete: () -> Unit,
+    onSwitchExercise: (bodypart: String, type: String, excludeIds: Set<String>) -> Unit = { _, _, _ -> },
+    onSwitched: (newExerciseId: String) -> Unit = {},
     viewModel: StretchExerciseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val completionSaved by viewModel.completionSaved.collectAsState()
     LaunchedEffect(completionSaved) {
         if (completionSaved) onComplete()
+    }
+    val switchedExerciseId by viewModel.switchedExerciseId.collectAsState()
+    LaunchedEffect(switchedExerciseId) {
+        switchedExerciseId?.let { onSwitched(it) }
     }
 
     Scaffold(
@@ -61,6 +68,20 @@ fun StretchExerciseScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (uiState.switchEligible) {
+                        IconButton(onClick = {
+                            val exercise = uiState.exercise ?: return@IconButton
+                            onSwitchExercise(
+                                exercise.bodypart,
+                                exercise.type.toFileString(),
+                                uiState.excludeIds,
+                            )
+                        }) {
+                            Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch exercise")
+                        }
                     }
                 },
             )

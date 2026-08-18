@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,6 +33,9 @@ data class StretchExerciseUiState(
     val isLoading: Boolean = true,
     val isStopwatchRunning: Boolean = false,
     val elapsedSeconds: Int = 0,
+    // See StrengthExerciseUiState for the "Switch exercise" fields' semantics.
+    val switchEligible: Boolean = false,
+    val excludeIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -73,11 +77,19 @@ class StretchExerciseViewModel @Inject constructor(
                 listOf(StretchSetUi(timeSeconds = 60))
             }
 
+            // Switch is offered only for a plain NORMAL slot — not warmup/fixed-daily —
+            // matching WorkoutExercise.isSwitchEligible().
+            val isDaily = workoutExercise?.isDaily ?: false
+            val switchEligible = workoutExercise?.isSwitchEligible() == true &&
+                !isDaily && workoutExercise?.excludeFromTonnage != true
+
             _uiState.value = StretchExerciseUiState(
                 exercise = exercise,
                 sets = sets,
                 description = exercise.notes,
                 isLoading = false,
+                switchEligible = switchEligible,
+                excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
         }
     }
@@ -155,6 +167,22 @@ class StretchExerciseViewModel @Inject constructor(
                 workoutRepository.save(session.copy(exercises = exercises))
             }
             _completionSaved.value = true
+        }
+    }
+
+    // "Switch exercise" — see StrengthExerciseViewModel.switchedExerciseId for the pattern.
+    private val _switchedExerciseId = MutableStateFlow<String?>(null)
+    val switchedExerciseId: StateFlow<String?> = _switchedExerciseId
+
+    fun switchExercise(newExerciseId: String) {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
+            val updated = session.withExerciseSwitched(exerciseId, newExercise)
+            if (updated === session) return@launch
+            workoutRepository.save(updated)
+            exerciseCompleted = true
+            _switchedExerciseId.value = newExerciseId
         }
     }
 

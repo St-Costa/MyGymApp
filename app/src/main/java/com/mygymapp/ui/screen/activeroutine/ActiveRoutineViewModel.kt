@@ -92,6 +92,11 @@ data class ActiveExerciseUi(
     val supersetWithNext: Boolean = false,
     val excludeFromTonnage: Boolean = false,
     val category: SessionExerciseCategory = SessionExerciseCategory.NORMAL,
+    // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): set once this slot has been
+    // swapped mid-session. substitutedForName is resolved once at switch time so the badge
+    // doesn't need a repeated exerciseRepository lookup on every recomposition.
+    val substitutedFor: String? = null,
+    val substitutedForName: String? = null,
 )
 
 @HiltViewModel
@@ -346,6 +351,67 @@ class ActiveRoutineViewModel @Inject constructor(
             if (allCompleted && !sessionFinalized) {
                 finalizeSession(reloaded)
             }
+        }
+    }
+
+    /**
+     * "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): the exercise screen itself
+     * already applied the switch to the session file (via its own `switchExercise` call on
+     * `StrengthExerciseViewModel`/`StretchExerciseViewModel`/`SupersetViewModel`, using the same
+     * shared [WorkoutSession.withExerciseSwitched]) — this VM's job here is only to catch its
+     * own in-memory [_uiState] up with that already-durable change, since it was built once at
+     * session start and has no way to know about a write that happened from a different VM.
+     * Called from [AppNavigation] the same way [markExerciseCompleted] is: as a
+     * `savedStateHandle` result observed when the exercise screen is popped/replaced.
+     */
+    fun applyExerciseSwitch(oldExerciseId: String, newExerciseId: String) {
+        viewModelScope.launch {
+            val session = currentSession ?: return@launch
+            val today = LocalDate.parse(session.date)
+            val reloaded = workoutRepository.getSession(session.id, today) ?: return@launch
+            currentSession = reloaded
+
+            val newSlot = reloaded.exercises.find { it.exerciseId == newExerciseId } ?: return@launch
+
+            // Populate an on-demand progression baseline for the new exerciseId, mirroring how
+            // exercisesWithPriorTonnage is computed in init — the precomputed
+            // previousTonnageByExercise/previousBestE1RMByExercise maps only cover this
+            // routine's ORIGINAL exercises, so the switched-in id would otherwise have no
+            // baseline at all when markExerciseCompleted looks it up later.
+            val lastWithTonnage = workoutRepository.getSessionsForExercise(newExerciseId)
+                .firstNotNullOfOrNull { hist ->
+                    hist.exercises.firstOrNull {
+                        it.exerciseId == newExerciseId && !it.excludeFromTonnage
+                    }
+                }
+            if (lastWithTonnage != null) {
+                val tonnage = lastWithTonnage.sets.filterIsInstance<ExerciseSet.Strength>()
+                    .sumOf { it.reps * it.weight }
+                if (tonnage > 0.0) {
+                    previousTonnageByExercise = previousTonnageByExercise + (newExerciseId to tonnage)
+                }
+                lastWithTonnage.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM()
+                    ?.let { previousBestE1RMByExercise = previousBestE1RMByExercise + (newExerciseId to it) }
+                exercisesWithPriorTonnage = exercisesWithPriorTonnage + newExerciseId
+            }
+
+            val updatedExercises = _uiState.value.exercises.map { ex ->
+                if (ex.exerciseId == oldExerciseId) {
+                    ActiveExerciseUi(
+                        exerciseId = newSlot.exerciseId,
+                        exerciseName = newSlot.exerciseName,
+                        type = newSlot.type,
+                        bodypart = newSlot.bodypart,
+                        setCount = newSlot.sets.size,
+                        supersetWithNext = ex.supersetWithNext,
+                        excludeFromTonnage = newSlot.excludeFromTonnage,
+                        category = ex.category,
+                        substitutedFor = oldExerciseId,
+                        substitutedForName = ex.exerciseName,
+                    )
+                } else ex
+            }
+            _uiState.value = _uiState.value.copy(exercises = updatedExercises)
         }
     }
 
@@ -642,15 +708,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     val today = LocalDate.parse(session.date)
                     val reloaded = workoutRepository.getSession(session.id, today) ?: session
                     val hasCompleted = reloaded.exercises.any { it.completed }
-                    val hasRealSetData = reloaded.exercises.any { ex ->
-                        ex.sets.any { set ->
-                            when (set) {
-                                is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
-                                is ExerciseSet.Stretch -> set.done
-                                is ExerciseSet.Cardio -> set.startedAt.isNotBlank()
-                            }
-                        }
-                    }
+                    val hasRealSetData = reloaded.exercises.any { ex -> !ex.hasNoRecordedSets() }
                     if (reloaded.completedAt.isBlank() && !hasCompleted && !hasRealSetData) {
                         appLogger.w(TAG, "Ghost session deleted on exit: id=${session.id}")
                         polarManager.deleteEcgFile(session.id)
