@@ -435,6 +435,9 @@ class ActiveRoutineViewModel @Inject constructor(
                     Log.e("ActiveRoutineVM", "Drift compute failed", e)
                     0.0
                 }
+                val hrrDiscarded = polarManager.hrrDiscardedCount()
+                Log.i(TAG, "HRR60s for ${session.id}: discarded $hrrDiscarded delta(s) (HR rebounded before +60s sample)")
+                appLogger.i(TAG, "HRR60s discarded=$hrrDiscarded for ${session.id}")
                 val today = LocalDate.parse(session.date)
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
                 var updated = reloaded.copy(

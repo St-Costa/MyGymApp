@@ -231,10 +231,11 @@ same one resumed later after e.g. stretching in between).
 PolarManager watches a rolling window for automatic peak detection:
 
 1. Rolling 8-sample HR window detects a rising → falling transition.
-2. Peaks qualify only if at least `PEAK_MIN_RISE_BPM` (15) above the current resting HR.
+2. Peaks qualify only if at least `PEAK_MIN_RISE_BPM` (15) above the current resting HR; separately, an HRR-specific peak must clear the stricter `HRR_PEAK_MIN_RISE_BPM` (25) and `HRR_PEAK_MIN_HRMAX_FRACTION` (60% of HRmax) thresholds, debounced `HRR_QUEUE_DEBOUNCE_MS` (90 s) apart, before it's queued for HRR at all.
 3. Qualified peaks are queued as `(peakHr, timestamp)`.
-4. 60 s after each peak: `delta = peakHr − currentHr` is appended to `hrrDeltas` and emitted via `_liveHrrLast`.
-5. Session average is saved as `hrr60s` in the session file.
+4. 60 s after each peak: before accepting it, `isMonotonicRecovery()` walks the raw `hrSeries` samples between peak and peak+60s tracking a running minimum; if HR ever rebounds more than `HRR_REBOUND_TOLERANCE_BPM` (8 — the on-device raw-sample equivalent of the server's 5 bpm, tuned looser because `hrSeries` is unsmoothed) above that running minimum, the user likely resumed activity (another exercise, walking, talking) rather than actually resting, and the delta is discarded instead of averaged in. Mirrors `_hr_recovery_at`'s rebound check in `MyGymApp_server/app/ecg_analysis.py`. The pure walk lives in `isMonotonicHrRecovery()` (`data/polar/HrRecoveryMonotonicity.kt`), split out for unit testing.
+5. Otherwise, `delta = peakHr − currentHr` is appended to `hrrDeltas` and emitted via `_liveHrrLast`. Discarded deltas increment `hrrDeltasDiscarded`, exposed via `PolarManager.hrrDiscardedCount()` and logged (tag `PolarManager`/`ActiveRoutineVM`) at session end so it's visible how often a session's "recovery" windows weren't actually passive rest.
+6. Session average (`averageHrr60s()`, over only the accepted deltas) is saved as `hrr60s` in the session file.
 
 ### Cardiac drift
 
