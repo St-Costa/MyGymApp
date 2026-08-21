@@ -84,6 +84,7 @@ class ReadinessSyncWorker @AssistedInject constructor(
                 file = file,
                 stepsAvgPerDay = event.stepsAvgPerDay,
                 stepsDaysSpanned = event.stepsDaysSpanned,
+                stepsPreviousDay = event.stepsPreviousDay,
             )) {
                 is SyncResult.Success -> {
                     ledger.markSent(entry.sessionId)
