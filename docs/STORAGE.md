@@ -141,6 +141,12 @@ exercises:
     bodypart: chest
     excludeFromTonnage: true    # omitted when false; set for warmup + fixed-daily exercises
     isDaily: true               # omitted when false; set only for fixed-daily exercises
+    substitutedFor: ex-f6e5d4c3 # omitted unless this slot was swapped mid-session via "Switch
+                                 # exercise" (see docs/CONVENTIONS.md#switch-exercise) — holds
+                                 # the originally-planned exerciseId; the slot above already
+                                 # carries the NEW exercise's id/name/bodypart/type/sets. The
+                                 # routine on disk is untouched, so the next session from it
+                                 # proposes ex-f6e5d4c3 again by default.
     sets:
       - reps: 8
         weight: 80.0

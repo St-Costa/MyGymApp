@@ -111,7 +111,7 @@ fun AppNavigation(navController: NavHostController) {
             RoutineEditScreen(
                 routineId = id,
                 onBack = { navController.popBackStack() },
-                onPickExercise = { navController.navigate(Screen.ExercisePicker.route) },
+                onPickExercise = { navController.navigate("exercises/pick") },
                 viewModel = viewModel,
             )
         }
@@ -141,6 +141,22 @@ fun AppNavigation(navController: NavHostController) {
                         viewModel.markExerciseCompleted(id)
                     }
                     backStackEntry.savedStateHandle.remove<String>("completedSupersetIds")
+                }
+            }
+
+            // Observe "Switch exercise" results (docs/CONVENTIONS.md#switch-exercise), format
+            // "oldExerciseId,newExerciseId" — the exercise screen already applied the switch to
+            // the session file itself (via its own switchExercise call), but this VM's in-memory
+            // _uiState.exercises list still shows the old exercise until told about the swap, so
+            // it never reflects the new one when the user navigates back. One key covers both
+            // Strength/Stretch and each Superset side, since they're all the same "one slot
+            // changed exerciseId" event from this screen's point of view.
+            val switchedIds = backStackEntry.savedStateHandle.get<String>("switchedExerciseIds")
+            LaunchedEffect(switchedIds) {
+                if (switchedIds != null) {
+                    val (oldId, newId) = switchedIds.split(",", limit = 2)
+                    viewModel.applyExerciseSwitch(oldId, newId)
+                    backStackEntry.savedStateHandle.remove<String>("switchedExerciseIds")
                 }
             }
 
@@ -175,7 +191,20 @@ fun AppNavigation(navController: NavHostController) {
                 navArgument("exerciseId") { type = NavType.StringType },
             ),
         ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
+            val viewModel: com.mygymapp.ui.screen.strengthexercise.StrengthExerciseViewModel = hiltViewModel()
+
+            // Observe the filtered picker's result (see ExercisePicker composable below) and
+            // apply the switch on this screen's own VM before re-navigating.
+            val pickedId = backStackEntry.savedStateHandle.get<String>("pickedExerciseId")
+            LaunchedEffect(pickedId) {
+                if (pickedId != null) {
+                    viewModel.switchExercise(pickedId)
+                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
+                }
+            }
+
             StrengthExerciseScreen(
                 onBack = { navController.popBackStack() },
                 onComplete = {
@@ -184,6 +213,24 @@ fun AppNavigation(navController: NavHostController) {
                         ?.set("completedExerciseId", exerciseId)
                     navController.popBackStack()
                 },
+                onSwitchExercise = { bodypart, type, excludeIds ->
+                    navController.navigate(Screen.ExercisePicker.createRoute(bodypart, type, excludeIds))
+                },
+                onSwitched = { newExerciseId ->
+                    // Tell the ActiveRoutine screen (previous back-stack entry) about the swap
+                    // before re-navigating — its _uiState.exercises was built once at session
+                    // start and won't otherwise learn the slot's exerciseId changed.
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("switchedExerciseIds", "$exerciseId,$newExerciseId")
+                    // Re-navigate to the same screen with the new exerciseId: init{} loads all
+                    // state (history, rep range, name) one-shot from SavedStateHandle, so a
+                    // fresh VM instance is simpler and safer than mutating state in place.
+                    navController.navigate(Screen.StrengthExercise.createRoute(sessionId, newExerciseId)) {
+                        popUpTo(Screen.StrengthExercise.createRoute(sessionId, exerciseId)) { inclusive = true }
+                    }
+                },
+                viewModel = viewModel,
             )
         }
 
@@ -194,7 +241,18 @@ fun AppNavigation(navController: NavHostController) {
                 navArgument("exerciseId") { type = NavType.StringType },
             ),
         ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
+            val viewModel: com.mygymapp.ui.screen.stretchexercise.StretchExerciseViewModel = hiltViewModel()
+
+            val pickedId = backStackEntry.savedStateHandle.get<String>("pickedExerciseId")
+            LaunchedEffect(pickedId) {
+                if (pickedId != null) {
+                    viewModel.switchExercise(pickedId)
+                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
+                }
+            }
+
             StretchExerciseScreen(
                 onBack = { navController.popBackStack() },
                 onComplete = {
@@ -203,6 +261,18 @@ fun AppNavigation(navController: NavHostController) {
                         ?.set("completedExerciseId", exerciseId)
                     navController.popBackStack()
                 },
+                onSwitchExercise = { bodypart, type, excludeIds ->
+                    navController.navigate(Screen.ExercisePicker.createRoute(bodypart, type, excludeIds))
+                },
+                onSwitched = { newExerciseId ->
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("switchedExerciseIds", "$exerciseId,$newExerciseId")
+                    navController.navigate(Screen.StretchExercise.createRoute(sessionId, newExerciseId)) {
+                        popUpTo(Screen.StretchExercise.createRoute(sessionId, exerciseId)) { inclusive = true }
+                    }
+                },
+                viewModel = viewModel,
             )
         }
 
@@ -233,8 +303,29 @@ fun AppNavigation(navController: NavHostController) {
                 navArgument("exerciseId2") { type = NavType.StringType },
             ),
         ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             val exerciseId1 = backStackEntry.arguments?.getString("exerciseId1") ?: ""
             val exerciseId2 = backStackEntry.arguments?.getString("exerciseId2") ?: ""
+            val viewModel: com.mygymapp.ui.screen.superset.SupersetViewModel = hiltViewModel()
+
+            // Each side's picker result is stored under its own key (set by the picker
+            // composable below, keyed on the "side" the picker was opened for) so a switch on
+            // side 1 can never be misapplied to side 2's slot.
+            val pickedId1 = backStackEntry.savedStateHandle.get<String>("pickedExerciseIdSide1")
+            LaunchedEffect(pickedId1) {
+                if (pickedId1 != null) {
+                    viewModel.switchExercise1(pickedId1)
+                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseIdSide1")
+                }
+            }
+            val pickedId2 = backStackEntry.savedStateHandle.get<String>("pickedExerciseIdSide2")
+            LaunchedEffect(pickedId2) {
+                if (pickedId2 != null) {
+                    viewModel.switchExercise2(pickedId2)
+                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseIdSide2")
+                }
+            }
+
             SupersetScreen(
                 onComplete = {
                     navController.previousBackStackEntry
@@ -243,6 +334,29 @@ fun AppNavigation(navController: NavHostController) {
                     navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() },
+                onSwitchExercise = { bodypart, type, excludeIds, side ->
+                    navController.navigate(
+                        Screen.ExercisePicker.createRoute(bodypart, type, excludeIds, resultKeySide = side)
+                    )
+                },
+                onSwitched = { side, newExerciseId ->
+                    // Tell the ActiveRoutine screen about the swap — same reasoning as the
+                    // Strength/Stretch onSwitched above.
+                    val oldExerciseId = if (side == 1) exerciseId1 else exerciseId2
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("switchedExerciseIds", "$oldExerciseId,$newExerciseId")
+                    // Re-navigate to the same Superset route with only the switched side's id
+                    // replaced — the other side's id (and thus its own VM state) is unaffected.
+                    val newExerciseId1 = if (side == 1) newExerciseId else exerciseId1
+                    val newExerciseId2 = if (side == 2) newExerciseId else exerciseId2
+                    navController.navigate(
+                        Screen.Superset.createRoute(sessionId, newExerciseId1, newExerciseId2)
+                    ) {
+                        popUpTo(Screen.Superset.createRoute(sessionId, exerciseId1, exerciseId2)) { inclusive = true }
+                    }
+                },
+                viewModel = viewModel,
             )
         }
 
@@ -265,7 +379,25 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
-        composable(Screen.ExercisePicker.route) {
+        composable(
+            route = Screen.ExercisePicker.route,
+            arguments = listOf(
+                navArgument("bodypart") { type = NavType.StringType; defaultValue = "" },
+                navArgument("type") { type = NavType.StringType; defaultValue = "" },
+                navArgument("excludeIds") { type = NavType.StringType; defaultValue = "" },
+                navArgument("resultKeySide") { type = NavType.IntType; defaultValue = 0 },
+            ),
+        ) { backStackEntry ->
+            // Which key to write the result under: superset sides use their own key so a
+            // switch on side 1 never gets applied to side 2's slot (see Superset composable
+            // above); everything else (plain RoutineEdit picker, Strength/Stretch switch)
+            // uses the shared "pickedExerciseId" key.
+            val resultKeySide = backStackEntry.arguments?.getInt("resultKeySide") ?: 0
+            val resultKey = when (resultKeySide) {
+                1 -> "pickedExerciseIdSide1"
+                2 -> "pickedExerciseIdSide2"
+                else -> "pickedExerciseId"
+            }
             ExerciseListScreen(
                 pickerMode = true,
                 onNavigateToEdit = {},
@@ -273,7 +405,7 @@ fun AppNavigation(navController: NavHostController) {
                 onExercisePicked = { exerciseId ->
                     navController.previousBackStackEntry
                         ?.savedStateHandle
-                        ?.set("pickedExerciseId", exerciseId)
+                        ?.set(resultKey, exerciseId)
                     navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() },
