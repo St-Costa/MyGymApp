@@ -38,6 +38,7 @@ class ReadinessRepository @Inject constructor(
         recommendation: String,
         stepsAvgPerDay: Double? = null,
         stepsDaysSpanned: Int? = null,
+        stepsPreviousDay: Long? = null,
     ): ReadinessEvent = withContext(Dispatchers.IO) {
         mutex.withLock {
             val event = ReadinessEvent(
@@ -50,6 +51,7 @@ class ReadinessRepository @Inject constructor(
                 recommendation = recommendation,
                 stepsAvgPerDay = stepsAvgPerDay,
                 stepsDaysSpanned = stepsDaysSpanned,
+                stepsPreviousDay = stepsPreviousDay,
             )
             fileFor(event.id).writeText(toMarkdown(event))
             event
@@ -111,6 +113,7 @@ class ReadinessRepository @Inject constructor(
             "recommendation" to e.recommendation,
             "stepsAvgPerDay" to e.stepsAvgPerDay,
             "stepsDaysSpanned" to e.stepsDaysSpanned,
+            "stepsPreviousDay" to e.stepsPreviousDay,
         ),
         body = "",
     )
@@ -128,6 +131,7 @@ class ReadinessRepository @Inject constructor(
             recommendation = fm["recommendation"] as? String ?: "",
             stepsAvgPerDay = (fm["stepsAvgPerDay"] as? Number)?.toDouble(),
             stepsDaysSpanned = (fm["stepsDaysSpanned"] as? Number)?.toInt(),
+            stepsPreviousDay = (fm["stepsPreviousDay"] as? Number)?.toLong(),
         )
     }
 }

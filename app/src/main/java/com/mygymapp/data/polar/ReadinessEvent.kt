@@ -24,4 +24,6 @@ data class ReadinessEvent(
     val recommendation: String,
     val stepsAvgPerDay: Double? = null,
     val stepsDaysSpanned: Int? = null,
+    /** Yesterday's full calendar-day step total — see `StepReading.previousDayTotal`. */
+    val stepsPreviousDay: Long? = null,
 )

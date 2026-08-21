@@ -72,6 +72,21 @@ class HealthConnectStepsReader @Inject constructor(
      * fails — never `0` as a stand-in for "couldn't read this", same "null means no data"
      * rule as the rest of this feature (see SYNC.md).
      */
+    /**
+     * Steps over the whole of yesterday in the device's local timezone (midnight to
+     * midnight), or `null` if Health Connect couldn't answer. A complete calendar day, so
+     * unlike the checkpoint diff in [StepLedgerRepository] the number doesn't depend on
+     * what time the readiness test was taken.
+     */
+    suspend fun previousDayTotal(now: Instant = Instant.now()): Long? {
+        val zone = java.time.ZoneId.systemDefault()
+        val yesterday = now.atZone(zone).toLocalDate().minusDays(1)
+        return totalSteps(
+            yesterday.atStartOfDay(zone).toInstant(),
+            yesterday.plusDays(1).atStartOfDay(zone).toInstant(),
+        )
+    }
+
     suspend fun totalSteps(start: Instant, end: Instant): Long? {
         val c = client ?: return null
         return try {

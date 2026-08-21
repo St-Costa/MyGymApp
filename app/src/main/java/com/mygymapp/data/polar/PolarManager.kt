@@ -64,6 +64,7 @@ data class ReadinessResult(
     // same "null means no data" rule as the persisted ReadinessEvent fields these mirror.
     val stepsAvgPerDay: Double? = null,
     val stepsDaysSpanned: Int? = null,
+    val stepsPreviousDay: Long? = null,
 )
 
 @Singleton
@@ -1317,6 +1318,7 @@ class PolarManager @Inject constructor(
                     _readinessResult.value = _readinessResult.value.copy(
                         stepsAvgPerDay = stepReading?.avgStepsPerDay,
                         stepsDaysSpanned = stepReading?.daysSpanned,
+                        stepsPreviousDay = stepReading?.previousDayTotal,
                     )
                 }
 
@@ -1328,6 +1330,7 @@ class PolarManager @Inject constructor(
                     recommendation = recommendation,
                     stepsAvgPerDay = stepReading?.avgStepsPerDay,
                     stepsDaysSpanned = stepReading?.daysSpanned,
+                    stepsPreviousDay = stepReading?.previousDayTotal,
                 )
                 appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
                 // Sync enqueue is gated the same way session sync is (docs/SYNC.md §1.5):

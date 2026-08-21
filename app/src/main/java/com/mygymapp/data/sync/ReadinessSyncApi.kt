@@ -38,6 +38,7 @@ class ReadinessSyncApi @Inject constructor() {
         file: File,
         stepsAvgPerDay: Double? = null,
         stepsDaysSpanned: Int? = null,
+        stepsPreviousDay: Long? = null,
     ): SyncResult {
         val envelope = JSONObject().apply {
             put("eventId", eventId)
@@ -53,6 +54,7 @@ class ReadinessSyncApi @Inject constructor() {
             // "no previous checkpoint to diff against" and not coerce it to 0.
             put("stepsAvgPerDay", stepsAvgPerDay ?: JSONObject.NULL)
             put("stepsDaysSpanned", stepsDaysSpanned ?: JSONObject.NULL)
+            put("stepsPreviousDay", stepsPreviousDay ?: JSONObject.NULL)
         }.toString()
 
         val body = MultipartBody.Builder()

@@ -90,7 +90,11 @@ class StepLedgerRepository @Inject constructor(
         if (!since.isBefore(now)) return null
         val total = reader.totalSteps(since, now) ?: return null
         val days = ChronoUnit.DAYS.between(since, now).toInt().coerceAtLeast(1)
-        return StepReading(avgStepsPerDay = total.toDouble() / days, daysSpanned = days)
+        return StepReading(
+            avgStepsPerDay = total.toDouble() / days,
+            daysSpanned = days,
+            previousDayTotal = reader.previousDayTotal(now),
+        )
     }
 
     companion object {
@@ -103,4 +107,15 @@ class StepLedgerRepository @Inject constructor(
  * path (a readiness test done every morning); anything greater means one or more days were
  * skipped and [avgStepsPerDay] is a multi-day average, not a true single-day count.
  */
-data class StepReading(val avgStepsPerDay: Double, val daysSpanned: Int)
+data class StepReading(
+    val avgStepsPerDay: Double,
+    val daysSpanned: Int,
+    /**
+     * Yesterday's complete calendar-day step total (local midnight to midnight), read
+     * straight from Health Connect and independent of the checkpoint diff above — this is
+     * what the readiness box shows, because "ieri hai fatto N passi" is a real, whole,
+     * comparable number, while the checkpoint average shifts with whatever time of day the
+     * readiness test happened to be taken. `null` when Health Connect couldn't answer.
+     */
+    val previousDayTotal: Long? = null,
+)
