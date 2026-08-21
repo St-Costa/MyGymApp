@@ -516,6 +516,7 @@ vo2max: 45.2
 recommendation: "HRV above baseline. Good day to push intensity."
 stepsAvgPerDay: 8214.5         # nullable — see "Daily step average" below
 stepsDaysSpanned: 1            # nullable — always present together with stepsAvgPerDay
+stepsPreviousDay: 9037         # nullable — yesterday's full calendar-day total (what the UI shows)
 ---
 ```
 
@@ -570,7 +571,14 @@ last read (an `Instant`), not a counter value:
   because it has the cross-day history to decide how to weight, flag, or chart a
   multi-day-average point differently from a clean single-day one — that distinction would
   be unrecoverable if only the averaged value were sent.
-- Both fields are `null` together — never `0`/`1` as a fallback — whenever Health Connect
+- `stepsPreviousDay` is a *separate* read, not derived from the checkpoint at all:
+  yesterday's complete calendar day in the device's local timezone (midnight to midnight,
+  `HealthConnectStepsReader.previousDayTotal()`). This is the number the readiness box on
+  the Heart Rate screen displays, because a whole day is comparable day to day, whereas
+  `stepsAvgPerDay` shifts with whatever time the test happened to be taken. The
+  checkpoint-derived fields are still computed and synced — the server has the history to
+  use them — they're just no longer what the user sees.
+- Both checkpoint fields are `null` together — never `0`/`1` as a fallback — whenever Health Connect
   itself can't answer: not installed on this device, permission not granted, or the query
   failing. A `null` here means "no data", not "zero steps" — the server must not coerce it
   to `0`.
@@ -618,14 +626,16 @@ error). A companion spec for the server repo (`MyGymApp_server`, mirroring
 YAML fields above.
 
 The multipart `envelope` JSON part additionally carries `stepsAvgPerDay` (number or
-JSON `null`) and `stepsDaysSpanned` (integer or JSON `null`) — duplicated from the
+JSON `null`), `stepsDaysSpanned` (integer or JSON `null`) and `stepsPreviousDay`
+(integer or JSON `null`) — duplicated from the
 attached file's frontmatter so the server can validate/store them without parsing
 Markdown first, same reasoning as every other envelope field. Both keys are always
 *present*, holding JSON `null` rather than being omitted, when there was nothing to
 diff against on the phone (see "Daily step average" above) — the server-side column(s)
 must be nullable and a `null` must be stored/treated as "no data for this event", never
-coerced to `0`. `readiness_events` needs two new nullable columns for this:
-`steps_avg_per_day` (float/numeric) and `steps_days_spanned` (integer).
+coerced to `0`. `readiness_events` needs three new nullable columns for this:
+`steps_avg_per_day` (float/numeric), `steps_days_spanned` (integer) and
+`steps_previous_day` (integer).
 
 ## Third record type: scale weigh-ins
 

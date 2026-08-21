@@ -30,7 +30,7 @@ import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Sync
@@ -479,50 +479,9 @@ private fun ColumnScope.ConnectedContent(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    // Session stats: calories + TRIMP
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.LocalFireDepartment,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = Color(0xFFFF9800),
-            )
-            Text(
-                "${uiState.sessionCalories.toInt()}",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                "kcal",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "TRIMP",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "${uiState.sessionTrimp.toInt()}",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = com.mygymapp.ui.components.trimpColor(uiState.sessionTrimp),
-            )
-            Text(
-                trimpIntensityLabel(uiState.sessionTrimp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
+    // No kcal/TRIMP row here: on this screen the strap is connected but no workout is
+    // running, so both are permanently ~1 kcal / 0 TRIMP. They still appear where they
+    // mean something — the active-routine and session-progress screens.
 
     // HRV Readiness
     val readiness = uiState.readiness
@@ -583,51 +542,57 @@ private fun ColumnScope.ConnectedContent(
                             color = readinessColor,
                         )
                     }
-                    Column(horizontalAlignment = Alignment.End) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Default.Favorite,
                                 contentDescription = null,
-                                modifier = Modifier.size(14.dp),
+                                modifier = Modifier.size(18.dp),
                                 tint = Color.Red,
                             )
                             Text(
                                 " ${readiness.restingHr} bpm",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (readiness.lnRmssd > 0) {
-                            Text(
-                                "LnRMSSD: %.1f".format(readiness.lnRmssd),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                         if (uiState.vo2max != null) {
-                            Text(
-                                "VO2max: %.1f".format(uiState.vo2max),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Air,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFF4FC3F7),
+                                )
+                                Text(
+                                    " %.1f VO2max".format(uiState.vo2max),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                         }
-                        // Lands a moment after the rest of readiness (Health Connect query
-                        // is async) — see PolarManager.finishReadinessMeasurement(). Absent
-                        // entirely (not "0") until then, and stays absent if there was no
-                        // previous checkpoint to diff against on a fresh install.
-                        if (readiness.stepsAvgPerDay != null) {
+                        // Yesterday's complete calendar-day total, not the checkpoint
+                        // average: a whole day is comparable day to day, whereas the
+                        // average shifted with whatever time the test was taken. Lands a
+                        // moment after the rest of readiness (Health Connect query is
+                        // async) — see PolarManager.finishReadinessMeasurement(). Absent
+                        // entirely (not "0") until then, and stays absent if Health
+                        // Connect can't answer.
+                        if (readiness.stepsPreviousDay != null) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.DirectionsWalk,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(18.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    " ${readiness.stepsAvgPerDay.toInt()}" +
-                                        if (readiness.stepsDaysSpanned == 1) "" else " (media ${readiness.stepsDaysSpanned}gg)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    " ${readiness.stepsPreviousDay} passi ieri",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                             }
                         }
@@ -708,11 +673,4 @@ private fun ColumnScope.ConnectedContent(
         Text("Disconnect")
     }
     Spacer(modifier = Modifier.height(16.dp))
-}
-
-private fun trimpIntensityLabel(trimp: Double): String = when {
-    trimp < 50 -> "light"
-    trimp < 100 -> "moderate"
-    trimp < 200 -> "hard"
-    else -> "very hard"
 }
