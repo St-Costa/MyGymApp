@@ -428,6 +428,13 @@ private fun ExerciseRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
+                if (exercise.substitutedForName != null) {
+                    Text(
+                        text = "Sostituito: ${exercise.substitutedForName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             // Right side: warning (completed empty) takes priority, then progress %, then nothing
             if (exercise.completedEmpty) {
@@ -512,6 +519,13 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
+            if (exercise.substitutedForName != null) {
+                Text(
+                    text = "Sostituito: ${exercise.substitutedForName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
         // Right side: warning (completed empty) takes priority, then tonnage %, then nothing
         if (exercise.completedEmpty) {

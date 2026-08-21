@@ -1,5 +1,6 @@
 package com.mygymapp.ui.screen.exerciselist
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.DataChangedSignal
@@ -25,9 +26,23 @@ data class ExerciseListUiState(
 
 @HiltViewModel
 class ExerciseListViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
     private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
+
+    // "Switch exercise" filter (docs/CONVENTIONS.md#switch-exercise): when this screen is
+    // reached as the filtered picker, these restrict the list to same-bodypart/same-type
+    // candidates and hide exercises already occupying a slot in the current session. All
+    // empty/blank for the unfiltered RoutineEdit picker — a strict no-op filter.
+    private val bodypartFilter: String = savedStateHandle["bodypart"] ?: ""
+    private val typeFilter: String = savedStateHandle["type"] ?: ""
+    private val excludeIds: Set<String> =
+        (savedStateHandle.get<String>("excludeIds") ?: "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
 
     private val _uiState = MutableStateFlow(ExerciseListUiState())
     val uiState: StateFlow<ExerciseListUiState> = _uiState
@@ -44,7 +59,11 @@ class ExerciseListViewModel @Inject constructor(
     fun loadExercises() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            allExercises = exerciseRepository.getAll()
+            allExercises = exerciseRepository.getAll().filter { ex ->
+                (bodypartFilter.isBlank() || ex.bodypart == bodypartFilter) &&
+                    (typeFilter.isBlank() || ex.type == ExerciseType.fromString(typeFilter)) &&
+                    ex.id !in excludeIds
+            }
             _uiState.value = _uiState.value.copy(isLoading = false)
             applyFilter()
         }
