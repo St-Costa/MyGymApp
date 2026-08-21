@@ -117,6 +117,20 @@ class ExerciseRepository @Inject constructor(
         return computed
     }
 
+    /**
+     * Candidates for "Switch exercise" (see docs/CONVENTIONS.md#switch-exercise): same
+     * bodypart AND same type as [current] — CARDIO is excluded upstream by callers, since
+     * switch is only offered for FORZA/STRETCH slots — minus [excludeIds] (exercises already
+     * occupying a slot in the current session, so a switch can never create a duplicate slot).
+     */
+    suspend fun getSwitchCandidates(current: Exercise, excludeIds: Set<String>): List<Exercise> =
+        getAll().filter { candidate ->
+            candidate.id != current.id &&
+                candidate.id !in excludeIds &&
+                candidate.bodypart == current.bodypart &&
+                candidate.type == current.type
+        }
+
     private suspend fun ensureLoaded() {
         if (loaded) return
         mutex.withLock {

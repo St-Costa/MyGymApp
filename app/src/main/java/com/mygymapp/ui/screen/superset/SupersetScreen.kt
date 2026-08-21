@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -54,6 +56,9 @@ import com.mygymapp.ui.theme.StretchColor
 fun SupersetScreen(
     onComplete: () -> Unit,
     onBack: () -> Unit,
+    onSwitchExercise: (bodypart: String, type: String, excludeIds: Set<String>, side: Int) -> Unit =
+        { _, _, _, _ -> },
+    onSwitched: (side: Int, newExerciseId: String) -> Unit = { _, _ -> },
     viewModel: SupersetViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -61,6 +66,14 @@ fun SupersetScreen(
     val context = LocalContext.current
     LaunchedEffect(completionSaved) {
         if (completionSaved) onComplete()
+    }
+    val switchedExerciseId1 by viewModel.switchedExerciseId1.collectAsState()
+    LaunchedEffect(switchedExerciseId1) {
+        switchedExerciseId1?.let { onSwitched(1, it) }
+    }
+    val switchedExerciseId2 by viewModel.switchedExerciseId2.collectAsState()
+    LaunchedEffect(switchedExerciseId2) {
+        switchedExerciseId2?.let { onSwitched(2, it) }
     }
 
     Scaffold(
@@ -98,6 +111,16 @@ fun SupersetScreen(
                         name = uiState.exercise1?.name ?: "",
                         type = uiState.exercise1?.type ?: ExerciseType.FORZA,
                         modifier = Modifier.weight(1f),
+                        switchEligible = uiState.switchEligible1,
+                        onSwitch = onSwitch@{
+                            val exercise = uiState.exercise1 ?: return@onSwitch
+                            onSwitchExercise(
+                                exercise.bodypart,
+                                exercise.type.toFileString(),
+                                uiState.excludeIds,
+                                1,
+                            )
+                        },
                     )
                     Text(
                         text = "+",
@@ -109,6 +132,16 @@ fun SupersetScreen(
                         name = uiState.exercise2?.name ?: "",
                         type = uiState.exercise2?.type ?: ExerciseType.FORZA,
                         modifier = Modifier.weight(1f),
+                        switchEligible = uiState.switchEligible2,
+                        onSwitch = onSwitch@{
+                            val exercise = uiState.exercise2 ?: return@onSwitch
+                            onSwitchExercise(
+                                exercise.bodypart,
+                                exercise.type.toFileString(),
+                                uiState.excludeIds,
+                                2,
+                            )
+                        },
                     )
                 }
 
@@ -262,6 +295,8 @@ private fun ExerciseLabel(
     name: String,
     type: ExerciseType,
     modifier: Modifier = Modifier,
+    switchEligible: Boolean = false,
+    onSwitch: () -> Unit = {},
 ) {
     val color = when (type) {
         ExerciseType.FORZA -> ForzaColor
@@ -269,12 +304,28 @@ private fun ExerciseLabel(
         // Cardio exercises can never be superset members — see SupersetViewModel.
         ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
     }
-    Text(
-        text = name,
-        style = MaterialTheme.typography.titleSmall,
-        color = color,
+    Row(
         modifier = modifier,
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.titleSmall,
+            color = color,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        // "Switch exercise" — each side of a superset is an independent slot (docs/CONVENTIONS.md#switch-exercise).
+        if (switchEligible) {
+            IconButton(onClick = onSwitch, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.SwapHoriz,
+                    contentDescription = "Switch exercise",
+                    tint = color,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable

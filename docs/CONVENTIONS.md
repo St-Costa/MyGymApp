@@ -207,6 +207,90 @@ The same ruleset lives server-side in `WorkoutRepository.cleanupGhostSessions()`
 
 **Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
 
+## Switch exercise
+
+Lets the lifter swap a slot's exercise mid-session (machine occupied, no motivation for that
+lift today) without polluting the original exercise's history with reps/weights that never
+happened on it. Purely a per-session record — the routine on disk is **never** touched, so the
+next session from the same routine proposes the original exercise again by default.
+
+**Eligibility** (`WorkoutExercise.isSwitchEligible()`): a slot can be switched only while it has
+zero recorded sets (`hasNoRecordedSets()` — the same per-set-type check the ghost-session guard
+above uses, factored into one place) and hasn't already been switched (`substitutedFor == null`).
+Once switched — or once a real set exists — the slot is locked for the rest of the session: no
+re-switch, not even back to the original. Offered only for plain NORMAL slots (FORZA/STRETCH):
+never for warmup, fixed-daily, or CARDIO exercises.
+
+**Candidates**: same `bodypart` **and** same `ExerciseType` as the slot's current exercise
+(`ExerciseRepository.getSwitchCandidates`), excluding every exercise already occupying a slot
+in the current session (`excludeIds` — otherwise a switch could create a duplicate slot for the
+same exercise). The filtered `ExercisePicker` route
+(`exercises/pick?bodypart=..&type=..&excludeIds=..`) reuses the existing picker screen with
+these as optional query params — all empty/no-op for the original RoutineEdit picker.
+
+**Mutation**: `WorkoutSession.withExerciseSwitched(oldExerciseId, newExercise)` (extension
+function next to `WorkoutExercise` in `WorkoutSession.kt`) re-verifies eligibility itself and
+returns `this` unchanged if not eligible, so callers can check `result === session` for
+"nothing happened" instead of duplicating the guard. The slot keeps its position and its
+warmup/daily/tonnage flags — only `exerciseId/exerciseName/bodypart/type/sets` change, plus
+`substitutedFor = oldExerciseId` recording the original for history/sync (goes to the server
+as-is inside the raw session file — no `SyncApi`/`SyncWorker` change needed). This function is
+the **only** place that ever writes the switch to disk. It's called from the three exercise
+ViewModels — `StrengthExerciseViewModel.switchExercise`, `StretchExerciseViewModel.switchExercise`,
+`SupersetViewModel.switchExercise1/2` (a superset's two sides are independent slots, one can be
+switched while the other already has sets) — each of which does its own
+`workoutRepository.save(...)` right after. `ActiveRoutineViewModel` does **not** call it — see
+"Two ViewModels, one session file" below for why that matters.
+
+**Re-navigation, not in-place mutation**: after a switch is saved, the exercise screen
+re-navigates to the same route with the new `exerciseId` in the path (`popUpTo` the old route,
+`inclusive = true`) instead of mutating its own state — these VMs load everything (history,
+rep range, name, previous-session preview) one-shot in `init{}` from `SavedStateHandle`, so a
+fresh VM instance for the new id is simpler and safer than replaying that logic mid-flight. The
+picker result flows back through the standard `savedStateHandle.set("pickedExerciseId", id)` /
+`LaunchedEffect` pattern (same as `completedExerciseId`); Superset uses two separate keys,
+`pickedExerciseIdSide{1,2}`, chosen via `ExercisePicker.createRoute(..., resultKeySide = 1|2)`,
+so a switch on one side can never cross-apply to the other.
+
+**Two ViewModels, one session file — the bug this section exists to prevent regressing.** The
+active-routine list (`ActiveRoutineScreen` / `ActiveRoutineViewModel`) and the exercise screen
+(`StrengthExerciseScreen` / `...ViewModel`, etc.) are two **separate** ViewModel instances, each
+holding its own in-memory copy of "what's in this session." `ActiveRoutineViewModel` builds its
+`_uiState.exercises` list exactly once, in `init`, from the routine at session start — it has no
+mechanism to notice that a *different* ViewModel later rewrote the session file out from under
+it. The first working version of this feature saved the switch correctly (the file on disk was
+right) but never told `ActiveRoutineViewModel` about it — so completing the switched exercise
+and returning to the list still showed the **original, pre-switch exercise** as "to do," because
+`markExerciseCompleted`/the row renderer were reading a `_uiState.exercises` entry that still
+had the old `exerciseId`. Reproduced and fixed on-device (not caught by the build — there's no
+automated test coverage here, see "Piano di verifica" in the feature's design doc).
+
+The fix: the exercise screen, right before re-navigating, also writes
+`previousBackStackEntry?.savedStateHandle?.set("switchedExerciseIds", "$oldId,$newId")` — same
+`savedStateHandle`-result pattern `completedExerciseId` already uses — onto the `ActiveRoutine`
+back-stack entry specifically (not its own). `AppNavigation`'s `ActiveRoutine` composable
+observes that key with a `LaunchedEffect` and calls
+`ActiveRoutineViewModel.applyExerciseSwitch(oldId, newId)`, which does **not** touch disk (the
+exercise screen already did) — it only re-reads the already-saved session file to catch
+`currentSession` up, then patches the matching `_uiState.exercises` entry in place (same
+`ActiveExerciseUi` construction the old single-VM version used) and backfills the on-demand
+progression baseline described below. **Any new "in-session" mutation that can originate from a
+screen other than `ActiveRoutineScreen` needs this same two-step wiring** (screen saves to disk
+→ notifies `ActiveRoutineViewModel` via a `savedStateHandle` result key observed on its
+back-stack entry) — it will silently show stale data in the list otherwise, exactly like this
+bug did, and nothing will fail loudly because the disk state is genuinely correct the whole time.
+
+**Progression stays per-exercise**: `StrengthExerciseViewModel`/`SupersetViewModel` already
+look up progression history via `WorkoutRepository.getSessionsForExercise` (global, cross-routine
+— keyed off the exercise index, not the routine), so a switched-in exercise gets a correct
+previous-set preview automatically once the screen re-navigates with its id. The one place that
+needed extending is `ActiveRoutineViewModel`: its `previousTonnageByExercise`/
+`previousBestE1RMByExercise` maps are precomputed once at session start from
+`getLastSessionForRoutine` — i.e. only cover the routine's *original* exercises.
+`applyExerciseSwitch` populates an on-demand entry for the new exerciseId (mirroring how
+`exercisesWithPriorTonnage` is built) so `markExerciseCompleted` still finds a baseline for the
+switched slot later. The precomputed fast-path for non-switched exercises is untouched.
+
 ## Cardio blocks & "no superset" guard
 
 `ExerciseType.CARDIO` (see [POLAR.md](POLAR.md#cardio-blocks)) is a third exercise type
