@@ -55,3 +55,12 @@ See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the complete set. The ones th
 - When you find a disalignment between code and docs, update both in the same change.
 - New patterns/gotchas → add them to [CONVENTIONS.md](docs/CONVENTIONS.md).
 - Completed work → one paragraph in [CHANGELOG.md](docs/CHANGELOG.md) under a new Phase heading.
+- **Write tests alongside non-trivial logic changes.** When a change adds or modifies pure logic
+  (a parser, a calculator, a model extension function, a bugfix like [hrr60s monotonicity](docs/CHANGELOG.md))
+  in a class that doesn't touch `Context`/BLE/file I/O directly, add or update a JUnit test under
+  `app/src/test/` in the same change — don't wait to be asked. Skip it only for pure UI/Compose
+  layout changes or Android-framework-coupled code with no test harness yet (see
+  [CONVENTIONS.md#local-test-gate](docs/CONVENTIONS.md#local-test-gate) for what's testable today
+  and the existing suite's shape). Run `ANDROID_HOME=~/Android/Sdk ./gradlew test` before
+  considering the change done — a local git hook also enforces this at commit time, see
+  [CONVENTIONS.md#local-test-gate](docs/CONVENTIONS.md#local-test-gate).
