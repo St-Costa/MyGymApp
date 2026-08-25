@@ -162,7 +162,7 @@ A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: "
 - **Seeded, not created by the user**: `RoutineRepository.ensureFixedDailyRoutine()` runs inside `ensureLoaded()` (after the directory scan, under the mutex). Idempotent — once written it's reloaded from disk.
 - **Non-deletable / non-disableable**: `delete()` early-returns for the reserved id; `getAll()` pins it first via `compareByDescending { it.id == FIXED_DAILY_ROUTINE_ID }`. The list screen hides the enabled switch (shows a lock), the edit screen hides the day picker + delete and makes the name read-only. `RoutineListViewModel` has defensive guards too.
 - **Container only, not startable**: it has no `day` so WeekView (the only start path) never lists it; `ActiveRoutineViewModel.init` also early-returns for the reserved id.
-- **Injected into every session**: `ActiveRoutineViewModel.init` builds the session as `warmup → fixed-daily → normal`, skipping a fixed-daily exercise whose `exerciseId` already appears in the started routine (the exercise-detail flow keys by `exerciseId`, so duplicate ids in one session are unsupported).
+- **Injected into every session**: `ActiveRoutineViewModel.init` builds the session as `fixed-daily → normal → warmup`, skipping a fixed-daily exercise whose `exerciseId` already appears in the started routine (the exercise-detail flow keys by `exerciseId`, so duplicate ids in one session are unsupported). Warmup was moved to the bottom (was: first) so the session screen leads with the exercises that actually count.
 
 ## Warmup exercises & `excludeFromTonnage`
 

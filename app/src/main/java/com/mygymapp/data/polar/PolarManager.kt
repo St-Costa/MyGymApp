@@ -65,6 +65,10 @@ data class ReadinessResult(
     val stepsAvgPerDay: Double? = null,
     val stepsDaysSpanned: Int? = null,
     val stepsPreviousDay: Long? = null,
+    // BPM trace captured during the 60s measurement window (one point per HR sample, ~1 Hz),
+    // for a simple sparkline showing how much HR actually moved while lying still. Empty
+    // until MEASURING has collected at least one sample; kept as-is once the result is final.
+    val bpmTrace: List<Int> = emptyList(),
 )
 
 @Singleton
@@ -246,6 +250,8 @@ class PolarManager @Inject constructor(
     private var readinessStartTime = 0L
     private val readinessRR = mutableListOf<Int>()
     private var readinessMinHr = 200
+    // BPM trace for the readiness measurement's sparkline — see ReadinessResult.bpmTrace.
+    private val readinessBpmTrace = mutableListOf<Int>()
 
     // Recovery tracking
     private var peakHrAfterSet: Int = 0
@@ -659,10 +665,14 @@ class PolarManager @Inject constructor(
                             if (sample.hr in 30..199 && sample.hr < readinessMinHr) {
                                 readinessMinHr = sample.hr
                             }
+                            if (sample.hr in 30..199) {
+                                readinessBpmTrace.add(sample.hr)
+                            }
                             val elapsed = ((System.currentTimeMillis() - readinessStartTime) / 1000).toInt()
                             val remaining = (60 - elapsed).coerceAtLeast(0)
                             _readinessResult.value = _readinessResult.value.copy(
                                 secondsRemaining = remaining,
+                                bpmTrace = readinessBpmTrace.toList(),
                             )
                             if (elapsed >= 60) {
                                 finishReadinessMeasurement()
@@ -1199,6 +1209,7 @@ class PolarManager @Inject constructor(
         readinessStartTime = System.currentTimeMillis()
         readinessRR.clear()
         readinessMinHr = 200
+        readinessBpmTrace.clear()
         _readinessResult.value = ReadinessResult(
             readiness = Readiness.MEASURING,
             secondsRemaining = 60,
@@ -1220,6 +1231,7 @@ class PolarManager @Inject constructor(
                 restingHr = readinessMinHr.takeIf { it < 200 } ?: 0,
                 secondsRemaining = 0,
                 recommendation = "Not enough clean data. Try again staying still.",
+                bpmTrace = readinessBpmTrace.toList(),
             )
             return
         }
@@ -1288,6 +1300,7 @@ class PolarManager @Inject constructor(
             restingHr = measuredRestingHr,
             secondsRemaining = 0,
             recommendation = recommendation,
+            bpmTrace = readinessBpmTrace.toList(),
         )
 
         Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
