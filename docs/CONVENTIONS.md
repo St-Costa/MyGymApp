@@ -400,3 +400,24 @@ Applies in both `ExerciseEditViewModel.onRepMin/MaxChange` and `RoutineEditViewM
 ## ANDROID_HOME
 
 Android Studio reads `sdk.dir` from `local.properties`. Command-line builds need `ANDROID_HOME=~/Android/Sdk` — see [README.md](../README.md#building).
+
+## Local test gate
+
+There is no CI in this repo (no `.github/workflows`). The only automated safety net is a local
+git hook: `scripts/git-hooks/pre-commit` runs `./gradlew test` before every commit and blocks
+the commit on failure. It's tracked in the repo but git only reads `.git/hooks/`, which isn't
+tracked, so it must be installed once per clone:
+
+```bash
+ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+```
+
+Skip it for one commit with `git commit --no-verify` (e.g. a WIP commit on a feature branch).
+
+Unit tests live under `app/src/test/` (pure JVM, no Android framework — no Robolectric/instrumentation
+set up yet). Favor testing pure logic classes here: parsers (`data/parser/`), calculators
+(`HrZoneCalculator`, `BodyCompositionCalculator`, `TonnageMath`), and model extension functions
+(e.g. `WorkoutSession.withExerciseSwitched`) — anything that doesn't touch `Context`, BLE, or
+file I/O directly. See the existing suite for the shape: `HrRecoveryMonotonicityTest`,
+`WorkoutParserRoundTripTest`, `WorkoutSessionSwitchExerciseTest`, `HrZoneCalculatorTest`,
+`TonnageMathTest`, `BodyCompositionCalculatorTest`.
