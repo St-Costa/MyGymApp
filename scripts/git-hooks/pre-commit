@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Runs unit tests before allowing a commit. See docs/CONVENTIONS.md#local-test-gate.
+#
+# This file is tracked in the repo but git only looks at .git/hooks/, which isn't tracked.
+# Install once per clone with:
+#   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#
+# Skip once with: git commit --no-verify
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-commit: running ./gradlew test ..."
+ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}" ./gradlew test --console=plain
