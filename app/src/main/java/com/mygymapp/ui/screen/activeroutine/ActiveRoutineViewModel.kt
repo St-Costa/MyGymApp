@@ -148,7 +148,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 return@launch
             }
 
-            // Build the session in order: warmup -> fixed-daily -> normal.
+            // Build the session in order: fixed-daily -> normal -> warmup.
             // Warmup and fixed-daily exercises are excluded from tonnage (but not cardio).
             val warmup = routine.exercises.filter { it.isWarmup }
             val normal = routine.exercises.filterNot { it.isWarmup }
@@ -164,9 +164,9 @@ class ActiveRoutineViewModel @Inject constructor(
             // (RoutineExercise, section) in execution order. Non-normal sections are excluded
             // from tonnage.
             val ordered: List<Pair<RoutineExercise, SessionExerciseCategory>> =
-                warmup.clearTailLink().map { it to SessionExerciseCategory.WARMUP } +
-                    fixed.clearTailLink().map { it to SessionExerciseCategory.DAILY } +
-                    normal.clearTailLink().map { it to SessionExerciseCategory.NORMAL }
+                fixed.clearTailLink().map { it to SessionExerciseCategory.DAILY } +
+                    normal.clearTailLink().map { it to SessionExerciseCategory.NORMAL } +
+                    warmup.clearTailLink().map { it to SessionExerciseCategory.WARMUP }
 
             val exercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null

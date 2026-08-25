@@ -56,7 +56,8 @@ data class SupersetUiState(
     val isLoading: Boolean = true,
     val isStopwatchRunning: Boolean = false,
     val elapsedSeconds: Int = 0,
-    // Heaviest set ever logged for each exercise (FORZA only), for the "PR" badge.
+    // All-time best-tonnage set for each exercise (FORZA only), for the "PR" badge —
+    // same definition as StrengthExerciseUiState.tonnagePr.
     val prReps1: Int = 0,
     val prWeight1: Double = 0.0,
     val prReps2: Int = 0,
@@ -120,10 +121,6 @@ class SupersetViewModel @Inject constructor(
                     }
                     .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
 
-            fun bestSet(sessions: List<List<ExerciseSet.Strength>>): ExerciseSet.Strength? =
-                sessions.flatten().filter { it.weight > 0.0 }
-                    .maxWithOrNull(compareBy({ it.weight }, { it.reps }))
-
             val matchingSessions1 = if (ex1.type == ExerciseType.FORZA) {
                 matchingSetsPerSession(exerciseId1, isDaily1, isWarmup1)
             } else emptyList()
@@ -133,8 +130,24 @@ class SupersetViewModel @Inject constructor(
 
             val prevStrengthSets1 = matchingSessions1.firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
             val prevStrengthSets2 = matchingSessions2.firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
-            val prSet1 = bestSet(matchingSessions1)
-            val prSet2 = bestSet(matchingSessions2)
+
+            // All-time PR: the single set with the highest tonnage (reps * weight) ever
+            // recorded for this exercise, across every session (not just the last 30 used
+            // for "previous") and every non-excluded category — mirrors
+            // StrengthExerciseViewModel's tonnagePr so the badge agrees whether the exercise
+            // is opened standalone or as part of a superset. Warmup/daily sets don't count.
+            suspend fun tonnagePr(exId: String, type: ExerciseType): ExerciseSet.Strength? {
+                if (type != ExerciseType.FORZA) return null
+                return workoutRepository.getSessionsForExercise(exId, Int.MAX_VALUE)
+                    .asSequence()
+                    .flatMap { prev -> prev.exercises.asSequence() }
+                    .filter { it.exerciseId == exId && !it.excludeFromTonnage }
+                    .flatMap { it.sets.asSequence().filterIsInstance<ExerciseSet.Strength>() }
+                    .filter { it.reps > 0 && it.weight > 0.0 }
+                    .maxByOrNull { it.reps * it.weight }
+            }
+            val prSet1 = tonnagePr(exerciseId1, ex1.type)
+            val prSet2 = tonnagePr(exerciseId2, ex2.type)
 
             // Fallback for sets beyond what the previous session recorded.
             val lastMeaningful1 = prevStrengthSets1.lastOrNull { it.reps > 0 || it.weight > 0.0 }
