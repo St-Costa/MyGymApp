@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -54,7 +55,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -606,6 +610,16 @@ private fun ColumnScope.ConnectedContent(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+                // How much HR actually moved during the 60s "lie still" window — a quick
+                // visual sanity check alongside the readiness verdict. Absent when this
+                // result came from reusing today's earlier measurement (bpmTrace isn't
+                // persisted, only held in memory for the duration of the live measurement).
+                if (readiness.bpmTrace.size >= 2) {
+                    ReadinessBpmSparkline(
+                        bpmTrace = readiness.bpmTrace,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         }
     }
@@ -673,4 +687,60 @@ private fun ColumnScope.ConnectedContent(
         Text("Disconnect")
     }
     Spacer(modifier = Modifier.height(16.dp))
+}
+
+/**
+ * Minimal line chart of the BPM samples collected during the 60s readiness measurement —
+ * just enough to see how much (or little) HR actually moved while lying still. Y-axis is
+ * auto-scaled to the trace's own min/max (with a small floor so a dead-flat trace doesn't
+ * divide by zero); min/max labels are printed instead of drawn gridlines to keep it simple.
+ */
+@Composable
+private fun ReadinessBpmSparkline(
+    bpmTrace: List<Int>,
+    modifier: Modifier = Modifier,
+) {
+    val minBpm = bpmTrace.min()
+    val maxBpm = bpmTrace.max()
+    val range = (maxBpm - minBpm).coerceAtLeast(1)
+    val lineColor = MaterialTheme.colorScheme.primary
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "$minBpm–$maxBpm bpm",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Δ ${maxBpm - minBpm} bpm",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(top = 4.dp),
+        ) {
+            val w = size.width
+            val h = size.height
+            if (w <= 0f || h <= 0f) return@Canvas
+            val stepX = w / (bpmTrace.size - 1).toFloat()
+            fun yOf(bpm: Int): Float = h - ((bpm - minBpm).toFloat() / range) * h
+            val path = Path().apply {
+                moveTo(0f, yOf(bpmTrace[0]))
+                for (i in 1 until bpmTrace.size) {
+                    lineTo(i * stepX, yOf(bpmTrace[i]))
+                }
+            }
+            drawPath(path = path, color = lineColor, style = Stroke(width = 2.dp.toPx()))
+            val lastX = (bpmTrace.size - 1) * stepX
+            drawCircle(color = lineColor, radius = 3.dp.toPx(), center = Offset(lastX, yOf(bpmTrace.last())))
+        }
+    }
 }
