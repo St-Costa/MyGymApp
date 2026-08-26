@@ -15,6 +15,7 @@ import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.components.DayStatus
+import com.mygymapp.ui.components.ScheduleCell
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,8 +25,9 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 
 data class MainUiState(
+    // 4 history rows (28 squares) covering the 4 weeks BEFORE the current one — the current
+    // week lives only in the schedule row below, not duplicated here.
     val gitgraphDays: List<DayStatus> = List(28) { DayStatus.NONE },
-    val todayIndex: Int = 27,
     // One value per square (28 total): % change vs previous session, null if no comparison
     val gitgraphTonnageChanges: List<Double?> = List(28) { null },
     // Fallback shown when there's no tonnage % to display (e.g. an all-cardio/warmup routine,
@@ -35,11 +37,25 @@ data class MainUiState(
     // Routine name for each day with a session (28 values, one per square) — shown inside
     // the square itself so an out-of-schedule day is still identifiable at a glance.
     val routineNames: List<String?> = List(28) { null },
-    // Session ID + date for each day of the current week (null = no session that day)
-    val lastWeekSessionIds: List<String?> = List(7) { null },
-    val lastWeekSessionDates: List<String?> = List(7) { null },
+    // Session ID + date for each of the 28 squares (null = no session that day) — tapping a
+    // square with a session navigates to its progress view.
+    val sessionIds: List<String?> = List(28) { null },
+    val sessionDates: List<String?> = List(28) { null },
     // One flag per gitgraph week-row (4): true = powerlifting week
     val powerliftingWeeks: List<Boolean> = List(4) { false },
+    // Schedule row (current week): 7 cells, Monday..Sunday, each the routine(s) assigned that
+    // day. The "today" cell is overridden by GitgraphView to render like a history cell
+    // instead whenever todaySessionId is non-null (see the today* fields below).
+    val scheduleCells: List<ScheduleCell> = List(7) { ScheduleCell() },
+    val todayDowIndex: Int = 0, // 0=Monday..6=Sunday, which scheduleCells entry is "today"
+    // Today's own session outcome, same shape as one history square — null/NONE if today has
+    // no session yet.
+    val todayStatus: DayStatus = DayStatus.NONE,
+    val todayTonnageChange: Double? = null,
+    val todayCardioMinutes: Int? = null,
+    val todayRoutineName: String? = null,
+    val todaySessionId: String? = null,
+    val todaySessionDate: String? = null,
     val isLoading: Boolean = true,
     val isSeedingData: Boolean = false,
 )
@@ -87,47 +103,39 @@ class MainViewModel @Inject constructor(
         val today = LocalDate.now()
         val todayDow = today.dayOfWeek.value // 1=Mon, 7=Sun
         val currentWeekMonday = today.minusDays((todayDow - 1).toLong())
-        val startDate = currentWeekMonday.minusWeeks(3) // 4 weeks total
+        // The 4 history rows cover the 4 weeks BEFORE the current one — the current week lives
+        // only in the schedule row below, not duplicated here. So the oldest row starts 4 weeks
+        // before last Monday, and the newest row ends on last Sunday.
+        val startDate = currentWeekMonday.minusWeeks(4)
+        val historyEndDate = currentWeekMonday.minusDays(1) // last Sunday
 
-        val sessions = workoutRepository.getSessionsInRange(startDate, today)
+        val sessions = workoutRepository.getSessionsInRange(startDate, historyEndDate)
         // Fetched further back than the visible 4 weeks purely so the FIRST visible week has
         // something to compare against too — without this, every square in the oldest row
         // would look like "first time doing this routine" (green, no %) whenever the routine's
         // actual previous session falls just outside the visible window.
         val lookbackSessions = workoutRepository.getSessionsInRange(startDate.minusMonths(2), startDate.minusDays(1))
-        val sessionsByRoutine = (sessions + lookbackSessions).groupBy { it.routineId }
+        // Current week's sessions (for the schedule row's "today" cell + tap targets) queried
+        // separately since they're outside the history window above.
+        val currentWeekSessions = workoutRepository.getSessionsInRange(currentWeekMonday, today)
+        val sessionsByRoutine = (sessions + lookbackSessions + currentWeekSessions).groupBy { it.routineId }
 
         val days = mutableListOf<DayStatus>()
         val gitgraphTonnageChanges = mutableListOf<Double?>()
         val gitgraphCardioMinutes = mutableListOf<Int?>()
         val routineNames = mutableListOf<String?>()
-        val lastWeekSessionIds = mutableListOf<String?>()
-        val lastWeekSessionDates = mutableListOf<String?>()
+        val sessionIds = mutableListOf<String?>()
+        val sessionDates = mutableListOf<String?>()
 
         for (dayOffset in 0 until 28) {
             val date = startDate.plusDays(dayOffset.toLong())
-
-            if (date.isAfter(today)) {
-                days.add(DayStatus.NONE)
-                gitgraphTonnageChanges.add(null)
-                gitgraphCardioMinutes.add(null)
-                routineNames.add(null)
-                if (dayOffset >= 21) {
-                    lastWeekSessionIds.add(null)
-                    lastWeekSessionDates.add(null)
-                }
-                continue
-            }
-
             val dateStr = date.toString()
             val daySessions = sessions.filter { it.date == dateStr }
             val lastSession = daySessions.maxByOrNull { it.completedAt }
 
             routineNames.add(lastSession?.routineName)
-            if (dayOffset >= 21) {
-                lastWeekSessionIds.add(lastSession?.id)
-                lastWeekSessionDates.add(if (lastSession != null) dateStr else null)
-            }
+            sessionIds.add(lastSession?.id)
+            sessionDates.add(if (lastSession != null) dateStr else null)
 
             if (lastSession == null) {
                 days.add(DayStatus.NONE)
@@ -164,22 +172,72 @@ class MainViewModel @Inject constructor(
             gitgraphCardioMinutes.add(cardioMinutes)
         }
 
-        val todayIndex = 3 * 7 + (todayDow - 1)
-
         // One flag per week-row: the row's Monday is startDate + week*7.
         val powerliftingWeeks = (0 until 4).map { week ->
             powerliftingScheduleRepository.isPowerliftingWeek(startDate.plusWeeks(week.toLong()))
         }
 
+        // Schedule row (current week, Monday..Sunday): for each day, the enabled routine(s)
+        // assigned to it (Routine.day). The "today" cell additionally carries today's own
+        // session outcome (status/%/minutes/name), same shape as a history cell, so
+        // GitgraphView can render it like one once a session for today exists.
+        val allRoutines = routineRepository.getAll()
+        val todayStr = today.toString()
+        val todaySession = currentWeekSessions.filter { it.date == todayStr }.maxByOrNull { it.completedAt }
+        val completedTodayRoutineIds = currentWeekSessions
+            .filter { it.date == todayStr && it.completedAt.isNotBlank() }
+            .map { it.routineId }
+            .toSet()
+
+        var todayStatus = DayStatus.NONE
+        var todayTonnageChange: Double? = null
+        var todayCardioMinutes: Int? = null
+        if (todaySession != null) {
+            val previous = sessionsByRoutine[todaySession.routineId]
+                ?.filter { it.date < todayStr }
+                ?.maxByOrNull { it.completedAt }
+            val (currTonnage, prevTonnage) = if (previous != null)
+                computeCommonTonnage(todaySession, previous)
+            else Pair(todaySession.totalTonnage, 0.0)
+            todayStatus = if (previous != null) {
+                if (currTonnage >= prevTonnage) DayStatus.IMPROVED else DayStatus.REGRESSED
+            } else {
+                DayStatus.IMPROVED
+            }
+            todayTonnageChange = if (previous != null && prevTonnage > 0)
+                (currTonnage - prevTonnage) / prevTonnage * 100.0
+            else null
+            todayCardioMinutes = if (todayTonnageChange == null) cardioMinutesFor(todaySession) else null
+        }
+
+        val dowKeys = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+        val scheduleCells = dowKeys.map { key ->
+            val routines = allRoutines.filter { it.day.equals(key, ignoreCase = true) && it.enabled }
+            // Tapping opens the first one not yet completed today, so finishing one and
+            // tapping the same cell again moves on to the next.
+            val toOpen = routines.firstOrNull { it.id !in completedTodayRoutineIds } ?: routines.firstOrNull()
+            ScheduleCell(
+                routineNames = routines.map { it.name },
+                openRoutineId = toOpen?.id,
+            )
+        }
+
         _uiState.value = MainUiState(
             gitgraphDays = days,
-            todayIndex = todayIndex,
             gitgraphTonnageChanges = gitgraphTonnageChanges,
             gitgraphCardioMinutes = gitgraphCardioMinutes,
             routineNames = routineNames,
-            lastWeekSessionIds = lastWeekSessionIds,
-            lastWeekSessionDates = lastWeekSessionDates,
+            sessionIds = sessionIds,
+            sessionDates = sessionDates,
             powerliftingWeeks = powerliftingWeeks,
+            scheduleCells = scheduleCells,
+            todayDowIndex = todayDow - 1,
+            todayStatus = todayStatus,
+            todayTonnageChange = todayTonnageChange,
+            todayCardioMinutes = todayCardioMinutes,
+            todayRoutineName = todaySession?.routineName,
+            todaySessionId = todaySession?.id,
+            todaySessionDate = todaySession?.date,
             isLoading = false,
         )
     }

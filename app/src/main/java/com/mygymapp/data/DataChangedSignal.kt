@@ -11,7 +11,7 @@ import javax.inject.Singleton
  * exercises or routines have been saved, so they can reload fresh data.
  *
  * emit → after exerciseRepository.save() or routineRepository.save() completes
- * collect → in ExerciseListViewModel, RoutineListViewModel, WeekViewViewModel, MainViewModel
+ * collect → in ExerciseListViewModel, RoutineListViewModel, MainViewModel
  */
 @Singleton
 class DataChangedSignal @Inject constructor() {

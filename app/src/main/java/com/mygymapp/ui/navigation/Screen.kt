@@ -2,7 +2,6 @@ package com.mygymapp.ui.navigation
 
 sealed class Screen(val route: String) {
     data object Main : Screen("main")
-    data object WeekView : Screen("weekview")
     data object ExerciseList : Screen("exercises")
     data object ExerciseEdit : Screen("exercises/edit?id={id}") {
         fun createRoute(id: String? = null): String =
