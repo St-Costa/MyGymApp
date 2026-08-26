@@ -13,7 +13,7 @@ import javax.inject.Singleton
  * Writes raw ECG samples to disk during an active session.
  *
  * File format: `gymdata/ecg/{sessionId}.ecg`
- *   - Header (16 bytes):
+ *   - Header (20 bytes):
  *     - Magic "MYGMECG1" (8 bytes ASCII)
  *     - Sample rate Int (4 bytes, big-endian) -- typically 130
  *     - Start timestamp Long (8 bytes, big-endian, ns since epoch)

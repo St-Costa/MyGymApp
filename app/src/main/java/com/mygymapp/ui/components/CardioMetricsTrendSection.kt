@@ -35,14 +35,7 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     MetricTitle("Resting HR (bpm) - 2 mesi", goodDirectionDown = true)
-                    report.restingHrWeekly.averageWeeklyDelta()?.let { delta ->
-                        Text(
-                            "μ = %+.1f".format(delta),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
+                    report.restingHrWeekly.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 Text(
                     "Mediana settimanale delle sessioni registrate",
@@ -67,14 +60,7 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     MetricTitle("HRR 60s (bpm) - 2 mesi", goodDirectionDown = false)
-                    report.hrr60sWeekly.averageWeeklyDelta()?.let { delta ->
-                        Text(
-                            "μ = %+.1f".format(delta),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
+                    report.hrr60sWeekly.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 Text(
                     "Mediana settimanale del recupero HR a 60s dal picco",
@@ -99,14 +85,7 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     MetricTitle("VO2max (ml/kg/min) - 6 mesi", goodDirectionDown = false)
-                    report.vo2maxMonthly.averageWeeklyDelta()?.let { delta ->
-                        Text(
-                            "μ = %+.1f".format(delta),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
+                    report.vo2maxMonthly.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 Text(
                     "Mediana su finestre di 4 settimane",
