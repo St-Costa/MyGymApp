@@ -16,8 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.material3.Text
@@ -36,7 +34,6 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 
 private val FatColor = Color(0xFFEF5350)
-private val LeanColor = Color(0xFF66BB6A)
 private val WeightColor = Color(0xFF42A5F5)
 private val BmiColor = Color(0xFFAB47BC)
 
@@ -62,8 +59,6 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ScaleIcon()
-
         val currentWeekSlots = report.currentWeekSlots
         if (currentWeekSlots.any { it != null }) {
             ChartCard {
@@ -131,60 +126,9 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
             }
         }
 
-        val weeklyMedianBmi = report.weeklyMedianBmi
-        if (weeklyMedianBmi.isNotEmpty()) {
-            ChartCard {
-                Text("BMI - 2 mesi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                PointLineChart(
-                    values = weeklyMedianBmi.map { it.value },
-                    color = BmiColor,
-                    labelStyle = PointLabelStyle.TEXT_ABOVE,
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
-                )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (point in weeklyMedianBmi) {
-                        Text(point.weekLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        val weeklyFat = report.weeklyMedianFatPercent
-        val weeklyLean = report.weeklyMedianLeanPercent
-        if (weeklyFat.isNotEmpty()) {
-            ChartCard {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Body composition - 2 mesi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    weeklyFat.averageWeeklyDelta()?.let { delta ->
-                        Text(
-                            "μ = %+.1f".format(delta),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
-                }
-                StackedAreaChart(
-                    fatPercent = weeklyFat.map { it.value },
-                    leanPercent = weeklyLean.map { it.value },
-                    modifier = Modifier.fillMaxWidth().height(100.dp),
-                )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (point in weeklyFat) {
-                        Text(point.weekLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
     }
 }
 
-@Composable
-private fun ScaleIcon() {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        Text("⚖️", fontSize = 40.sp)
-    }
-}
 
 @Composable
 internal fun ChartCard(content: @Composable ColumnScope.() -> Unit) {
@@ -340,63 +284,3 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBadge(
     drawContext.canvas.nativeCanvas.drawText(text, x, y - paddingV / 2, paint)
 }
 
-/** Stacked area: fat% (red, bottom) + lean% (green, top) — inverted from the natural summing order on purpose. */
-@Composable
-private fun StackedAreaChart(
-    fatPercent: List<Double>,
-    leanPercent: List<Double>,
-    modifier: Modifier = Modifier,
-) {
-    Canvas(modifier = modifier) {
-        if (fatPercent.size < 2) return@Canvas
-        val n = fatPercent.size
-        val sideInset = 20f
-        val plotWidth = size.width - 2 * sideInset
-        val stepX = plotWidth / (n - 1).toFloat()
-
-        fun yFor(percentFromBottom: Double): Float =
-            size.height * (1f - (percentFromBottom / 100.0).toFloat())
-        fun xFor(i: Int): Float = sideInset + i * stepX
-
-        // Fat area: from 0% up to fat%
-        val fatPath = Path().apply {
-            moveTo(xFor(0), size.height)
-            for (i in 0 until n) {
-                lineTo(xFor(i), yFor(fatPercent[i]))
-            }
-            lineTo(xFor(n - 1), size.height)
-            close()
-        }
-        drawPath(path = fatPath, color = FatColor.copy(alpha = 0.25f))
-
-        // Lean area: from fat% up to 100%
-        val leanPath = Path().apply {
-            moveTo(xFor(0), yFor(fatPercent[0]))
-            for (i in 0 until n) {
-                lineTo(xFor(i), yFor(fatPercent[i]))
-            }
-            for (i in n - 1 downTo 0) {
-                lineTo(xFor(i), yFor(100.0))
-            }
-            close()
-        }
-        drawPath(path = leanPath, color = LeanColor.copy(alpha = 0.25f))
-
-        // Boundary line between fat and lean — the clear divider between the two colors.
-        val boundary = Path()
-        for (i in 0 until n) {
-            val x = xFor(i)
-            val y = yFor(fatPercent[i])
-            if (i == 0) boundary.moveTo(x, y) else boundary.lineTo(x, y)
-        }
-        drawPath(path = boundary, color = Color.White.copy(alpha = 0.85f), style = Stroke(width = 3f))
-
-        // Dots + fat% value above each point.
-        for (i in 0 until n) {
-            val x = xFor(i)
-            val y = yFor(fatPercent[i])
-            drawCircle(color = Color.White.copy(alpha = 0.9f), radius = 8f, center = Offset(x, y))
-            drawCenteredText(text = "%.0f".format(fatPercent[i]), x = x, y = y - 16f, color = FatColor, textSizeSp = 12f)
-        }
-    }
-}
