@@ -14,7 +14,6 @@ import com.mygymapp.ui.screen.exerciseedit.ExerciseEditScreen
 import com.mygymapp.ui.screen.routinelist.RoutineListScreen
 import com.mygymapp.ui.screen.routineedit.RoutineEditScreen
 import com.mygymapp.ui.screen.routineedit.RoutineEditViewModel
-import com.mygymapp.ui.screen.weekview.WeekViewScreen
 import com.mygymapp.ui.screen.activeroutine.ActiveRoutineScreen
 import com.mygymapp.ui.screen.strengthexercise.StrengthExerciseScreen
 import com.mygymapp.ui.screen.stretchexercise.StretchExerciseScreen
@@ -33,7 +32,6 @@ fun AppNavigation(navController: NavHostController) {
     ) {
         composable(Screen.Main.route) {
             MainScreen(
-                onNavigateToWeekView = { navController.navigate(Screen.WeekView.route) },
                 onNavigateToExercises = { navController.navigate(Screen.ExerciseList.route) },
                 onNavigateToRoutines = { navController.navigate(Screen.RoutineList.route) },
                 onNavigateToHeartRate = { navController.navigate(Screen.HeartRate.route) },
@@ -41,15 +39,9 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToSessionProgress = { sessionId, date ->
                     navController.navigate(Screen.SessionProgress.createRoute(sessionId, date))
                 },
-            )
-        }
-
-        composable(Screen.WeekView.route) {
-            WeekViewScreen(
                 onNavigateToRoutine = { routineId ->
                     navController.navigate(Screen.ActiveRoutine.createRoute(routineId))
                 },
-                onBack = { navController.popBackStack() },
             )
         }
 
