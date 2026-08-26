@@ -391,8 +391,8 @@ private fun PowerliftingSection(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Settimana powerlifting", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -425,14 +425,17 @@ private fun WeekCalendar(
     val today = remember { LocalDate.now() }
     var displayedMonth by remember { mutableStateOf(YearMonth.from(today)) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         // Month header with navigation arrows
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = { displayedMonth = displayedMonth.minusMonths(1) }) {
+            IconButton(
+                onClick = { displayedMonth = displayedMonth.minusMonths(1) },
+                modifier = Modifier.size(32.dp),
+            ) {
                 Icon(Icons.Default.ChevronLeft, contentDescription = "Mese precedente")
             }
             val monthName = displayedMonth.month
@@ -443,7 +446,10 @@ private fun WeekCalendar(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
-            IconButton(onClick = { displayedMonth = displayedMonth.plusMonths(1) }) {
+            IconButton(
+                onClick = { displayedMonth = displayedMonth.plusMonths(1) },
+                modifier = Modifier.size(32.dp),
+            ) {
                 Icon(Icons.Default.ChevronRight, contentDescription = "Mese successivo")
             }
         }
@@ -456,7 +462,7 @@ private fun WeekCalendar(
                     label,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -491,12 +497,12 @@ private fun WeekCalendar(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .aspectRatio(1f),
+                            .aspectRatio(1.5f),
                         contentAlignment = Alignment.Center,
                     ) {
                         val todayRing = if (isToday && !isSelectedWeek) {
                             Modifier
-                                .size(32.dp)
+                                .size(26.dp)
                                 .clip(RoundedCornerShape(50))
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
                         } else Modifier
