@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -70,7 +69,6 @@ import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.scale.ScaleConnectionState
 import com.mygymapp.ui.components.CardioMetricsTrendSection
 import com.mygymapp.ui.components.ScaleTrendSection
-import com.mygymapp.ui.components.ScrollPickerInput
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -250,14 +248,6 @@ fun HeartRateScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             CardioMetricsTrendSection(report = uiState.cardioMetricsTrend)
 
-            // Profile section (always visible)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            ProfileSection(
-                profile = uiState.profile,
-                onGenderChange = { viewModel.updateGender(it) },
-                onHeightChange = { viewModel.updateHeight(it) },
-                onBirthYearChange = { viewModel.updateBirthYear(it) },
-            )
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -378,83 +368,6 @@ private fun ScaleStatusIcon(
             }
         }
     }
-}
-
-@Composable
-private fun ProfileSection(
-    profile: com.mygymapp.data.polar.UserProfile,
-    onGenderChange: (Boolean) -> Unit,
-    onHeightChange: (Int) -> Unit,
-    onBirthYearChange: (Int?) -> Unit,
-) {
-    Text(
-        "Profile",
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-
-    // Gender chips
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = profile.isMale,
-            onClick = { onGenderChange(true) },
-            label = { Text("Male") },
-        )
-        FilterChip(
-            selected = !profile.isMale,
-            onClick = { onGenderChange(false) },
-            label = { Text("Female") },
-        )
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
-
-    // Birth year and Weight pickers — birth year is the sole source of age for every
-    // formula (Keytel calories, Tanaka HRmax, TRIMP, VO2max, BIA body-fat %,
-    // UserProfile.effectiveAge), replacing the old plain "Age" field entirely: it stays
-    // correct as years pass instead of needing a manual yearly bump. Null until the user
-    // fills it in — effectiveAge falls back to a fixed default until then.
-    val currentYear = java.time.Year.now().value
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Birth year", style = MaterialTheme.typography.bodySmall)
-            ScrollPickerInput(
-                value = profile.birthYear ?: (currentYear - 30),
-                onValueChange = { onBirthYearChange(it.toInt().takeIf { y -> y in 1900..currentYear }) },
-                buttonStep = 1.0,
-                isModified = profile.birthYear != null,
-                modifier = Modifier.width(120.dp),
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Height (cm)", style = MaterialTheme.typography.bodySmall)
-            ScrollPickerInput(
-                value = profile.heightCm,
-                onValueChange = { onHeightChange(it.toInt()) },
-                buttonStep = 1.0,
-                isModified = true,
-                modifier = Modifier.width(120.dp),
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        if (profile.birthYear != null) {
-            "HRmax: ${profile.hrMax} BPM (Tanaka formula)"
-        } else {
-            "Imposta l'anno di nascita per calcoli accurati (HRmax stimato: ${profile.hrMax} BPM)"
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable

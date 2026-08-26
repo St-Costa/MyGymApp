@@ -7,6 +7,8 @@ import com.mygymapp.data.PowerliftingScheduleRepository
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.ReadinessRepository
+import com.mygymapp.data.polar.UserProfile
+import com.mygymapp.data.polar.UserProfileRepository
 import com.mygymapp.data.repository.FileManager
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -35,6 +37,11 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 data class OptionsUiState(
+    // Profile (gender, birth year, height) — feeds every age/gender-dependent formula
+    // (Keytel calories, Tanaka HRmax, TRIMP, VO2max, BIA body-fat %). Lives here (first
+    // card) rather than on the Heart & Scale screen since it's a one-off setting, not
+    // something tweaked during a live BLE session.
+    val profile: UserProfile = UserProfile(),
     /** Monday of the selected powerlifting anchor week, or null if not set. */
     val anchorMonday: LocalDate? = null,
     val intervalWeeks: Int = 4,
@@ -64,6 +71,7 @@ data class OptionsUiState(
 @HiltViewModel
 class OptionsViewModel @Inject constructor(
     private val scheduleRepository: PowerliftingScheduleRepository,
+    private val profileRepo: UserProfileRepository,
     private val syncConfigRepository: SyncConfigRepository,
     private val syncLedgerRepository: SyncLedgerRepository,
     private val syncApi: SyncApi,
@@ -82,6 +90,7 @@ class OptionsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(
         OptionsUiState(
+            profile = profileRepo.get(),
             anchorMonday = scheduleRepository.anchorMonday(),
             intervalWeeks = scheduleRepository.intervalWeeks(),
             syncServerUrl = syncConfigRepository.serverUrl(),
@@ -142,6 +151,26 @@ class OptionsViewModel @Inject constructor(
                 refreshSyncStatus()
             }
         }
+    }
+
+    // ─── Profile (gender, birth year, height) ────────────────────────────────
+
+    fun updateGender(isMale: Boolean) {
+        val profile = _uiState.value.profile.copy(isMale = isMale)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
+    }
+
+    fun updateHeight(heightCm: Int) {
+        val profile = _uiState.value.profile.copy(heightCm = heightCm)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
+    }
+
+    fun updateBirthYear(birthYear: Int?) {
+        val profile = _uiState.value.profile.copy(birthYear = birthYear)
+        _uiState.value = _uiState.value.copy(profile = profile)
+        profileRepo.save(profile)
     }
 
     /** Select any day; the whole week (its Monday) becomes the anchor. */
