@@ -130,12 +130,11 @@ fun ScrollPickerInput(
     }
 
     fun applyChange(delta: Double) {
-        val newValue = if (isDecimal) {
-            (value.toDouble() + delta).coerceAtLeast(minValue)
+        if (isDecimal) {
+            onValueChange((value.toDouble() + delta).coerceAtLeast(minValue))
         } else {
-            (value.toInt() + delta.roundToInt()).coerceAtLeast(minValue.roundToInt())
+            onValueChange((value.toInt() + delta.roundToInt()).coerceAtLeast(minValue.roundToInt()))
         }
-        if (isDecimal) onValueChange(newValue as Number) else onValueChange((newValue as Number).toInt())
     }
 
     val scrollModifier = if (enableScroll) {
