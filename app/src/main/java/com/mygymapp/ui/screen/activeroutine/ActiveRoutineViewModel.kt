@@ -85,6 +85,9 @@ data class ActiveExerciseUi(
     val bodypart: String,
     val completed: Boolean = false,
     val setCount: Int = 0,
+    // Configured block duration for CARDIO exercises (RoutineExercise.timePerSetSeconds).
+    // Unused for other types.
+    val timePerSetSeconds: Int = 0,
     val tonnageChangePct: Double? = null,
     val rmChangePct: Double? = null,
     val isFirstTimeTonnage: Boolean = false,
@@ -148,7 +151,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 return@launch
             }
 
-            // Build the session in order: fixed-daily -> normal -> warmup.
+            // Build the session in order: fixed-daily -> warmup -> normal.
             // Warmup and fixed-daily exercises are excluded from tonnage (but not cardio).
             val warmup = routine.exercises.filter { it.isWarmup }
             val normal = routine.exercises.filterNot { it.isWarmup }
@@ -165,8 +168,8 @@ class ActiveRoutineViewModel @Inject constructor(
             // from tonnage.
             val ordered: List<Pair<RoutineExercise, SessionExerciseCategory>> =
                 fixed.clearTailLink().map { it to SessionExerciseCategory.DAILY } +
-                    normal.clearTailLink().map { it to SessionExerciseCategory.NORMAL } +
-                    warmup.clearTailLink().map { it to SessionExerciseCategory.WARMUP }
+                    warmup.clearTailLink().map { it to SessionExerciseCategory.WARMUP } +
+                    normal.clearTailLink().map { it to SessionExerciseCategory.NORMAL }
 
             val exercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
@@ -176,6 +179,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     type = exercise.type,
                     bodypart = exercise.bodypart,
                     setCount = re.sets,
+                    timePerSetSeconds = re.timePerSetSeconds,
                     supersetWithNext = re.supersetWithNext,
                     excludeFromTonnage = category != SessionExerciseCategory.NORMAL,
                     category = category,
