@@ -91,12 +91,17 @@ fun GitgraphView(
     modifier: Modifier = Modifier,
 ) {
     val spacing = 6.dp
-    val horizontalPadding = 12.dp
+    val horizontalPadding = 0.dp
     val shape = RoundedCornerShape(6.dp)
     val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
 
     BoxWithConstraints(modifier = modifier.padding(horizontal = horizontalPadding)) {
-        val cellSize: Dp = (maxWidth - spacing * 6) / 7
+        // Every row below (header, history rows, schedule row) additionally pads itself
+        // horizontally by 3.dp per side to keep rounded cell corners clear of the powerlifting-
+        // week border — that 6.dp must come out of the same maxWidth cellSize is derived from,
+        // or the 7th column (Sunday) silently gets clipped narrower than the other 6.
+        val rowHorizontalInset = 6.dp
+        val cellSize: Dp = (maxWidth - rowHorizontalInset - spacing * 6) / 7
         // Starting font size for text inside squares: big enough to need shrinking for short
         // strings like "7%", but converges quickly for longer ones like "100%".
         val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f * 0.9f * 0.9f }
@@ -129,10 +134,14 @@ fun GitgraphView(
             for (row in 0 until 4) {
                 val isPowerliftingWeek = powerliftingWeeks.getOrElse(row) { false }
                 val rowModifier = if (isPowerliftingWeek) {
+                    // Border (2.dp) + padding (1.dp) = 3.dp per side, same horizontal inset as
+                    // the non-powerlifting case below — cellSize is shared across all rows, so
+                    // every row must consume the same horizontal space or the last column
+                    // (Sunday) gets clipped narrower than the rest.
                     Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .border(2.dp, Primary, RoundedCornerShape(8.dp))
-                        .padding(3.dp)
+                        .padding(1.dp)
                 } else {
                     Modifier.padding(horizontal = 3.dp, vertical = 3.dp)
                 }
