@@ -82,7 +82,9 @@ fun hrZoneLabel(zone: HrZone): String = when (zone) {
 
 /**
  * Shows current HR. Hides itself when Polar is not connected.
- * Call [PolarManager.onSetCompleted] to trigger recovery tracking.
+ * Recovery tracking is fully automatic — [PolarManager] detects HR peaks and starts
+ * tracking recovery from its own internal HR stream (`detectPeakAndTriggerRecovery`),
+ * so there is nothing this composable or its caller needs to trigger explicitly.
  */
 @Composable
 fun HeartRateBar(

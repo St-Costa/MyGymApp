@@ -67,12 +67,6 @@ class HealthConnectStepsReader @Inject constructor(
     }
 
     /**
-     * Total steps recorded between [start] (inclusive) and [end] (exclusive), or `null` if
-     * Health Connect is unavailable, the permission isn't granted, or the query itself
-     * fails — never `0` as a stand-in for "couldn't read this", same "null means no data"
-     * rule as the rest of this feature (see SYNC.md).
-     */
-    /**
      * Steps over the whole of yesterday in the device's local timezone (midnight to
      * midnight), or `null` if Health Connect couldn't answer. A complete calendar day, so
      * unlike the checkpoint diff in [StepLedgerRepository] the number doesn't depend on
@@ -87,6 +81,12 @@ class HealthConnectStepsReader @Inject constructor(
         )
     }
 
+    /**
+     * Total steps recorded between [start] (inclusive) and [end] (exclusive), or `null` if
+     * Health Connect is unavailable, the permission isn't granted, or the query itself
+     * fails — same "null means no data, 0 means a real zero-step day" rule as the rest of
+     * this feature (see SYNC.md).
+     */
     suspend fun totalSteps(start: Instant, end: Instant): Long? {
         val c = client ?: return null
         return try {

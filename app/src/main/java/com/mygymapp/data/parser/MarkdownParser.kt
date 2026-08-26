@@ -53,7 +53,7 @@ object MarkdownParser {
         for ((key, value) in map) {
             when (value) {
                 null -> sb.appendLine("$prefix$key:")
-                is String -> sb.appendLine("$prefix$key: \"$value\"")
+                is String -> sb.appendLine("$prefix$key: \"${escapeYamlString(value)}\"")
                 is Boolean -> sb.appendLine("$prefix$key: $value")
                 is Number -> sb.appendLine("$prefix$key: ${formatValue(value)}")
                 is List<*> -> {
@@ -128,13 +128,25 @@ object MarkdownParser {
 
     private fun formatValue(value: Any?): String = when (value) {
         null -> ""
-        is String -> "\"$value\""
+        is String -> "\"${escapeYamlString(value)}\""
         is Boolean -> value.toString()
         is Double -> formatDouble(value)
         is Float -> formatDouble(value.toDouble())
         is Number -> value.toString()
-        else -> "\"$value\""
+        else -> "\"${escapeYamlString(value.toString())}\""
     }
+
+    /**
+     * Escapes a value going into a double-quoted YAML scalar. Every frontmatter string field
+     * (exercise/routine/bodypart names, links) is free text the user typed — a literal `"` or
+     * `\` would otherwise terminate/corrupt the quoted scalar early, and a literal newline
+     * would break the single-line `key: "value"` shape entirely. Either failure mode is
+     * silent: the file is written corrupted, then discarded by the `catch (_: Exception) {
+     * /* Skip malformed */ }` every repository's `ensureLoaded()`/read path already has —
+     * the record just vanishes on next load with no visible error.
+     */
+    private fun escapeYamlString(value: String): String =
+        value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", "")
 
     // Round doubles to 2 decimals on write so session YAML stays readable.
     private fun formatDouble(v: Double): String {

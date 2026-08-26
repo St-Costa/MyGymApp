@@ -176,7 +176,11 @@ class SyncLedgerRepository @Inject constructor(
                 status = SyncStatus.FAILED,
                 attempts = existing.attempts + 1,
                 lastAttemptAt = java.time.LocalDateTime.now().toString(),
-                lastError = error.take(500),
+                // error can be a raw HTTP error body or exception message — strip
+                // newlines so it can't break the single-line quoted YAML scalar
+                // writeAllUnlocked() emits (a literal '\n' inside the quotes would
+                // corrupt the whole ledger file on the next read, not just this entry).
+                lastError = error.take(500).replace(Regex("[\\r\\n]+"), " "),
             )
             writeAllUnlocked(all)
         }
