@@ -21,8 +21,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,9 +65,9 @@ fun GitgraphView(
         val cellSize: Dp = (maxWidth - spacing * 6) / 7
         // Starting font size for text inside squares: big enough to need shrinking for short
         // strings like "7%", but converges quickly for longer ones like "100%".
-        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.40f }
-        // Starting font size for the routine name, on a single line under the percentage.
-        val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.26f }
+        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f }
+        // Starting font size for the routine name, pinned along the square's bottom edge.
+        val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.24f }
 
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing),
@@ -132,29 +134,34 @@ fun GitgraphView(
                                     else Modifier
                                 ),
                         ) {
-                            // % on top, routine name in small print below it — the name is
-                            // what lets an out-of-schedule day (routine done on the "wrong"
-                            // day) still be identified at a glance.
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (change != null) {
-                                    AutoShrinkText(
-                                        text = "${abs(change).roundToInt()}%",
-                                        modifier = Modifier.fillMaxWidth(),
-                                        maxFontSizeSp = squareMaxFontSp,
-                                        minFontSizeSp = 6f,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.Black,
-                                    )
-                                }
-                                if (routineName != null) {
-                                    AutoShrinkText(
-                                        text = routineName,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        maxFontSizeSp = nameMaxFontSp,
-                                        minFontSizeSp = 5f,
-                                        color = Color.Black.copy(alpha = 0.7f),
-                                    )
-                                }
+                            // % stays centered in the square exactly as before; the routine
+                            // name — what lets an out-of-schedule day (routine done on the
+                            // "wrong" day) still be identified at a glance — is pinned to the
+                            // bottom edge instead, so it never pushes the % off-center.
+                            if (change != null) {
+                                AutoShrinkText(
+                                    text = "${abs(change).roundToInt()}%",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .offset(y = -cellSize * 0.10f),
+                                    maxFontSizeSp = squareMaxFontSp,
+                                    minFontSizeSp = 6f,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black,
+                                )
+                            }
+                            if (routineName != null) {
+                                AutoShrinkText(
+                                    text = routineName,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .padding(bottom = 0.5.dp),
+                                    maxFontSizeSp = nameMaxFontSp,
+                                    minFontSizeSp = 5f,
+                                    color = Color.Black.copy(alpha = 0.7f),
+                                    tightBottom = true,
+                                )
                             }
                         }
                     }
@@ -176,12 +183,25 @@ private fun AutoShrinkText(
     minFontSizeSp: Float = 6f,
     fontWeight: FontWeight = FontWeight.Normal,
     color: Color = Color.White,
+    // When true, collapses the font's built-in leading so the glyphs themselves sit flush
+    // against the bottom of the layout box instead of floating a few px above it (Text
+    // normally reserves space for descenders/leading above and below the visible glyphs).
+    tightBottom: Boolean = false,
 ) {
     var fontSizeSp by remember(text, maxFontSizeSp) { mutableStateOf(maxFontSizeSp) }
     Text(
         text = text,
         modifier = modifier,
         fontSize = fontSizeSp.sp,
+        lineHeight = if (tightBottom) fontSizeSp.sp else androidx.compose.ui.unit.TextUnit.Unspecified,
+        style = if (tightBottom) {
+            androidx.compose.ui.text.TextStyle(
+                lineHeightStyle = LineHeightStyle(
+                    alignment = LineHeightStyle.Alignment.Bottom,
+                    trim = LineHeightStyle.Trim.Both,
+                ),
+            )
+        } else androidx.compose.ui.text.TextStyle.Default,
         fontWeight = fontWeight,
         maxLines = Int.MAX_VALUE,
         softWrap = false,         // honour explicit \n but never word-wrap
