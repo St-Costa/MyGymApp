@@ -78,7 +78,7 @@ fun MainScreen(
                 days = uiState.gitgraphDays,
                 todayIndex = uiState.todayIndex,
                 tonnageChanges = uiState.gitgraphTonnageChanges,
-                lastWeekRoutineNames = uiState.lastWeekRoutineNames,
+                routineNames = uiState.routineNames,
                 powerliftingWeeks = uiState.powerliftingWeeks,
                 onLastRowCellClick = { col ->
                     val sessionId = uiState.lastWeekSessionIds.getOrNull(col)
