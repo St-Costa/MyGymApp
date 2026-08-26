@@ -10,7 +10,6 @@ import com.mygymapp.data.polar.ReadinessRepository
 import com.mygymapp.data.repository.FileManager
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
-import com.mygymapp.data.sync.DiagnosticStep
 import com.mygymapp.data.sync.EcgSyncLedgerRepository
 import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessLedgerRepository
@@ -19,7 +18,6 @@ import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncApi
 import com.mygymapp.data.sync.SyncConfigRepository
-import com.mygymapp.data.sync.SyncDiagnostics
 import com.mygymapp.data.steps.HealthConnectStepsReader
 import com.mygymapp.data.steps.StepLedgerRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
@@ -54,8 +52,6 @@ data class OptionsUiState(
     val syncIsResyncing: Boolean = false,
     // Set when syncIsResyncing starts, to 0..1 as ledgers drain — see resyncAll().
     val syncResyncProgress: Float = 0f,
-    val syncDiagnosticSteps: List<DiagnosticStep> = emptyList(),
-    val syncDiagnosticRunning: Boolean = false,
     // ECG debug send (docs/SYNC.md "Fourth record type: raw ECG")
     val ecgDebugRecording: Boolean = false,
     val ecgDebugSecondsLeft: Int = 0,
@@ -72,7 +68,6 @@ class OptionsViewModel @Inject constructor(
     private val syncLedgerRepository: SyncLedgerRepository,
     private val syncApi: SyncApi,
     private val workoutRepository: WorkoutRepository,
-    private val syncDiagnostics: SyncDiagnostics,
     private val readinessRepository: ReadinessRepository,
     private val readinessLedgerRepository: ReadinessLedgerRepository,
     private val scaleHistoryRepository: ScaleHistoryRepository,
@@ -334,20 +329,6 @@ class OptionsViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(syncResyncProgress = progress)
             if (stillPending <= 0) return
             kotlinx.coroutines.delay(1_000L)
-        }
-    }
-
-    /**
-     * Runs [SyncDiagnostics] (health check + real send + idempotency re-send) and surfaces
-     * each labeled step in the UI. Every step is also written to AppLogger — see
-     * `adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`.
-     */
-    fun runDiagnostics() {
-        _uiState.value = _uiState.value.copy(syncDiagnosticRunning = true, syncDiagnosticSteps = emptyList())
-        viewModelScope.launch {
-            val steps = syncDiagnostics.run()
-            _uiState.value = _uiState.value.copy(syncDiagnosticRunning = false, syncDiagnosticSteps = steps)
-            refreshSyncStatus()
         }
     }
 
