@@ -79,16 +79,23 @@ class MainViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // Gitgraph load doesn't depend on any of the boot maintenance below, so it runs
+            // as its own concurrent child job — the screen populates as soon as the slower of
+            // the two finishes, instead of waiting for maintenance to complete first.
+            launch { loadGitgraphInternal() }
+
             workoutRepository.migrateOldSessionFiles()
-            workoutRepository.pruneOldSessions(LocalDate.now().minusMonths(3))
-            // Scrub sessions the user opened but never filled in, and their orphan ECG raws.
-            val ghostsDeleted = workoutRepository.cleanupGhostSessions()
-            val orphansDeleted = workoutRepository.cleanupOrphanEcgFiles()
-            appLogger.i(TAG, "Boot cleanup: ghosts=$ghostsDeleted orphanEcg=$orphansDeleted")
+            // Ghost-session cleanup, old-session pruning, and orphan-ECG cleanup, combined into
+            // one pass over history/ and throttled internally (see WorkoutRepository.runMaintenance)
+            // — no need to re-walk and re-parse the whole session history on every single launch.
+            val result = workoutRepository.runMaintenance(LocalDate.now().minusMonths(3))
+            appLogger.i(
+                TAG,
+                "Boot cleanup: ghosts=${result.ghostsDeleted} pruned=${result.prunedDeleted} orphanEcg=${result.orphanEcgDeleted}",
+            )
             // Repair exercises/routines where repRangeMin > repRangeMax was persisted.
             exerciseRepository.fixInvalidRepRanges()
             routineRepository.fixInvalidRepRanges()
-            loadGitgraphInternal()
         }
         viewModelScope.launch {
             dataChangedSignal.routinesChanged.collect { loadGitgraphInternal() }

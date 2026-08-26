@@ -203,7 +203,7 @@ Entering an active routine creates the `.md` file eagerly (so `StrengthExerciseV
 - no exercise has `completed == true`
 - every set is empty (`reps == 0 && weight == 0` for strength, `done == false` for stretch, `startedAt.isBlank()` for cardio — a started-but-not-yet-finished cardio block still counts as real data)
 
-The same ruleset lives server-side in `WorkoutRepository.cleanupGhostSessions()`, called at boot from `MainViewModel.init`, so shells created by older builds (or by a process killed before `onCleared`) still get scrubbed. `cleanupOrphanEcgFiles()` runs right after and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md`.
+The same ruleset lives server-side in `WorkoutRepository.runMaintenance()`, called at boot from `MainViewModel.init`, so shells created by older builds (or by a process killed before `onCleared`) still get scrubbed. `runMaintenance()` also prunes sessions older than 3 months and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md` — all three checks happen in one walk over `history/` that parses each session file only once (previously three separate walks/parses; merged in Phase 68 for app-start speed), and the whole pass is throttled to at most once per 12h via an mtime sentinel (`history/_idx/.last_maintenance`).
 
 **Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
 

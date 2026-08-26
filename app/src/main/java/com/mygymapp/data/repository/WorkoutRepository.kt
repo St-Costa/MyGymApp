@@ -396,41 +396,8 @@ class WorkoutRepository @Inject constructor(
 
     // ─── Maintenance ─────────────────────────────────────────────────────────
 
-    /**
-     * Deletes all session files whose filename date is before [cutoffDate].
-     * Cleans up exercise index entries for deleted files.
-     */
-    suspend fun pruneOldSessions(cutoffDate: LocalDate) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val historyRoot = File(fileManager.root, "history")
-            if (!historyRoot.exists()) return@withLock
-            historyRoot.listFiles()?.forEach { yearDir ->
-                if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
-                yearDir.listFiles()?.forEach { monthDir ->
-                    if (!monthDir.isDirectory) return@forEach
-                    monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                        try {
-                            val fileDate = LocalDate.parse(
-                                file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE
-                            )
-                            if (fileDate.isBefore(cutoffDate)) {
-                                try {
-                                    val session = WorkoutParser.fromMarkdown(file.readText())
-                                    val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
-                                    session.exercises.forEach { ex ->
-                                        removeFromExerciseIndex(ex.exerciseId, rel)
-                                    }
-                                } catch (_: Exception) { /* Delete anyway */ }
-                                file.delete()
-                            }
-                        } catch (_: Exception) {
-                            file.delete() // Malformed filename — discard
-                        }
-                    }
-                }
-            }
-        }
-    }
+    /** Result of [runMaintenance]: counts of what was cleaned up. */
+    data class MaintenanceResult(val ghostsDeleted: Int, val prunedDeleted: Int, val orphanEcgDeleted: Int)
 
     /**
      * True if a session has no real user data: no completedAt, no exercise marked completed,
@@ -454,65 +421,91 @@ class WorkoutRepository @Inject constructor(
     }
 
     /**
-     * Deletes session files that were opened but never had any set filled or any exercise
-     * marked as completed. Returns the number of files removed.
-     * Runs at boot to scrub sessions abandoned by the user (back/kill before any data).
+     * Combined boot maintenance: ghost-session cleanup, old-session pruning, and orphan ECG
+     * file cleanup — done as a SINGLE walk over `history/` that parses each `.md` file only
+     * once (previously these were three separate walks, each re-parsing every session's YAML,
+     * which dominated app-start time as history grew).
+     *
+     * Throttled to run at most once every [MIN_INTERVAL_HOURS] hours (tracked via an mtime
+     * sentinel file), since none of this cleanup needs to happen more than once per sitting —
+     * it exists to scrub state left over between sessions, not to run on every cold start.
+     * Pass [force] to bypass the throttle (e.g. a manual "clean up now" action, if ever added).
      */
-    suspend fun cleanupGhostSessions(): Int = withContext(Dispatchers.IO) {
+    suspend fun runMaintenance(
+        cutoffDate: LocalDate,
+        force: Boolean = false,
+    ): MaintenanceResult = withContext(Dispatchers.IO) {
+        val sentinel = File(indexDir().also { it.mkdirs() }, ".last_maintenance")
+        if (!force && sentinel.exists()) {
+            val ageHours = (System.currentTimeMillis() - sentinel.lastModified()) / 3_600_000.0
+            if (ageHours < MIN_INTERVAL_HOURS) return@withContext MaintenanceResult(0, 0, 0)
+        }
+
         mutex.withLock {
             val historyRoot = File(fileManager.root, "history")
-            if (!historyRoot.exists()) return@withLock 0
-            var removed = 0
-            historyRoot.listFiles()?.forEach { yearDir ->
-                if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
-                yearDir.listFiles()?.forEach { monthDir ->
-                    if (!monthDir.isDirectory) return@forEach
-                    monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                        try {
-                            val session = WorkoutParser.fromMarkdown(file.readText())
-                            if (isGhostSession(session)) {
-                                val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
-                                session.exercises.forEach { ex ->
+            var ghostsDeleted = 0
+            var prunedDeleted = 0
+            val validSessionIds = mutableSetOf<String>()
+
+            if (historyRoot.exists()) {
+                historyRoot.listFiles()?.forEach { yearDir ->
+                    if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                    yearDir.listFiles()?.forEach { monthDir ->
+                        if (!monthDir.isDirectory) return@forEach
+                        monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                            val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
+
+                            // Malformed filename date -> discard outright, same as before.
+                            val fileDate = try {
+                                LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
+                            } catch (_: Exception) {
+                                file.delete()
+                                return@forEach
+                            }
+
+                            // One parse serves all three checks below.
+                            val session = try {
+                                WorkoutParser.fromMarkdown(file.readText())
+                            } catch (_: Exception) {
+                                null
+                            }
+
+                            val isPruneCandidate = fileDate.isBefore(cutoffDate)
+                            val isGhost = session != null && isGhostSession(session)
+
+                            if (isPruneCandidate || isGhost) {
+                                session?.exercises?.forEach { ex ->
                                     removeFromExerciseIndex(ex.exerciseId, rel)
                                 }
                                 file.delete()
-                                removed++
+                                if (isGhost) ghostsDeleted++ else prunedDeleted++
+                            } else {
+                                val id = file.nameWithoutExtension.substringAfterLast("_")
+                                if (id.isNotBlank()) validSessionIds.add(id)
                             }
-                        } catch (_: Exception) { /* skip malformed */ }
+                        }
                     }
                 }
             }
-            removed
+
+            // Orphan ECG raws: any `.ecg` file whose sessionId has no surviving session file.
+            val ecgDir = fileManager.getDir("ecg")
+            var orphanEcgDeleted = 0
+            if (ecgDir.exists()) {
+                ecgDir.listFiles()?.filter { it.extension == "ecg" }?.forEach { file ->
+                    if (file.nameWithoutExtension !in validSessionIds) {
+                        if (file.delete()) orphanEcgDeleted++
+                    }
+                }
+            }
+
+            sentinel.writeText("")
+            MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)
         }
     }
 
-    /**
-     * Deletes `.ecg` files in `gymdata/ecg/` whose sessionId has no corresponding session
-     * file in `history/`. Run AFTER [cleanupGhostSessions] so freshly abandoned sessions'
-     * raw ECG data is collected. Returns the number of files removed.
-     */
-    suspend fun cleanupOrphanEcgFiles(): Int = withContext(Dispatchers.IO) {
-        val ecgDir = fileManager.getDir("ecg")
-        if (!ecgDir.exists()) return@withContext 0
-        val historyRoot = File(fileManager.root, "history")
-        val validSessionIds = mutableSetOf<String>()
-        historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
-            yearDir.listFiles()?.forEach { monthDir ->
-                if (!monthDir.isDirectory) return@forEach
-                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                    val id = file.nameWithoutExtension.substringAfterLast("_")
-                    if (id.isNotBlank()) validSessionIds.add(id)
-                }
-            }
-        }
-        var removed = 0
-        ecgDir.listFiles()?.filter { it.extension == "ecg" }?.forEach { file ->
-            if (file.nameWithoutExtension !in validSessionIds) {
-                if (file.delete()) removed++
-            }
-        }
-        removed
+    companion object {
+        private const val MIN_INTERVAL_HOURS = 12
     }
 
     /**
