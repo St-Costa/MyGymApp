@@ -36,12 +36,12 @@ import com.mygymapp.ui.components.GitgraphView
 
 @Composable
 fun MainScreen(
-    onNavigateToWeekView: () -> Unit,
     onNavigateToExercises: () -> Unit,
     onNavigateToRoutines: () -> Unit,
     onNavigateToHeartRate: () -> Unit,
     onNavigateToOptions: () -> Unit,
     onNavigateToSessionProgress: (sessionId: String, date: String) -> Unit,
+    onNavigateToRoutine: (routineId: String) -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
     permissionsViewModel: PermissionsViewModel = hiltViewModel(),
 ) {
@@ -76,18 +76,22 @@ fun MainScreen(
             // Gitgraph
             GitgraphView(
                 days = uiState.gitgraphDays,
-                todayIndex = uiState.todayIndex,
                 tonnageChanges = uiState.gitgraphTonnageChanges,
                 cardioMinutes = uiState.gitgraphCardioMinutes,
                 routineNames = uiState.routineNames,
+                sessionIds = uiState.sessionIds,
+                sessionDates = uiState.sessionDates,
                 powerliftingWeeks = uiState.powerliftingWeeks,
-                onLastRowCellClick = { col ->
-                    val sessionId = uiState.lastWeekSessionIds.getOrNull(col)
-                    val date = uiState.lastWeekSessionDates.getOrNull(col)
-                    if (sessionId != null && date != null) {
-                        onNavigateToSessionProgress(sessionId, date)
-                    }
-                },
+                onCellClick = { sessionId, date -> onNavigateToSessionProgress(sessionId, date) },
+                scheduleCells = uiState.scheduleCells,
+                todayDowIndex = uiState.todayDowIndex,
+                todayStatus = uiState.todayStatus,
+                todayTonnageChange = uiState.todayTonnageChange,
+                todayCardioMinutes = uiState.todayCardioMinutes,
+                todayRoutineName = uiState.todayRoutineName,
+                todaySessionId = uiState.todaySessionId,
+                todaySessionDate = uiState.todaySessionDate,
+                onScheduleCellClick = { routineId -> onNavigateToRoutine(routineId) },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -97,12 +101,6 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Button(
-                    onClick = onNavigateToWeekView,
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
-                ) {
-                    Text("Week View", fontSize = 22.sp)
-                }
                 Button(
                     onClick = onNavigateToExercises,
                     modifier = Modifier.fillMaxWidth().height(72.dp),
