@@ -28,8 +28,9 @@ data class MainUiState(
     val todayIndex: Int = 27,
     // One value per square (28 total): % change vs previous session, null if no comparison
     val gitgraphTonnageChanges: List<Double?> = List(28) { null },
-    // Routine name for each day of the current week (7 values, last row only)
-    val lastWeekRoutineNames: List<String?> = List(7) { null },
+    // Routine name for each day with a session (28 values, one per square) — shown inside
+    // the square itself so an out-of-schedule day is still identifiable at a glance.
+    val routineNames: List<String?> = List(28) { null },
     // Session ID + date for each day of the current week (null = no session that day)
     val lastWeekSessionIds: List<String?> = List(7) { null },
     val lastWeekSessionDates: List<String?> = List(7) { null },
@@ -89,7 +90,7 @@ class MainViewModel @Inject constructor(
 
         val days = mutableListOf<DayStatus>()
         val gitgraphTonnageChanges = mutableListOf<Double?>()
-        val lastWeekRoutineNames = mutableListOf<String?>()
+        val routineNames = mutableListOf<String?>()
         val lastWeekSessionIds = mutableListOf<String?>()
         val lastWeekSessionDates = mutableListOf<String?>()
 
@@ -99,7 +100,11 @@ class MainViewModel @Inject constructor(
             if (date.isAfter(today)) {
                 days.add(DayStatus.NONE)
                 gitgraphTonnageChanges.add(null)
-                if (dayOffset >= 21) lastWeekRoutineNames.add(null)
+                routineNames.add(null)
+                if (dayOffset >= 21) {
+                    lastWeekSessionIds.add(null)
+                    lastWeekSessionDates.add(null)
+                }
                 continue
             }
 
@@ -107,8 +112,8 @@ class MainViewModel @Inject constructor(
             val daySessions = sessions.filter { it.date == dateStr }
             val lastSession = daySessions.maxByOrNull { it.completedAt }
 
+            routineNames.add(lastSession?.routineName)
             if (dayOffset >= 21) {
-                lastWeekRoutineNames.add(lastSession?.routineName)
                 lastWeekSessionIds.add(lastSession?.id)
                 lastWeekSessionDates.add(if (lastSession != null) dateStr else null)
             }
@@ -152,7 +157,7 @@ class MainViewModel @Inject constructor(
             gitgraphDays = days,
             todayIndex = todayIndex,
             gitgraphTonnageChanges = gitgraphTonnageChanges,
-            lastWeekRoutineNames = lastWeekRoutineNames,
+            routineNames = routineNames,
             lastWeekSessionIds = lastWeekSessionIds,
             lastWeekSessionDates = lastWeekSessionDates,
             powerliftingWeeks = powerliftingWeeks,

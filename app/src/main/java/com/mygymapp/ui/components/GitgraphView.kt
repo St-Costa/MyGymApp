@@ -46,8 +46,8 @@ enum class DayStatus {
 fun GitgraphView(
     days: List<DayStatus>,
     todayIndex: Int,
-    tonnageChanges: List<Double?> = emptyList(),      // 28 values, one per square
-    lastWeekRoutineNames: List<String?> = emptyList(), // 7 values, last row only
+    tonnageChanges: List<Double?> = emptyList(), // 28 values, one per square
+    routineNames: List<String?> = emptyList(),   // 28 values, one per square
     // 4 values, one per week-row: true = powerlifting week (brand-purple border)
     powerliftingWeeks: List<Boolean> = emptyList(),
     // Called when user taps a last-row cell that has a session; col = 0..6 (Mon–Sun)
@@ -63,9 +63,9 @@ fun GitgraphView(
         val cellSize: Dp = (maxWidth - spacing * 6) / 7
         // Starting font size for text inside squares: big enough to need shrinking for short
         // strings like "7%", but converges quickly for longer ones like "100%".
-        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f }
-        // Starting font size for routine name labels below: one word per line.
-        val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.55f }
+        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.40f }
+        // Starting font size for the routine name, on a single line under the percentage.
+        val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.26f }
 
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing),
@@ -114,6 +114,7 @@ fun GitgraphView(
                         val change = tonnageChanges.getOrNull(index)
                         val isLastRow = row == 3
                         val hasSession = status != DayStatus.NONE
+                        val routineName = routineNames.getOrNull(index)
 
                         Box(
                             contentAlignment = Alignment.Center,
@@ -131,43 +132,31 @@ fun GitgraphView(
                                     else Modifier
                                 ),
                         ) {
-                            if (change != null) {
-                                AutoShrinkText(
-                                    text = "${abs(change).roundToInt()}%",
-                                    modifier = Modifier.fillMaxWidth(),
-                                    maxFontSizeSp = squareMaxFontSp,
-                                    minFontSizeSp = 6f,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Black,
-                                )
+                            // % on top, routine name in small print below it — the name is
+                            // what lets an out-of-schedule day (routine done on the "wrong"
+                            // day) still be identified at a glance.
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (change != null) {
+                                    AutoShrinkText(
+                                        text = "${abs(change).roundToInt()}%",
+                                        modifier = Modifier.fillMaxWidth(),
+                                        maxFontSizeSp = squareMaxFontSp,
+                                        minFontSizeSp = 6f,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Black,
+                                    )
+                                }
+                                if (routineName != null) {
+                                    AutoShrinkText(
+                                        text = routineName,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        maxFontSizeSp = nameMaxFontSp,
+                                        minFontSizeSp = 5f,
+                                        color = Color.Black.copy(alpha = 0.7f),
+                                    )
+                                }
                             }
                         }
-                    }
-                }
-            }
-
-            // Routine name labels for the current week:
-            // each word on its own line, font maximized to fill cell width.
-            if (lastWeekRoutineNames.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(spacing),
-                ) {
-                    for (col in 0 until 7) {
-                        val name = lastWeekRoutineNames.getOrNull(col)
-                        // Split on spaces so each word is on its own line,
-                        // then shrink the font until the longest word fits.
-                        val multilineText = name?.trim()?.split(" ")
-                            ?.filter { it.isNotEmpty() }
-                            ?.joinToString("\n") ?: ""
-                        AutoShrinkText(
-                            text = multilineText,
-                            modifier = Modifier.width(cellSize),
-                            maxFontSizeSp = nameMaxFontSp,
-                            minFontSizeSp = 5f,
-                            color = if (name != null) Color.White.copy(alpha = 0.7f)
-                                    else Color.Transparent,
-                        )
                     }
                 }
             }
