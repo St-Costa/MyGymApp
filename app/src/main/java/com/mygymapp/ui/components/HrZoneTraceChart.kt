@@ -4,6 +4,7 @@ import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -83,14 +84,15 @@ fun HrZoneTraceChart(
     }
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .height(192.dp)
+            .then(modifier)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF1B1B1B))
             .padding(vertical = 2.dp),
     ) {
-        Canvas(modifier = Modifier.fillMaxWidth().height(188.dp)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
             if (w <= 0f || h <= 0f) return@Canvas

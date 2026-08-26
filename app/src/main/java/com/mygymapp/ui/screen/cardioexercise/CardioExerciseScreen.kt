@@ -2,20 +2,15 @@ package com.mygymapp.ui.screen.cardioexercise
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,11 +26,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.HrZoneTraceChart
-import com.mygymapp.ui.components.MediaPreview
+
+/**
+ * The single action button cycles through the block lifecycle:
+ * IDLE ("Inizia cardio") -> RUNNING ("Termina cardio") -> at least one block closed
+ * ("Completa esercizio"), which saves and exits. See CardioExerciseViewModel's
+ * startBlock()/stopBlock()/completeExercise().
+ */
+private enum class CardioButtonState { IDLE, RUNNING, DONE }
+
+private fun CardioExerciseUiState.buttonState(): CardioButtonState = when {
+    isBlockRunning -> CardioButtonState.RUNNING
+    completedBlocks.isNotEmpty() -> CardioButtonState.DONE
+    else -> CardioButtonState.IDLE
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,19 +76,15 @@ fun CardioExerciseScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                MediaPreview(link = uiState.exercise?.link ?: "")
-
                 // Heart rate (live, sourced from PolarManager same as every other exercise
-                // screen), plus the zone-trace chart — cardio is where zone-holding matters
+                // screen), plus the zone-trace chart taking up the rest of the screen —
+                // cardio is where zone-holding matters.
                 HeartRateBar()
 
-                HrZoneTraceChart()
+                HrZoneTraceChart(modifier = Modifier.weight(1f).fillMaxHeight())
 
                 // Countdown from the configured block duration (RoutineEditScreen) — keeps
                 // going negative (overtime) rather than auto-stopping at zero; the user must
@@ -113,105 +116,35 @@ fun CardioExerciseScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                uiState.liveHr?.let { hr ->
-                    Text(
-                        text = "$hr BPM",
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
 
+                // Single action button, cycling IDLE -> RUNNING -> DONE (see buttonState()).
+                val buttonState = uiState.buttonState()
                 Button(
                     onClick = {
-                        if (uiState.isBlockRunning) viewModel.stopBlock() else viewModel.startBlock()
+                        when (buttonState) {
+                            CardioButtonState.IDLE -> viewModel.startBlock()
+                            CardioButtonState.RUNNING -> viewModel.stopBlock()
+                            CardioButtonState.DONE -> viewModel.completeExercise()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uiState.isBlockRunning)
-                            MaterialTheme.colorScheme.error
-                        else
-                            MaterialTheme.colorScheme.secondary,
+                        containerColor = when (buttonState) {
+                            CardioButtonState.IDLE -> MaterialTheme.colorScheme.secondary
+                            CardioButtonState.RUNNING -> MaterialTheme.colorScheme.error
+                            CardioButtonState.DONE -> MaterialTheme.colorScheme.primary
+                        },
                     ),
                 ) {
-                    Text(if (uiState.isBlockRunning) "Termina cardio" else "Inizia cardio")
-                }
-
-                // Completed blocks this session
-                if (uiState.completedBlocks.isNotEmpty()) {
-                    Text("Blocchi completati", style = MaterialTheme.typography.titleLarge)
-                    uiState.completedBlocks.forEachIndexed { index, block ->
-                        CardioBlockRow(block)
-                        if (index < uiState.completedBlocks.lastIndex) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    Text(
+                        when (buttonState) {
+                            CardioButtonState.IDLE -> "Inizia cardio"
+                            CardioButtonState.RUNNING -> "Termina cardio"
+                            CardioButtonState.DONE -> "Completa esercizio"
                         }
-                    }
+                    )
                 }
-
-                // History across past sessions for this exercise
-                if (uiState.history.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Storico", style = MaterialTheme.typography.titleLarge)
-                    uiState.history.forEach { entry ->
-                        CardioHistoryRow(entry)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Button(
-                    onClick = { viewModel.completeExercise() },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
-                ) {
-                    Text("Complete Exercise")
-                }
-
-                Spacer(modifier = Modifier.height(80.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun CardioBlockRow(block: ExerciseSet.Cardio) {
-    val start = runCatching { java.time.LocalDateTime.parse(block.startedAt) }.getOrNull()
-    val end = runCatching { java.time.LocalDateTime.parse(block.endedAt) }.getOrNull()
-    val seconds = if (start != null && end != null) {
-        java.time.Duration.between(start, end).seconds.toInt().coerceAtLeast(0)
-    } else 0
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            "%02d:%02d".format(seconds / 60, seconds % 60),
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Text(
-            "media ${block.avgHr} · max ${block.maxHr} BPM",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun CardioHistoryRow(entry: CardioHistoryEntry) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(entry.date, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "%02d:%02d · media %d BPM".format(
-                entry.durationSeconds / 60, entry.durationSeconds % 60, entry.avgHr
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
