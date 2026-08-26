@@ -385,6 +385,25 @@ Two rules applied in `WorkoutParser.toMarkdown` + `MarkdownParser.formatValue`:
 
 The reader (`WorkoutParser.fromMarkdown`) defaults missing numeric fields to 0 via `as? Number ?: 0.0`, so older files stay readable and newly omitted fields round-trip cleanly.
 
+## YAML string escaping in frontmatter
+
+Every frontmatter string field (`name`, `bodypart`, `link`, `exerciseName`, `routineName`, …)
+is free text the user typed into a text field — not a fixed enum. `MarkdownParser`'s
+`formatValue`/`serializeYaml` escape `"` → `\"`, `\` → `\\`, and flatten `\n`/`\r` to a space
+before wrapping a string in the double-quoted YAML scalar (`key: "value"`) it writes.
+
+This matters because the failure mode without it is silent: a literal `"` in, say, an exercise
+named `Push-up "diamond" variant` would terminate the quoted scalar early and corrupt the rest
+of that line. Every repository's `ensureLoaded()`/read path already wraps per-file parsing in
+`catch (_: Exception) { /* Skip malformed */ }` (so one bad file can't crash a directory scan)
+— which means the corrupted record doesn't error, it just vanishes from the list on next load,
+with no toast, log line, or crash to point at why. See `MarkdownParserTest` for the escaping
+round-trip coverage.
+
+`MarkdownParser.parse()` doesn't need a matching unescape step — snakeyaml-engine's `Load`
+already understands standard YAML double-quoted-scalar escaping, so `\"`/`\\` decode back
+correctly on their own.
+
 ## Rep-range invariant
 
 `repRangeMin > repRangeMax` used to slip through. Editors now symmetric-clamp:

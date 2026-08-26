@@ -79,9 +79,10 @@ it only starts before **10:00 local time**, and only if no readiness event has b
 yet **today** (`ReadinessRepository.getLatestForDate()`) — so disconnecting and reconnecting the
 strap later the same day reuses today's earlier result (loaded back into `readinessResult`/
 `vo2max`/`restingHr`) instead of re-measuring. Outside the time window with no prior measurement,
-`readinessResult` simply stays at its default (`MEASURING`/never-run) until the next connect that
-qualifies. This gating only applies to the automatic first-connect trigger; a mid-session
-reconnect never re-measures regardless of time (see `hrSeriesActive` check below).
+`readinessResult` is set to `NO_BASELINE` (`secondsRemaining = 0`) rather than left at its
+`MEASURING` default, so the UI shows a definite "not measured today" state instead of a
+countdown that never ticks. This gating only applies to the automatic first-connect trigger; a
+mid-session reconnect never re-measures regardless of time (see `hrSeriesActive` check below).
 
 1. RR intervals accumulate from each `PolarHrData` sample.
 2. Min HR is tracked as the session resting HR estimate.
@@ -281,7 +282,7 @@ Accumulated on every HR sample:
 - **Keytel** for calorie estimation — gender-specific formula using HR, weight, and `UserProfile.effectiveAge` (derived from birth year); integrated over time since the previous sample.
 - **Banister TRIMP** — `duration × HRR_fraction × exp(k × HRR_fraction)`, with `k` gender-adjusted.
 
-Both reset to 0 on connect, saved in the session on completion.
+Both reset to 0 at session start (`startHrSeriesCapture()`) — not on connect, so a mid-session BLE reconnect doesn't wipe accumulated calories/TRIMP; a fresh (pre-session) connect also resets them as a convenience. Saved in the session on completion.
 
 ## Configuration & persistence
 

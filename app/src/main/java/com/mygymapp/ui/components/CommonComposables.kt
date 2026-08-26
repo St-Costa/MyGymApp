@@ -15,6 +15,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
@@ -79,4 +81,19 @@ fun RoundStepButton(text: String, modifier: Modifier = Modifier, onClick: () -> 
     ) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+/**
+ * "μ = +1.2" style average-weekly-delta badge shown in a [ChartCard] header, next to the
+ * metric title. Shared by [ScaleTrendSection] and [CardioMetricsTrendSection] — same format
+ * string/style was previously duplicated 4x across those two files.
+ */
+@Composable
+internal fun WeeklyDeltaLabel(delta: Double) {
+    Text(
+        "μ = %+.1f".format(delta),
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.Bold,
+        color = Color.White,
+    )
 }

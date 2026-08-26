@@ -103,14 +103,7 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Peso - 2 mesi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    weeklyMedians.averageWeeklyDelta()?.let { delta ->
-                        Text(
-                            "μ = %+.1f".format(delta),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    }
+                    weeklyMedians.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 PointLineChart(
                     values = weeklyMedians.map { it.value },

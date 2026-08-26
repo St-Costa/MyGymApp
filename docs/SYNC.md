@@ -15,10 +15,11 @@ to a server on the user's own tailnet, reachable via Tailscale. The server store
 runs weekly analysis. No other party involved — one phone, one server, both owned by the
 same person.
 
-**Out of scope for v1**: VitaFit BLE scale readings (separate in-progress feature,
-`feature/vitafit-scale-ble` — not merged). The design below is generic enough that scale
-readings become a second record type later without restructuring anything; see
-[Extensibility](#extensibility-adding-a-second-record-type-later).
+VitaFit BLE scale readings were originally out of scope for v1 and slated as a later
+record type (see [Extensibility](#extensibility-adding-a-second-record-type-later)) — they
+have since shipped: `ScaleWeighInLedgerRepository`/`ScaleWeighInSyncApi`/
+`ScaleWeighInSyncWorker`, hooked into `BleScaleManager.maybeSaveWeighIn()` (build-verified;
+see the implementation checklist near the end of this document for current test status).
 
 ## The core design problem
 

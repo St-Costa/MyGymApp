@@ -13,14 +13,17 @@ import javax.inject.Singleton
  * Writes raw ECG samples to disk during an active session.
  *
  * File format: `gymdata/ecg/{sessionId}.ecg`
- *   - Header (16 bytes):
+ *   - Header (20 bytes):
  *     - Magic "MYGMECG1" (8 bytes ASCII)
  *     - Sample rate Int (4 bytes, big-endian) -- typically 130
  *     - Start timestamp Long (8 bytes, big-endian, ns since epoch)
  *   - Body: sequence of Int16 voltage samples (big-endian, µV clamped to ±32767)
  *
- * 130 Hz × 60 min × 2 B ≈ 940 KB per session uncompressed. File is ephemeral:
- * deleted after the session analysis runs (on register/abandon).
+ * 130 Hz × 60 min × 2 B ≈ 940 KB per session uncompressed. File is ephemeral: local
+ * analysis no longer runs at all (moved server-side, see docs/SYNC.md "Fourth record
+ * type: raw ECG"). On register/abandon it's either deleted immediately (sync not
+ * configured/enabled — nothing would ever consume it) or queued for upload and deleted
+ * only once EcgSyncWorker confirms the server received it (or after 30 days pending).
  */
 @Singleton
 class EcgRecorder @Inject constructor(
