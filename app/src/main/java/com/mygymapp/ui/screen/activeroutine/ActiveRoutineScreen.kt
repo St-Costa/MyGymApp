@@ -391,6 +391,15 @@ private fun PowerliftingWeekOverlay(onDismiss: () -> Unit) {
     }
 }
 
+// Cardio exercises are timed, not set-based — show the configured block duration instead
+// of a set count.
+private fun ActiveExerciseUi.setsOrDurationLabel(): String =
+    if (type == ExerciseType.CARDIO) {
+        "%d:%02d".format(timePerSetSeconds / 60, timePerSetSeconds % 60)
+    } else {
+        "$setCount sets"
+    }
+
 @Composable
 private fun ExerciseRow(
     exercise: ActiveExerciseUi,
@@ -424,7 +433,7 @@ private fun ExerciseRow(
                     textDecoration = if (exercise.completed && !exercise.completedEmpty) TextDecoration.LineThrough else null,
                 )
                 Text(
-                    text = "${exercise.setCount} sets",
+                    text = exercise.setsOrDurationLabel(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
@@ -515,7 +524,7 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
                 textDecoration = if (exercise.completed && !exercise.completedEmpty) TextDecoration.LineThrough else null,
             )
             Text(
-                text = "${exercise.setCount} sets",
+                text = exercise.setsOrDurationLabel(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
