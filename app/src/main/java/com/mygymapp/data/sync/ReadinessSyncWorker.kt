@@ -71,15 +71,16 @@ class ReadinessSyncWorker @AssistedInject constructor(
                 continue
             }
 
+            // Always hash the file fresh right before sending, not entry.contentHash from
+            // enqueue time — same reasoning as SyncWorker.doWork().
             val currentHash = ledger.hashOf(file)
-            val hashToSend = if (currentHash != entry.contentHash) currentHash else entry.contentHash
 
             when (val result = api.postReadiness(
                 serverUrl = serverUrl,
                 bearerToken = token,
                 eventId = entry.sessionId,
                 relPath = entry.relPath,
-                contentHash = hashToSend,
+                contentHash = currentHash,
                 appVersion = BuildConfig.VERSION_NAME,
                 file = file,
                 stepsAvgPerDay = event.stepsAvgPerDay,

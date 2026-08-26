@@ -80,10 +80,4 @@ class CardioMetricsTrendLoader @Inject constructor(
             .sortedBy { it.key }
             .map { (windowStartDate, entries) -> WeeklyPoint(windowStartDate, median(entries.map(valueOf))) }
     }
-
-    private fun median(values: List<Double>): Double {
-        val sorted = values.sorted()
-        val mid = sorted.size / 2
-        return if (sorted.size % 2 == 0) (sorted[mid - 1] + sorted[mid]) / 2.0 else sorted[mid]
-    }
 }

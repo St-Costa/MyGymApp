@@ -162,6 +162,10 @@ class BleScaleManager @Inject constructor(
         _connectionState.value = ScaleConnectionState.CONNECTING
         savedThisSession = false
         weightSamples.clear()
+        // Cancel any pending auto-disconnect from a previous weigh-in (maybeSaveWeighIn's
+        // postDelayed) — otherwise a reconnect within that 1.5s window would have the stale
+        // callback tear down this new connection instead of the old one.
+        mainHandler.removeCallbacksAndMessages(null)
         gatt = device.connectGatt(context, false, gattCallback)
     }
 
