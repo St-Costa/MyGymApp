@@ -100,6 +100,8 @@ fun GitgraphView(
         // Starting font size for text inside squares: big enough to need shrinking for short
         // strings like "7%", but converges quickly for longer ones like "100%".
         val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f * 0.9f * 0.9f }
+        // Schedule row (5th row) routine-name font: +10% over the 4 history rows above.
+        val scheduleNameMaxFontSp = remember(cellSize) { cellSize.value * 0.24f * 1.1f }
         // Starting font size for the routine name, below the square.
         val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.24f }
 
@@ -181,7 +183,7 @@ fun GitgraphView(
                                 cellSize = cellSize,
                                 shape = shape,
                                 squareMaxFontSp = squareMaxFontSp,
-                                nameMaxFontSp = nameMaxFontSp,
+                                nameMaxFontSp = scheduleNameMaxFontSp,
                                 status = todayStatus,
                                 isToday = true,
                                 change = todayTonnageChange,
@@ -197,7 +199,7 @@ fun GitgraphView(
                             ScheduleCellView(
                                 cellSize = cellSize,
                                 shape = shape,
-                                nameMaxFontSp = nameMaxFontSp,
+                                nameMaxFontSp = scheduleNameMaxFontSp,
                                 cell = cell,
                                 isToday = isToday,
                                 onClick = if (canOpen) ({ onScheduleCellClick!!(cell.openRoutineId!!) }) else null,
