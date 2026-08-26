@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,6 +54,9 @@ fun MainScreen(
     permissionsViewModel: PermissionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // -20% on the diagonal of the 4 home tiles == -20% on each side, since diagonal scales
+    // linearly with side length for a square.
+    val menuTileScale = 0.8f
 
     LaunchedEffect(Unit) {
         viewModel.loadGitgraph()
@@ -100,36 +104,44 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    MainMenuTile(
-                        label = "Exercises",
-                        icon = Icons.Default.FitnessCenter,
-                        onClick = onNavigateToExercises,
-                        modifier = Modifier.weight(1f),
-                    )
-                    MainMenuTile(
-                        label = "Routines",
-                        icon = Icons.Default.ListAlt,
-                        onClick = onNavigateToRoutines,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        MainMenuTile(
+                            label = "Exercises",
+                            icon = Icons.Default.FitnessCenter,
+                            onClick = onNavigateToExercises,
+                            modifier = Modifier.fillMaxWidth(menuTileScale),
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        MainMenuTile(
+                            label = "Routines",
+                            icon = Icons.Default.ListAlt,
+                            onClick = onNavigateToRoutines,
+                            modifier = Modifier.fillMaxWidth(menuTileScale),
+                        )
+                    }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    MainMenuTile(
-                        label = "Heart & Scale",
-                        icon = Icons.Default.Bluetooth,
-                        onClick = onNavigateToHeartRate,
-                        modifier = Modifier.weight(1f),
-                    )
-                    MainMenuTile(
-                        label = "Opzioni",
-                        icon = Icons.Default.Settings,
-                        onClick = onNavigateToOptions,
-                        isLoading = uiState.isSeedingData,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        MainMenuTile(
+                            label = "Heart & Scale",
+                            icon = Icons.Default.Bluetooth,
+                            onClick = onNavigateToHeartRate,
+                            modifier = Modifier.fillMaxWidth(menuTileScale),
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        MainMenuTile(
+                            label = "Opzioni",
+                            icon = Icons.Default.Settings,
+                            onClick = onNavigateToOptions,
+                            isLoading = uiState.isSeedingData,
+                            modifier = Modifier.fillMaxWidth(menuTileScale),
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
