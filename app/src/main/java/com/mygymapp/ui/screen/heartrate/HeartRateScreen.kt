@@ -196,7 +196,7 @@ fun HeartRateScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("❤️⚖️") },
+                title = { Text("Heart & Scale") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
