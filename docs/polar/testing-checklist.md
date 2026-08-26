@@ -65,17 +65,14 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] Sessione intensa: atteso ~130-250
 - [ ] Se fuori range, segnalarlo
 
-## ECG recording + post-session analysis (7.8 + 7.9)
+## ECG recording + raw file handling (post server-side migration — see CONVENTIONS.md § ECG raw file: send-then-delete)
 - [ ] Durante la routine: nessun crash dovuto allo stream ECG (funziona in background a schermo spento)
-- [ ] Su "Registra routine": nessun ritardo eccessivo (l'analisi Pan-Tompkins dura poco, ma un minuto ok)
-- [ ] Il file ECG viene cancellato dopo l'analisi (controlla `/data/data/com.mygymapp/files/gymdata/ecg/` vuoto dopo la registrazione)
-- [ ] SessionProgressScreen mostra la card "ECG Analysis":
-  - [ ] beats detected ragionevole (frequenza media × minuti)
-  - [ ] avg BPM coerente con quello visto durante la sessione
-  - [ ] RMSSD visualizzato (tipicamente 10-50 ms durante sforzo)
-  - [ ] PAC / Pauses / Irregular: se 0 mostra "No anomalies detected", altrimenti li elenca con disclaimer
-- [ ] Cardiac drift: dopo ≥5 minuti mostra il valore BPM/min con label (normal / moderate / high)
+- [ ] Su "Registra routine": nessun ritardo eccessivo (non c'è più analisi Pan-Tompkins sul telefono — deep analysis è server-side)
+- [ ] Il file `.ecg` grezzo viene cancellato dopo l'upload al server se sync è configurata/attiva, o immediatamente se non lo è (controlla `/data/data/com.mygymapp/files/gymdata/ecg/` vuoto dopo la registrazione)
+- [ ] Cardiac drift: dopo ≥5 minuti mostra il valore BPM/min con label (normal / moderate / high) — questo è ancora calcolato localmente dalla serie HR, non dall'ECG grezzo
 - [ ] Valore realistico (normale < 0.5, moderato 0.5-1.0, alto > 1.0)
+
+Le vecchie voci "SessionProgressScreen → card ECG Analysis (beats/RMSSD/PAC/Pauses/Irregular)" non si applicano più: quell'analisi girava sul telefono via `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()`, che esistono ancora nel codice ma non sono più chiamati da nulla — l'analisi profonda dell'ECG è ora interamente server-side (vedi [SYNC.md](../SYNC.md#fourth-record-type-raw-ecg)).
 
 ## Live ECG card (ActiveRoutineScreen)
 - [ ] La waveform ECG scorre fluida (no scatti o frame persi)
@@ -95,18 +92,14 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
   - [ ] Verde / giallo / rosso in base alla pendenza
 
 ## Comparazione valori live vs post-sessione
-- [ ] Quando tappi "Registra routine", il numero di **beats** finale coincide circa con quello live
-- [ ] Il **drift** salvato coincide con quello mostrato live (o molto simile)
-- [ ] Le **irregolarita'** totali sono simili a quelle live (accetta ±10% di differenza, gli algoritmi streaming vs batch hanno piccole differenze)
+- [ ] Il **drift** salvato coincide con quello mostrato live (o molto simile) — questo è l'unico dei tre ancora calcolato e persistito lato telefono
+- ~~beats/irregolarità finali~~ — non più applicabile: erano output di `EcgAnalyzer.analyze()`, che non gira più (deep analysis è server-side, vedi sopra)
 
-## Extended ECG metrics (post-session, stealth)
+## Extended metrics saved locally (post-session)
+Solo `restingHr`, `hrr60s` e `cardiacDriftBpmMin` sono ancora calcolati sul telefono dalla serie HR (non dall'ECG grezzo) — vedi [CONVENTIONS.md § ECG raw file](../CONVENTIONS.md#ecg-raw-file-send-then-delete-no-local-analysis-fallback). SDNN/pNN50/Poincaré SD1-SD2/AFib screening restano a zero nella sessione salvata: erano prodotti da `EcgAnalyzer.analyze()`, ora inutilizzato — l'unico modo di vederli calcolati è lato server, fuori da questo checklist.
 - [ ] **Resting HR**: valore salvato ragionevole (50-80 BPM tipico). Dovrebbe coincidere con il min dei 60s di readiness
 - [ ] **HRR (1 min)**: valore BPM — atteso 15-35 BPM per persona allenata. Label "low/ok/good/excellent" sensata
   - [ ] < 12 = "low", 12-20 = "ok", 20-30 = "good", > 30 = "excellent"
-- [ ] **SDNN**: in ms, tipico 30-80 durante sessione mista
-- [ ] **pNN50**: %, tipico 5-30% a seconda dell'intensita'
-- [ ] **Poincare SD1/SD2/ratio**: SD1 vicino a RMSSD/√2, SD2 > SD1, ratio 1-4 (rest) o piu' alto sotto sforzo
-- [ ] **AFib screening**: a sessione regolare = 0 episodi. Se compare qualche episodio isolato puo' essere falso positivo (PAC frequenti, movimento); se persistente in piu' sessioni → attenzione
 
 ## Sanity check tra sessioni
 - [ ] Stessi parametri con sessione simile danno valori simili (variabilita' 10-30% normale)

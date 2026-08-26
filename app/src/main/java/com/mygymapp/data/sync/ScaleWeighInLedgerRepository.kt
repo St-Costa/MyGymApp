@@ -130,7 +130,10 @@ class ScaleWeighInLedgerRepository @Inject constructor(
                 status = SyncStatus.FAILED,
                 attempts = existing.attempts + 1,
                 lastAttemptAt = java.time.LocalDateTime.now().toString(),
-                lastError = error.take(500),
+                // See SyncLedgerRepository.markFailed for why newlines are stripped: a raw
+                // HTTP error body/exception message can contain them, and a literal '\n'
+                // inside the quoted YAML scalar would corrupt the whole ledger on next read.
+                lastError = error.take(500).replace(Regex("[\\r\\n]+"), " "),
             )
             writeAllUnlocked(all)
         }

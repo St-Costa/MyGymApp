@@ -103,12 +103,18 @@ data class ScaleTrendReport(
             .sortedBy { it.key }
             .map { (weekStart, entries) -> WeeklyPoint(weekStart, median(entries.map(valueOf))) }
     }
+}
 
-    private fun median(values: List<Double>): Double {
-        val sorted = values.sorted()
-        val mid = sorted.size / 2
-        return if (sorted.size % 2 == 0) (sorted[mid - 1] + sorted[mid]) / 2.0 else sorted[mid]
-    }
+/**
+ * Middle value of the sorted list (average of the two middle values when the size is
+ * even). Shared by [ScaleTrendReport] and [CardioMetricsTrendLoader] — both bucket
+ * samples into weekly/4-weekly windows and need the same "one representative value per
+ * window" reduction, robust to the occasional outlier session/weigh-in a mean would not be.
+ */
+internal fun median(values: List<Double>): Double {
+    val sorted = values.sorted()
+    val mid = sorted.size / 2
+    return if (sorted.size % 2 == 0) (sorted[mid - 1] + sorted[mid]) / 2.0 else sorted[mid]
 }
 
 /** Loads scale weigh-ins for trend graphs (weight, BMI, fat/lean %). */

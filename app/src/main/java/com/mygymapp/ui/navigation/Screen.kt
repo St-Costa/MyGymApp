@@ -1,5 +1,7 @@
 package com.mygymapp.ui.navigation
 
+import android.net.Uri
+
 sealed class Screen(val route: String) {
     data object Main : Screen("main")
     data object ExerciseList : Screen("exercises")
@@ -49,8 +51,11 @@ sealed class Screen(val route: String) {
             excludeIds: Set<String>,
             resultKeySide: Int = 0,
         ): String =
-            "exercises/pick?bodypart=$bodypart&type=$type" +
-                "&excludeIds=${excludeIds.joinToString(",")}&resultKeySide=$resultKeySide"
+            // bodypart is free-text the user typed (BodyPartAutocomplete) — encode it so a
+            // name containing '&'/'='/'#' can't corrupt the query string and silently break
+            // or misparse the other params (type, excludeIds, resultKeySide).
+            "exercises/pick?bodypart=${Uri.encode(bodypart)}&type=${Uri.encode(type)}" +
+                "&excludeIds=${Uri.encode(excludeIds.joinToString(","))}&resultKeySide=$resultKeySide"
     }
     data object Superset : Screen("workout/{sessionId}/superset/{exerciseId1}/{exerciseId2}") {
         fun createRoute(sessionId: String, exerciseId1: String, exerciseId2: String): String =
