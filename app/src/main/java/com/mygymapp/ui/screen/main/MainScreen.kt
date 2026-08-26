@@ -78,6 +78,7 @@ fun MainScreen(
                 days = uiState.gitgraphDays,
                 todayIndex = uiState.todayIndex,
                 tonnageChanges = uiState.gitgraphTonnageChanges,
+                cardioMinutes = uiState.gitgraphCardioMinutes,
                 routineNames = uiState.routineNames,
                 powerliftingWeeks = uiState.powerliftingWeeks,
                 onLastRowCellClick = { col ->

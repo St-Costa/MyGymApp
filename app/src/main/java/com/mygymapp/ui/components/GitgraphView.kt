@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,14 +25,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mygymapp.ui.theme.GitgraphEmpty
+import com.mygymapp.ui.theme.JetBrainsMono
 import com.mygymapp.ui.theme.Primary
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
@@ -49,6 +52,9 @@ fun GitgraphView(
     days: List<DayStatus>,
     todayIndex: Int,
     tonnageChanges: List<Double?> = emptyList(), // 28 values, one per square
+    // Fallback shown when tonnageChanges is null for a square (all-cardio/warmup routine, or
+    // no prior session to compare against): total cardio minutes for that day, e.g. "54m".
+    cardioMinutes: List<Int?> = emptyList(),     // 28 values, one per square
     routineNames: List<String?> = emptyList(),   // 28 values, one per square
     // 4 values, one per week-row: true = powerlifting week (brand-purple border)
     powerliftingWeeks: List<Boolean> = emptyList(),
@@ -65,7 +71,7 @@ fun GitgraphView(
         val cellSize: Dp = (maxWidth - spacing * 6) / 7
         // Starting font size for text inside squares: big enough to need shrinking for short
         // strings like "7%", but converges quickly for longer ones like "100%".
-        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f }
+        val squareMaxFontSp = remember(cellSize) { cellSize.value * 0.48f * 0.9f * 0.9f }
         // Starting font size for the routine name, pinned along the square's bottom edge.
         val nameMaxFontSp = remember(cellSize) { cellSize.value * 0.24f }
 
@@ -114,6 +120,7 @@ fun GitgraphView(
                         }
                         val isToday = index == todayIndex
                         val change = tonnageChanges.getOrNull(index)
+                        val minutes = cardioMinutes.getOrNull(index)
                         val isLastRow = row == 3
                         val hasSession = status != DayStatus.NONE
                         val routineName = routineNames.getOrNull(index)
@@ -138,15 +145,32 @@ fun GitgraphView(
                             // name — what lets an out-of-schedule day (routine done on the
                             // "wrong" day) still be identified at a glance — is pinned to the
                             // bottom edge instead, so it never pushes the % off-center.
+                            // When there's no tonnage % (all-cardio/warmup routine, or no prior
+                            // session to compare against), fall back to total cardio minutes.
                             if (change != null) {
                                 AutoShrinkText(
                                     text = "${abs(change).roundToInt()}%",
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .height(cellSize * 0.75f)
                                         .offset(y = -cellSize * 0.10f),
                                     maxFontSizeSp = squareMaxFontSp,
                                     minFontSizeSp = 6f,
                                     fontWeight = FontWeight.Bold,
+                                    fontFamily = JetBrainsMono,
+                                    color = Color.Black,
+                                )
+                            } else if (minutes != null) {
+                                AutoShrinkText(
+                                    text = "${minutes}m",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(cellSize * 0.75f)
+                                        .offset(y = -cellSize * 0.10f),
+                                    maxFontSizeSp = squareMaxFontSp,
+                                    minFontSizeSp = 6f,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = JetBrainsMono,
                                     color = Color.Black,
                                 )
                             }
@@ -182,6 +206,7 @@ private fun AutoShrinkText(
     maxFontSizeSp: Float = 14f,
     minFontSizeSp: Float = 6f,
     fontWeight: FontWeight = FontWeight.Normal,
+    fontFamily: FontFamily? = null,
     color: Color = Color.White,
     // When true, collapses the font's built-in leading so the glyphs themselves sit flush
     // against the bottom of the layout box instead of floating a few px above it (Text
@@ -193,6 +218,7 @@ private fun AutoShrinkText(
         text = text,
         modifier = modifier,
         fontSize = fontSizeSp.sp,
+        fontFamily = fontFamily,
         lineHeight = if (tightBottom) fontSizeSp.sp else androidx.compose.ui.unit.TextUnit.Unspecified,
         style = if (tightBottom) {
             androidx.compose.ui.text.TextStyle(
@@ -209,7 +235,7 @@ private fun AutoShrinkText(
         textAlign = TextAlign.Center,
         color = color,
         onTextLayout = { result ->
-            if (result.didOverflowWidth && fontSizeSp > minFontSizeSp) {
+            if ((result.didOverflowWidth || result.didOverflowHeight) && fontSizeSp > minFontSizeSp) {
                 fontSizeSp = (fontSizeSp * 0.85f).coerceAtLeast(minFontSizeSp)
             }
         },
