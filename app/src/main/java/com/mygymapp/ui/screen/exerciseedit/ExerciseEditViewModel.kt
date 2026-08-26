@@ -164,6 +164,7 @@ class ExerciseEditViewModel @Inject constructor(
                     notes = state.notes.trim(),
                     defaultRepRangeMin = state.defaultRepRangeMin,
                     defaultRepRangeMax = state.defaultRepRangeMax,
+                    isBodyweight = state.isBodyweight,
                 )
                 exerciseRepository.save(exercise)
                 dataChangedSignal.notifyExercisesChanged()

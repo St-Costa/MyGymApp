@@ -1,6 +1,6 @@
 # MyGymApp
 
-A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspired by [Obsidian](https://obsidian.md/), all data is stored as plain `.md` files with YAML frontmatter — no database, no cloud, full ownership of your data. Optional Polar H10 integration adds live heart rate, ECG, HRV readiness and VO2max.
+A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspired by [Obsidian](https://obsidian.md/), all data is stored as plain `.md` files with YAML frontmatter — no database, no cloud, full ownership of your data. Optional Polar H10 integration adds live heart rate, ECG, HRV readiness and VO2max. Optional integrations also cover a VitaFit BLE scale (weight/BMI/body-fat) and Health Connect step counts. All of it can optionally sync to a self-hosted server over Tailscale — see [SYNC.md](docs/SYNC.md); nothing leaves the device otherwise.
 
 ## Screenshots
 
@@ -26,6 +26,9 @@ A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspi
 - **Supersets** — interleaved sets for two paired exercises in a single screen, pre-populated from your previous session.
 - **Progress charts** — per-bodypart tonnage line chart after completing a routine. Compares only exercises present in both sessions for a fair comparison.
 - **Polar H10 integration** (optional) — live heart rate bar in every exercise, 60s HRV readiness with 14-day baseline (DELOAD/LIGHT/NORMAL/GOOD/PEAK), live ECG waveform with beat counter and arrhythmia flags, VO2max, automatic HRR detection, cardiac drift, calorie & TRIMP tracking.
+- **VitaFit BLE scale integration** (optional) — automatic weigh-in capture (weight, BMI, body-fat %, lean-mass %), one entry per day.
+- **Step tracking** (optional) — daily step counts via Health Connect.
+- **Self-hosted server sync** (optional) — sessions, readiness events, scale weigh-ins and raw ECG can push to a server on your own Tailscale network for longer-term analysis; stays off until explicitly enabled.
 - **Auto-save** — all text fields save automatically with a 500 ms debounce; a dispose-hook flushes pending writes so back navigation never drops data.
 - **File-based storage** — data lives in `gymdata/` inside app internal storage as plain Markdown files. Easy to inspect, back up, or migrate.
 
@@ -65,6 +68,8 @@ Developer documentation lives in [`docs/`](docs/):
 | [STORAGE.md](docs/STORAGE.md) | File paths, YAML formats, history index, ECG format, SharedPreferences |
 | [POLAR.md](docs/POLAR.md) | Heart rate / ECG / HRV subsystem |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Patterns and gotchas (DataChangedSignal, completionSaved, AutoSave flush, …) |
+| [SYNC.md](docs/SYNC.md) | Self-hosted server sync design (sessions, readiness, scale, raw ECG) |
+| [vitafit-cloud-api.md](docs/vitafit-cloud-api.md) | VitaFit scale history import / cloud API notes |
 | [CHANGELOG.md](docs/CHANGELOG.md) | Phase history |
 | [FUNCTIONAL_SPEC.md](docs/FUNCTIONAL_SPEC.md) | Original Italian functional spec |
 | [polar/implementation-guide.md](docs/polar/implementation-guide.md) | Deep-dive on the Polar subsystem (formulas, references) |

@@ -86,17 +86,18 @@ class SyncWorker @AssistedInject constructor(
                 continue
             }
 
-            // Guard against sending content that changed underneath the ledger between
-            // enqueue and this attempt (docs/SYNC.md §1.3 step 2).
+            // Always hash the file fresh right before sending (rather than trusting
+            // entry.contentHash from enqueue time) — guards against content that changed
+            // underneath the ledger between enqueue and this attempt (docs/SYNC.md §1.3
+            // step 2). The server must be told the hash of what's actually in the request.
             val currentHash = ledger.hashOf(file)
-            val hashToSend = if (currentHash != entry.contentHash) currentHash else entry.contentHash
 
             when (val result = api.postSession(
                 serverUrl = serverUrl,
                 bearerToken = token,
                 sessionId = entry.sessionId,
                 relPath = entry.relPath,
-                contentHash = hashToSend,
+                contentHash = currentHash,
                 appVersion = BuildConfig.VERSION_NAME,
                 file = file,
             )) {

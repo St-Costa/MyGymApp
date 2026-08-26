@@ -22,21 +22,25 @@ High-level map of the codebase. For per-file details read the source — this do
 com.mygymapp/
 ├── MyGymApp.kt              — Application + Hilt entry + Coil ImageLoaderFactory
 ├── MainActivity.kt          — Single activity (POST_NOTIFICATIONS runtime request)
+├── PermissionsRationaleActivity.kt — Standalone rationale screen for the BLE/notification permission flow
 ├── data/
 │   ├── DataChangedSignal.kt — App-wide SharedFlow event bus (exercises/routines changed)
 │   ├── model/               — Exercise, Routine, WorkoutSession, ExerciseSet (sealed)
 │   ├── parser/              — MarkdownParser, ExerciseParser, RoutineParser, WorkoutParser
 │   ├── polar/               — Polar H10 subsystem (see docs/POLAR.md)
+│   ├── scale/                — VitaFit VT701 BLE scale: BleScaleManager, BodyCompositionCalculator (see docs/vitafit-cloud-api.md)
+│   ├── steps/                — Step-count tracking (Health Connect / sensor-backed)
+│   ├── sync/                 — Self-hosted server sync (see docs/SYNC.md)
 │   ├── repository/          — File-based CRUD with in-memory cache
-│   └── util/                — StringUtils (slugify)
+│   └── util/                — StringUtils (slugify), AppLogger
 ├── di/                      — Hilt modules (thin; most bindings via @Inject constructor)
-├── ui/
-│   ├── components/          — Reusable composables
-│   ├── navigation/          — Screen sealed class + AppNavigation NavHost
-│   ├── screen/              — One package per screen (Screen composable + ViewModel)
-│   ├── theme/               — Dark Material3 (Color, Type, Theme) + `ExerciseType.accentColor()`
-│   └── util/                — Cross-screen helpers (e.g. `groupSupersets`)
-└── ui/service/              — StopwatchService, PolarStreamingService (foreground)
+└── ui/
+    ├── components/          — Reusable composables
+    ├── navigation/          — Screen sealed class + AppNavigation NavHost
+    ├── screen/              — One package per screen (Screen composable + ViewModel)
+    ├── service/              — StopwatchService, PolarStreamingService (foreground)
+    ├── theme/               — Dark Material3 (Color, Type, Theme) + `ExerciseType.accentColor()`
+    └── util/                — Cross-screen helpers (e.g. `groupSupersets`)
 ```
 
 ## Screens & routes
@@ -128,6 +132,10 @@ Shared theme extensions (`theme/`):
 | `ImageCacheRepository` | URL → local file | SHA-256 hash, Google Drive URL rewrite |
 | `CardioTrendLoader` | 4-week cardio aggregates | Used by HeartRate and SessionProgress screens |
 | `UserProfileRepository` | Age / weight / sex | SharedPreferences; needed for calorie & TRIMP formulas |
+| `ScaleHistoryRepository` | VitaFit VT701 weigh-ins | One file per calendar day; see [STORAGE.md](STORAGE.md#scale-weigh-in-scaleyyyymmdatemd) and [vitafit-cloud-api.md](vitafit-cloud-api.md) |
+| `StepLedgerRepository` | Daily step counts | Backed by Health Connect via `HealthConnectStepsReader` (`data/steps/`) |
+
+Self-hosted server sync (`data/sync/`) has its own ledger/API/worker triple per record type (sessions, readiness, scale, raw ECG) — see [SYNC.md](SYNC.md) rather than duplicating that map here.
 
 ## Services
 

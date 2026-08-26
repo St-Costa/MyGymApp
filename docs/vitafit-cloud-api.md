@@ -1,6 +1,6 @@
 # VitaFit cloud API (undocumented, discovered by MITM)
 
-MyGymApp talks to the VitaFit VT701 scale directly over BLE (see [`project_vitafit_scale_protocol`](../app/src/main/java/com/mygymapp/data/scale/) and the `feature/vitafit-scale-ble` branch) and does not depend on the official VitaFit app for new readings. This document is about a different, one-off need: **importing weigh-in history that predates MyGymApp's own BLE integration**, which only exists in VitaFit's cloud account, not on the phone or in the scale itself.
+MyGymApp talks to the VitaFit VT701 scale directly over BLE (see [`data/scale/`](../app/src/main/java/com/mygymapp/data/scale/), merged to master in commit `893d86e`) and does not depend on the official VitaFit app for new readings. This document is about a different, one-off need: **importing weigh-in history that predates MyGymApp's own BLE integration**, which only exists in VitaFit's cloud account, not on the phone or in the scale itself.
 
 The official VitaFit app (`com.vt.vitafit`) is cloud-first — `adb backup` of its private data directory comes back empty (its `BackupAgent` doesn't implement anything meaningful despite `ALLOW_BACKUP` being set), and decompiling the APK confirms it stores measurements via a REST API (`com.vt.vitafit.core.models.entities.weighing.*`) rather than a local Room/SQLite DB. The only local DB found (`mm003.db`, from the bundled `vtble-scale-sdk-android-v4.2.6` SDK) is just BLE device pairing metadata, not measurement history.
 

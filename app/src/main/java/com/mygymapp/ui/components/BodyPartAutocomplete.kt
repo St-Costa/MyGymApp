@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -59,7 +59,7 @@ fun BodyPartAutocomplete(
                         .fillMaxWidth()
                         .heightIn(max = 160.dp),
                 ) {
-                    items(filtered) { bodypart ->
+                    itemsIndexed(filtered) { index, bodypart ->
                         Text(
                             text = bodypart,
                             style = MaterialTheme.typography.bodyLarge,
@@ -71,7 +71,7 @@ fun BodyPartAutocomplete(
                                 }
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                         )
-                        if (bodypart != filtered.last()) {
+                        if (index != filtered.lastIndex) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.surface)
                         }
                     }
