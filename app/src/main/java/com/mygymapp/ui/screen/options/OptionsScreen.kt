@@ -85,6 +85,14 @@ fun OptionsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
+            ServerSettingsSection(
+                uiState = uiState,
+                onServerUrlChange = viewModel::setSyncServerUrl,
+                onBearerTokenChange = viewModel::setSyncBearerToken,
+                onEnabledChange = viewModel::setSyncEnabled,
+                onTestConnection = viewModel::testConnection,
+                onResyncAll = viewModel::resyncAll,
+            )
             PowerliftingSection(
                 anchorMonday = uiState.anchorMonday,
                 intervalWeeks = uiState.intervalWeeks,
@@ -92,36 +100,29 @@ fun OptionsScreen(
                 onSetInterval = viewModel::setInterval,
                 onClear = viewModel::clearSchedule,
             )
-            ScaleDebugSection(onScaleDebugClick = onNavigateToScaleDebug)
-            StepDebugSection(
-                running = uiState.stepDebugRunning,
-                result = uiState.stepDebugResult,
-                onCheckClick = viewModel::checkStepCounterDebug,
-            )
-            SyncSection(
+            DebugSection(
                 uiState = uiState,
-                onServerUrlChange = viewModel::setSyncServerUrl,
-                onBearerTokenChange = viewModel::setSyncBearerToken,
-                onEnabledChange = viewModel::setSyncEnabled,
-                onTestConnection = viewModel::testConnection,
+                onScaleDebugClick = onNavigateToScaleDebug,
+                onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
-                onResyncAll = viewModel::resyncAll,
-                onRunDiagnostics = viewModel::runDiagnostics,
             )
         }
     }
 }
 
+/** Just the server connection settings: URL, token, sync on/off, "test connection". Every
+ * other sync-related control (debug ECG, pending queue, resync, diagnostics) lives in
+ * grouped with the other debug tools. Also shows the pending-sync queue and a manual "send
+ * now" action — but only while sync is OFF, since with it on the periodic workers already
+ * drain the queue on their own (every few hours) and the button would be redundant. */
 @Composable
-private fun SyncSection(
+private fun ServerSettingsSection(
     uiState: OptionsUiState,
     onServerUrlChange: (String) -> Unit,
     onBearerTokenChange: (String) -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onTestConnection: () -> Unit,
-    onSendDebugEcg: () -> Unit,
     onResyncAll: () -> Unit,
-    onRunDiagnostics: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
     Card(
@@ -132,7 +133,7 @@ private fun SyncSection(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Sincronizzazione server", style = MaterialTheme.typography.titleMedium)
+            Text("Server", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Invia i dati al tuo server self-hosted via Tailscale.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -196,70 +197,25 @@ private fun SyncSection(
                 }
             }
 
-            OutlinedButton(
-                onClick = onSendDebugEcg,
-                enabled = configured && !uiState.ecgDebugRecording,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (uiState.ecgDebugRecording) {
-                    Text("Registrazione ECG… ${uiState.ecgDebugSecondsLeft}s")
-                } else {
-                    Text("Debug ECG: registra e invia")
-                }
-            }
-            if (uiState.ecgDebugResult != null) {
-                Text(
-                    uiState.ecgDebugResult,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            if (!uiState.syncEnabled) {
+                PendingItemsList(uiState)
 
-            PendingItemsList(uiState)
-
-            Button(
-                onClick = onResyncAll,
-                enabled = !uiState.syncIsResyncing && configured,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (uiState.syncIsResyncing) {
-                    Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
-                } else {
-                    Text("Invia dati in coda")
-                }
-            }
-            if (uiState.syncIsResyncing) {
-                androidx.compose.material3.LinearProgressIndicator(
-                    progress = { uiState.syncResyncProgress },
+                Button(
+                    onClick = onResyncAll,
+                    enabled = !uiState.syncIsResyncing && configured,
                     modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            androidx.compose.material3.HorizontalDivider()
-
-            Text("Test sincronizzazione", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Invio di prova con verifica duplicato.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(
-                onClick = onRunDiagnostics,
-                enabled = !uiState.syncDiagnosticRunning && configured,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (uiState.syncDiagnosticRunning) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Test sincronizzazione")
-                }
-            }
-
-            if (uiState.syncDiagnosticSteps.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    uiState.syncDiagnosticSteps.forEach { step ->
-                        DiagnosticStepRow(step)
+                ) {
+                    if (uiState.syncIsResyncing) {
+                        Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
+                    } else {
+                        Text("Invia dati in coda")
                     }
+                }
+                if (uiState.syncIsResyncing) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { uiState.syncResyncProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }
@@ -292,56 +248,18 @@ private fun PendingItemsList(uiState: OptionsUiState) {
     }
 }
 
-@Composable
-private fun DiagnosticStepRow(step: com.mygymapp.data.sync.DiagnosticStep) {
-    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(
-            imageVector = if (step.ok) Icons.Default.CheckCircle else Icons.Default.Error,
-            contentDescription = if (step.ok) "OK" else "Errore",
-            tint = if (step.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(20.dp),
-        )
-        Column {
-            Text(step.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Text(step.detail, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun ScaleDebugSection(onScaleDebugClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("Debug bilancia", style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(
-                onClick = onScaleDebugClick,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Scale BLE Debug")
-            }
-        }
-    }
-}
-
 /**
- * Confirms Health Connect + its steps read permission actually work, without waiting for
- * the next morning's readiness test to find out — this is what caught Phase 41's
- * `TYPE_STEP_COUNTER` approach not working on real hardware, see CHANGELOG Phase 42.
- * "Ultime 24h" is loose phrasing for "since the last saved checkpoint" — see
- * [OptionsViewModel.checkStepCounterDebug].
+ * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send.
+ * Each is its own short explanation + button, separated by a divider.
  */
 @Composable
-private fun StepDebugSection(
-    running: Boolean,
-    result: String?,
-    onCheckClick: () -> Unit,
+private fun DebugSection(
+    uiState: OptionsUiState,
+    onScaleDebugClick: () -> Unit,
+    onStepCheckClick: () -> Unit,
+    onSendDebugEcg: () -> Unit,
 ) {
+    val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -350,26 +268,74 @@ private fun StepDebugSection(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Debug contapassi", style = MaterialTheme.typography.titleMedium)
+            Text("Debug", style = MaterialTheme.typography.titleMedium)
+
+            // Bilancia
+            Text(
+                "Verifica la connessione BLE alla bilancia.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onScaleDebugClick, modifier = Modifier.fillMaxWidth()) {
+                Text("Scale BLE Debug")
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Contapassi — confirms Health Connect + its steps read permission actually work,
+            // without waiting for the next morning's readiness test to find out — this is what
+            // caught Phase 41's TYPE_STEP_COUNTER approach not working on real hardware, see
+            // CHANGELOG Phase 42. "Ultime 24h" is loose phrasing for "since the last saved
+            // checkpoint" — see OptionsViewModel.checkStepCounterDebug.
             Text(
                 "Verifica sensore e permesso leggendo i passi delle ultime 24h.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(
-                onClick = onCheckClick,
-                enabled = !running,
+                onClick = onStepCheckClick,
+                enabled = !uiState.stepDebugRunning,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (running) {
+                if (uiState.stepDebugRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
                     Text("Controlla passi ultime 24h")
                 }
             }
-            if (result != null) {
+            if (uiState.stepDebugResult != null) {
                 Text(
-                    result,
+                    uiState.stepDebugResult,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // ECG — records ~10s of raw ECG from the currently connected Polar device and
+            // immediately queues+sends it via the real workout-session pipeline, to exercise
+            // POST /v1/ecg end to end without needing a full session (docs/SYNC.md "Fourth
+            // record type: raw ECG").
+            Text(
+                "Registra ~10s di ECG dal Polar connesso e la invia al server.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onSendDebugEcg,
+                enabled = configured && !uiState.ecgDebugRecording,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.ecgDebugRecording) {
+                    Text("Registrazione ECG… ${uiState.ecgDebugSecondsLeft}s")
+                } else {
+                    Text("Debug ECG: registra e invia")
+                }
+            }
+            if (uiState.ecgDebugResult != null) {
+                Text(
+                    uiState.ecgDebugResult,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
