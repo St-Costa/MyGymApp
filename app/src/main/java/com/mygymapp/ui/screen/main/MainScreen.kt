@@ -54,9 +54,9 @@ fun MainScreen(
     permissionsViewModel: PermissionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    // -20% on the diagonal of the 4 home tiles == -20% on each side, since diagonal scales
-    // linearly with side length for a square.
-    val menuTileScale = 0.8f
+    // Shrinks the 2x2 home-tile block (not each tile individually — that would space the
+    // pairs apart instead of shrinking them, since each tile centers within its own half).
+    val menuTileScale = 0.92f
 
     LaunchedEffect(Unit) {
         viewModel.loadGitgraph()
@@ -102,46 +102,38 @@ fun MainScreen(
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(menuTileScale).align(Alignment.CenterHorizontally),
                 ) {
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        MainMenuTile(
-                            label = "Exercises",
-                            icon = Icons.Default.FitnessCenter,
-                            onClick = onNavigateToExercises,
-                            modifier = Modifier.fillMaxWidth(menuTileScale),
-                        )
-                    }
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        MainMenuTile(
-                            label = "Routines",
-                            icon = Icons.Default.ListAlt,
-                            onClick = onNavigateToRoutines,
-                            modifier = Modifier.fillMaxWidth(menuTileScale),
-                        )
-                    }
+                    MainMenuTile(
+                        label = "Exercises",
+                        icon = Icons.Default.FitnessCenter,
+                        onClick = onNavigateToExercises,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MainMenuTile(
+                        label = "Routines",
+                        icon = Icons.Default.ListAlt,
+                        onClick = onNavigateToRoutines,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(menuTileScale).align(Alignment.CenterHorizontally),
                 ) {
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        MainMenuTile(
-                            label = "Heart & Scale",
-                            icon = Icons.Default.Bluetooth,
-                            onClick = onNavigateToHeartRate,
-                            modifier = Modifier.fillMaxWidth(menuTileScale),
-                        )
-                    }
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        MainMenuTile(
-                            label = "Opzioni",
-                            icon = Icons.Default.Settings,
-                            onClick = onNavigateToOptions,
-                            isLoading = uiState.isSeedingData,
-                            modifier = Modifier.fillMaxWidth(menuTileScale),
-                        )
-                    }
+                    MainMenuTile(
+                        label = "Heart & Scale",
+                        icon = Icons.Default.Bluetooth,
+                        onClick = onNavigateToHeartRate,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MainMenuTile(
+                        label = "Opzioni",
+                        icon = Icons.Default.Settings,
+                        onClick = onNavigateToOptions,
+                        isLoading = uiState.isSeedingData,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
