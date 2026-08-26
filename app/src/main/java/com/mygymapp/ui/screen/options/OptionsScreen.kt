@@ -143,7 +143,10 @@ private fun ProfileSection(
             Text("Profile", style = MaterialTheme.typography.titleMedium)
 
             // Gender chips
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            ) {
                 FilterChip(
                     selected = profile.isMale,
                     onClick = { onGenderChange(true) },
