@@ -10,7 +10,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -59,15 +61,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.R
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.scale.ScaleConnectionState
-import com.mygymapp.ui.components.CardioMetricsTrendSection
 import com.mygymapp.ui.components.ScaleTrendSection
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -240,13 +243,9 @@ fun HeartRateScreen(
                 )
             }
 
-            // Scale trend graphs (weight, BMI, fat/lean %)
+            // Scale trend graphs (weight, weight - 2 months)
             HorizontalDivider(modifier = Modifier.padding(vertical = 32.dp))
             ScaleTrendSection(report = uiState.scaleTrend)
-
-            // Cardio metrics trend (Resting HR, HRR60s, VO2max)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-            CardioMetricsTrendSection(report = uiState.cardioMetricsTrend)
 
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -278,17 +277,48 @@ private fun DeviceStatusHeader(
     scaleConnectionState: ScaleConnectionState,
     scaleReading: com.mygymapp.data.scale.ScaleReading?,
 ) {
+    // 2x2 grid (device art on top, connection status below) in equal-width columns so
+    // the two devices line up regardless of their art's native size/aspect ratio.
+    // Polar width is fixed at 300px (physical); the crop's aspect ratio (518:206)
+    // determines its rendered height, and the scale emoji's font size is set to match
+    // that same height so the two sit at the same visual scale. The emoji glyph draws
+    // taller than its nominal font size (ascender/descender overshoot), so its row gets
+    // extra headroom instead of being clipped to the exact calculated height.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val polarWidthDp = with(density) { 330f.toDp() }
+    val polarHeightDp = polarWidthDp * (206f / 518f)
+    val deviceArtHeight = polarHeightDp
+    val emojiRowHeight = deviceArtHeight * 1.3f
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("❤️", fontSize = 36.sp)
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(modifier = Modifier.height(emojiRowHeight), contentAlignment = Alignment.Center) {
+                Image(
+                    painter = painterResource(R.drawable.polar_h10),
+                    contentDescription = null,
+                    modifier = Modifier.width(polarWidthDp),
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             HeartRateStatusIcon(heartRateConnectionState)
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("⚖️", fontSize = 36.sp)
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(modifier = Modifier.height(emojiRowHeight), contentAlignment = Alignment.Center) {
+                Text(
+                    "⚖️",
+                    fontSize = with(density) { deviceArtHeight.toSp() },
+                    lineHeight = with(density) { emojiRowHeight.toSp() },
+                    softWrap = false,
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             ScaleStatusIcon(scaleConnectionState, scaleReading)
         }
@@ -445,76 +475,13 @@ private fun ColumnScope.ConnectedContent(
                     Readiness.NO_BASELINE -> "BASELINE ${if (readiness.lnRmssd > 0) "(collecting)" else ""}"
                     else -> ""
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text("Readiness", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            readinessLabel,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = readinessColor,
-                        )
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color.Red,
-                            )
-                            Text(
-                                " ${readiness.restingHr} bpm",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                        if (uiState.vo2max != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Air,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = Color(0xFF4FC3F7),
-                                )
-                                Text(
-                                    " %.1f VO2max".format(uiState.vo2max),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
-                        // Yesterday's complete calendar-day total, not the checkpoint
-                        // average: a whole day is comparable day to day, whereas the
-                        // average shifted with whatever time the test was taken. Lands a
-                        // moment after the rest of readiness (Health Connect query is
-                        // async) — see PolarManager.finishReadinessMeasurement(). Absent
-                        // entirely (not "0") until then, and stays absent if Health
-                        // Connect can't answer.
-                        if (readiness.stepsPreviousDay != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.DirectionsWalk,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    " ${readiness.stepsPreviousDay} passi ieri",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
-                    }
-                }
+                Text("Readiness", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    readinessLabel,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = readinessColor,
+                )
                 if (readiness.recommendation.isNotBlank()) {
                     Text(
                         readiness.recommendation,
@@ -522,6 +489,61 @@ private fun ColumnScope.ConnectedContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.Red,
+                        )
+                        Text(
+                            "${readiness.restingHr} bpm",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    if (uiState.vo2max != null) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.Air,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFF4FC3F7),
+                            )
+                            Text(
+                                "%.1f VO2max".format(uiState.vo2max),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                    // Yesterday's complete calendar-day total, not the checkpoint
+                    // average: a whole day is comparable day to day, whereas the
+                    // average shifted with whatever time the test was taken. Lands a
+                    // moment after the rest of readiness (Health Connect query is
+                    // async) — see PolarManager.finishReadinessMeasurement(). Absent
+                    // entirely (not "0") until then, and stays absent if Health
+                    // Connect can't answer.
+                    if (readiness.stepsPreviousDay != null) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.DirectionsWalk,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "${readiness.stepsPreviousDay} passi",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                 }
                 // How much HR actually moved during the 60s "lie still" window — a quick
                 // visual sanity check alongside the readiness verdict. Absent when this
