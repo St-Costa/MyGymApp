@@ -28,6 +28,10 @@ data class MainUiState(
     val todayIndex: Int = 27,
     // One value per square (28 total): % change vs previous session, null if no comparison
     val gitgraphTonnageChanges: List<Double?> = List(28) { null },
+    // Fallback shown when there's no tonnage % to display (e.g. an all-cardio/warmup routine,
+    // where tonnage is structurally always 0): total cardio minutes for that day's session,
+    // null if the day has no session or no cardio blocks.
+    val gitgraphCardioMinutes: List<Int?> = List(28) { null },
     // Routine name for each day with a session (28 values, one per square) — shown inside
     // the square itself so an out-of-schedule day is still identifiable at a glance.
     val routineNames: List<String?> = List(28) { null },
@@ -86,10 +90,16 @@ class MainViewModel @Inject constructor(
         val startDate = currentWeekMonday.minusWeeks(3) // 4 weeks total
 
         val sessions = workoutRepository.getSessionsInRange(startDate, today)
-        val sessionsByRoutine = sessions.groupBy { it.routineId }
+        // Fetched further back than the visible 4 weeks purely so the FIRST visible week has
+        // something to compare against too — without this, every square in the oldest row
+        // would look like "first time doing this routine" (green, no %) whenever the routine's
+        // actual previous session falls just outside the visible window.
+        val lookbackSessions = workoutRepository.getSessionsInRange(startDate.minusMonths(2), startDate.minusDays(1))
+        val sessionsByRoutine = (sessions + lookbackSessions).groupBy { it.routineId }
 
         val days = mutableListOf<DayStatus>()
         val gitgraphTonnageChanges = mutableListOf<Double?>()
+        val gitgraphCardioMinutes = mutableListOf<Int?>()
         val routineNames = mutableListOf<String?>()
         val lastWeekSessionIds = mutableListOf<String?>()
         val lastWeekSessionDates = mutableListOf<String?>()
@@ -100,6 +110,7 @@ class MainViewModel @Inject constructor(
             if (date.isAfter(today)) {
                 days.add(DayStatus.NONE)
                 gitgraphTonnageChanges.add(null)
+                gitgraphCardioMinutes.add(null)
                 routineNames.add(null)
                 if (dayOffset >= 21) {
                     lastWeekSessionIds.add(null)
@@ -121,6 +132,7 @@ class MainViewModel @Inject constructor(
             if (lastSession == null) {
                 days.add(DayStatus.NONE)
                 gitgraphTonnageChanges.add(null)
+                gitgraphCardioMinutes.add(null)
                 continue
             }
 
@@ -142,8 +154,14 @@ class MainViewModel @Inject constructor(
                 (currTonnage - prevTonnage) / prevTonnage * 100.0
             else null
 
+            // Fallback for when there's no tonnage % to show (all-cardio/warmup routines,
+            // where tonnage is structurally always 0, or a first-time routine with no prior
+            // session to compare against): total cardio minutes for this day's session.
+            val cardioMinutes = if (tonnageChange == null) cardioMinutesFor(lastSession) else null
+
             days.add(status)
             gitgraphTonnageChanges.add(tonnageChange)
+            gitgraphCardioMinutes.add(cardioMinutes)
         }
 
         val todayIndex = 3 * 7 + (todayDow - 1)
@@ -157,6 +175,7 @@ class MainViewModel @Inject constructor(
             gitgraphDays = days,
             todayIndex = todayIndex,
             gitgraphTonnageChanges = gitgraphTonnageChanges,
+            gitgraphCardioMinutes = gitgraphCardioMinutes,
             routineNames = routineNames,
             lastWeekSessionIds = lastWeekSessionIds,
             lastWeekSessionDates = lastWeekSessionDates,
@@ -166,6 +185,26 @@ class MainViewModel @Inject constructor(
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Total minutes across every ExerciseSet.Cardio block in the session (all cardio
+     * exercises, all blocks), rounded down. Null if the session has no closed cardio blocks —
+     * mirrors CardioExerciseViewModel.blockDurationSeconds()'s parsing.
+     */
+    private fun cardioMinutesFor(session: WorkoutSession): Int? {
+        val totalSeconds = session.exercises
+            .flatMap { it.sets }
+            .filterIsInstance<ExerciseSet.Cardio>()
+            .filter { it.startedAt.isNotBlank() && it.endedAt.isNotBlank() }
+            .sumOf { block ->
+                val start = runCatching { LocalDateTime.parse(block.startedAt) }.getOrNull()
+                val end = runCatching { LocalDateTime.parse(block.endedAt) }.getOrNull()
+                if (start != null && end != null) {
+                    java.time.Duration.between(start, end).seconds.coerceAtLeast(0)
+                } else 0
+            }
+        return if (totalSeconds > 0) (totalSeconds / 60).toInt() else null
+    }
 
     /**
      * Computes tonnage for each session using only exercises present in BOTH sessions.
