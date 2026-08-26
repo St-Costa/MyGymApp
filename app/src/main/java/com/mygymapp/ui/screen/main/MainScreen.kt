@@ -6,7 +6,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,11 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,19 +60,7 @@ fun MainScreen(
 
     RequestAllRuntimePermissions(permissionsViewModel)
 
-    Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToOptions,
-            ) {
-                if (uiState.isSeedingData) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Default.Settings, contentDescription = "Opzioni")
-                }
-            }
-        },
-    ) { padding ->
+    Scaffold { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -98,29 +93,84 @@ fun MainScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Button(
-                    onClick = onNavigateToExercises,
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Exercises", fontSize = 22.sp)
+                    MainMenuTile(
+                        label = "Exercises",
+                        icon = Icons.Default.FitnessCenter,
+                        onClick = onNavigateToExercises,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MainMenuTile(
+                        label = "Routines",
+                        icon = Icons.Default.ListAlt,
+                        onClick = onNavigateToRoutines,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                Button(
-                    onClick = onNavigateToRoutines,
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Routines", fontSize = 22.sp)
-                }
-                Button(
-                    onClick = onNavigateToHeartRate,
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
-                ) {
-                    Text("❤️⚖️", fontSize = 22.sp)
+                    MainMenuTile(
+                        label = "Heart & Scale",
+                        icon = Icons.Default.Bluetooth,
+                        onClick = onNavigateToHeartRate,
+                        modifier = Modifier.weight(1f),
+                    )
+                    MainMenuTile(
+                        label = "Opzioni",
+                        icon = Icons.Default.Settings,
+                        onClick = onNavigateToOptions,
+                        isLoading = uiState.isSeedingData,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(72.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun MainMenuTile(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isLoading: Boolean = false,
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.aspectRatio(1f),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = label,
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
         }
     }
 }
