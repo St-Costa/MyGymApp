@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,12 +30,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import com.mygymapp.ui.components.ScrollPickerInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
@@ -85,6 +88,12 @@ fun OptionsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
+            ProfileSection(
+                profile = uiState.profile,
+                onGenderChange = viewModel::updateGender,
+                onHeightChange = viewModel::updateHeight,
+                onBirthYearChange = viewModel::updateBirthYear,
+            )
             ServerSettingsSection(
                 uiState = uiState,
                 onServerUrlChange = viewModel::setSyncServerUrl,
@@ -105,6 +114,84 @@ fun OptionsScreen(
                 onScaleDebugClick = onNavigateToScaleDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
+            )
+        }
+    }
+}
+
+/** Gender, birth year, height — feeds every age/gender-dependent formula (Keytel calories,
+ * Tanaka HRmax, TRIMP, VO2max, BIA body-fat %). Moved here (first card) from the Heart &
+ * Scale screen since it's a one-off setting, not something tweaked during a live BLE
+ * session. Birth year is the sole source of age for every formula (replaces a plain "Age"
+ * field so it stays correct as years pass); null until the user fills it in, falling back
+ * to a fixed default age until then. */
+@Composable
+private fun ProfileSection(
+    profile: com.mygymapp.data.polar.UserProfile,
+    onGenderChange: (Boolean) -> Unit,
+    onHeightChange: (Int) -> Unit,
+    onBirthYearChange: (Int?) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Profile", style = MaterialTheme.typography.titleMedium)
+
+            // Gender chips
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = profile.isMale,
+                    onClick = { onGenderChange(true) },
+                    label = { Text("Male") },
+                )
+                FilterChip(
+                    selected = !profile.isMale,
+                    onClick = { onGenderChange(false) },
+                    label = { Text("Female") },
+                )
+            }
+
+            val currentYear = java.time.Year.now().value
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Birth year", style = MaterialTheme.typography.bodySmall)
+                    ScrollPickerInput(
+                        value = profile.birthYear ?: (currentYear - 30),
+                        onValueChange = { onBirthYearChange(it.toInt().takeIf { y -> y in 1900..currentYear }) },
+                        buttonStep = 1.0,
+                        isModified = profile.birthYear != null,
+                        modifier = Modifier.width(120.dp),
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Height (cm)", style = MaterialTheme.typography.bodySmall)
+                    ScrollPickerInput(
+                        value = profile.heightCm,
+                        onValueChange = { onHeightChange(it.toInt()) },
+                        buttonStep = 1.0,
+                        isModified = true,
+                        modifier = Modifier.width(120.dp),
+                    )
+                }
+            }
+
+            Text(
+                if (profile.birthYear != null) {
+                    "HRmax: ${profile.hrMax} BPM (Tanaka formula)"
+                } else {
+                    "Imposta l'anno di nascita per calcoli accurati (HRmax stimato: ${profile.hrMax} BPM)"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

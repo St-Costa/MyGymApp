@@ -175,22 +175,4 @@ class HeartRateViewModel @Inject constructor(
     fun startScaleScan() = scaleManager.startScan()
     fun stopScaleScan() = scaleManager.stopScan()
     fun disconnectScale() = scaleManager.disconnect()
-
-    fun updateGender(isMale: Boolean) {
-        val profile = _uiState.value.profile.copy(isMale = isMale)
-        _uiState.update { it.copy(profile = profile) }
-        profileRepo.save(profile)
-    }
-
-    fun updateHeight(heightCm: Int) {
-        val profile = _uiState.value.profile.copy(heightCm = heightCm)
-        _uiState.update { it.copy(profile = profile) }
-        profileRepo.save(profile)
-    }
-
-    fun updateBirthYear(birthYear: Int?) {
-        val profile = _uiState.value.profile.copy(birthYear = birthYear)
-        _uiState.update { it.copy(profile = profile) }
-        profileRepo.save(profile)
-    }
 }
