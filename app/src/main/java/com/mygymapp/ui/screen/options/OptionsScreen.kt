@@ -64,6 +64,7 @@ import java.util.Locale
 fun OptionsScreen(
     onBack: () -> Unit,
     onNavigateToScaleDebug: () -> Unit = {},
+    onNavigateToSummaryPreview: () -> Unit = {},
     viewModel: OptionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -114,6 +115,7 @@ fun OptionsScreen(
                 onScaleDebugClick = onNavigateToScaleDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
+                onSummaryPreviewClick = onNavigateToSummaryPreview,
             )
         }
     }
@@ -348,6 +350,7 @@ private fun DebugSection(
     onScaleDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
+    onSummaryPreviewClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
     Card(
@@ -368,6 +371,20 @@ private fun DebugSection(
             )
             OutlinedButton(onClick = onScaleDebugClick, modifier = Modifier.fillMaxWidth()) {
                 Text("Scale BLE Debug")
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Anteprima dei due riquadri di stato mostrati a fine routine (invio al server +
+            // disconnessioni Polar), con dati finti — per controllarne l'aspetto senza dover
+            // fare una sessione reale con la fascia che si scollega.
+            Text(
+                "Mostra i riquadri di fine routine (server + disconnessioni Polar) con dati di esempio.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onSummaryPreviewClick, modifier = Modifier.fillMaxWidth()) {
+                Text("Anteprima riepilogo fine routine")
             }
 
             androidx.compose.material3.HorizontalDivider()

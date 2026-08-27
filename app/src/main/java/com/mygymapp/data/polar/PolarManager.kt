@@ -43,6 +43,39 @@ import javax.inject.Singleton
 
 enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
+/**
+ * Summary of involuntary Polar drops during the last/active session, surfaced on the
+ * end-of-routine screen. [count] is how many times the strap dropped mid-session;
+ * [everyDropAutoRecovered] is true if each drop was followed by a reconnect before the
+ * session ended. [likelyCause] is a best-effort guess from the HR-sample gap pattern
+ * (see [PolarManager.SessionDrop]); it is a hint, not a diagnosis.
+ */
+data class DisconnectStats(
+    val everyDropAutoRecovered: Boolean = true,
+    /** One entry per involuntary mid-session drop, in order. */
+    val drops: List<SessionDrop> = emptyList(),
+) {
+    val count: Int get() = drops.size
+    val hadDrops: Boolean get() = drops.isNotEmpty()
+    val worstHrGapSec: Long get() = drops.maxOfOrNull { it.hrGapSec } ?: 0
+
+    /**
+     * One entry per involuntary mid-session BLE drop. [atElapsedSec] is seconds into the
+     * session; [rssi] the strap's last-known signal (0 when Android gave nothing);
+     * [hrGapSec] how many seconds passed with no HR sample right before the drop — a
+     * growing gap points at range/fade, a near-zero gap at interference or lost contact.
+     */
+    data class SessionDrop(val atElapsedSec: Long, val rssi: Int, val hrGapSec: Long) {
+        /** Per-drop cause guess: gap ≥4s ⇒ range/fade, else interference / lost contact. */
+        val cause: DropCause get() = if (hrGapSec >= 4) DropCause.RANGE_OR_FADE else DropCause.INTERFERENCE
+    }
+}
+
+enum class DropCause {
+    RANGE_OR_FADE, // HR samples thinned out before the drop → distance / phone position / body blocking
+    INTERFERENCE,  // clean HR right up to the drop → 2.4 GHz interference or a lost electrode contact
+}
+
 enum class Readiness {
     MEASURING,          // 60s measurement in progress
     DELOAD_RECOMMENDED, // LnRMSSD very low
@@ -163,6 +196,16 @@ class PolarManager @Inject constructor(
     private var hrSeriesActive = false
     private val hrSeries = ArrayDeque<Pair<Long, Int>>() // (elapsedMs, hr), capped at HR_SERIES_MAX_ENTRIES
     private var hrSeriesStart = 0L
+
+    // Involuntary mid-session BLE drops, for the end-of-routine "connessione Polar" box.
+    // One entry per drop that happened while a session was active; reset in
+    // startHrSeriesCapture(). rssi is the strap's last-known value (from the disconnect
+    // callback — often 0/stale on Android); hrGapSec is how many seconds passed with no
+    // HR sample right before the drop — a growing gap points at signal fade / range,
+    // a near-zero gap at interference or a lost electrode contact.
+    private val sessionDrops = mutableListOf<DisconnectStats.SessionDrop>()
+    private val _disconnectStats = MutableStateFlow(DisconnectStats())
+    val disconnectStats: StateFlow<DisconnectStats> = _disconnectStats
 
     // Heart Rate Recovery tracking: each entry is (peakHr, peakTimestampMs).
     // At ~60s after each peak we record the delta = peakHr - currentHr.
@@ -350,6 +393,12 @@ class PolarManager @Inject constructor(
                     _sessionCalories.value = 0.0
                     _sessionTrimp.value = 0.0
                     maybeStartAutoReadinessMeasurement()
+                } else if (sessionDrops.isNotEmpty()) {
+                    // A mid-session reconnect landed — the most recent drop recovered.
+                    _disconnectStats.value = DisconnectStats(
+                        everyDropAutoRecovered = true,
+                        drops = sessionDrops.toList(),
+                    )
                 }
                 startDataWatchdog()
                 PolarStreamingService.start(context, polarDeviceInfo.name)
@@ -363,8 +412,29 @@ class PolarManager @Inject constructor(
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
                 val involuntary = !userInitiatedDisconnect
+                // How long since the last HR sample landed — the one piece of "why" the
+                // Android BLE stack actually gives us. A gap that grew for seconds before
+                // the link died points at range/fade; a fresh sample right before it
+                // points at interference or a lost electrode contact. rssi is the strap's
+                // last-known value (frequently 0/stale on Android, logged anyway).
+                val hrGapMs = if (lastHrSampleAtMs > 0L) System.currentTimeMillis() - lastHrSampleAtMs else -1L
                 Log.d(TAG, "Disconnected: ${polarDeviceInfo.deviceId} (involuntary=$involuntary)")
-                appLogger.w(TAG, "Disconnected: ${polarDeviceInfo.deviceId} involuntary=$involuntary midSession=$hrSeriesActive")
+                appLogger.w(
+                    TAG,
+                    "Disconnected: ${polarDeviceInfo.deviceId} involuntary=$involuntary midSession=$hrSeriesActive " +
+                        "rssi=${polarDeviceInfo.rssi} hrGap=${if (hrGapMs < 0) "n/a" else "${hrGapMs}ms"}",
+                )
+                if (involuntary && hrSeriesActive) {
+                    sessionDrops += DisconnectStats.SessionDrop(
+                        atElapsedSec = (System.currentTimeMillis() - hrSeriesStart) / 1000,
+                        rssi = polarDeviceInfo.rssi,
+                        hrGapSec = if (hrGapMs < 0) 0 else hrGapMs / 1000,
+                    )
+                    _disconnectStats.value = DisconnectStats(
+                        everyDropAutoRecovered = false,
+                        drops = sessionDrops.toList(),
+                    )
+                }
                 connectedDeviceId = null
                 _heartRate.value = null
                 _batteryLevel.value = null
@@ -847,6 +917,8 @@ class PolarManager @Inject constructor(
         hrSeries.clear()
         hrSeriesStart = System.currentTimeMillis()
         hrSeriesActive = true
+        sessionDrops.clear()
+        _disconnectStats.value = DisconnectStats()
         lastDriftComputeMs = 0L
         _liveCardiacDrift.value = 0.0
         pendingHrrPeaks.clear()

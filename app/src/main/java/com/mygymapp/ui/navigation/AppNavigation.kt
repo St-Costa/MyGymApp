@@ -364,10 +364,17 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
+        composable(Screen.SessionSummaryPreview.route) {
+            com.mygymapp.ui.screen.sessionprogress.SessionSummaryPreviewScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+
         composable(Screen.Options.route) {
             OptionsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToScaleDebug = { navController.navigate(Screen.ScaleDebug.route) },
+                onNavigateToSummaryPreview = { navController.navigate(Screen.SessionSummaryPreview.route) },
             )
         }
 
