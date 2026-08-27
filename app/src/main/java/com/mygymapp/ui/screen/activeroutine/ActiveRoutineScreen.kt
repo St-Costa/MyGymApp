@@ -46,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.mygymapp.ui.theme.JetBrainsMono
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -480,31 +482,39 @@ private fun SupersetGroupRow(
     ex2: ActiveExerciseUi,
     onClick: () -> Unit,
 ) {
-    val primaryColor = MaterialTheme.colorScheme.primary
     val bothCompleted = ex1.completed && ex2.completed
-    val baseBorderColor = if (ex1.completedEmpty || ex2.completedEmpty) SkippedColor else primaryColor
+    // A superset pair can mix exercise types (FORZA + STRETCH, …), so the border is a
+    // gradient from ex1's accent color (top) to ex2's (bottom). When they're the same
+    // type it just reads as a solid color, exactly like ExerciseRow.
+    fun accentFor(ex: ActiveExerciseUi) =
+        if (ex.completedEmpty) SkippedColor else ex.type.accentColor()
     // Less opaque border once both exercises in the pair are done — mirrors ExerciseRow.
-    val borderColor = if (bothCompleted) baseBorderColor.copy(alpha = 0.4f) else baseBorderColor
+    val alpha = if (bothCompleted) 0.4f else 1f
+    val color1 = accentFor(ex1).copy(alpha = alpha)
+    val color2 = accentFor(ex2).copy(alpha = alpha)
+    val borderBrush = Brush.verticalGradient(listOf(color1, color2))
 
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(2.dp, borderColor),
+        border = BorderStroke(2.dp, borderBrush),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = "SUPERSET",
-                style = MaterialTheme.typography.labelSmall,
-                color = primaryColor,
-            )
-
             SupersetExerciseEntry(exercise = ex1)
 
-            HorizontalDivider(color = primaryColor.copy(alpha = 0.3f), thickness = 1.dp)
+            HorizontalDivider(
+                color = Color.Transparent,
+                thickness = 1.dp,
+                modifier = Modifier.background(
+                    Brush.horizontalGradient(
+                        listOf(color1.copy(alpha = 0.3f), color2.copy(alpha = 0.3f)),
+                    ),
+                ),
+            )
 
             SupersetExerciseEntry(exercise = ex2)
         }
@@ -526,7 +536,7 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
         ) {
             Text(
                 text = exercise.exerciseName,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
             )
             if (exercise.substitutedForName != null) {
                 Text(
@@ -553,7 +563,7 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
         } else if (exercise.completed && exercise.isFirstTimeTonnage) {
             Text(
                 text = "primo dato",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
         } else {
