@@ -21,7 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -60,6 +60,7 @@ import com.mygymapp.ui.components.trimpColor
 import com.mygymapp.ui.theme.accentColor
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
+import com.mygymapp.ui.theme.SkippedColor
 import com.mygymapp.ui.util.groupSupersets
 
 // ---------------------------------------------------------------------------
@@ -406,7 +407,7 @@ private fun ExerciseRow(
     exercise: ActiveExerciseUi,
     onClick: () -> Unit,
 ) {
-    val baseBorderColor = if (exercise.completedEmpty) GitgraphRed else exercise.type.accentColor()
+    val baseBorderColor = if (exercise.completedEmpty) SkippedColor else exercise.type.accentColor()
     // Completed exercises get a less opaque border instead of a strikethrough — dimming the
     // border (not the text) is what reads as "done".
     val borderColor = if (exercise.completed) baseBorderColor.copy(alpha = 0.4f) else baseBorderColor
@@ -443,12 +444,12 @@ private fun ExerciseRow(
                 }
             }
             // Right side: sets/duration when not completed; once completed, the badge
-            // (warning > tonnage% > "primo dato") takes that spot instead.
+            // (skipped X > tonnage% > "primo dato") takes that spot instead.
             if (exercise.completedEmpty) {
                 Icon(
-                    imageVector = Icons.Filled.Warning,
-                    contentDescription = "Completato senza dati",
-                    tint = GitgraphRed,
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Saltato",
+                    tint = SkippedColor,
                 )
             } else if (exercise.completed && exercise.tonnageChangePct != null) {
                 TonnageAndRmChange(
@@ -481,7 +482,7 @@ private fun SupersetGroupRow(
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val bothCompleted = ex1.completed && ex2.completed
-    val baseBorderColor = if (ex1.completedEmpty || ex2.completedEmpty) GitgraphRed else primaryColor
+    val baseBorderColor = if (ex1.completedEmpty || ex2.completedEmpty) SkippedColor else primaryColor
     // Less opaque border once both exercises in the pair are done — mirrors ExerciseRow.
     val borderColor = if (bothCompleted) baseBorderColor.copy(alpha = 0.4f) else baseBorderColor
 
@@ -536,12 +537,12 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
             }
         }
         // Right side: sets/duration when not completed; once completed, the badge
-        // (warning > tonnage% > "primo dato") takes that spot instead.
+        // (skipped X > tonnage% > "primo dato") takes that spot instead.
         if (exercise.completedEmpty) {
             Icon(
-                imageVector = Icons.Filled.Warning,
-                contentDescription = "Completato senza dati",
-                tint = GitgraphRed,
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Saltato",
+                tint = SkippedColor,
             )
         } else if (exercise.completed && exercise.tonnageChangePct != null) {
             TonnageAndRmChange(
