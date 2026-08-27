@@ -207,15 +207,11 @@ fun ExerciseEditScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Corpo libero", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "Nessun peso esterno per natura (es. plank, push-up). Il carico " +
-                                "stimato entra nel tonnellaggio in base alla % di peso corporeo.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        "Corpo libero",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
                     Switch(
                         checked = uiState.isBodyweight,
                         onCheckedChange = viewModel::onBodyweightChange,
