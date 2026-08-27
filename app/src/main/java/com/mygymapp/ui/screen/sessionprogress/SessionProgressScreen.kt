@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
@@ -20,6 +21,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +36,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.mygymapp.data.polar.DisconnectStats
+import com.mygymapp.data.polar.DropCause
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.components.trimpColor
@@ -93,6 +97,9 @@ fun SessionProgressScreen(
                     style = MaterialTheme.typography.titleLarge,
                 )
                 SyncStatusBox(uiState.syncStatus)
+                if (uiState.polarDrops.hadDrops) {
+                    PolarConnectionBox(uiState.polarDrops)
+                }
             }
             // Calories + TRIMP summary (if recorded)
             if (uiState.sessionCalories > 0 || uiState.sessionTrimp > 0 || uiState.sessionSteps != null) {
@@ -185,39 +192,6 @@ fun SessionProgressScreen(
                 }
             }
 
-            // Cardio trend charts — one small chart per metric, only when it has data.
-            // Deep ECG-derived charts (avg HR from ECG, RMSSD, SDNN, Poincaré ratio) and
-            // the arrhythmia/AFib anomaly callouts were removed: that analysis now runs
-            // server-side on the uploaded raw waveform, not on the phone — see
-            // docs/SYNC.md "Fourth record type: raw ECG". Only metrics computed from live
-            // HR/readiness tracking remain here.
-            val hasCardioData = listOf(
-                uiState.hrrSeries, uiState.vo2maxSeries, uiState.restingHrSeries, uiState.cardiacDriftSeries,
-            ).any { it.data.isNotEmpty() }
-
-            if (hasCardioData) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        Text("Cardio", style = MaterialTheme.typography.titleMedium)
-
-                        CardioChart("HRR (recupero 60s)", "bpm", uiState.hrrSeries)
-                        CardioChart("VO2max", "", uiState.vo2maxSeries)
-                        CardioChart("HR a riposo", "bpm", uiState.restingHrSeries)
-                        CardioChart("Deriva cardiaca", "bpm/min", uiState.cardiacDriftSeries)
-                    }
-                }
-            }
-
             if (justCompleted) {
                 androidx.compose.material3.Button(
                     onClick = onDone,
@@ -231,28 +205,38 @@ fun SessionProgressScreen(
 }
 
 /**
- * Small reassurance strip confirming the just-finished session made it to the server —
- * or flagging that it didn't, so a failed upload doesn't go unnoticed until "Options" is
- * opened days later. Always shown, even when sync is off — otherwise its absence could be
- * mistaken for a bug rather than for the deliberate off state.
+ * Reassurance card confirming the just-finished session made it to the server — or flagging
+ * that it didn't, so a failed upload doesn't go unnoticed until "Options" is opened days
+ * later. Always shown, even when sync is off — otherwise its absence could be mistaken for a
+ * bug rather than for the deliberate off state. Given real vertical presence (icon + title +
+ * subtitle) so it reads as a status panel, not a thin strip.
  */
 @Composable
-private fun SyncStatusBox(status: SessionSyncStatus) {
-    val (icon, text, color) = when (status) {
-        SessionSyncStatus.SENT -> Triple(
+internal fun SyncStatusBox(status: SessionSyncStatus) {
+    data class Spec(val icon: androidx.compose.ui.graphics.vector.ImageVector?, val title: String, val subtitle: String, val color: Color)
+    val spec = when (status) {
+        SessionSyncStatus.SENT -> Spec(
             Icons.Default.CheckCircle,
             "Sessione inviata al server",
+            "Il salvataggio remoto è andato a buon fine.",
             Color(0xFF4CAF50),
         )
-        SessionSyncStatus.FAILED -> Triple(
+        SessionSyncStatus.FAILED -> Spec(
             Icons.Default.Error,
-            "Invio al server fallito — verrà ritentato",
+            "Invio al server fallito",
+            "Verrà ritentato automaticamente in background.",
             MaterialTheme.colorScheme.error,
         )
-        SessionSyncStatus.PENDING -> Triple(null, "Invio al server in corso…", MaterialTheme.colorScheme.onSurfaceVariant)
-        SessionSyncStatus.SYNC_OFF -> Triple(
+        SessionSyncStatus.PENDING -> Spec(
+            null,
+            "Invio al server in corso…",
+            "Attendi qualche secondo.",
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SessionSyncStatus.SYNC_OFF -> Spec(
             Icons.Default.CloudOff,
             "Sync col server disattivata",
+            "La sessione resta salvata solo su questo telefono.",
             MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -262,34 +246,104 @@ private fun SyncStatusBox(status: SessionSyncStatus) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+            if (spec.icon != null) {
+                Icon(spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(32.dp))
             } else {
-                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
             }
-            Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(spec.title, style = MaterialTheme.typography.titleMedium, color = spec.color)
+                Text(
+                    spec.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Shown only when the Polar strap dropped mid-session (involuntarily). One row per drop
+ * with its technical detail — time into the session, RSSI (strap's last-known signal, "n/d"
+ * when Android gave nothing), the HR-sample gap right before the drop, and the cause guessed
+ * from that gap. Header line says whether every drop auto-recovered (it almost always does —
+ * a reconnect resumes HR/ECG for the same session, workout data is unaffected). Full raw
+ * detail is also in the app log (`Disconnected: … rssi= hrGap=`).
+ */
+@Composable
+internal fun PolarConnectionBox(stats: DisconnectStats) {
+    val n = stats.count
+    val header = if (n == 1) "Fascia Polar — 1 disconnessione" else "Fascia Polar — $n disconnessioni"
+    val recovery = if (stats.everyDropAutoRecovered) {
+        "Riconnessa da sola ogni volta: i dati della sessione sono completi."
+    } else {
+        "L'ultima disconnessione non si è ripristinata prima della fine della sessione."
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.BluetoothDisabled,
+                    contentDescription = null,
+                    tint = Color(0xFFFF9800),
+                    modifier = Modifier.size(32.dp),
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(header, style = MaterialTheme.typography.titleMedium, color = Color(0xFFFF9800))
+                    Text(
+                        recovery,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            stats.drops.forEachIndexed { i, drop ->
+                DropRow(index = i + 1, drop = drop)
+            }
+            Text(
+                "RSSI = potenza del segnale della fascia (più vicino a 0 = più forte). " +
+                    "Il tempo senza battiti prima del calo indica la causa probabile.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
 
 @Composable
-private fun CardioChart(title: String, unit: String, series: ChartSeries) {
-    if (series.data.isEmpty()) return
-    val last = series.data.last()
-    val lastText = if (last == last.toLong().toDouble()) last.toLong().toString() else "%.1f".format(last)
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+internal fun DropRow(index: Int, drop: DisconnectStats.SessionDrop) {
+    val rssi = if (drop.rssi != 0) "${drop.rssi} dBm" else "n/d"
+    val gap = if (drop.hrGapSec > 0) "${drop.hrGapSec}s senza battiti prima del calo"
+              else "battito ricevuto fino all'istante del calo"
+    val cause = when (drop.cause) {
+        DropCause.RANGE_OR_FADE -> "distanza o telefono coperto dal corpo"
+        DropCause.INTERFERENCE -> "interferenza radio o contatto elettrodo intermittente"
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = if (unit.isBlank()) "$title: $lastText" else "$title: $lastText $unit",
-            style = MaterialTheme.typography.titleSmall,
+            "$index)  a ${formatMmSs(drop.atElapsedSec)} dall'inizio  ·  RSSI $rssi",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
-        TonnageLineChart(
-            data = series.data,
-            labels = series.labels,
-            modifier = Modifier.fillMaxWidth(),
+        Text(
+            "$gap  →  $cause",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+internal fun formatMmSs(totalSec: Long): String = "%d:%02d".format(totalSec / 60, totalSec % 60)
