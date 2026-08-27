@@ -44,8 +44,9 @@ data class MainUiState(
     // One flag per gitgraph week-row (4): true = powerlifting week
     val powerliftingWeeks: List<Boolean> = List(4) { false },
     // Schedule row (current week): 7 cells, Monday..Sunday, each the routine(s) assigned that
-    // day. The "today" cell is overridden by GitgraphView to render like a history cell
-    // instead whenever todaySessionId is non-null (see the today* fields below).
+    // day PLUS — for any day that already has a completed session this week — that session's
+    // outcome (status/%/minutes/name/id), so GitgraphView renders it like a history cell.
+    // The "today" cell additionally carries the today* fields below.
     val scheduleCells: List<ScheduleCell> = List(7) { ScheduleCell() },
     val todayDowIndex: Int = 0, // 0=Monday..6=Sunday, which scheduleCells entry is "today"
     // Today's own session outcome, same shape as one history square — null/NONE if today has
@@ -151,32 +152,10 @@ class MainViewModel @Inject constructor(
                 continue
             }
 
-            val previous = sessionsByRoutine[lastSession.routineId]
-                ?.filter { it.date < dateStr }
-                ?.maxByOrNull { it.completedAt }
-
-            val (currTonnage, prevTonnage) = if (previous != null)
-                computeCommonTonnage(lastSession, previous)
-            else Pair(lastSession.totalTonnage, 0.0)
-
-            val status = if (previous != null) {
-                if (currTonnage >= prevTonnage) DayStatus.IMPROVED else DayStatus.REGRESSED
-            } else {
-                DayStatus.IMPROVED // first time doing this routine
-            }
-
-            val tonnageChange = if (previous != null && prevTonnage > 0)
-                (currTonnage - prevTonnage) / prevTonnage * 100.0
-            else null
-
-            // Fallback for when there's no tonnage % to show (all-cardio/warmup routines,
-            // where tonnage is structurally always 0, or a first-time routine with no prior
-            // session to compare against): total cardio minutes for this day's session.
-            val cardioMinutes = if (tonnageChange == null) cardioMinutesFor(lastSession) else null
-
-            days.add(status)
-            gitgraphTonnageChanges.add(tonnageChange)
-            gitgraphCardioMinutes.add(cardioMinutes)
+            val cell = computeDayCell(lastSession, sessionsByRoutine)
+            days.add(cell.status)
+            gitgraphTonnageChanges.add(cell.tonnageChange)
+            gitgraphCardioMinutes.add(cell.cardioMinutes)
         }
 
         // One flag per week-row: the row's Monday is startDate + week*7.
@@ -185,9 +164,9 @@ class MainViewModel @Inject constructor(
         }
 
         // Schedule row (current week, Monday..Sunday): for each day, the enabled routine(s)
-        // assigned to it (Routine.day). The "today" cell additionally carries today's own
-        // session outcome (status/%/minutes/name), same shape as a history cell, so
-        // GitgraphView can render it like one once a session for today exists.
+        // assigned to it (Routine.day), PLUS — for any day already trained this week — that
+        // day's session outcome (status/%/minutes/name/id), same shape as a history cell, so
+        // GitgraphView renders it like one. Yesterday's workout showing up here is this path.
         val allRoutines = routineRepository.getAll()
         val todayStr = today.toString()
         val todaySession = currentWeekSessions.filter { it.date == todayStr }.maxByOrNull { it.completedAt }
@@ -196,36 +175,43 @@ class MainViewModel @Inject constructor(
             .map { it.routineId }
             .toSet()
 
+        // Most-recent completed session per day of the current week, keyed by date string.
+        val currentWeekSessionByDate = currentWeekSessions
+            .groupBy { it.date }
+            .mapValues { (_, s) -> s.maxByOrNull { it.completedAt } }
+
         var todayStatus = DayStatus.NONE
         var todayTonnageChange: Double? = null
         var todayCardioMinutes: Int? = null
-        if (todaySession != null) {
-            val previous = sessionsByRoutine[todaySession.routineId]
-                ?.filter { it.date < todayStr }
-                ?.maxByOrNull { it.completedAt }
-            val (currTonnage, prevTonnage) = if (previous != null)
-                computeCommonTonnage(todaySession, previous)
-            else Pair(todaySession.totalTonnage, 0.0)
-            todayStatus = if (previous != null) {
-                if (currTonnage >= prevTonnage) DayStatus.IMPROVED else DayStatus.REGRESSED
-            } else {
-                DayStatus.IMPROVED
-            }
-            todayTonnageChange = if (previous != null && prevTonnage > 0)
-                (currTonnage - prevTonnage) / prevTonnage * 100.0
-            else null
-            todayCardioMinutes = if (todayTonnageChange == null) cardioMinutesFor(todaySession) else null
+        todaySession?.let {
+            val cell = computeDayCell(it, sessionsByRoutine)
+            todayStatus = cell.status
+            todayTonnageChange = cell.tonnageChange
+            todayCardioMinutes = cell.cardioMinutes
         }
 
         val dowKeys = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-        val scheduleCells = dowKeys.map { key ->
+        val scheduleCells = dowKeys.mapIndexed { col, key ->
             val routines = allRoutines.filter { it.day.equals(key, ignoreCase = true) && it.enabled }
             // Tapping opens the first one not yet completed today, so finishing one and
             // tapping the same cell again moves on to the next.
             val toOpen = routines.firstOrNull { it.id !in completedTodayRoutineIds } ?: routines.firstOrNull()
+
+            // The today cell is rendered from the today* fields, not from here — leave its
+            // session fields null so GitgraphView doesn't double-handle it.
+            val dayDate = currentWeekMonday.plusDays(col.toLong())
+            val session = if (col == todayDow - 1) null else currentWeekSessionByDate[dayDate.toString()]
+            val sessionCell = session?.let { computeDayCell(it, sessionsByRoutine) }
+
             ScheduleCell(
                 routineNames = routines.map { it.name },
                 openRoutineId = toOpen?.id,
+                sessionStatus = sessionCell?.status ?: DayStatus.NONE,
+                sessionTonnageChange = sessionCell?.tonnageChange,
+                sessionCardioMinutes = sessionCell?.cardioMinutes,
+                sessionRoutineName = session?.routineName,
+                sessionId = session?.id,
+                sessionDate = session?.date,
             )
         }
 
@@ -250,6 +236,39 @@ class MainViewModel @Inject constructor(
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /** Status / tonnage-% / cardio-minutes for one day's session, compared against that
+     *  routine's most recent earlier session. Same logic the 4 history rows and the "today"
+     *  cell use — extracted so the other current-week days (schedule row) can reuse it. */
+    data class DayCell(
+        val status: DayStatus,
+        val tonnageChange: Double?,
+        val cardioMinutes: Int?,
+    )
+
+    private fun computeDayCell(
+        session: WorkoutSession,
+        sessionsByRoutine: Map<String, List<WorkoutSession>>,
+    ): DayCell {
+        val previous = sessionsByRoutine[session.routineId]
+            ?.filter { it.date < session.date }
+            ?.maxByOrNull { it.completedAt }
+
+        val (currTonnage, prevTonnage) = if (previous != null)
+            computeCommonTonnage(session, previous)
+        else Pair(session.totalTonnage, 0.0)
+
+        val status = if (previous != null) {
+            if (currTonnage >= prevTonnage) DayStatus.IMPROVED else DayStatus.REGRESSED
+        } else {
+            DayStatus.IMPROVED // first time doing this routine
+        }
+        val tonnageChange = if (previous != null && prevTonnage > 0)
+            (currTonnage - prevTonnage) / prevTonnage * 100.0
+        else null
+        val cardioMinutes = if (tonnageChange == null) cardioMinutesFor(session) else null
+        return DayCell(status, tonnageChange, cardioMinutes)
+    }
 
     /**
      * Total minutes across every ExerciseSet.Cardio block in the session (all cardio
