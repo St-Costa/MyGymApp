@@ -48,12 +48,37 @@ class ExerciseParserRoundTripTest {
 
     @Test
     fun `isBodyweight true round-trips and defaults to false when absent`() {
-        val bodyweight = Exercise(id = "ex-bw", name = "Push-up", type = ExerciseType.FORZA, bodypart = "chest", isBodyweight = true)
+        val bodyweight = Exercise(id = "ex-bw", name = "Push-up", type = ExerciseType.FORZA, bodypart = "chest", isBodyweight = true, bwLoadPercent = 75)
 
         assertTrue(roundTrip(bodyweight).isBodyweight)
 
         val markdown = ExerciseParser.toMarkdown(Exercise(id = "ex-x", name = "Squat", type = ExerciseType.FORZA, bodypart = "legs"))
         assertFalse("isBodyweight=false should be omitted to keep the file lean", markdown.contains("isBodyweight"))
+    }
+
+    @Test
+    fun `bwLoadPercent round-trips for a bodyweight exercise and is omitted otherwise`() {
+        val bw = Exercise(id = "ex-bw", name = "Reverse sit-up", type = ExerciseType.FORZA, bodypart = "core", isBodyweight = true, bwLoadPercent = 50)
+        assertEquals(50, roundTrip(bw).bwLoadPercent)
+
+        val plain = Exercise(id = "ex-x", name = "Squat", type = ExerciseType.FORZA, bodypart = "legs")
+        assertEquals(0, roundTrip(plain).bwLoadPercent)
+        assertFalse(ExerciseParser.toMarkdown(plain).contains("bwLoadPercent"))
+    }
+
+    @Test
+    fun `a bodyweight exercise with no bwLoadPercent in the file migrates to 75`() {
+        val legacy = """
+            ---
+            id: "ex-legacy"
+            name: "Plank"
+            type: "forza"
+            bodypart: "core"
+            isBodyweight: true
+            ---
+        """.trimIndent()
+
+        assertEquals(75, ExerciseParser.fromMarkdown(legacy).bwLoadPercent)
     }
 
     @Test

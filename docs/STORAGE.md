@@ -53,6 +53,10 @@ link: https://...             # optional image/YouTube URL
 defaultRepRangeMin: 8
 defaultRepRangeMax: 12
 isBodyweight: true            # omitted when false — FORZA only, no external weight by design
+bwLoadPercent: 75             # only with isBodyweight — 25|50|75|100, % of body weight this
+                              # movement loads (squat 100, plank 75, reverse sit-up 50,
+                              # tibialis raise 25). Mandatory for a bodyweight exercise; legacy
+                              # files with none migrate to 75. See below for how it feeds tonnage.
 created: 2025-03-15T10:22:14
 updated: 2025-04-18T09:00:00
 ---
@@ -159,12 +163,18 @@ exercises:
     bodypart: core
     sets:
       - reps: 45
-        weight: 0.0
+        weight: 55.0            # MATERIALIZED at exercise-completion: bwLoadPercent% of the
+                                 # lifter's body weight (from the most recent scale weigh-in on
+                                 # or before the session date), rounded to 0.5 kg. This makes
+                                 # `reps * weight` tonnage/PR/e1RM work everywhere with no
+                                 # bodyweight special-casing. 0.0 only if no weigh-in existed.
         isBodyweight: true      # omitted when false — copied from Exercise.isBodyweight
                                  # at session-build time; distinguishes "genuinely no
                                  # external weight" from "set never touched" (both are
                                  # weight=0 otherwise indistinguishable to any reader
                                  # that filters on weight > 0 — see SYNC.md)
+        bwLoadPercent: 75       # audit: the Exercise.bwLoadPercent used for the number above
+        bwBaseWeightKg: 73.3    # audit: the body weight the estimate was taken from
   - exerciseId: ex-c9d8e7f6
     exerciseName: Corsa leggera
     type: CARDIO

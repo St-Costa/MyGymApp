@@ -170,6 +170,35 @@ A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: "
 
 Warmup **and** fixed-daily exercises are excluded from tonnage. The exclusion is resolved when the session is built and persisted per-exercise as `WorkoutExercise.excludeFromTonnage`, so every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, and the active-session previous/historical comparisons — just filters `!excludeFromTonnage`. Cardio metrics are session-global (PolarManager) and intentionally still include these exercises.
 
+## Bodyweight load: materialize `weight` at completion, never at read time
+
+A bodyweight `Exercise` (`isBodyweight = true`) carries a mandatory `bwLoadPercent` ∈
+{25, 50, 75, 100} — how much of the lifter's body weight the movement loads (squat 100,
+plank 75, reverse sit-up 50, tibialis raise 25). Legacy exercise files with `isBodyweight`
+but no percent migrate to **75** in `ExerciseParser` (the editor forces one of the four via
+`FilterChip`s and never persists 0 for a bodyweight exercise).
+
+When an exercise screen writes its sets on completion (or on mid-exercise back-out),
+`StrengthExerciseViewModel.buildStrengthSets` / `SupersetViewModel.buildUpdatedSession`
+**materialize** each bodyweight set's `weight` = `materializeBodyweightWeight(bwLoadPercent,
+bodyWeightKg)` — `bwLoadPercent%` of the lifter's body weight, rounded to 0.5 kg, where the
+body weight is `ScaleHistoryRepository.getLatestWeightOnOrBefore(sessionDate)` (most recent
+scale weigh-in on or before the session date). The raw inputs are kept on the set as
+`bwLoadPercent` + `bwBaseWeightKg` for audit only.
+
+The point: **every downstream `reps * weight` reader** — `finalizeSession`, the historical
+`sessionTonnage`/`sessionBestE1RM` charts, `TonnagePr`, `bestEstimated1RM`, and the server —
+keeps working unchanged, because `weight` is a real positive number by the time anything
+reads it. Do **not** add "if bodyweight, look up the weigh-in and multiply" at any read
+site: historical sessions freeze the body weight that was current then, and a read-time
+lookup would be both wrong (today's weight) and slow. If no weigh-in was on file at
+completion, `weight` stays `0.0` and `isBodyweight` still guards the set from being read as
+"untouched" (see [SYNC.md](SYNC.md)). The per-set weight picker and the "Kg" column are
+hidden entirely for bodyweight exercises in both the strength and superset screens.
+
+`materializeBodyweightWeight` lives in `TonnageMath.kt` (pure, no Context/IO) and is
+unit-tested in `TonnageMathTest`.
+
 ## Previous-set preview: match type, skip zeros, inherit last set
 
 When a strength exercise screen opens ([StrengthExerciseViewModel](../app/src/main/java/com/mygymapp/ui/screen/strengthexercise/StrengthExerciseViewModel.kt), [SupersetViewModel](../app/src/main/java/com/mygymapp/ui/screen/superset/SupersetViewModel.kt)), the grey "previous" defaults must be picked **like-with-like** along three rules:

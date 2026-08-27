@@ -54,6 +54,10 @@ object WorkoutParser {
                         "weight" to set.weight,
                     ).apply {
                         if (set.isBodyweight) put("isBodyweight", true)
+                        // Audit trail for a materialized bodyweight set (weight already reflects
+                        // the estimate). 0 when not applicable — omit to keep the YAML lean.
+                        if (set.bwLoadPercent > 0) put("bwLoadPercent", set.bwLoadPercent)
+                        if (set.bwBaseWeightKg > 0.0) put("bwBaseWeightKg", set.bwBaseWeightKg)
                     }
                     is ExerciseSet.Stretch -> linkedMapOf<String, Any?>(
                         "timeSeconds" to set.timeSeconds,
@@ -158,6 +162,8 @@ object WorkoutParser {
                     reps = (map["reps"] as? Number)?.toInt() ?: 0,
                     weight = (map["weight"] as? Number)?.toDouble() ?: 0.0,
                     isBodyweight = map["isBodyweight"] as? Boolean ?: false,
+                    bwLoadPercent = (map["bwLoadPercent"] as? Number)?.toInt() ?: 0,
+                    bwBaseWeightKg = (map["bwBaseWeightKg"] as? Number)?.toDouble() ?: 0.0,
                 )
                 ExerciseType.STRETCH -> ExerciseSet.Stretch(
                     timeSeconds = (map["timeSeconds"] as? Number)?.toInt() ?: 0,
