@@ -77,11 +77,15 @@ data class WorkoutExercise(
     val substitutedFor: String? = null,
 ) {
     /**
-     * True when the lifter never touched a pre-filled value for this exercise AND never tapped
-     * "Complete" either — identical to an exercise that was never opened. Distinct from
-     * [completedEmpty], which is the same "no data" case but explicitly closed out by the user.
+     * True when this exercise does not represent performed work: the lifter never tapped
+     * "Complete" for it (or tapped it without touching any value, which no longer marks it
+     * completed — see docs/CONVENTIONS.md "Untouched-exercise guard"). Its `sets` may be
+     * non-empty — they carry the grey pre-fill that was on screen, persisted so re-entry
+     * shows the same numbers — but a non-completed exercise is still "not done", so tonnage
+     * comparisons and the like must skip it. Distinct from [completedEmpty], where the user
+     * did close the exercise out (completed = true) but recorded no data.
      */
-    fun isUntouched(): Boolean = !completed && sets.isEmpty()
+    fun isUntouched(): Boolean = !completed
 
     /**
      * True when no set in this slot carries any real data yet — same "did the lifter actually

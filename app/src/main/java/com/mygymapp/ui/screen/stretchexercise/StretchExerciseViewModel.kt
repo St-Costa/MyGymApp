@@ -55,6 +55,9 @@ class StretchExerciseViewModel @Inject constructor(
     private var timerJob: Job? = null
     private var exerciseCompleted = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // The completeExercise() save, tracked so onCleared() can join it before cancelling
+    // clearScope — see StrengthExerciseViewModel for the full reasoning.
+    private var completionJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -142,26 +145,26 @@ class StretchExerciseViewModel @Inject constructor(
      * can navigate back only after the write is guaranteed to be on disk.
      */
     fun completeExercise() {
+        // Either way this screen navigates back (exerciseCompleted stops onCleared() from
+        // re-saving); only the completed flag differs.
         exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
-        // A stretch set only becomes `done` via an explicit toggle, so "no set marked done"
-        // means the lifter never touched this exercise — treat it like an unopened exercise
-        // rather than recording an empty/untouched stretch as performed work.
+        // A stretch set only becomes `done` via an explicit toggle. Marking at least one set
+        // done is the signal the exercise was performed — all sets are then saved as-is.
+        // Marking none means it was not performed: leave it open (completed = false).
         val anyDone = sets.any { it.done }
-        viewModelScope.launch {
+        // Save on clearScope, not viewModelScope, so a process death between the tap and the
+        // write completing can't lose it — see StrengthExerciseViewModel.completeExercise().
+        completionJob = clearScope.launch {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        if (anyDone) {
-                            ex.copy(
-                                completed = true,
-                                completedEmpty = false,
-                                sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
-                            )
-                        } else {
-                            ex.copy(completed = true, completedEmpty = true, sets = emptyList())
-                        }
+                        ex.copy(
+                            completed = anyDone,
+                            completedEmpty = false,
+                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
+                        )
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
@@ -189,7 +192,15 @@ class StretchExerciseViewModel @Inject constructor(
     override fun onCleared() {
         timerJob?.cancel()
         if (exerciseCompleted) {
-            clearScope.cancel()
+            // Wait for completeExercise()'s clearScope save to finish before tearing the
+            // scope down — see StrengthExerciseViewModel.onCleared().
+            clearScope.launch {
+                try {
+                    completionJob?.join()
+                } finally {
+                    clearScope.cancel()
+                }
+            }
             return
         }
         val sets = _uiState.value.sets
