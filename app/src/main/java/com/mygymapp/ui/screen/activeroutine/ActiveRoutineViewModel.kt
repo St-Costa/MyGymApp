@@ -714,9 +714,13 @@ class ActiveRoutineViewModel @Inject constructor(
                 if (needsGhostCleanup) {
                     val today = LocalDate.parse(session.date)
                     val reloaded = workoutRepository.getSession(session.id, today) ?: session
+                    // A session that was never finalized and has no exercise the lifter marked
+                    // "Complete" is a ghost. Set data alone no longer counts: since the
+                    // untouched-exercise guard change, an exercise's `sets` may just be the
+                    // grey pre-fill persisted on a Complete-without-touching (completed = false)
+                    // — that isn't performed work and must not keep the session alive.
                     val hasCompleted = reloaded.exercises.any { it.completed }
-                    val hasRealSetData = reloaded.exercises.any { ex -> !ex.hasNoRecordedSets() }
-                    if (reloaded.completedAt.isBlank() && !hasCompleted && !hasRealSetData) {
+                    if (reloaded.completedAt.isBlank() && !hasCompleted) {
                         appLogger.w(TAG, "Ghost session deleted on exit: id=${session.id}")
                         polarManager.deleteEcgFile(session.id)
                         workoutRepository.delete(reloaded)

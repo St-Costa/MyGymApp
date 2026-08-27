@@ -15,6 +15,7 @@ import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,6 +72,9 @@ class StrengthExerciseViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
     private var exerciseCompleted = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // The completeExercise() save, tracked so onCleared() can join it before cancelling
+    // clearScope — otherwise the cancel would abort a save still in flight.
+    private var completionJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -250,28 +254,35 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     fun completeExercise() {
-        exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
+        // "Touched" = the lifter tapped at least one reps/weight picker on this screen.
+        // Tapping any single value is the signal that this exercise was actually performed
+        // this session — the pre-filled numbers on the *other* (still-grey) sets are then
+        // taken as done too and saved as-is. Tapping nothing means the exercise was not
+        // performed: leave it open (completed = false), don't navigate away.
         val anyTouched = sets.any { it.repsTouched || it.weightTouched }
-        viewModelScope.launch {
+        // Either way this screen navigates back (exerciseCompleted stops onCleared() from
+        // re-saving); only the completed flag differs.
+        exerciseCompleted = true
+        // Run the save on clearScope, not viewModelScope: if the process dies between the tap
+        // and the write completing, viewModelScope would be cancelled with the save half-done
+        // and the completed=true would be lost — onCleared() then can't recover it because
+        // exerciseCompleted is already set. clearScope (SupervisorJob) survives VM teardown;
+        // onCleared() joins completionJob before cancelling it. Same reasoning as onCleared().
+        completionJob = clearScope.launch {
             if (session != null) {
                 val builtSets = buildStrengthSets(sets, session.date)
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        // If the lifter never touched any pre-filled value, there's no evidence
-                        // the exercise was actually performed — don't silently re-record last
-                        // session's numbers as new work. Still closes as completed (the lifter
-                        // did tap Complete) but flagged empty so the list can warn about it.
-                        if (anyTouched) {
-                            ex.copy(
-                                completed = true,
-                                completedEmpty = false,
-                                sets = builtSets,
-                            )
-                        } else {
-                            ex.copy(completed = true, completedEmpty = true, sets = emptyList())
-                        }
+                        ex.copy(
+                            completed = anyTouched,
+                            completedEmpty = false,
+                            // Persist the shown numbers either way — grey pre-fills included.
+                            // When nothing was touched the exercise stays incomplete, but the
+                            // pre-filled sets are kept so re-entry shows them again.
+                            sets = builtSets,
+                        )
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
@@ -306,8 +317,16 @@ class StrengthExerciseViewModel @Inject constructor(
 
     override fun onCleared() {
         if (exerciseCompleted) {
-            // Already saved via completeExercise() — nothing to do
-            clearScope.cancel()
+            // completeExercise() already launched the save on clearScope — wait for it to
+            // finish before tearing the scope down, or the cancel would abort a write still
+            // in flight and lose the completed flag.
+            clearScope.launch {
+                try {
+                    completionJob?.join()
+                } finally {
+                    clearScope.cancel()
+                }
+            }
             return
         }
         // Back-navigation without completing: save current progress as incomplete
