@@ -92,6 +92,9 @@ class SupersetViewModel @Inject constructor(
     private var supersetCompleted = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var timerJob: Job? = null
+    // The completeSuperset() save, tracked so onCleared() can join it before cancelling
+    // clearScope — see StrengthExerciseViewModel for the full reasoning.
+    private var completionJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -369,7 +372,9 @@ class SupersetViewModel @Inject constructor(
         supersetCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
-        viewModelScope.launch {
+        // Save on clearScope, not viewModelScope, so a process death between the tap and the
+        // write completing can't lose it — see StrengthExerciseViewModel.completeExercise().
+        completionJob = clearScope.launch {
             if (session != null) {
                 session.buildUpdatedSession(sets, completed = true, respectTouch = true)
                     .let { workoutRepository.save(it) }
@@ -425,7 +430,15 @@ class SupersetViewModel @Inject constructor(
     override fun onCleared() {
         timerJob?.cancel()
         if (supersetCompleted) {
-            clearScope.cancel()
+            // Wait for completeSuperset()'s clearScope save to finish before tearing the
+            // scope down — see StrengthExerciseViewModel.onCleared().
+            clearScope.launch {
+                try {
+                    completionJob?.join()
+                } finally {
+                    clearScope.cancel()
+                }
+            }
             return
         }
         val sets = _uiState.value.sets
@@ -441,8 +454,10 @@ class SupersetViewModel @Inject constructor(
 
     /**
      * @param respectTouch when true (only on explicit "Complete Superset"), a side of the
-     * superset with no touched FORZA field and no toggled STRETCH set is saved as untouched
-     * (completed=false, empty sets) instead of re-recording last session's numbers as new work.
+     * superset with no touched FORZA field and no toggled STRETCH set stays incomplete
+     * (completed=false) — but its shown numbers, grey pre-fills included, are still persisted
+     * so re-entry shows them again. Touching any one value on a side is the signal that side
+     * was performed: it then closes as completed with every shown number saved as-is.
      */
     private suspend fun WorkoutSession.buildUpdatedSession(
         sets: List<SupersetSetUi>,
@@ -467,17 +482,16 @@ class SupersetViewModel @Inject constructor(
         fun anyTouched(sideSets: List<SupersetSetUi>) = sideSets.any {
             it.repsTouched || it.weightTouched || (it.exerciseType == ExerciseType.STRETCH && it.done)
         }
-        val side1Untouched = respectTouch && !anyTouched(sets1)
-        val side2Untouched = respectTouch && !anyTouched(sets2)
-        // On an explicit Complete tap (respectTouch=true) an untouched side still closes as
-        // completed — flagged completedEmpty so the list can warn about it — rather than
-        // reopening. On a bare back-out (respectTouch=false) nothing is "completed" at all.
+        // A side counts as "performed" only if the lifter touched at least one of its values.
+        // An untouched side stays incomplete on an explicit Complete tap too (respectTouch=true)
+        // — but its shown numbers are still saved (grey pre-fills included), same as a touched
+        // side, so nothing is lost and re-entry shows them again.
+        val side1Performed = !respectTouch || anyTouched(sets1)
+        val side2Performed = !respectTouch || anyTouched(sets2)
         val updatedExercises = exercises.map { ex ->
             when (ex.exerciseId) {
-                exerciseId1 -> if (side1Untouched) {
-                    ex.copy(completed = respectTouch, completedEmpty = respectTouch, sets = emptyList())
-                } else ex.copy(
-                    completed = completed,
+                exerciseId1 -> ex.copy(
+                    completed = completed && side1Performed,
                     completedEmpty = false,
                     sets = sets1.map { setUi ->
                         when (setUi.exerciseType) {
@@ -487,10 +501,8 @@ class SupersetViewModel @Inject constructor(
                         }
                     },
                 )
-                exerciseId2 -> if (side2Untouched) {
-                    ex.copy(completed = respectTouch, completedEmpty = respectTouch, sets = emptyList())
-                } else ex.copy(
-                    completed = completed,
+                exerciseId2 -> ex.copy(
+                    completed = completed && side2Performed,
                     completedEmpty = false,
                     sets = sets2.map { setUi ->
                         when (setUi.exerciseType) {

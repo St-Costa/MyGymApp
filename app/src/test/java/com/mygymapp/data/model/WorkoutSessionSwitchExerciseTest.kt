@@ -142,16 +142,28 @@ class WorkoutSessionSwitchExerciseTest {
     }
 
     @Test
-    fun `isUntouched vs completedEmpty are mutually distinguishing`() {
-        // isUntouched() checks sets.isEmpty() specifically (never opened at all) — distinct
-        // from hasNoRecordedSets(), which also treats a present-but-zero-value set as "no
-        // data". untouchedSlot itself has one placeholder Strength set, so it does NOT count
-        // as untouched; only a genuinely empty sets list does.
+    fun `isUntouched keys off completed only, ignoring set contents`() {
+        // Since the untouched-exercise guard change, "Complete without touching" saves
+        // completed = false but keeps the grey pre-fill in `sets`. isUntouched() must still
+        // report such an exercise as not-performed — it keys off `completed` alone, not on
+        // whether `sets` is empty or carries pre-filled numbers.
         val neverOpened = untouchedSlot.copy(sets = emptyList())
         assertTrue(neverOpened.isUntouched())
 
+        val completedWithoutTouching = untouchedSlot.copy(
+            completed = false,
+            sets = listOf(ExerciseSet.Strength(reps = 13, weight = 16.0)),
+        )
+        assertTrue(completedWithoutTouching.isUntouched())
+
         val completedEmptySlot = untouchedSlot.copy(completed = true, completedEmpty = true, sets = emptyList())
         assertFalse(completedEmptySlot.isUntouched())
+
+        val reallyDone = untouchedSlot.copy(
+            completed = true,
+            sets = listOf(ExerciseSet.Strength(reps = 13, weight = 16.0)),
+        )
+        assertFalse(reallyDone.isUntouched())
     }
 
     @Test

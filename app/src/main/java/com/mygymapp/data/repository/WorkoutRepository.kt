@@ -400,24 +400,15 @@ class WorkoutRepository @Inject constructor(
     data class MaintenanceResult(val ghostsDeleted: Int, val prunedDeleted: Int, val orphanEcgDeleted: Int)
 
     /**
-     * True if a session has no real user data: no completedAt, no exercise marked completed,
-     * and every set is empty (reps==0 & weight==0 for strength, done==false for stretch,
-     * startedAt blank for cardio — a started-but-not-yet-finished cardio block still counts
-     * as real data, same treatment as a touched strength/stretch set).
+     * True if a session has no performed work: no completedAt and no exercise the lifter
+     * marked "Complete". Set data alone no longer rescues a session — since the
+     * untouched-exercise guard change an exercise's `sets` may just be the grey pre-fill
+     * persisted on a Complete-without-touching (completed = false), and that isn't work.
+     * Mirrors the on-exit ghost check in ActiveRoutineViewModel.onCleared().
      */
     private fun isGhostSession(session: WorkoutSession): Boolean {
         if (session.completedAt.isNotBlank()) return false
-        if (session.exercises.any { it.completed }) return false
-        val hasRealData = session.exercises.any { ex ->
-            ex.sets.any { set ->
-                when (set) {
-                    is ExerciseSet.Strength -> set.reps > 0 || set.weight > 0.0
-                    is ExerciseSet.Stretch -> set.done
-                    is ExerciseSet.Cardio -> set.startedAt.isNotBlank()
-                }
-            }
-        }
-        return !hasRealData
+        return session.exercises.none { it.completed }
     }
 
     /**
