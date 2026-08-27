@@ -591,6 +591,27 @@ private fun ColumnScope.ConnectedContent(
                 )
             }
         }
+        // Active-use tracker for the current CR2025: hours accumulated vs the average
+        // measured lifespan of a cell in this setup (mean of every past cell's active
+        // hours). Install and swap are detected automatically from a >5% jump in the
+        // reported level. The percentage itself is near-useless as a wear gauge — see the
+        // 70% warning comment below — so this is the more honest "how worn is it" signal.
+        // Until at least one cell has been swapped out there's no average yet, so we fall
+        // back to showing active hours + days since install.
+        uiState.batteryLife?.let { life ->
+            val avg = life.avgLifeHours
+            val text = if (avg != null) {
+                "· ${"%.0f".format(life.activeHours)} / ${"%.0f".format(avg)} h" +
+                    if (life.measuredCellCount > 1) " (media ${life.measuredCellCount} batt.)" else ""
+            } else {
+                "· ${"%.0f".format(life.activeHours)} h attive · ${life.daysSinceInstall()} gg"
+            }
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 
     // The H10's percentage comes from cell voltage, which stays near 3V until the

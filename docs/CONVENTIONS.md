@@ -358,6 +358,15 @@ Diagnosing it, in order:
 
 Corollary for battery life: the ~400 h Polar quotes is for plain HR streaming. This app also records ECG at 130 Hz, which is a far heavier radio duty cycle, so expect substantially less — roughly 3 months at ~10 h/week of ECG-recorded sessions.
 
+### Active-hours tracker (`BatteryLifeRepository`)
+
+Because the percentage is a near-flat voltage proxy with no "hours remaining" in it, the connection screen shows the current cell's **active hours** measured against **our own historical average cell lifespan** — `42 / 68 h` — to the right of the `%`. Before any cell has been swapped out there is no average yet, so it falls back to `42 h attive · 11 gg`. State lives in `gymdata/_sync/battery_life.yml` (local-only, never synced), exposed as `PolarManager.batteryLife: StateFlow<BatteryLifeState?>`, updated on every `batteryLevelReceived`.
+
+- **Install/swap detection is automatic — there is no "I changed the battery" button.** `BatteryLifeRepository.reduce` compares each reported level against the previous reading; a rise of **more than 5 percentage points** (`JUMP_RESET_THRESHOLD_PCT`) can only be a fresh cell (a coin cell under load never recovers >5% on its own), so it resets `installedAtDate = today` and `activeSeconds = 0`. Covers the "70% one day → 100% the next" case and any other >5% jump. A rise of exactly 5 or less is treated as measurement noise.
+- **On a swap, the outgoing cell's `activeSeconds` is appended to `pastLifeSeconds`** — but only if it clears `MIN_CREDIBLE_LIFE_SEC` (2 h), so a pull-and-reinsert or a double swap doesn't drag the mean toward zero. `BatteryLifeState.avgLifeHours` is the mean of that list (null while empty); `measuredCellCount` is its size.
+- **Active time** is accumulated as the wall-clock gap between consecutive battery callbacks, *unless* that gap exceeds `MAX_SESSION_GAP_SEC` (30 min) — a longer gap means the strap was off between readings, so that span is skipped and the anchor moves forward. This under-counts by at most one inter-callback interval per session; it never over-counts. No connect/disconnect bookkeeping is involved — the periodic battery callback is the only hook.
+- All the logic is the pure `reduce(prev, level, nowEpochSec, today)` function; file I/O is a thin wrapper. Unit-tested in `BatteryLifeReducerTest`.
+
 ## ECG raw file: send-then-delete, no local analysis fallback
 
 `ActiveRoutineViewModel.registerRoutine()` no longer calls `analyzeSessionEcg` at all — deep ECG analysis (Pan-Tompkins, RMSSD/SDNN/pNN50/Poincaré, arrhythmia markers) moved server-side entirely (see [SYNC.md](SYNC.md#fourth-record-type-raw-ecg), [POLAR.md](POLAR.md#post-session-analysis)). `EcgAnalyzer`/`PolarManager.analyzeSessionEcg()` still exist in the codebase, unused — left in place rather than deleted, since the raw file format they parse is unchanged and they cost nothing while dormant.
