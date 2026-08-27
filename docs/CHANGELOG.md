@@ -847,6 +847,10 @@ Investigated slow app-open (~2.6s cold-start reported, measured on-device via `a
 
 Measured with `adb shell am start -W` (system-reported `TotalTime`, cold start, `force-stop` between runs): **2.6s → ~1.3s**, consistent across repeated runs. Along the way, instrumented timing revealed a secondary, unrelated finding: `withContext(Dispatchers.IO)` blocks can sit for ~1s waiting to resume back onto the main thread during the very first Compose frame after cold start (main thread contention from initial layout/inflation), independent of how fast the IO work itself completes — noted here in case a future pass wants to chase that further (e.g. moving more first-frame work off the critical path), but out of scope for this pass.
 
+## Phase 69 — Active-routine superset row: type color instead of purple, no "SUPERSET" label
+
+In-session superset rows used `colorScheme.primary` (purple/pink) for their border, divider, and a "SUPERSET" caption — visually disconnected from the single-exercise rows, which are bordered by their exercise-type accent color (FORZA orange / STRETCH blue / CARDIO red). Dropped the caption (the stacked pair + divider already reads as a superset) and replaced the purple with the type accent. Since a superset *can* mix types (`toggleSuperset` only blocks crossing the warmup line, not mixing types), the border is a vertical gradient from ex1's accent (top) to ex2's (bottom) — a same-type pair just reads as one solid color; the internal divider mirrors it horizontally at 30% alpha. Both border colors drop to 0.4 alpha once the pair is complete, matching `ExerciseRow`. Also aligned the in-box text styles to `ExerciseRow` (name `titleMedium`, "primo dato" `titleSmall`) and bumped the card's vertical padding/spacing so the row grows taller rather than shrinking the text.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
