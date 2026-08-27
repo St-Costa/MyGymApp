@@ -2,6 +2,7 @@ package com.mygymapp.ui.screen.heartrate
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.ReadinessResult
@@ -27,6 +28,7 @@ data class HeartRateUiState(
     val heartRate: Int? = null,
     val batteryLevel: Int? = null,
     val batteryLow: Boolean = false,
+    val batteryLife: BatteryLifeState? = null,
     val discoveredDevices: List<DiscoveredDevice> = emptyList(),
     val isScanning: Boolean = false,
     val connectedDeviceId: String? = null,
@@ -84,6 +86,12 @@ class HeartRateViewModel @Inject constructor(
         viewModelScope.launch {
             polarManager.batteryLow.collect { low ->
                 _uiState.update { it.copy(batteryLow = low) }
+            }
+        }
+
+        viewModelScope.launch {
+            polarManager.batteryLife.collect { life ->
+                _uiState.update { it.copy(batteryLife = life) }
             }
         }
 
