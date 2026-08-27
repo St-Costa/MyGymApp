@@ -20,6 +20,10 @@ val GitgraphGreen = Color(0xFF4CAF50)
 val GitgraphRed = Color(0xFFF44336)
 val GitgraphEmpty = Color(0xFF2C2C2C)
 
+/** "Completed with no data" (skipped) indicator — neutral gray so it doesn't read as the same
+ * warning color as CardioColor or a negative tonnage/RM change (both use GitgraphRed). */
+val SkippedColor = Color(0xFF9E9E9E)
+
 /** Border / accent color associated with an exercise type. */
 fun ExerciseType.accentColor(): Color = when (this) {
     ExerciseType.FORZA -> ForzaColor
