@@ -38,6 +38,7 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 | `isScanning` | `Boolean` | `startScan` / `stopScan` | Spinner |
 | `heartRate` | `Int?` | Every HR sample | HeartRateBar, status-bar notification |
 | `batteryLevel` | `Int?` | SDK callback | UI indicator |
+| `batteryLife` | `BatteryLifeState?` | Every battery callback | Connection-screen "N h attive · N gg" next to the % ([BatteryLifeRepository](../app/src/main/java/com/mygymapp/data/polar/BatteryLifeRepository.kt)) |
 | `rmssd` | `Double?` | During recovery tracking | HR bar secondary line |
 | `sessionCalories` | `Double` | Every HR sample (Keytel) | Session summary + session save (not shown during exercise execution) |
 | `sessionTrimp` | `Double` | Every HR sample (Banister) | HR bar + session save |

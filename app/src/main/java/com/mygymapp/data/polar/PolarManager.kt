@@ -117,12 +117,20 @@ class PolarManager @Inject constructor(
     private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
     private val stepLedgerRepository: com.mygymapp.data.steps.StepLedgerRepository,
     private val healthConnectStepsReader: com.mygymapp.data.steps.HealthConnectStepsReader,
+    private val batteryLifeRepository: BatteryLifeRepository,
 ) {
     // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
     // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
     // explicit cancellation — unlike the per-screen `clearScope` pattern in edit
     // ViewModels (see CONVENTIONS.md), there is no "cleared" moment to race against.
     private val readinessScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        // Hydrate the battery-life indicator from disk so the connection screen can show
+        // "N active hours / N days" before the strap has pushed its first reading this run.
+        readinessScope.launch { _batteryLife.value = batteryLifeRepository.peek() }
+    }
+
     companion object {
         private const val TAG = "PolarManager"
         private const val RR_BUFFER_SIZE = 30
@@ -176,6 +184,15 @@ class PolarManager @Inject constructor(
     /** True when the strap's battery is at or below [BATTERY_WARNING_THRESHOLD]. */
     private val _batteryLow = MutableStateFlow(false)
     val batteryLow: StateFlow<Boolean> = _batteryLow
+
+    /**
+     * Active-use tracking for the current CR2025: when it was installed (auto-detected from a
+     * >5% jump in the reported level) and how many active hours it has accumulated since.
+     * null until the first battery reading of the cell's life. Updated on every
+     * [PolarBleApiCallback.batteryLevelReceived]. See [BatteryLifeRepository].
+     */
+    private val _batteryLife = MutableStateFlow<BatteryLifeState?>(null)
+    val batteryLife: StateFlow<BatteryLifeState?> = _batteryLife
 
     private val _discoveredDevices = MutableStateFlow<List<PolarDeviceInfo>>(emptyList())
     val discoveredDevices: StateFlow<List<PolarDeviceInfo>> = _discoveredDevices
@@ -517,6 +534,16 @@ class PolarManager @Inject constructor(
                 _batteryLow.value = low
                 if (low) {
                     appLogger.w(TAG, "Battery at $level% (<= $BATTERY_WARNING_THRESHOLD%) — replace the CR2025 soon")
+                }
+                // Feed the active-hours / install-date tracker. A >5% jump vs the last
+                // reading is auto-detected here as a battery swap (counter resets).
+                readinessScope.launch {
+                    val prev = _batteryLife.value
+                    val next = batteryLifeRepository.onBatteryLevel(level)
+                    _batteryLife.value = next
+                    if (prev != null && next.activeSeconds == 0L && next.installedAtDate != prev.installedAtDate) {
+                        appLogger.i(TAG, "Battery jump ${prev.lastLevel}% -> $level% — treating as a new CR2025, life counter reset")
+                    }
                 }
             }
         })
