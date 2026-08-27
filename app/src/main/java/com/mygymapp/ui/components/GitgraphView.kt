@@ -51,9 +51,21 @@ enum class DayStatus {
 // One day-of-week cell in the "today's schedule" row: the routine(s) assigned to that day
 // (Routine.day), plus which one a tap should open — the first one not yet completed today,
 // so completing one and tapping again moves on to the next (see MainViewModel).
+//
+// If that day of the current week has ALREADY been trained, the session* fields carry its
+// outcome (same shape as a history square) so the cell renders like a history cell instead
+// of a static "to do" cell — this is what makes yesterday's workout appear on the 5th row.
+// The today cell is the exception: it's driven by GitgraphView's dedicated today* params,
+// so MainViewModel leaves its session* fields empty (sessionStatus == NONE).
 data class ScheduleCell(
     val routineNames: List<String> = emptyList(),
     val openRoutineId: String? = null,
+    val sessionStatus: DayStatus = DayStatus.NONE,
+    val sessionTonnageChange: Double? = null,
+    val sessionCardioMinutes: Int? = null,
+    val sessionRoutineName: String? = null,
+    val sessionId: String? = null,
+    val sessionDate: String? = null,
 )
 
 @Composable
@@ -186,6 +198,10 @@ fun GitgraphView(
                     for (col in 0 until 7) {
                         val isToday = col == todayDowIndex
                         val todayHasSession = isToday && todayStatus != DayStatus.NONE
+                        val cell = scheduleCells.getOrNull(col) ?: ScheduleCell()
+                        // A past day of this week that's already been trained: render its
+                        // session as a history cell, same as "today" does once done.
+                        val pastDayHasSession = !isToday && cell.sessionStatus != DayStatus.NONE
 
                         if (todayHasSession) {
                             HistoryCell(
@@ -202,8 +218,22 @@ fun GitgraphView(
                                     { onCellClick(todaySessionId, todaySessionDate) }
                                 } else null,
                             )
+                        } else if (pastDayHasSession) {
+                            HistoryCell(
+                                cellSize = cellSize,
+                                shape = shape,
+                                squareMaxFontSp = squareMaxFontSp,
+                                nameMaxFontSp = scheduleNameMaxFontSp,
+                                status = cell.sessionStatus,
+                                isToday = false,
+                                change = cell.sessionTonnageChange,
+                                minutes = cell.sessionCardioMinutes,
+                                routineName = cell.sessionRoutineName,
+                                onClick = if (cell.sessionId != null && cell.sessionDate != null && onCellClick != null) {
+                                    { onCellClick(cell.sessionId, cell.sessionDate) }
+                                } else null,
+                            )
                         } else {
-                            val cell = scheduleCells.getOrNull(col) ?: ScheduleCell()
                             val canOpen = cell.openRoutineId != null && onScheduleCellClick != null
                             ScheduleCellView(
                                 cellSize = cellSize,
