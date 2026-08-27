@@ -52,4 +52,33 @@ class TonnageMathTest {
     fun `bestEstimated1RM on an empty list is null`() {
         assertNull(emptyList<ExerciseSet.Strength>().bestEstimated1RM())
     }
+
+    @Test
+    fun `materializeBodyweightWeight takes the percent of body weight rounded to half a kilo`() {
+        // 75% of 73.3 = 54.975 -> rounds to 55.0
+        assertEquals(55.0, materializeBodyweightWeight(75, 73.3), 0.0001)
+        // 50% of 81.2 = 40.6 -> nearest 0.5 is 40.5
+        assertEquals(40.5, materializeBodyweightWeight(50, 81.2), 0.0001)
+        // 100% passes the body weight straight through (already on a 0.5 grid)
+        assertEquals(80.0, materializeBodyweightWeight(100, 80.0), 0.0001)
+        // 25% of 84.0 = 21.0
+        assertEquals(21.0, materializeBodyweightWeight(25, 84.0), 0.0001)
+    }
+
+    @Test
+    fun `materializeBodyweightWeight returns zero when there is no usable body weight`() {
+        assertEquals(0.0, materializeBodyweightWeight(75, null), 0.0)
+        assertEquals(0.0, materializeBodyweightWeight(75, 0.0), 0.0)
+        assertEquals(0.0, materializeBodyweightWeight(75, -1.0), 0.0)
+    }
+
+    @Test
+    fun `a materialized bodyweight set now contributes to tonnage and e1RM`() {
+        val bw = materializeBodyweightWeight(75, 73.3) // 55.0
+        val set = ExerciseSet.Strength(
+            reps = 12, weight = bw, isBodyweight = true, bwLoadPercent = 75, bwBaseWeightKg = 73.3,
+        )
+        assertEquals(12 * 55.0, set.reps * set.weight, 0.0001)
+        assertEquals(estimate1RM(55.0, 12), listOf(set).bestEstimated1RM()!!, 0.0001)
+    }
 }

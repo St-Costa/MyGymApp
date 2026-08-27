@@ -207,11 +207,11 @@ fun ExerciseEditScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Corpo libero", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Nessun peso esterno per natura (es. plank, push-up). " +
-                                "I set restano conteggiati come lavoro svolto anche a peso 0.",
+                            "Nessun peso esterno per natura (es. plank, push-up). Il carico " +
+                                "stimato entra nel tonnellaggio in base alla % di peso corporeo.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -220,6 +220,28 @@ fun ExerciseEditScreen(
                         checked = uiState.isBodyweight,
                         onCheckedChange = viewModel::onBodyweightChange,
                     )
+                }
+
+                // % of body weight this movement loads — mandatory for a bodyweight exercise,
+                // materialized onto each set's `weight` at completion (see Exercise.bwLoadPercent).
+                if (uiState.isBodyweight) {
+                    Text(
+                        "Carico stimato (% peso corporeo)",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(25, 50, 75, 100).forEach { pct ->
+                            FilterChip(
+                                selected = uiState.bwLoadPercent == pct,
+                                onClick = { viewModel.onBwLoadPercentChange(pct) },
+                                label = { Text("$pct%") },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                 }
             }
 

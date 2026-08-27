@@ -55,6 +55,10 @@ class WorkoutParserRoundTripTest {
                     sets = listOf(
                         ExerciseSet.Strength(reps = 8, weight = 80.0),
                         ExerciseSet.Strength(reps = 0, weight = 0.0, isBodyweight = true),
+                        ExerciseSet.Strength(
+                            reps = 12, weight = 55.0, isBodyweight = true,
+                            bwLoadPercent = 75, bwBaseWeightKg = 73.3,
+                        ),
                     ),
                 ),
             ),
@@ -69,11 +73,16 @@ class WorkoutParserRoundTripTest {
         assertEquals("ex-11112222", ex.exerciseId)
         assertEquals(ExerciseType.FORZA, ex.type)
         assertTrue(ex.completed)
-        assertEquals(2, ex.sets.size)
+        assertEquals(3, ex.sets.size)
         val strength0 = ex.sets[0] as ExerciseSet.Strength
         assertEquals(8, strength0.reps)
         assertEquals(80.0, strength0.weight, 0.001)
         assertTrue((ex.sets[1] as ExerciseSet.Strength).isBodyweight)
+        val materialized = ex.sets[2] as ExerciseSet.Strength
+        assertTrue(materialized.isBodyweight)
+        assertEquals(55.0, materialized.weight, 0.001)
+        assertEquals(75, materialized.bwLoadPercent)
+        assertEquals(73.3, materialized.bwBaseWeightKg, 0.001)
     }
 
     @Test

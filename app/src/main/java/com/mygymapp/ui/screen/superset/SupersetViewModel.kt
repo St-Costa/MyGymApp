@@ -7,9 +7,11 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
+import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +78,7 @@ class SupersetViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
+    private val scaleHistoryRepository: ScaleHistoryRepository,
 ) : ViewModel() {
 
     private val sessionId: String = savedStateHandle["sessionId"] ?: ""
@@ -375,6 +378,18 @@ class SupersetViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Materialized `weight` for a bodyweight side of the superset: `bwLoadPercent% of the
+     * lifter's body weight` from the latest weigh-in on or before [sessionDate], rounded to
+     * 0.5 kg. Returns (0.0, 0) when the exercise is not bodyweight, and (0.0, percent) when it
+     * is bodyweight but no weigh-in was available — mirrors StrengthExerciseViewModel.
+     */
+    private suspend fun bwMaterializedFor(exercise: Exercise?, sessionDate: String): Pair<Double, Double> {
+        if (exercise?.isBodyweight != true) return 0.0 to 0.0
+        val base = scaleHistoryRepository.getLatestWeightOnOrBefore(LocalDate.parse(sessionDate))
+        return materializeBodyweightWeight(exercise.bwLoadPercent, base) to (base ?: 0.0)
+    }
+
     // "Switch exercise": each side reports its own new exerciseId once durably saved, since
     // the two sides are independent slots and the screen needs to know which side changed to
     // re-navigate to the right Superset route (see StrengthExerciseViewModel for the pattern).
@@ -429,15 +444,26 @@ class SupersetViewModel @Inject constructor(
      * superset with no touched FORZA field and no toggled STRETCH set is saved as untouched
      * (completed=false, empty sets) instead of re-recording last session's numbers as new work.
      */
-    private fun WorkoutSession.buildUpdatedSession(
+    private suspend fun WorkoutSession.buildUpdatedSession(
         sets: List<SupersetSetUi>,
         completed: Boolean,
         respectTouch: Boolean,
     ): WorkoutSession {
         val sets1 = sets.filter { it.exerciseIndex == 0 }.sortedBy { it.setIndex }
         val sets2 = sets.filter { it.exerciseIndex == 1 }.sortedBy { it.setIndex }
-        val isBodyweight1 = _uiState.value.exercise1?.isBodyweight ?: false
-        val isBodyweight2 = _uiState.value.exercise2?.isBodyweight ?: false
+        // Resolve the materialized bodyweight load once per side (see bwMaterializedFor).
+        val (bwWeight1, bwBase1) = bwMaterializedFor(_uiState.value.exercise1, date)
+        val (bwWeight2, bwBase2) = bwMaterializedFor(_uiState.value.exercise2, date)
+        val bwPercent1 = _uiState.value.exercise1?.takeIf { it.isBodyweight }?.bwLoadPercent ?: 0
+        val bwPercent2 = _uiState.value.exercise2?.takeIf { it.isBodyweight }?.bwLoadPercent ?: 0
+        fun strengthSet(setUi: SupersetSetUi, bwPercent: Int, bwWeight: Double, bwBase: Double) =
+            if (bwPercent > 0) ExerciseSet.Strength(
+                reps = setUi.reps,
+                weight = bwWeight,
+                isBodyweight = true,
+                bwLoadPercent = bwPercent,
+                bwBaseWeightKg = bwBase,
+            ) else ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
         fun anyTouched(sideSets: List<SupersetSetUi>) = sideSets.any {
             it.repsTouched || it.weightTouched || (it.exerciseType == ExerciseType.STRETCH && it.done)
         }
@@ -455,7 +481,7 @@ class SupersetViewModel @Inject constructor(
                     completedEmpty = false,
                     sets = sets1.map { setUi ->
                         when (setUi.exerciseType) {
-                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight, isBodyweight = isBodyweight1)
+                            ExerciseType.FORZA -> strengthSet(setUi, bwPercent1, bwWeight1, bwBase1)
                             ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
                             ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                         }
@@ -468,7 +494,7 @@ class SupersetViewModel @Inject constructor(
                     completedEmpty = false,
                     sets = sets2.map { setUi ->
                         when (setUi.exerciseType) {
-                            ExerciseType.FORZA -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight, isBodyweight = isBodyweight2)
+                            ExerciseType.FORZA -> strengthSet(setUi, bwPercent2, bwWeight2, bwBase2)
                             ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
                             ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                         }

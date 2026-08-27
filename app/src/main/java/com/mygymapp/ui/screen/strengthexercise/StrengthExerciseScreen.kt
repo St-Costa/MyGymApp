@@ -119,6 +119,11 @@ fun StrengthExerciseScreen(
                     } else "Reps"
                 }
 
+                // Bodyweight exercises carry no user-entered weight — the load is estimated from
+                // body weight at completion (see StrengthExerciseViewModel.buildStrengthSets).
+                // The Kg column and per-set weight picker are hidden entirely.
+                val isBodyweight = uiState.exercise?.isBodyweight == true
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -129,12 +134,14 @@ fun StrengthExerciseScreen(
                         modifier = Modifier.weight(1f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
-                    Text(
-                        "Kg",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
+                    if (!isBodyweight) {
+                        Text(
+                            "Kg",
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.weight(1f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
                 }
 
                 HorizontalDivider()
@@ -167,18 +174,21 @@ fun StrengthExerciseScreen(
                             modifier = Modifier.weight(1f),
                         )
 
-                        // Weight picker (tap + long-press +10/-10 per second, no scroll)
-                        ScrollPickerInput(
-                            value = set.weight,
-                            onValueChange = { viewModel.updateWeight(index, it.toDouble()) },
-                            buttonStep = 1.0,
-                            isDecimal = true,
-                            isModified = set.weightModified,
-                            enableScroll = false,
-                            longPressRepeatStep = 10.0,
-                            onConfirm = { viewModel.confirmWeight(index) },
-                            modifier = Modifier.weight(1f),
-                        )
+                        // Weight picker — hidden for bodyweight exercises (load is estimated).
+                        if (!isBodyweight) {
+                            // Weight picker (tap + long-press +10/-10 per second, no scroll)
+                            ScrollPickerInput(
+                                value = set.weight,
+                                onValueChange = { viewModel.updateWeight(index, it.toDouble()) },
+                                buttonStep = 1.0,
+                                isDecimal = true,
+                                isModified = set.weightModified,
+                                enableScroll = false,
+                                longPressRepeatStep = 10.0,
+                                onConfirm = { viewModel.confirmWeight(index) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                     if (index < uiState.sets.lastIndex) {
                         HorizontalDivider(

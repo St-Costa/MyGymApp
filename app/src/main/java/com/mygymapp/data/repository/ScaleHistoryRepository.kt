@@ -67,6 +67,38 @@ class ScaleHistoryRepository @Inject constructor(
         weighIn
     }
 
+    /**
+     * Body weight (kg) from the most recent weigh-in dated on or before [date], or null if there
+     * is none. Used to materialize the estimated load of bodyweight exercises at
+     * exercise-completion time (see StrengthExerciseViewModel / SupersetViewModel). Scans back
+     * month-by-month from [date] and stops at the first month that yields a weigh-in, so a
+     * lifter who weighs in regularly costs one directory read; a long gap costs one read per
+     * empty month. Capped at 24 months of look-back.
+     */
+    suspend fun getLatestWeightOnOrBefore(date: LocalDate): Double? = withContext(Dispatchers.IO) {
+        var month = date.withDayOfMonth(1)
+        val floor = month.minusMonths(24)
+        while (!month.isBefore(floor)) {
+            val dir = File(
+                fileManager.root,
+                "scale/${month.year}/${month.monthValue.toString().padStart(2, '0')}"
+            )
+            val best = dir.listFiles()
+                ?.filter { it.extension == "md" }
+                ?.mapNotNull { file ->
+                    runCatching {
+                        val d = LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
+                        if (d.isAfter(date)) null
+                        else d to ScaleWeighInParser.fromMarkdown(file.readText()).weightKg
+                    }.getOrNull()
+                }
+                ?.maxByOrNull { it.first }
+            if (best != null) return@withContext best.second
+            month = month.minusMonths(1)
+        }
+        null
+    }
+
     suspend fun getWeighInsInRange(
         startDate: LocalDate,
         endDate: LocalDate,

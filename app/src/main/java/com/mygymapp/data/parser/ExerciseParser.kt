@@ -1,5 +1,6 @@
 package com.mygymapp.data.parser
 
+import com.mygymapp.data.model.DEFAULT_BW_LOAD_PERCENT
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
 
@@ -20,6 +21,13 @@ object ExerciseParser {
             created = fm["created"]?.toString() ?: "",
             updated = fm["updated"]?.toString() ?: "",
             isBodyweight = fm["isBodyweight"] as? Boolean ?: false,
+            // Bodyweight exercises always carry a load percent; legacy files written before the
+            // field existed migrate to the default (see Exercise.bwLoadPercent). Non-bodyweight
+            // exercises keep 0.
+            bwLoadPercent = when {
+                fm["isBodyweight"] as? Boolean != true -> 0
+                else -> fm["bwLoadPercent"]?.toString()?.toIntOrNull() ?: DEFAULT_BW_LOAD_PERCENT
+            },
         )
     }
 
@@ -35,7 +43,10 @@ object ExerciseParser {
             "created" to exercise.created,
             "updated" to exercise.updated,
         ).apply {
-            if (exercise.isBodyweight) put("isBodyweight", true)
+            if (exercise.isBodyweight) {
+                put("isBodyweight", true)
+                put("bwLoadPercent", exercise.bwLoadPercent)
+            }
         }
         return MarkdownParser.serialize(frontmatter, exercise.notes)
     }

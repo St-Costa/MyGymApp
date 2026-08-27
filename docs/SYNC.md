@@ -48,6 +48,24 @@ field just started appearing in the same raw bytes already being sent, exactly a
 design intends. The server's raw-first parser already tolerated unknown fields, so
 `parse_failures` didn't even spike while the server-side column/filter update landed.
 
+**Follow-up on the same problem**: `isBodyweight` kept the sets from being *dropped*, but
+they still contributed zero tonnage (`reps * 0`), so a lifter progressing from 10 to 15
+pull-ups saw no movement in tonnage, PR, e1RM, or any session-over-session chart. The phone
+now **materializes** the weight at exercise-completion time: a bodyweight set's `weight` is
+written as `bwLoadPercent% of the lifter's body weight`, where `bwLoadPercent` ∈
+{25,50,75,100} is a new mandatory field on the bodyweight `Exercise` (squat 100, plank 75,
+reverse sit-up 50, tibialis raise 25) and the body weight comes from the most recent scale
+weigh-in on or before the session date, rounded to 0.5 kg. Two audit fields ride along on
+the set: `bwLoadPercent` and `bwBaseWeightKg` (the body weight used). **No server math needs
+to change**: `weight` is now a real positive number, so every existing `reps * weight`
+tonnage/PR/e1RM path already handles these sets correctly, and the `weight > 0` filter that
+started this whole thread now includes them for free. The server only needs to (a) accept
+the two new optional fields without `parse_failures` (its raw-first parser already does) and
+(b) optionally surface `bwLoadPercent`/`bwBaseWeightKg` if it wants to show *why* a
+bodyweight set weighs what it does. A set with `isBodyweight: true` and `weight: 0.0` means
+no weigh-in was on file when the session was completed — treat as before (`isBodyweight`
+guard keeps it from being read as "untouched").
+
 **Second example, same pattern**: `sessionRpe`/`sessionLoad` (session-RPE, Foster method —
 subjective 0-9 "how hard was this session", asked via a mandatory prompt right after the
 session ends — registration is blocked until answered) were added the same way — new

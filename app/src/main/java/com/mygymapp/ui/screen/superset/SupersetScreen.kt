@@ -225,6 +225,8 @@ fun SupersetScreen(
                                     repRangeMax = if (setUi.exerciseIndex == 0) uiState.repRangeMax1 else uiState.repRangeMax2,
                                     prReps = if (setUi.exerciseIndex == 0) uiState.prReps1 else uiState.prReps2,
                                     prWeight = if (setUi.exerciseIndex == 0) uiState.prWeight1 else uiState.prWeight2,
+                                    isBodyweight = if (setUi.exerciseIndex == 0) uiState.exercise1?.isBodyweight == true
+                                        else uiState.exercise2?.isBodyweight == true,
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
                                     onToggleDone = { viewModel.toggleSetDone(listIndex) },
@@ -335,6 +337,9 @@ private fun SupersetSetItem(
     repRangeMax: Int,
     prReps: Int = 0,
     prWeight: Double = 0.0,
+    // This side's exercise is bodyweight — hide the Kg column / weight picker (load is
+    // estimated from body weight at completion, see SupersetViewModel.buildUpdatedSession).
+    isBodyweight: Boolean = false,
     onUpdateReps: (Int) -> Unit,
     onUpdateWeight: (Double) -> Unit,
     onToggleDone: () -> Unit,
@@ -365,7 +370,7 @@ private fun SupersetSetItem(
             )
 
             // PR badge: heaviest set ever logged for this exercise, shown once above its first set
-            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 && prWeight > 0) {
+            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 && prWeight > 0 && !isBodyweight) {
                 val prWeightText = remember(prWeight) {
                     if (prWeight == prWeight.toLong().toDouble()) prWeight.toLong().toString() else "%.1f".format(prWeight)
                 }
@@ -407,26 +412,28 @@ private fun SupersetSetItem(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = "Kg",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            )
-                            ScrollPickerInput(
-                                value = setUi.weight,
-                                onValueChange = { onUpdateWeight(it.toDouble()) },
-                                buttonStep = 1.0,
-                                isDecimal = true,
-                                isModified = setUi.weightModified,
-                                enableScroll = false,
-                                longPressRepeatStep = 10.0,
-                                onConfirm = onConfirmWeight,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                        if (!isBodyweight) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    text = "Kg",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                )
+                                ScrollPickerInput(
+                                    value = setUi.weight,
+                                    onValueChange = { onUpdateWeight(it.toDouble()) },
+                                    buttonStep = 1.0,
+                                    isDecimal = true,
+                                    isModified = setUi.weightModified,
+                                    enableScroll = false,
+                                    longPressRepeatStep = 10.0,
+                                    onConfirm = onConfirmWeight,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                 }

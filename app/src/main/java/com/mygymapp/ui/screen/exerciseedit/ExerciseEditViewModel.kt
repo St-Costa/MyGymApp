@@ -3,6 +3,7 @@ package com.mygymapp.ui.screen.exerciseedit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.model.DEFAULT_BW_LOAD_PERCENT
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.ExerciseType
@@ -29,6 +30,9 @@ data class ExerciseEditUiState(
     // FORZA only: no external weight by design (plank, push-ups, mobility work). See
     // Exercise.isBodyweight for why this matters to tonnage/PR/e1RM analysis.
     val isBodyweight: Boolean = false,
+    // One of 25/50/75/100 — only used (and always set) when isBodyweight is true. See
+    // Exercise.bwLoadPercent.
+    val bwLoadPercent: Int = DEFAULT_BW_LOAD_PERCENT,
     val existingBodyparts: List<String> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
@@ -64,6 +68,8 @@ class ExerciseEditViewModel @Inject constructor(
                         defaultRepRangeMin = exercise.defaultRepRangeMin,
                         defaultRepRangeMax = exercise.defaultRepRangeMax,
                         isBodyweight = exercise.isBodyweight,
+                        bwLoadPercent = if (exercise.isBodyweight) exercise.bwLoadPercent
+                            else DEFAULT_BW_LOAD_PERCENT,
                         existingBodyparts = bodyparts,
                         isNew = false,
                     )
@@ -83,7 +89,17 @@ class ExerciseEditViewModel @Inject constructor(
     }
 
     fun onBodyweightChange(value: Boolean) {
-        _uiState.value = _uiState.value.copy(isBodyweight = value)
+        _uiState.value = _uiState.value.copy(
+            isBodyweight = value,
+            // Re-seed to the default whenever bodyweight is switched on, so a bodyweight
+            // exercise never persists with an out-of-range percent.
+            bwLoadPercent = if (value) _uiState.value.bwLoadPercent.takeIf { it in 1..100 }
+                ?: DEFAULT_BW_LOAD_PERCENT else _uiState.value.bwLoadPercent,
+        )
+    }
+
+    fun onBwLoadPercentChange(value: Int) {
+        _uiState.value = _uiState.value.copy(bwLoadPercent = value)
     }
 
     fun onBodypartChange(value: String) {
@@ -126,24 +142,29 @@ class ExerciseEditViewModel @Inject constructor(
     // Called from the Screen's back button / BackHandler before popBackStack().
     // Saves synchronously so the list screen sees fresh cache data immediately.
     private var savedExplicitly = false
+
+    private fun ExerciseEditUiState.toExercise() = Exercise(
+        id = id,
+        name = name.trim(),
+        type = type,
+        // CARDIO exercises don't use bodypart — they live in their own dedicated section
+        // (ExerciseListViewModel), not grouped by muscle group. The field is hidden in the
+        // editor for CARDIO; force it blank here too in case of stale state.
+        bodypart = if (type == ExerciseType.CARDIO) "" else bodypart.trim(),
+        link = link.trim(),
+        notes = notes.trim(),
+        defaultRepRangeMin = defaultRepRangeMin,
+        defaultRepRangeMax = defaultRepRangeMax,
+        isBodyweight = isBodyweight,
+        // Persist the load percent only for bodyweight exercises; 0 otherwise (see
+        // Exercise.bwLoadPercent / ExerciseParser).
+        bwLoadPercent = if (isBodyweight) bwLoadPercent else 0,
+    )
+
     suspend fun saveNow() {
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
-        val exercise = Exercise(
-            id = state.id,
-            name = state.name.trim(),
-            type = state.type,
-            // CARDIO exercises don't use bodypart — they live in their own dedicated section
-            // (ExerciseListViewModel), not grouped by muscle group. The field is hidden in the
-            // editor for CARDIO; force it blank here too in case of stale state.
-            bodypart = if (state.type == ExerciseType.CARDIO) "" else state.bodypart.trim(),
-            link = state.link.trim(),
-            notes = state.notes.trim(),
-            defaultRepRangeMin = state.defaultRepRangeMin,
-            defaultRepRangeMax = state.defaultRepRangeMax,
-            isBodyweight = state.isBodyweight,
-        )
-        exerciseRepository.save(exercise)
+        exerciseRepository.save(state.toExercise())
         dataChangedSignal.notifyExercisesChanged()
         savedExplicitly = true
     }
@@ -155,18 +176,7 @@ class ExerciseEditViewModel @Inject constructor(
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {
             try {
-                val exercise = Exercise(
-                    id = state.id,
-                    name = state.name.trim(),
-                    type = state.type,
-                    bodypart = if (state.type == ExerciseType.CARDIO) "" else state.bodypart.trim(),
-                    link = state.link.trim(),
-                    notes = state.notes.trim(),
-                    defaultRepRangeMin = state.defaultRepRangeMin,
-                    defaultRepRangeMax = state.defaultRepRangeMax,
-                    isBodyweight = state.isBodyweight,
-                )
-                exerciseRepository.save(exercise)
+                exerciseRepository.save(state.toExercise())
                 dataChangedSignal.notifyExercisesChanged()
             } finally {
                 clearScope.cancel()
