@@ -10,6 +10,16 @@ sealed class ExerciseSet {
         // an untouched/never-filled set (weight=0 by default) — analysis that filters on
         // weight > 0 (tonnage, PR, e1RM) must check this before excluding a set.
         val isBodyweight: Boolean = false,
+        // Audit trail for a materialized bodyweight set. On exercise completion, a bodyweight
+        // set's `weight` is filled in as bwLoadPercent/100 * bwBaseWeightKg (rounded to 0.5 kg)
+        // so `reps * weight` tonnage/PR/e1RM keeps working everywhere with no special-casing.
+        // These two fields record how that number was reached — the Exercise.bwLoadPercent in
+        // effect at the time, and the body weight taken from the most recent scale weigh-in on
+        // or before the session date. Both 0 when the set is not a materialized bodyweight set
+        // (or when no weigh-in was available, in which case `weight` stays 0). See
+        // materializeBodyweightWeight() in TonnageMath.kt and docs/SYNC.md.
+        val bwLoadPercent: Int = 0,
+        val bwBaseWeightKg: Double = 0.0,
     ) : ExerciseSet()
 
     data class Stretch(

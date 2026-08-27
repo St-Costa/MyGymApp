@@ -18,6 +18,14 @@ data class Exercise(
     // because it filters on weight > 0. Propagated onto each WorkoutExercise's sets when
     // a session is built from this exercise — see WorkoutExercise/ExerciseSet.Strength.
     val isBodyweight: Boolean = false,
+    // How much of the lifter's body weight this movement actually loads, as a percent —
+    // one of 25 / 50 / 75 / 100 (squat ≈ 100, plank/push-up ≈ 75, reverse sit-up ≈ 50,
+    // tibialis raise ≈ 25). Only meaningful when isBodyweight is true, and then it is
+    // mandatory: a bodyweight exercise always carries one of the four values (legacy files
+    // with no value migrate to 75 in ExerciseParser). At exercise-completion time each set's
+    // `weight` is materialized to bwLoadPercent/100 * bodyWeightKg so all downstream tonnage/
+    // PR/e1RM math (phone and server) keeps working unchanged on `reps * weight`.
+    val bwLoadPercent: Int = 0,
 )
 
 enum class ExerciseType {

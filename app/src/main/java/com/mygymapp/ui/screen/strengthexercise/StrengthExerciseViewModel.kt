@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
+import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -57,6 +59,7 @@ class StrengthExerciseViewModel @Inject constructor(
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
+    private val scaleHistoryRepository: ScaleHistoryRepository,
 ) : ViewModel() {
 
     private val sessionId: String = savedStateHandle["sessionId"] ?: ""
@@ -217,14 +220,43 @@ class StrengthExerciseViewModel @Inject constructor(
      * This prevents the race condition where ActiveRoutineViewModel reloads the session
      * before onCleared() has finished writing.
      */
+    /**
+     * Builds the [ExerciseSet.Strength] list to persist. For a bodyweight exercise each set's
+     * `weight` is materialized to `bwLoadPercent% of the lifter's body weight` (from the most
+     * recent scale weigh-in on or before [sessionDate]); the raw percent and base weight are
+     * kept on the set for audit. Non-bodyweight sets pass through unchanged.
+     */
+    private suspend fun buildStrengthSets(
+        uiSets: List<StrengthSetUi>,
+        sessionDate: String,
+    ): List<ExerciseSet.Strength> {
+        val exercise = _uiState.value.exercise
+        if (exercise?.isBodyweight != true) {
+            return uiSets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+        }
+        val baseWeight = scaleHistoryRepository.getLatestWeightOnOrBefore(
+            java.time.LocalDate.parse(sessionDate)
+        )
+        val materialized = materializeBodyweightWeight(exercise.bwLoadPercent, baseWeight)
+        return uiSets.map {
+            ExerciseSet.Strength(
+                reps = it.reps,
+                weight = materialized,
+                isBodyweight = true,
+                bwLoadPercent = exercise.bwLoadPercent,
+                bwBaseWeightKg = baseWeight ?: 0.0,
+            )
+        }
+    }
+
     fun completeExercise() {
         exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
-        val isBodyweight = _uiState.value.exercise?.isBodyweight ?: false
         val anyTouched = sets.any { it.repsTouched || it.weightTouched }
         viewModelScope.launch {
             if (session != null) {
+                val builtSets = buildStrengthSets(sets, session.date)
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         // If the lifter never touched any pre-filled value, there's no evidence
@@ -235,7 +267,7 @@ class StrengthExerciseViewModel @Inject constructor(
                             ex.copy(
                                 completed = true,
                                 completedEmpty = false,
-                                sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight, isBodyweight = isBodyweight) },
+                                sets = builtSets,
                             )
                         } else {
                             ex.copy(completed = true, completedEmpty = true, sets = emptyList())
@@ -281,15 +313,12 @@ class StrengthExerciseViewModel @Inject constructor(
         // Back-navigation without completing: save current progress as incomplete
         val sets = _uiState.value.sets
         val session = currentSession
-        val isBodyweight = _uiState.value.exercise?.isBodyweight ?: false
         clearScope.launch {
             if (session != null) {
+                val builtSets = buildStrengthSets(sets, session.date)
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = false,
-                            sets = sets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight, isBodyweight = isBodyweight) },
-                        )
+                        ex.copy(completed = false, sets = builtSets)
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
