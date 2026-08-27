@@ -9,6 +9,8 @@ import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.bestEstimated1RM
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.polar.DisconnectStats
+import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.steps.HealthConnectStepsReader
 import com.mygymapp.data.sync.SyncConfigRepository
@@ -30,12 +32,6 @@ import javax.inject.Inject
 /** State of the small "invio al server" reassurance box shown right after finishing a session. */
 enum class SessionSyncStatus { SYNC_OFF, PENDING, SENT, FAILED }
 
-/** A chart-ready trend across recent sessions: parallel data/label lists, zero/missing points dropped. */
-data class ChartSeries(
-    val data: List<Double> = emptyList(),
-    val labels: List<String> = emptyList(),
-)
-
 data class SessionProgressUiState(
     val isLoading: Boolean = true,
     val routineName: String = "",
@@ -45,15 +41,10 @@ data class SessionProgressUiState(
     val sessionTonnage: List<Double> = emptyList(),
     val sessionBestE1RM: List<Double> = emptyList(),
     val sessionLabels: List<String> = emptyList(),
-    // Cardio trend charts (one point per past session that recorded the metric).
-    // Deep ECG-derived series (avg HR from ECG, RMSSD, SDNN, Poincaré ratio, arrhythmia
-    // counts) were removed when that analysis moved server-side — see docs/SYNC.md
-    // "Fourth record type: raw ECG". Only metrics computed from live HR/readiness
-    // tracking remain.
-    val hrrSeries: ChartSeries = ChartSeries(),
-    val vo2maxSeries: ChartSeries = ChartSeries(),
-    val restingHrSeries: ChartSeries = ChartSeries(),
-    val cardiacDriftSeries: ChartSeries = ChartSeries(),
+    // The per-metric cardio trend charts (HRR / VO2max / resting HR / cardiac drift) were
+    // dropped from this screen — the deeper ECG-derived analysis already moved server-side
+    // (docs/SYNC.md "Fourth record type: raw ECG"), and these remaining four added clutter
+    // without being acted on here.
     // Display-only, never persisted/synced: steps walked during this specific session
     // (startedAt..completedAt), queried fresh from Health Connect each time this screen
     // loads — distinct from the daily-average figure that DOES get saved/synced via the
@@ -66,6 +57,11 @@ data class SessionProgressUiState(
     // Re-derived from the sync ledger, not a one-shot snapshot: refreshed whenever the
     // expedited SyncWorker (enqueued by ActiveRoutineViewModel.registerRoutine()) finishes.
     val syncStatus: SessionSyncStatus = SessionSyncStatus.SYNC_OFF,
+    // Involuntary Polar strap drops during the session just finished. Only populated when
+    // this screen is opened right after completing (justCompleted) — it's read live off
+    // the @Singleton PolarManager, which resets the counter at the next session's start,
+    // so reopening this screen later shows nothing. Box is hidden entirely when count==0.
+    val polarDrops: DisconnectStats = DisconnectStats(),
 )
 
 @HiltViewModel
@@ -75,11 +71,13 @@ class SessionProgressViewModel @Inject constructor(
     private val healthConnectStepsReader: HealthConnectStepsReader,
     private val syncConfigRepository: SyncConfigRepository,
     private val syncLedgerRepository: SyncLedgerRepository,
+    private val polarManager: PolarManager,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
     private val sessionId: String = checkNotNull(savedStateHandle["sessionId"])
     private val date: String = checkNotNull(savedStateHandle["date"])
+    private val justCompleted: Boolean = savedStateHandle["justCompleted"] ?: false
 
     private val _uiState = MutableStateFlow(SessionProgressUiState())
     val uiState: StateFlow<SessionProgressUiState> = _uiState
@@ -169,12 +167,6 @@ class SessionProgressViewModel @Inject constructor(
                 .maxOrNull() ?: 0.0
         }
 
-        // Cardio metrics aren't tied to a specific routine, so trend them across ALL completed
-        // sessions in the window instead of just this routine's occurrences.
-        val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, LocalDate.parse(date))
-            .filter { it.completedAt.isNotBlank() }
-        val cardioLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
-
         val sessionSteps = stepsDuringSession(session)
 
         _uiState.value = SessionProgressUiState(
@@ -186,11 +178,8 @@ class SessionProgressViewModel @Inject constructor(
             sessionTonnage = sessionTonnage,
             sessionBestE1RM = sessionBestE1RM,
             sessionLabels = sessionLabels,
-            hrrSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.hrr60s },
-            vo2maxSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.vo2max },
-            restingHrSeries = cardioSeries(allCompletedSessions, cardioLabels) { it.restingHr.toDouble() },
-            cardiacDriftSeries = cardioSeries(allCompletedSessions, cardioLabels, hasData = { it != 0.0 }) { it.cardiacDriftBpmMin },
             sessionSteps = sessionSteps,
+            polarDrops = if (justCompleted) polarManager.disconnectStats.value else DisconnectStats(),
         )
     }
 
@@ -211,22 +200,4 @@ class SessionProgressViewModel @Inject constructor(
         return healthConnectStepsReader.totalSteps(start, end)
     }
 
-    /** Builds a chart series from sessions, keeping only points where [hasData] accepts the selected value. */
-    private fun cardioSeries(
-        sessions: List<WorkoutSession>,
-        labels: List<String>,
-        hasData: (Double) -> Boolean = { it > 0.0 },
-        selector: (WorkoutSession) -> Double,
-    ): ChartSeries {
-        val data = mutableListOf<Double>()
-        val lbls = mutableListOf<String>()
-        sessions.forEachIndexed { i, s ->
-            val v = selector(s)
-            if (hasData(v)) {
-                data += v
-                lbls += labels.getOrElse(i) { "" }
-            }
-        }
-        return ChartSeries(data, lbls)
-    }
 }
