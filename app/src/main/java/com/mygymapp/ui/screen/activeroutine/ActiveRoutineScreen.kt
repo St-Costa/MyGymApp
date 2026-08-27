@@ -43,10 +43,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.mygymapp.ui.theme.JetBrainsMono
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.AutoSaveTextField
@@ -405,7 +406,10 @@ private fun ExerciseRow(
     exercise: ActiveExerciseUi,
     onClick: () -> Unit,
 ) {
-    val borderColor = if (exercise.completedEmpty) GitgraphRed else exercise.type.accentColor()
+    val baseBorderColor = if (exercise.completedEmpty) GitgraphRed else exercise.type.accentColor()
+    // Completed exercises get a less opaque border instead of a strikethrough — dimming the
+    // border (not the text) is what reads as "done".
+    val borderColor = if (exercise.completed) baseBorderColor.copy(alpha = 0.4f) else baseBorderColor
 
     Card(
         onClick = onClick,
@@ -420,8 +424,7 @@ private fun ExerciseRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Left side: name + sets — dimmed when completed. Struck through only when it
-            // actually holds data; a completed-empty exercise stays dimmed but not struck through.
+            // Left side: name only — dimmed when completed.
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -430,12 +433,6 @@ private fun ExerciseRow(
                 Text(
                     text = exercise.exerciseName,
                     style = MaterialTheme.typography.titleMedium,
-                    textDecoration = if (exercise.completed && !exercise.completedEmpty) TextDecoration.LineThrough else null,
-                )
-                Text(
-                    text = exercise.setsOrDurationLabel(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
                 if (exercise.substitutedForName != null) {
                     Text(
@@ -445,7 +442,8 @@ private fun ExerciseRow(
                     )
                 }
             }
-            // Right side: warning (completed empty) takes priority, then progress %, then nothing
+            // Right side: sets/duration when not completed; once completed, the badge
+            // (warning > tonnage% > "primo dato") takes that spot instead.
             if (exercise.completedEmpty) {
                 Icon(
                     imageVector = Icons.Filled.Warning,
@@ -456,12 +454,18 @@ private fun ExerciseRow(
                 TonnageAndRmChange(
                     tonnageChangePct = exercise.tonnageChangePct,
                     rmChangePct = exercise.rmChangePct,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             } else if (exercise.completed && exercise.isFirstTimeTonnage) {
                 Text(
                     text = "primo dato",
                     style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                )
+            } else {
+                Text(
+                    text = exercise.setsOrDurationLabel(),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
             }
@@ -477,7 +481,9 @@ private fun SupersetGroupRow(
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val bothCompleted = ex1.completed && ex2.completed
-    val borderColor = if (ex1.completedEmpty || ex2.completedEmpty) GitgraphRed else primaryColor
+    val baseBorderColor = if (ex1.completedEmpty || ex2.completedEmpty) GitgraphRed else primaryColor
+    // Less opaque border once both exercises in the pair are done — mirrors ExerciseRow.
+    val borderColor = if (bothCompleted) baseBorderColor.copy(alpha = 0.4f) else baseBorderColor
 
     Card(
         onClick = onClick,
@@ -511,8 +517,7 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left side: name + sets — dimmed when completed (mirrors ExerciseRow). Struck through
-        // only when it actually holds data; completed-empty stays dimmed but not struck through.
+        // Left side: name only — dimmed when completed (mirrors ExerciseRow).
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -521,12 +526,6 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
             Text(
                 text = exercise.exerciseName,
                 style = MaterialTheme.typography.titleSmall,
-                textDecoration = if (exercise.completed && !exercise.completedEmpty) TextDecoration.LineThrough else null,
-            )
-            Text(
-                text = exercise.setsOrDurationLabel(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
             if (exercise.substitutedForName != null) {
                 Text(
@@ -536,7 +535,8 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
                 )
             }
         }
-        // Right side: warning (completed empty) takes priority, then tonnage %, then nothing
+        // Right side: sets/duration when not completed; once completed, the badge
+        // (warning > tonnage% > "primo dato") takes that spot instead.
         if (exercise.completedEmpty) {
             Icon(
                 imageVector = Icons.Filled.Warning,
@@ -547,12 +547,18 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
             TonnageAndRmChange(
                 tonnageChangePct = exercise.tonnageChangePct,
                 rmChangePct = exercise.rmChangePct,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.bodySmall,
             )
         } else if (exercise.completed && exercise.isFirstTimeTonnage) {
             Text(
                 text = "primo dato",
                 style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            )
+        } else {
+            Text(
+                text = exercise.setsOrDurationLabel(),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             )
         }
@@ -566,18 +572,50 @@ private fun TonnageAndRmChange(
     rmChangePct: Double?,
     style: androidx.compose.ui.text.TextStyle,
 ) {
-    Row {
-        Text(
-            text = "%+.0f%%T".format(tonnageChangePct),
-            style = style,
-            color = if (tonnageChangePct > 0) GitgraphGreen else GitgraphRed,
-        )
-        if (rmChangePct != null) {
+    // Stacked, no +/- sign — color alone carries the direction of the change. Each row is split
+    // into a fixed-width number column (right-aligned) and a fixed-width label column
+    // (left-aligned), both in JetBrainsMono, so "T"/"RM" line up regardless of digit count
+    // (e.g. "11% T" / " 2% RM" — the "T" and "RM" start at the same x).
+    val numberWidth = 26.dp
+    val labelWidth = 18.dp
+    Column(horizontalAlignment = Alignment.End) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = " %+.0f%%RM".format(rmChangePct),
+                text = "%.0f%% ".format(kotlin.math.abs(tonnageChangePct)),
                 style = style,
-                color = if (rmChangePct > 0) GitgraphGreen else GitgraphRed,
+                fontFamily = JetBrainsMono,
+                textAlign = TextAlign.End,
+                color = if (tonnageChangePct > 0) GitgraphGreen else GitgraphRed,
+                modifier = Modifier.width(numberWidth),
             )
+            Text(
+                text = "T",
+                style = style,
+                fontFamily = JetBrainsMono,
+                textAlign = TextAlign.Start,
+                color = if (tonnageChangePct > 0) GitgraphGreen else GitgraphRed,
+                modifier = Modifier.width(labelWidth),
+            )
+        }
+        if (rmChangePct != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "%.0f%% ".format(kotlin.math.abs(rmChangePct)),
+                    style = style,
+                    fontFamily = JetBrainsMono,
+                    textAlign = TextAlign.End,
+                    color = if (rmChangePct > 0) GitgraphGreen else GitgraphRed,
+                    modifier = Modifier.width(numberWidth),
+                )
+                Text(
+                    text = "RM",
+                    style = style,
+                    fontFamily = JetBrainsMono,
+                    textAlign = TextAlign.Start,
+                    color = if (rmChangePct > 0) GitgraphGreen else GitgraphRed,
+                    modifier = Modifier.width(labelWidth),
+                )
+            }
         }
     }
 }
