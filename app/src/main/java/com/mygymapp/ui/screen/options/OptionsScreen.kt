@@ -116,7 +116,7 @@ fun OptionsScreen(
                 onScaleDebugClick = onNavigateToScaleDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
-                onSendDebugBackup = viewModel::sendDebugBackup,
+                onVerifyBackup = viewModel::verifyBackupRoundTrip,
                 onSummaryPreviewClick = onNavigateToSummaryPreview,
             )
         }
@@ -386,7 +386,7 @@ private fun PendingItemsList(uiState: OptionsUiState) {
 
 /**
  * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send,
- * backup debug send. Each is its own short explanation + button, separated by a divider.
+ * backup round-trip check. Each is its own short explanation + button, separated by a divider.
  */
 @Composable
 private fun DebugSection(
@@ -394,7 +394,7 @@ private fun DebugSection(
     onScaleDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
-    onSendDebugBackup: () -> Unit,
+    onVerifyBackup: () -> Unit,
     onSummaryPreviewClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
@@ -495,29 +495,29 @@ private fun DebugSection(
 
             androidx.compose.material3.HorizontalDivider()
 
-            // Backup — synthesises a throwaway .md, upserts then deletes it via POST /v1/repo,
-            // both awaited, to exercise the full-store backup pipeline end to end without
-            // touching any real exercise/routine (docs/BACKUP.md §3.7). No ledger entry, no
-            // local file left behind.
+            // Backup round-trip — pushes every real exercise/routine that isn't already on
+            // the server, then reads them all back (GET /v1/manifest + GET /v1/file) and
+            // compares byte-for-byte. No synthetic file, no delete — the user's real data
+            // stays on the server, which is the point (docs/BACKUP.md §3.7).
             Text(
-                "Invia e cancella un file di prova via POST /v1/repo per verificare il backup.",
+                "Invia gli esercizi/routine non ancora sul server, poi li riscarica e verifica che siano identici.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(
-                onClick = onSendDebugBackup,
-                enabled = configured && !uiState.backupDebugRunning,
+                onClick = onVerifyBackup,
+                enabled = configured && !uiState.backupVerifyRunning,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (uiState.backupDebugRunning) {
+                if (uiState.backupVerifyRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Test backup verso il server")
+                    Text("Verifica backup sul server")
                 }
             }
-            if (uiState.backupDebugResult != null) {
+            if (uiState.backupVerifyResult != null) {
                 Text(
-                    uiState.backupDebugResult,
+                    uiState.backupVerifyResult,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
