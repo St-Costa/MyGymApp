@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -41,6 +42,11 @@ import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/** Stable id for the baseline-profile / macrobenchmark journey to wait on once the home's
+ *  gitgraph has actually composed its rows (see docs/CHANGELOG.md § Baseline Profile).
+ *  Surfaced to UiAutomator as a resource-id via `testTagsAsResourceId` set on the NavHost. */
+const val GITGRAPH_TEST_TAG = "gitgraph"
 
 enum class DayStatus {
     NONE,
@@ -107,7 +113,7 @@ fun GitgraphView(
     val shape = RoundedCornerShape(6.dp)
     val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
 
-    BoxWithConstraints(modifier = modifier.padding(horizontal = horizontalPadding)) {
+    BoxWithConstraints(modifier = modifier.testTag(GITGRAPH_TEST_TAG).padding(horizontal = horizontalPadding)) {
         // Every row below (header, history rows, schedule row) additionally pads itself
         // horizontally by 3.dp per side to keep rounded cell corners clear of the powerlifting-
         // week border — that 6.dp must come out of the same maxWidth cellSize is derived from,

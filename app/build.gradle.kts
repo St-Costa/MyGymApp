@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 android {
@@ -83,4 +84,11 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
+
+    // Baseline Profile (docs/CHANGELOG.md § Baseline Profile): profileinstaller makes
+    // ProfileInstaller install the shipped baseline-prof.txt AOT at first launch; the
+    // baselineProfile() dependency wires the :baseline-profile module's generated profile
+    // into release assemble/bundle.
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(project(":baseline-profile"))
 }

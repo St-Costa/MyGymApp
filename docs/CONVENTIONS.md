@@ -490,6 +490,57 @@ The home screen's state is built by the `@Singleton` `HomeStateLoader`, not `Mai
 
 `GitgraphHistoryCalculator.dayCell` is the single per-day status/%/cardio rule — used for both the cached history rows and the live current-week row, so they can't diverge. Parsing helpers (`getSessionsInRange`, `getLastSessionForRoutine`) parse their in-range `.md` files concurrently; `getLastSessionForRoutine` walks newest-filename-first and stops at the first completed session (plus same-day siblings) instead of parsing a routine's whole history.
 
+## Baseline Profile
+
+`:baseline-profile` is a `com.android.test` module (`androidx.baselineprofile` plugin) that
+drives the app on a connected device to record the hot classes/methods of the cold-start
+critical journey. The generated `app/src/release/generated/baselineProfiles/`
+(`baseline-prof.txt` + `startup-prof.txt`) is **committed** and the plugin merges it into
+`release` `assemble`/`bundle` (as `assets/dexopt/baseline.prof{,m}`);
+`androidx.profileinstaller` then has ART compile those paths AOT at install time.
+`BaselineProfileGenerator` records; `StartupBenchmark` measures the delta
+(`CompilationMode.None` vs `Partial(Require)`).
+
+**Scope is deliberately the cold-start path, not every screen.** The journey covers the
+home + the shared infra reached from it (`WorkoutParser` / `MarkdownParser` / snakeyaml,
+the repositories, base ViewModels, Compose + Hilt + Navigation runtime) plus the routine /
+exercise lists and `SessionProgressScreen`. It does **not** start a live workout: reaching
+`ActiveRoutineScreen` needs a routine scheduled for the generation-day weekday, and driving
+a real session would either write to real data or need a debug seed hook — not worth it for
+paths that aren't on the launch-to-home critical path (they pay a one-time JIT cost on first
+open, which ART's own `speed-profile` then absorbs). If those screens ever need AOT
+coverage, add a *separate* non-startup `BaselineProfileRule`, don't bloat the startup
+journey.
+
+Regenerate after a large refactor of the startup path or a dependency bump:
+
+```bash
+adb shell pm uninstall com.mygymapp          # start from a clean install
+./gradlew :app:generateBaselineProfile        # ~20–30 min on the phone
+```
+
+Gotchas that cost time here:
+
+- **Generation device**: needs a physical phone or an AOSP image where `ProfileInstaller`
+  can actually install the profile — a standard Google-Play emulator image silently won't.
+  A Play-Services *phone* is fine (the caveat is emulator-image-only).
+- **`benchmark-macro` ≥ 1.4.0** is required: the 1.3.x `pm dump-profiles` parser chokes on
+  the "Waiting for app processes to flush profiles…" line Android 14+/16 prints, and the
+  generate step fails with an `IllegalStateException` about unexpected stdout.
+- **The journey must not touch a system permission dialog.** A fresh `nonMinifiedRelease`
+  install has no runtime permissions, so Home's `LaunchedEffect` fires BLE / notification /
+  Health-Connect requests that then sit on top of the app and the whole run hangs
+  (`am_instrument_timeout` is a year). `BaselineProfileGenerator.grantRuntimePermissions()`
+  pre-grants all of them via `pm grant` first — including `android.permission.health.READ_STEPS`,
+  which *is* adb-grantable on API 34+.
+- **`testTagsAsResourceId`** is set on the NavHost (`AppNavigation.kt`) so UiAutomator can
+  wait on `GitgraphView`'s `testTag("gitgraph")` — Compose exposes it as the **bare** tag
+  string, so match `By.res("gitgraph")`, not `By.res("com.mygymapp:id/gitgraph")`.
+- Don't run the generator in the normal `./gradlew test` / instrumented job — it's slow and
+  device-specific. It has no CI wiring on purpose.
+- If R8/minify is ever turned on for `release` (it isn't today), regenerate the profile
+  afterwards — a profile recorded pre-shrink references stale method signatures.
+
 ## Gradle wrapper
 
 `gradle/wrapper/gradle-wrapper.jar` was copied from `~/.gradle/caches/` — there is no global Gradle installed on this machine. If the jar ever goes missing, pull it from a cached distribution rather than running `gradle wrapper` (which requires Gradle to be installed in the first place).
