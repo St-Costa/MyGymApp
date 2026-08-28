@@ -76,6 +76,9 @@ class SyncLedgerRepository @Inject constructor(
                 lastAttemptAt = fields["lastAttemptAt"] as? String ?: "",
                 lastError = fields["lastError"] as? String ?: "",
                 contentHash = fields["contentHash"] as? String ?: "",
+                bytesSent = (fields["bytesSent"] as? Number)?.toLong() ?: 0L,
+                durationMs = (fields["durationMs"] as? Number)?.toLong() ?: 0L,
+                serverStatus = fields["serverStatus"] as? String ?: "",
             )
         }
         return result
@@ -109,6 +112,9 @@ class SyncLedgerRepository @Inject constructor(
             sb.appendLine("    lastAttemptAt: \"${entry.lastAttemptAt}\"")
             sb.appendLine("    lastError: \"${entry.lastError.replace("\"", "'")}\"")
             sb.appendLine("    contentHash: \"${entry.contentHash}\"")
+            sb.appendLine("    bytesSent: ${entry.bytesSent}")
+            sb.appendLine("    durationMs: ${entry.durationMs}")
+            sb.appendLine("    serverStatus: \"${entry.serverStatus}\"")
         }
         ledgerFile().writeText(sb.toString())
     }
@@ -154,7 +160,12 @@ class SyncLedgerRepository @Inject constructor(
         }
     }
 
-    suspend fun markSent(sessionId: String) = withContext(Dispatchers.IO) {
+    suspend fun markSent(
+        sessionId: String,
+        bytesSent: Long = 0,
+        durationMs: Long = 0,
+        serverStatus: String = "",
+    ) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[sessionId] ?: return@withLock
@@ -163,6 +174,9 @@ class SyncLedgerRepository @Inject constructor(
                 attempts = existing.attempts + 1,
                 lastAttemptAt = java.time.LocalDateTime.now().toString(),
                 lastError = "",
+                bytesSent = bytesSent,
+                durationMs = durationMs,
+                serverStatus = serverStatus,
             )
             writeAllUnlocked(all)
         }

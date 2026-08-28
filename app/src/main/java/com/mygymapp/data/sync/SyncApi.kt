@@ -14,7 +14,21 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 sealed class SyncResult {
-    data class Success(val status: String) : SyncResult()
+    /**
+     * [status] is the server's own word for what it did — `stored` (first time) or
+     * `duplicate` (idempotent re-receipt), see `docs/SYNC.md` §2.2. Both mean the server
+     * has the content: the ledger only flips to SENT on a confirmed 2xx, so this is a
+     * genuine delivery receipt, not a fire-and-forget.
+     *
+     * [bytesSent] / [durationMs] describe the upload just performed (the raw file byte
+     * count and the wall-clock time of the HTTP call) — surfaced on the end-of-session
+     * summary. Zero on results that didn't move a payload (e.g. [checkHealth]).
+     */
+    data class Success(
+        val status: String,
+        val bytesSent: Long = 0,
+        val durationMs: Long = 0,
+    ) : SyncResult()
     data class Failure(val reason: String) : SyncResult()
 }
 
@@ -78,13 +92,16 @@ class SyncApi @Inject constructor() {
             .post(body)
             .build()
 
+        val bytesSent = file.length()
+        val startedAt = System.currentTimeMillis()
         return try {
             client.newCall(request).execute().use { response ->
+                val durationMs = System.currentTimeMillis() - startedAt
                 if (response.isSuccessful) {
                     val status = runCatching {
                         JSONObject(response.body?.string().orEmpty()).optString("status", "stored")
                     }.getOrDefault("stored")
-                    SyncResult.Success(status)
+                    SyncResult.Success(status, bytesSent = bytesSent, durationMs = durationMs)
                 } else {
                     SyncResult.Failure("HTTP ${response.code}: ${response.body?.string()?.take(200)}")
                 }

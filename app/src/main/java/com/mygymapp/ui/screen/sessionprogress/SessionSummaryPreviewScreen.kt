@@ -61,7 +61,13 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Box invio al server", style = MaterialTheme.typography.titleSmall)
-            SyncStatusBox(SessionSyncStatus.SENT)
+            SyncStatusBox(SessionSyncStatus.CHECKING)
+            SyncStatusBox(
+                SessionSyncStatus.SENT,
+                bytesSent = 4_312,
+                durationMs = 1_240,
+                serverStatus = "duplicate",
+            )
             SyncStatusBox(SessionSyncStatus.PENDING)
             SyncStatusBox(SessionSyncStatus.FAILED)
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
