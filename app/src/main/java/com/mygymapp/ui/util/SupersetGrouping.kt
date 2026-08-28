@@ -27,17 +27,18 @@ inline fun <T, R> groupSupersets(
     group: (indices: List<Int>) -> R,
 ): List<R> {
     val result = mutableListOf<R>()
-    var i = 0
-    while (i < items.size) {
-        val run = mutableListOf(i)
-        while (run.size < MAX_SUPERSET_SIZE &&
-            isPairedWithNext(items[run.last()]) &&
-            run.last() + 1 < items.size
+    var start = 0
+    while (start < items.size) {
+        // Extend the run while the boundary element links forward and the cap allows it.
+        var end = start
+        while (end - start + 1 < MAX_SUPERSET_SIZE &&
+            end + 1 < items.size &&
+            isPairedWithNext(items[end])
         ) {
-            run.add(run.last() + 1)
+            end++
         }
-        result.add(if (run.size == 1) single(i) else group(run.toList()))
-        i = run.last() + 1
+        result.add(if (end == start) single(start) else group((start..end).toList()))
+        start = end + 1
     }
     return result
 }

@@ -25,6 +25,19 @@ object ExerciseStatsCalculator {
 
     private fun ExerciseSet.Strength.toPreviousSet() = PreviousSet(reps = reps, weight = weight)
 
+    private fun ExerciseSet.Strength.tonnage(): Double = reps * weight
+    private fun PreviousSet.tonnage(): Double = reps * weight
+
+    /**
+     * The day a session belongs to, as a bare `YYYY-MM-DD` string. `completedAt` is an ISO
+     * datetime (`2026-08-25T19:04:11`), `date` is already a bare date — take the first 10 chars
+     * of whichever is present so `previousSessionDate` comparisons are always day-vs-day and
+     * never mix a datetime with a date (a lexicographic `>=` between the two formats is only
+     * accidentally correct). Both [rebuild] and [merge] store and compare via this.
+     */
+    private fun WorkoutSession.dayKey(): String =
+        completedAt.ifBlank { date }.take(10)
+
     /**
      * Full rebuild: fold every session that contains [exerciseId] into a fresh [ExerciseStats].
      * [sessions] may be in any order and may include non-completed ones (they're skipped).
@@ -65,7 +78,7 @@ object ExerciseStatsCalculator {
             ?.takeIf { it.schemaVersion == ExerciseStats.SCHEMA_VERSION && it.exerciseId == exerciseId }
             ?: ExerciseStats(exerciseId)
 
-        val sessionDate = session.completedAt.ifBlank { session.date }
+        val sessionDate = session.dayKey()
         val touchedContexts = session.exercises
             .filter { it.exerciseId == exerciseId }
             .map { it.slotContext }
@@ -76,15 +89,18 @@ object ExerciseStatsCalculator {
             val realSets = strengthSetsFor(exerciseId, ctx, session).filter { it.isReal() }
             val old = updated[ctx]
 
-            val newBestThisSession = realSets.maxByOrNull { it.reps * it.weight }
+            val newBestThisSession = realSets.maxByOrNull { it.tonnage() }
             val mergedPr = listOfNotNull(
                 old?.pr,
                 newBestThisSession?.toPreviousSet(),
-            ).maxByOrNull { it.reps * it.weight }
+            ).maxByOrNull { it.tonnage() }
 
             val hasReal = realSets.isNotEmpty()
+            // `>=` (not `>`): a session re-saved on the same day it was first saved must still
+            // replace "previous" with its latest set data. Compared day-vs-day via dayKey().
             val takeThisAsPrevious = hasReal &&
-                (old == null || old.previousSessionDate.isEmpty() || sessionDate >= old.previousSessionDate)
+                (old == null || old.previousSessionDate.isBlank() ||
+                    sessionDate.take(10) >= old.previousSessionDate.take(10))
 
             updated[ctx] = ContextStats(
                 previousSets = if (takeThisAsPrevious) realSets.map { it.toPreviousSet() }
@@ -107,6 +123,7 @@ object ExerciseStatsCalculator {
         completedSessions: List<WorkoutSession>,
     ): ContextStats? {
         var pr: ExerciseSet.Strength? = null
+        var prTonnage = 0.0
         var hasReal = false
         // "previous" = first session in newest-first order that has real data. Once set, the
         // rest of the loop only updates the PR.
@@ -119,16 +136,15 @@ object ExerciseStatsCalculator {
             if (realSets.isEmpty()) continue
             hasReal = true
 
-            val bestThisSession = realSets.maxByOrNull { it.reps * it.weight }
-            if (bestThisSession != null &&
-                (pr == null || bestThisSession.reps * bestThisSession.weight > pr!!.reps * pr!!.weight)
-            ) {
+            val bestThisSession = realSets.maxByOrNull { it.tonnage() }
+            if (bestThisSession != null && bestThisSession.tonnage() > prTonnage) {
                 pr = bestThisSession
+                prTonnage = bestThisSession.tonnage()
             }
 
             if (!prevFound) {
                 prevFound = true
-                prevDate = session.completedAt.ifBlank { session.date }
+                prevDate = session.dayKey()
                 prevSets = realSets.map { it.toPreviousSet() }
             }
         }

@@ -1,7 +1,6 @@
 package com.mygymapp.ui.screen.stretchexercise
 
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
@@ -9,11 +8,9 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +40,7 @@ class StretchExerciseViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
     private val workoutRepository: WorkoutRepository,
-) : ViewModel() {
+) : ExerciseSessionViewModel() {
 
     private val sessionId: String = savedStateHandle["sessionId"] ?: ""
     private val exerciseId: String = savedStateHandle["exerciseId"] ?: ""
@@ -53,20 +50,13 @@ class StretchExerciseViewModel @Inject constructor(
 
     private var currentSession: WorkoutSession? = null
     private var timerJob: Job? = null
-    private var exerciseCompleted = false
-    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // The completeExercise() save, tracked so onCleared() can join it before cancelling
-    // clearScope — see StrengthExerciseViewModel for the full reasoning.
-    private var completionJob: Job? = null
 
     init {
         viewModelScope.launch {
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
-            val sessions = workoutRepository.getSessionsInRange(
-                java.time.LocalDate.now(), java.time.LocalDate.now()
-            )
-            val session = sessions.find { it.id == sessionId }
+            // The active session is always dated today; fetch it straight by id.
+            val session = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
@@ -136,30 +126,18 @@ class StretchExerciseViewModel @Inject constructor(
         }
     }
 
-    private val _completionSaved = MutableStateFlow(false)
-    val completionSaved: StateFlow<Boolean> = _completionSaved
-
     /**
-     * Called when the user taps "Complete Exercise".
-     * Saves set data to disk and then emits [completionSaved] = true so the screen
-     * can navigate back only after the write is guaranteed to be on disk.
+     * Called when the user taps "Complete Exercise". Persists on [clearScope], flips
+     * `completionSaved` once on disk — see [ExerciseSessionViewModel]. A set toggled done →
+     * real work; none toggled → completedEmpty (skipped styling; tonnage/history math skips it).
      */
     fun completeExercise() {
-        // Either way this screen navigates back (exerciseCompleted stops onCleared() from
-        // re-saving) and the exercise closes out of the active list. What differs is how it
-        // reads back — see StrengthExerciseViewModel.completeExercise():
-        //  - a set toggled done -> completed, completedEmpty = false: real performed work.
-        //  - none toggled        -> completed, completedEmpty = true: the "skipped" row styling
-        //    (grey border + X); tonnage/history math skips it.
-        exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
         // A stretch set only becomes `done` via an explicit toggle. Marking at least one set
         // done is the signal the exercise was performed.
         val anyDone = sets.any { it.done }
-        // Save on clearScope, not viewModelScope, so a process death between the tap and the
-        // write completing can't lose it — see StrengthExerciseViewModel.completeExercise().
-        completionJob = clearScope.launch {
+        markCompletionAndSave {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
@@ -172,7 +150,6 @@ class StretchExerciseViewModel @Inject constructor(
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
             }
-            _completionSaved.value = true
         }
     }
 
@@ -187,25 +164,17 @@ class StretchExerciseViewModel @Inject constructor(
             val updated = session.withExerciseSwitched(exerciseId, newExercise)
             if (updated === session) return@launch
             workoutRepository.save(updated)
-            exerciseCompleted = true
+            markSwitched()
             _switchedExerciseId.value = newExerciseId
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
-        if (exerciseCompleted) {
-            // Wait for completeExercise()'s clearScope save to finish before tearing the
-            // scope down — see StrengthExerciseViewModel.onCleared().
-            clearScope.launch {
-                try {
-                    completionJob?.join()
-                } finally {
-                    clearScope.cancel()
-                }
-            }
-            return
-        }
+        super.onCleared()
+    }
+
+    override fun saveProgressOnExit() {
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {

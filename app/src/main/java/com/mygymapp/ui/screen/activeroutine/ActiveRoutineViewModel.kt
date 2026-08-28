@@ -15,7 +15,6 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import android.content.Context
-import android.util.Log
 import com.mygymapp.data.sync.EcgSyncLedgerRepository
 import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
@@ -33,6 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -218,8 +218,15 @@ class ActiveRoutineViewModel @Inject constructor(
                 .filter { it.type == ExerciseType.FORZA }
                 .map { it.exerciseId }
                 .distinct()
+            // Cap the fan-out: on a fresh install / schema bump every one of these is a full
+            // per-exercise history scan, and letting a 12-exercise routine launch 12 at once
+            // (on top of boot maintenance) is an I/O thundering herd. 4 in flight keeps the
+            // overlap benefit without the spike.
+            val statsGate = kotlinx.coroutines.sync.Semaphore(4)
             val statsByExercise = statsExerciseIds
-                .map { exId -> async { exId to workoutRepository.getExerciseStats(exId) } }
+                .map { exId ->
+                    async { statsGate.withPermit { exId to workoutRepository.getExerciseStats(exId) } }
+                }
                 .awaitAll()
                 .toMap()
 
@@ -393,18 +400,23 @@ class ActiveRoutineViewModel @Inject constructor(
             // previousTonnageByExercise/previousBestE1RMByExercise maps only cover this
             // routine's ORIGINAL exercises, so the switched-in id would otherwise have no
             // baseline at all when markExerciseCompleted looks it up later.
+            // Only a slot with REAL tonnage seeds a baseline / the "not first time" flag — a
+            // completed-empty (skipped) slot in history contributes nothing, exactly as
+            // `exercisesWithPriorTonnage` in init keys off `hasPriorRealTonnage` (which
+            // completed-empty never sets). Walking history newest-first, take the first slot
+            // that actually carries load.
             val lastWithTonnage = workoutRepository.getSessionsForExercise(newExerciseId)
                 .firstNotNullOfOrNull { hist ->
-                    hist.exercises.firstOrNull {
-                        it.exerciseId == newExerciseId && !it.excludeFromTonnage
+                    hist.exercises.firstOrNull { ex ->
+                        ex.exerciseId == newExerciseId && !ex.excludeFromTonnage &&
+                            ex.sets.filterIsInstance<ExerciseSet.Strength>()
+                                .sumOf { it.reps * it.weight } > 0.0
                     }
                 }
             if (lastWithTonnage != null) {
                 val tonnage = lastWithTonnage.sets.filterIsInstance<ExerciseSet.Strength>()
                     .sumOf { it.reps * it.weight }
-                if (tonnage > 0.0) {
-                    previousTonnageByExercise = previousTonnageByExercise + (newExerciseId to tonnage)
-                }
+                previousTonnageByExercise = previousTonnageByExercise + (newExerciseId to tonnage)
                 lastWithTonnage.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM()
                     ?.let { previousBestE1RMByExercise = previousBestE1RMByExercise + (newExerciseId to it) }
                 exercisesWithPriorTonnage = exercisesWithPriorTonnage + newExerciseId
@@ -434,8 +446,9 @@ class ActiveRoutineViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(notes = notes)
         viewModelScope.launch {
             val session = currentSession ?: return@launch
-            currentSession = session.copy(notes = notes)
-            workoutRepository.save(currentSession!!)
+            val updated = session.copy(notes = notes)
+            currentSession = updated
+            workoutRepository.save(updated)
             // Also update the routine notes
             val routine = routineRepository.getById(routineId) ?: return@launch
             routineRepository.save(routine.copy(notes = notes))
@@ -508,17 +521,15 @@ class ActiveRoutineViewModel @Inject constructor(
                 // computations, not heavy waveform analysis. TRIMP/kcal are computed
                 // continuously during the session (PolarManager) and saved unchanged below.
                 val ecgFileSize = polarManager.ecgFileSize(session.id)
-                Log.i(TAG, "ECG file for ${session.id}: $ecgFileSize bytes")
                 appLogger.i(TAG, "ECG file size for ${session.id}: $ecgFileSize bytes")
                 val drift = try {
                     polarManager.cardiacDriftBpmPerMinute()
                 } catch (e: Throwable) {
-                    Log.e("ActiveRoutineVM", "Drift compute failed", e)
+                    appLogger.e(TAG, "Drift compute failed", e)
                     0.0
                 }
                 val hrrDiscarded = polarManager.hrrDiscardedCount()
-                Log.i(TAG, "HRR60s for ${session.id}: discarded $hrrDiscarded delta(s) (HR rebounded before +60s sample)")
-                appLogger.i(TAG, "HRR60s discarded=$hrrDiscarded for ${session.id}")
+                appLogger.i(TAG, "HRR60s for ${session.id}: discarded $hrrDiscarded delta(s) (HR rebounded before +60s sample)")
                 val today = LocalDate.parse(session.date)
                 val reloaded = workoutRepository.getSession(session.id, today) ?: session
                 var updated = reloaded.copy(
@@ -551,7 +562,7 @@ class ActiveRoutineViewModel @Inject constructor(
                         }
                     }
                 } catch (e: Throwable) {
-                    Log.e("ActiveRoutineVM", "Save session failed", e)
+                    appLogger.e(TAG, "Save session failed", e)
                 }
                 // Raw ECG handling (docs/SYNC.md "Fourth record type: raw ECG"): when sync
                 // is configured, the raw file is queued for upload and EcgSyncWorker
@@ -576,7 +587,7 @@ class ActiveRoutineViewModel @Inject constructor(
                             ecgSyncLedgerRepository.enqueue(session.id, "ecg/${session.id}.ecg", ecgFile.readBytes())
                             EcgSyncWorker.Scheduler.runExpedited(appContext)
                         } catch (e: Throwable) {
-                            Log.e(TAG, "ECG sync enqueue failed for ${session.id}: ${e.message}", e)
+                            appLogger.e(TAG, "ECG sync enqueue failed for ${session.id}: ${e.message}", e)
                         }
                     }
                 } else {
@@ -636,10 +647,12 @@ class ActiveRoutineViewModel @Inject constructor(
             currentSession = finalSession
             workoutRepository.save(finalSession)
 
-            // Load all sessions for this routine in the last 12 weeks, one point per session
+            // Load the last 12 weeks of history once, then derive both the routine-scoped chart
+            // series and the cross-routine kcal/TRIMP/VO2max series from the same list.
             val today = LocalDate.now()
             val startDate = today.with(DayOfWeek.MONDAY).minusWeeks(11)
-            val allSessions = workoutRepository.getSessionsInRange(startDate, today)
+            val windowSessions = workoutRepository.getSessionsInRange(startDate, today)
+            val allSessions = windowSessions
                 .filter { it.routineId == routineId && it.completedAt.isNotBlank() }  // exclude abandoned sessions
 
             val labelFmt = DateTimeFormatter.ofPattern("d/M")
@@ -677,8 +690,7 @@ class ActiveRoutineViewModel @Inject constructor(
             }
 
             // Cross-routine data: ALL completed sessions for kcal/TRIMP/VO2max charts
-            val allCompletedSessions = workoutRepository.getSessionsInRange(startDate, today)
-                .filter { it.completedAt.isNotBlank() }
+            val allCompletedSessions = windowSessions.filter { it.completedAt.isNotBlank() }
             val allLabels = allCompletedSessions.map { LocalDate.parse(it.date).format(labelFmt) }
             val allCalories = allCompletedSessions.map { it.sessionCalories }
             val allTrimp = allCompletedSessions.map { it.sessionTrimp }
@@ -738,7 +750,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     }
                 }
             } catch (e: Throwable) {
-                Log.e(TAG, "Session cleanup failed", e)
+                appLogger.e(TAG, "Session cleanup failed", e)
             } finally {
                 clearScope.cancel()
             }

@@ -495,9 +495,24 @@ The home screen's state is built by the `@Singleton` `HomeStateLoader`, not `Mai
 
 `loadHomeState()` emits **twice on a cold start**: phase 1 = the 4 gitgraph history rows (from the `_gitgraph.yaml` cache, fast) + a schedule-row *scaffold* (routine names only) with `isLoading = false`, so the screen paints in ~200 ms instead of waiting ~500 ms for the current-week session files to parse; phase 2 = the schedule row's session outcomes + `today*` fields, a beat later.
 
-**The phase-1 emit is guarded by `_state.value.isLoading`** — it fires only on the very first load. On every later `refresh()` (returning to the home, a routine change) `_state` already holds a complete state; emitting the scaffold then would blank the schedule row's outcomes for ~100 ms — a visible flicker. So a refresh skips phase 1 and emits once, with everything. Don't remove that `isFirstLoad` check.
+**The phase-1 emit is guarded by `everCompleted`** — a `@Volatile` flag set once a phase-2 (fully-populated) state has been emitted. It fires while nothing complete has ever been shown; after that, every load (a normal `refresh()`, a routine change, *and a `force` refresh that cancels a first load mid-flight*) holds the last complete state on screen and swaps in one go at phase 2. Emitting the scaffold then would blank the schedule row's outcomes for ~100 ms — a visible flicker. Don't key this off `_state.value.isLoading` (the old bug: a `force` refresh landing between phase 1 and phase 2 of the first load saw `isLoading == false` and skipped phase 1, leaving the scaffold on screen until its own phase 2).
 
 `GitgraphHistoryCalculator.dayCell` is the single per-day status/%/cardio rule — used for both the cached history rows and the live current-week row, so they can't diverge. Parsing helpers (`getSessionsInRange`, `getLastSessionForRoutine`) parse their in-range `.md` files concurrently; `getLastSessionForRoutine` walks newest-filename-first and stops at the first completed session (plus same-day siblings) instead of parsing a routine's whole history.
+
+## Derived-data sidecars
+
+Two pre-computed caches now live under `history/` — the exercise-stats sidecars (`_stats/{id}.yaml`) and the home gitgraph cache (`_gitgraph.yaml`). Both follow the same shape, and a third should too:
+
+1. A `data class` model with a `SCHEMA_VERSION` companion constant and a doc comment stating exactly what each stored field means under the current version.
+2. A **pure** `…Calculator` object that derives the model from parsed `WorkoutSession`s — no `Context`, no I/O — with a JUnit test. Where there's both a full-rebuild and an incremental path (stats), a test pins that they agree.
+3. A `…Parser` object that round-trips the model to/from front-matter-only YAML via `MarkdownParser`, with a round-trip test.
+4. `WorkoutRepository` owns the lifecycle: read → *check schema (and any identity field) before serving* → on miss, recompute **outside** the write mutex → take the mutex only to persist, re-checking for a concurrent writer first. Invalidate on the events that can change the derived value; a schema bump needs no migration code (mismatch ⇒ lazy rebuild). The one-time index migration wipes all sidecars.
+
+Traversing `history/` for these: use `WorkoutRepository.historyMonthDirs()` / `historySessionFiles()`, not an ad-hoc `listFiles()` walk — they're the one place the `_idx`/`_stats` reserved-name skip lives.
+
+## Per-exercise ViewModels: `ExerciseSessionViewModel`
+
+`StrengthExerciseViewModel`, `StretchExerciseViewModel` and `SupersetViewModel` extend `ui/screen/exercise/ExerciseSessionViewModel`, which owns the shared completion plumbing that was previously copy-pasted (and drifting) across all three: the `clearScope` `SupervisorJob`, `markCompletionAndSave { … }` (runs the completion write on `clearScope`, flips `completionSaved` after), `markSwitched()` (mark done without a write, for "Switch exercise"), and the `onCleared()` template (join the completion job then cancel the scope if finished; otherwise call the subclass's `saveProgressOnExit()`). Subclasses that also run a timer override `onCleared()` to cancel it, then call `super.onCleared()`. `CardioExerciseViewModel` does **not** extend it — its completion runs on `viewModelScope` and its exit path resumes a running block rather than saving-as-incomplete.
 
 ## Baseline Profile
 

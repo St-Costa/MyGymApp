@@ -1,6 +1,7 @@
 package com.mygymapp.ui.screen.main
 
 import com.mygymapp.data.model.DayCellStatus
+import com.mygymapp.data.model.Routine
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.parser.GitgraphHistoryCalculator
 import com.mygymapp.data.repository.RoutineRepository
@@ -48,6 +49,15 @@ class HomeStateLoader @Inject constructor(
     private var job: Job? = null
 
     /**
+     * True once a phase-2 (fully-populated) state has been emitted at least once. Until then,
+     * every load emits its phase-1 scaffold so the screen has something to paint; after that,
+     * a load holds the last complete state on screen and swaps in one go (no schedule-row
+     * blank flicker), even a `force` load that cancelled a first load mid-flight.
+     */
+    @Volatile
+    private var everCompleted = false
+
+    /**
      * Recomputes [state]. Concurrent calls coalesce: while one is running a plain call joins
      * it; [force] cancels the in-flight one and starts fresh (data actually changed).
      */
@@ -73,6 +83,11 @@ class HomeStateLoader @Inject constructor(
         val startDate = currentWeekMonday.minusWeeks(4)
 
         val dowKeys = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+        // Enabled routines assigned to each weekday column, resolved once — both the phase-1
+        // scaffold and the phase-2 cells key off this instead of re-filtering allRoutines twice.
+        fun routinesForColumn(allRoutines: List<Routine>, col: Int) =
+            allRoutines.filter { it.day.equals(dowKeys[col], ignoreCase = true) && it.enabled }
 
         // Kick the slow half — parsing the current week's full-session .md files — off first
         // so it runs while we assemble and emit the fast half.
@@ -103,8 +118,8 @@ class HomeStateLoader @Inject constructor(
             powerliftingScheduleRepository.isPowerliftingWeek(startDate.plusWeeks(week.toLong()))
         }
 
-        fun scheduleScaffold() = dowKeys.mapIndexed { col, key ->
-            val routines = allRoutines.filter { it.day.equals(key, ignoreCase = true) && it.enabled }
+        fun scheduleScaffold() = dowKeys.indices.map { col ->
+            val routines = routinesForColumn(allRoutines, col)
             ScheduleCell(
                 routineNames = routines.map { it.name },
                 openRoutineId = routines.firstOrNull()?.id,
@@ -123,13 +138,12 @@ class HomeStateLoader @Inject constructor(
             todayDowIndex = todayDow - 1,
             isLoading = false,
         )
-        // Emit the partial state only on the *first* load, when the screen would otherwise
-        // show a spinner. On a refresh (returning to the home, routinesChanged) the current
-        // state is already complete — emitting the scaffold here would blank the schedule
-        // row's outcomes for the ~100ms until phase 2, a visible flicker. In that case we
-        // just wait and emit once, below.
-        val isFirstLoad = _state.value.isLoading
-        if (isFirstLoad) {
+        // Emit the partial state only while the screen has nothing complete to show yet. Once
+        // a phase-2 state has been emitted at least once (normal refresh, routinesChanged, or
+        // a force after the first successful load), hold it on screen and swap in one go at
+        // phase 2 below — emitting the scaffold here would blank the schedule row's outcomes
+        // for the ~100ms until phase 2, a visible flicker.
+        if (!everCompleted) {
             _state.value = phase1
         }
 
@@ -160,8 +174,8 @@ class HomeStateLoader @Inject constructor(
             todayCardioMinutes = cell.cardioMinutes
         }
 
-        val scheduleCells = dowKeys.mapIndexed { col, key ->
-            val routines = allRoutines.filter { it.day.equals(key, ignoreCase = true) && it.enabled }
+        val scheduleCells = dowKeys.indices.map { col ->
+            val routines = routinesForColumn(allRoutines, col)
             val toOpen = routines.firstOrNull { it.id !in completedTodayRoutineIds } ?: routines.firstOrNull()
             val dayDate = currentWeekMonday.plusDays(col.toLong())
             val session = if (col == todayDow - 1) null else currentWeekSessionByDate[dayDate.toString()]
@@ -189,5 +203,6 @@ class HomeStateLoader @Inject constructor(
             todaySessionId = todaySession?.id,
             todaySessionDate = todaySession?.date,
         )
+        everCompleted = true
     }
 }
