@@ -222,38 +222,35 @@ Extend the existing sync section:
   "Ripristinati 12 esercizi, 3 routine, 0 sessioni".
 - The existing **"Invia tutti i dati in coda"** now also backfills `exercises/` + `routines/`.
 
-#### "Test backup verso il server" (debug section)
+#### "Verifica backup sul server" (debug section)
 
 A debug-only button — grouped with the Scale-BLE / step-counter / ECG debug sends, not the
-main sync card — that exercises `POST /v1/repo` **end to end** without touching a single
-real exercise or routine. It is the repo-file counterpart of the existing "Debug ECG:
-registra e invia".
+main sync card — that does a **real round-trip** of the repo-file pipeline against the user's
+actual exercises and routines: it pushes anything not yet on the server, then reads
+everything back and compares byte-for-byte. Nothing synthetic is sent; nothing is deleted.
 
-Behaviour (`OptionsViewModel.sendDebugBackup()`):
+Behaviour (`OptionsViewModel.verifyBackupRoundTrip()`):
 
-1. Synthesise a throwaway markdown file in memory with a YAML frontmatter carrying
-   `debug: true`, `id: _debug-backup-{epochMillis}`, and `clientSentAt`. Body is one line of
-   explanatory text.
-2. `POST /v1/repo` with `op: "upsert"`, `relPath = "routines/_debug-backup-{epochMillis}.md"`,
-   `contentHash` over those bytes. **Awaited synchronously** (via `RepoSyncApi.postUpsert`) —
-   *not* routed through `RepoLedgerRepository`/`RepoSyncWorker`, so it writes **no** ledger
-   entry (can't inflate the pending count or strand a row) and **no** file on disk (a
-   `File.createTempFile` in `cacheDir`, deleted in `finally`).
-3. On upsert success, immediately `POST /v1/repo` with `op: "delete"` for the same path,
-   also awaited.
-4. Surface a single-line result: `OK — upsert: stored, delete: deleted (312 byte in 240 ms)`,
-   or the exact failing leg (`Upsert fallito: HTTP 401: …`, `Upsert OK (stored), ma delete
-   fallito: …`).
+1. **Push.** For every `exercises/*.md` + `routines/*.md` on disk,
+   `RepoLedgerRepository.requeueIfChanged(relPath, bytes)` — a no-op on files already
+   `SENT` with identical bytes, so only what's missing/changed is queued. Fire
+   `RepoSyncWorker` expedited, then poll `RepoLedgerRepository.pendingCount()` until it
+   hits 0 (or ~45 s elapse — reported as "invio non completato entro il timeout").
+2. **Manifest check.** `GET /v1/manifest`; for each local file compare `sha256(local)`
+   against the server's hash. Anything absent → "Mancanti sul server"; anything with a
+   different hash → "Hash diverso".
+3. **Read-back.** For every file whose hash matched, `GET /v1/file?relPath=…` and compare
+   the returned bytes to the local file. A mismatch → "Rilettura non identica". This
+   exercises the exact code path a post-wipe restore uses.
+4. Result line, e.g. `OK — 42 esercizi + 7 routine sul server, hash allineati e 49 riletti
+   identici.` or `47/49 verificati. Mancanti sul server (2): pull-rt-71284f58.md, …`.
 
-Requires only a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
-toggle — pressing the button is the opt-in, same as "Invia dati in coda" and the ECG debug
-send.
+Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
+toggle — pressing the button is the opt-in, same as "Invia dati in coda".
 
-**Server-visible side effects**: one commit for the upsert, one for the delete (so `git log`
-shows a `repo:1` pair per run), and one dated tombstone left in `data/raw/deleted/` per run.
-Both are expected and harmless — the `_`-prefixed filename lets the server keep these out of
-its parsed SQL view (see `docs/backup-server-brief.md` §2.1 / §2.5). If `deleted/` ever
-needs trimming, that's a deliberate manual `git rm`.
+**Server-visible side effects**: one commit per file that was actually new/changed (the
+common re-run case pushes nothing → no commit). **No deletes, no `deleted/` tombstones** —
+the files it uploads are the user's real data and are meant to stay.
 
 ---
 
@@ -337,9 +334,10 @@ also excluded.
 - [x] `OptionsViewModel` / `OptionsScreen` — "Schede/esercizi" count in the pending list,
       "Ripristina dal server" (confirm dialog + result summary via `restoreFromServer()`),
       `resyncAll()` walks `exercises/` + `routines/`
-- [x] "Test backup verso il server" debug button (§3.7) — synchronous upsert+delete of a
-      throwaway `routines/_debug-backup-{ts}.md` via `RepoSyncApi` directly (no ledger, no
-      disk); server keeps `_`-prefixed paths out of its SQL view
+- [x] "Verifica backup sul server" debug button (§3.7) — real round-trip against actual
+      exercises/routines: push what's missing/changed via the normal ledger+worker, wait for
+      drain, then `GET /v1/manifest` + `GET /v1/file` and compare byte-for-byte. No synthetic
+      file, no delete.
 - [x] `STORAGE.md` — `_sync/repo_state.yml` documented; root-layout tree updated
 - [x] `SYNC.md` — "Fifth record type: repo files" pointer added
 - [x] `CLAUDE.md` banner softened (still mandates the tar before any install/test op)
