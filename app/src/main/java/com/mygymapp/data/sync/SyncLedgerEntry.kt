@@ -26,6 +26,14 @@ data class SyncLedgerEntry(
     val lastAttemptAt: String = "",
     val lastError: String = "",
     val contentHash: String = "",
+    // Populated on the successful attempt only (see [SyncLedgerRepository.markSent]) and
+    // surfaced on the end-of-session summary box: byte count of the file uploaded, wall
+    // time of that HTTP call, and the server's own receipt word (`stored` / `duplicate`).
+    // Only the session ledger writes/reads these — the readiness/scale ledgers reuse this
+    // type but simply never persist them (0 / "" round-trips fine).
+    val bytesSent: Long = 0,
+    val durationMs: Long = 0,
+    val serverStatus: String = "",
 )
 
 /**

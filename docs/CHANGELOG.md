@@ -882,6 +882,12 @@ Convention rewritten at [CONVENTIONS.md](CONVENTIONS.md#untouched-exercise-guard
 
 Also in this phase: the completion save in all three exercise VMs (`completeExercise`/`completeSuperset`) moved off `viewModelScope` onto `clearScope`, with `onCleared()` now `join()`ing the tracked `completionJob` before `clearScope.cancel()`. Navigation tears the VM down right after the tap, so a `viewModelScope` save could be cancelled mid-write by a process death (observed repeatedly during this day's debugging — ~15 app restarts in an hour), losing `completed = true` with `onCleared()` unable to recover it. `clearScope` survives teardown; the join guarantees the write lands. See [CONVENTIONS.md](CONVENTIONS.md#completionsaved-pattern).
 
+## Phase 75 — End-of-session sync box: starts on "checking", confirms receipt with size + time
+
+The "invio al server" reassurance card on the session-completed screen used to open on **"Sync col server disattivata"** (`SessionSyncStatus` defaulted to `SYNC_OFF`) and only correct itself a beat later once `refreshSyncStatus()` had run — a misleading flash when sync is in fact configured and on. New initial state `SessionSyncStatus.CHECKING` ("Verifica connessione al server…", spinner), and the box resolves to `SYNC_OFF` only after we've actually confirmed sync is off. `pollSyncStatusWhilePending()` keeps polling through `CHECKING` too.
+
+On success the box now shows what moved: **"4.2 KB in 0.4 s"** plus the server's own confirmation word — `stored` ("Il server ha confermato la ricezione e l'ha salvata") vs `duplicate` ("Il server aveva già questa versione"). This is a real receipt: the ledger only flips to `SENT` on a confirmed 2xx (`docs/SYNC.md` §1.3 step 4), and the server echoes what it did. `SyncResult.Success` carries `bytesSent` (raw file size) + `durationMs` (wall time of the POST, measured in `SyncApi.postSession`); `SyncLedgerRepository.markSent` persists those plus `serverStatus` into three new optional fields on `SyncLedgerEntry` (`bytesSent` / `durationMs` / `serverStatus`, all default 0/""). Only the session ledger writes them — the readiness/scale ledgers reuse the type and ignore them. `SessionProgressViewModel` reads them back off the ledger entry and hands them to `SyncStatusBox`. Ledger schema + debug preview (`SessionSummaryPreviewScreen`) updated.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -96,7 +97,12 @@ fun SessionProgressScreen(
                     text = uiState.routineName,
                     style = MaterialTheme.typography.titleLarge,
                 )
-                SyncStatusBox(uiState.syncStatus)
+                SyncStatusBox(
+                    uiState.syncStatus,
+                    bytesSent = uiState.syncBytesSent,
+                    durationMs = uiState.syncDurationMs,
+                    serverStatus = uiState.syncServerStatus,
+                )
                 if (uiState.polarDrops.hadDrops) {
                     PolarConnectionBox(uiState.polarDrops)
                 }
@@ -212,13 +218,31 @@ fun SessionProgressScreen(
  * subtitle) so it reads as a status panel, not a thin strip.
  */
 @Composable
-internal fun SyncStatusBox(status: SessionSyncStatus) {
+internal fun SyncStatusBox(
+    status: SessionSyncStatus,
+    bytesSent: Long = 0,
+    durationMs: Long = 0,
+    serverStatus: String = "",
+) {
     data class Spec(val icon: androidx.compose.ui.graphics.vector.ImageVector?, val title: String, val subtitle: String, val color: Color)
     val spec = when (status) {
+        SessionSyncStatus.CHECKING -> Spec(
+            // Static two-arrows-in-a-circle glyph, not the animated spinner (null icon) —
+            // conveys "sync check" without motion.
+            Icons.Default.Sync,
+            "Verifica connessione al server…",
+            "Sto controllando che il salvataggio remoto sia raggiungibile.",
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         SessionSyncStatus.SENT -> Spec(
             Icons.Default.CheckCircle,
-            "Sessione inviata al server",
-            "Il salvataggio remoto è andato a buon fine.",
+            "Sessione ricevuta dal server",
+            // The ledger only flips to SENT on a confirmed 2xx (docs/SYNC.md §1.3 step 4),
+            // and the server echoes what it did — so this really is a delivery receipt.
+            when (serverStatus) {
+                "duplicate" -> "Il server aveva già questa versione: nessuna riscrittura."
+                else -> "Il server ha confermato la ricezione e l'ha salvata."
+            },
             Color(0xFF4CAF50),
         )
         SessionSyncStatus.FAILED -> Spec(
@@ -262,9 +286,29 @@ internal fun SyncStatusBox(status: SessionSyncStatus) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (status == SessionSyncStatus.SENT && bytesSent > 0) {
+                    Text(
+                        "${formatTransferSize(bytesSent)} in ${formatTransferDuration(durationMs)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
+}
+
+/** "820 B" / "4.2 KB" / "1.8 MB" — binary units, one decimal above the KB threshold. */
+private fun formatTransferSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+    else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+}
+
+/** "0.4 s" / "12 s" — sub-10s keeps one decimal, above that whole seconds. */
+private fun formatTransferDuration(ms: Long): String = when {
+    ms < 10_000 -> "%.1f s".format(ms / 1000.0)
+    else -> "${ms / 1000} s"
 }
 
 /**
