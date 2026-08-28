@@ -16,8 +16,9 @@ filesDir/gymdata/              ← FileManager.root
 │   ├── _idx/
 │   │   ├── ex-{8hex}.idx      ← exercise → session paths index
 │   │   └── .migrated          ← one-time migration sentinel
-│   └── _stats/
-│       └── ex-{8hex}.yaml     ← per-exercise derived stats (previous sets + tonnage PR)
+│   ├── _stats/
+│   │   └── ex-{8hex}.yaml     ← per-exercise derived stats (previous sets + tonnage PR)
+│   └── _gitgraph.yaml         ← home 4-week gitgraph history, pre-computed
 ├── ecg/                       ← Raw ECG recordings (ephemeral)
 │   └── {sessionId}.ecg
 ├── cache/images/              ← ImageCacheRepository (exercise link previews)
@@ -313,17 +314,32 @@ Everything is split by [SlotContext] (a fixed-daily execution's history is unrel
 
 The `.md` files remain the source of truth; the sidecar is a cache. The derivation rules (what "previous" is, what the PR is) live in one pure, unit-tested place — `ExerciseStatsCalculator` — used by both the incremental and full-rebuild paths, with a test pinning that a chain of `merge`s equals a single `rebuild`.
 
+### Home gitgraph cache (`history/_gitgraph.yaml`)
+
+The home screen's 4 history rows (28 day squares for the 4 weeks **before** the current week) were computed on every home open by parsing ~3 months of session files (`getSessionsInRange` over the visible window + a 2-month lookback for the oldest days' comparison). Now a single file holds them pre-computed: front-matter-only YAML with `windowStartMonday`, `schemaVersion`, and 28 `days`, each `{date, status, tonnageChangePct?, cardioMinutes?, routineName?, sessionId?}`.
+
+A day square is derived from that day's registered session and the previous session of the same routine — both immutable once registered — so a square for a day *before the current week* never changes. The **current week's** row (the schedule row + "today" cell) is *not* cached; `HomeStateLoader` builds it from a small current-week query each time.
+
+**Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
+- **Read** (`getGitgraphHistory`): serves the cache when its `windowStartMonday` matches what today implies, `schemaVersion` matches, and all 28 days are present. Otherwise recomputes the full window (once per week as it slides forward; also after a drop) and persists — recompute happens outside the write lock, with a re-check under it.
+- **`save()` of a completed session** dated inside the cached window drops the cache. Normally a no-op: sessions are registered *today* = current week = outside the window.
+- **`delete()`** of a completed session in the window, and **`runMaintenance()`** whenever it actually pruned anything (a >3-month-old session can be in the 2-month lookback), drop the cache.
+- **Routine rename** (`updateRoutineNameInHistory`) drops it — the cache denormalizes `routineName`.
+- The one-time index migration wipes it too.
+
+Derivation is one pure object, `GitgraphHistoryCalculator`, shared: `HomeStateLoader` calls the same `dayCell` for the current-week row so history rows and the live row can't diverge. Round-trip + calculator tests in `GitgraphHistoryParserTest` / `GitgraphHistoryCalculatorTest`.
+
 ### Migration
 
 One-time migration for early adopters:
 - Old format: `YYYY-MM-DD_{slug}-{id}.md` (2 `_`-segments)
 - New format: `YYYY-MM-DD_{routineId}_{sessionId}.md` (3 segments)
 
-Runs on app startup in [MainViewModel](../app/src/main/java/com/mygymapp/ui/screen/main/MainViewModel.kt), guarded by `history/_idx/.migrated`. Rebuilds the exercise index from scratch and wipes `_stats/`. Idempotent.
+Runs on app startup in [MainViewModel](../app/src/main/java/com/mygymapp/ui/screen/main/MainViewModel.kt), guarded by `history/_idx/.migrated`. Rebuilds the exercise index from scratch and wipes `_stats/` + `_gitgraph.yaml`. Idempotent.
 
 ### Auto-prune
 
-On startup, sessions older than 3 months are deleted. Exercise index entries for removed files are cleaned up as part of the same pass, and the affected exercises' stats sidecars are rebuilt.
+On startup, sessions older than 3 months are deleted. Exercise index entries for removed files are cleaned up as part of the same pass, the affected exercises' stats sidecars are rebuilt, and — if anything was pruned — the gitgraph cache is dropped.
 
 ## Name sync on rename
 

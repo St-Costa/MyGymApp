@@ -2,12 +2,18 @@ package com.mygymapp.data.repository
 
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseStats
+import com.mygymapp.data.model.GitgraphHistory
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.parser.ExerciseStatsCalculator
 import com.mygymapp.data.parser.ExerciseStatsParser
+import com.mygymapp.data.parser.GitgraphHistoryCalculator
+import com.mygymapp.data.parser.GitgraphHistoryParser
 import com.mygymapp.data.parser.WorkoutParser
 import com.mygymapp.data.sync.SyncLedgerRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -189,6 +195,132 @@ class WorkoutRepository @Inject constructor(
                 }
         }
 
+    // ─── Home gitgraph cache ─────────────────────────────────────────────────
+
+    private fun gitgraphCacheFile(): File =
+        File(File(fileManager.root, "history"), "_gitgraph.yaml")
+
+    /** The Monday that starts the oldest of the 4 history week-rows, for [today]. */
+    private fun gitgraphWindowStart(today: LocalDate): LocalDate {
+        val currentWeekMonday = today.minusDays((today.dayOfWeek.value - 1).toLong())
+        return currentWeekMonday.minusWeeks(4)
+    }
+
+    private fun readGitgraphCache(): GitgraphHistory? {
+        val f = gitgraphCacheFile()
+        if (!f.exists()) return null
+        return try {
+            GitgraphHistoryParser.fromYaml(f.readText())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun writeGitgraphCache(history: GitgraphHistory) {
+        gitgraphCacheFile().parentFile?.mkdirs()
+        gitgraphCacheFile().writeText(GitgraphHistoryParser.toYaml(history))
+    }
+
+    private fun deleteGitgraphCache() {
+        gitgraphCacheFile().delete()
+    }
+
+    /**
+     * Computes the 28-day history window from scratch: parses the visible 4 weeks plus a
+     * 2-month lookback (so the oldest visible days still have a same-routine "previous" to
+     * compare against — mirrors `MainViewModel`'s old `lookbackSessions`). Pure read, no lock.
+     */
+    private suspend fun computeGitgraphHistory(windowStart: LocalDate): GitgraphHistory {
+        val windowEnd = windowStart.plusDays((GitgraphHistory.DAY_COUNT - 1).toLong())
+        val windowSessions = getSessionsInRange(windowStart, windowEnd)
+        val lookback = getSessionsInRange(windowStart.minusMonths(2), windowStart.minusDays(1))
+        return GitgraphHistoryCalculator.buildWindow(
+            windowStartMonday = windowStart,
+            sessionsInWindow = windowSessions,
+            priorSessionsByRoutine = lookback
+                .filter { it.completedAt.isNotBlank() }
+                .groupBy { it.routineId },
+        )
+    }
+
+    /**
+     * The home gitgraph's 4 history rows (28 day squares for the 4 weeks *before* the current
+     * week) — the fast read `MainViewModel` uses instead of parsing ~3 months of session
+     * files on every home open. Serves the cached YAML when it covers the right window and
+     * matches the schema; otherwise recomputes the full window (once per week, as the window
+     * slides, or after a delete / debug-seed drops the cache) and persists it.
+     *
+     * The current week's row and the "today" cell are NOT part of this — `MainViewModel`
+     * builds those from a small current-week query and [GitgraphHistoryCalculator.dayCell].
+     */
+    suspend fun getGitgraphHistory(today: LocalDate = LocalDate.now()): GitgraphHistory =
+        withContext(Dispatchers.IO) {
+            val windowStart = gitgraphWindowStart(today)
+            val cached = readGitgraphCache()
+            if (cached != null &&
+                cached.schemaVersion == GitgraphHistory.SCHEMA_VERSION &&
+                cached.windowStartMonday == windowStart.toString() &&
+                cached.isComplete()
+            ) {
+                return@withContext cached
+            }
+            val computed = computeGitgraphHistory(windowStart)
+            mutex.withLock {
+                // Re-check under the lock: a concurrent save/recompute may have written a
+                // cache for the same window while we were scanning.
+                val fresh = readGitgraphCache()
+                if (fresh != null &&
+                    fresh.schemaVersion == GitgraphHistory.SCHEMA_VERSION &&
+                    fresh.windowStartMonday == windowStart.toString() &&
+                    fresh.isComplete()
+                ) {
+                    fresh
+                } else {
+                    computed.also { writeGitgraphCache(it) }
+                }
+            }
+        }
+
+    /**
+     * Recompute-and-persist the gitgraph cache for the current window. Called from
+     * `MainViewModel` after events the cache can't self-heal from cheaply — a routine list
+     * change (routine renamed / re-scheduled) or a debug-data reseed.
+     */
+    suspend fun refreshGitgraphHistory(today: LocalDate = LocalDate.now()) =
+        withContext(Dispatchers.IO) {
+            val windowStart = gitgraphWindowStart(today)
+            val computed = computeGitgraphHistory(windowStart)
+            mutex.withLock { writeGitgraphCache(computed) }
+        }
+
+    /**
+     * Parse one real session file so snakeyaml + [WorkoutParser] are class-loaded and
+     * JIT-warmed before the home screen's first genuine query needs them. On a cold start
+     * that first full-session parse was ~1s of the home load; kicked from `MyGymApp.onCreate`
+     * in parallel with everything else, it overlaps that cost instead of stacking it.
+     * Cheap and best-effort — silently does nothing if there's no history yet.
+     */
+    suspend fun warmUpParsers() = withContext(Dispatchers.IO) {
+        runCatching {
+            val historyRoot = File(fileManager.root, "history")
+            val newest = historyRoot.listFiles()
+                ?.filter { it.isDirectory && it.name != "_idx" && it.name != "_stats" }
+                ?.sortedByDescending { it.name }
+                ?.firstNotNullOfOrNull { yearDir ->
+                    yearDir.listFiles()
+                        ?.filter { it.isDirectory }
+                        ?.sortedByDescending { it.name }
+                        ?.firstNotNullOfOrNull { monthDir ->
+                            monthDir.listFiles()
+                                ?.filter { it.extension == "md" }
+                                ?.maxByOrNull { it.name }
+                        }
+                }
+            newest?.let { WorkoutParser.fromMarkdown(it.readText()) }
+        }
+        Unit
+    }
+
     /**
      * Returns the session [File]s listed in the index for [exerciseId].
      * Stale entries (deleted files) are silently filtered out.
@@ -269,6 +401,8 @@ class WorkoutRepository @Inject constructor(
             // simplest way to guarantee none survives a rename/reindex with a stale relPath or
             // an old schema.
             statsDir().listFiles()?.filter { it.extension == "yaml" }?.forEach { it.delete() }
+            // Same for the home gitgraph cache — recomputed on next home open.
+            deleteGitgraphCache()
 
             val batch = ExerciseIndexBatch()
             val historyRoot = File(fileManager.root, "history")
@@ -334,9 +468,26 @@ class WorkoutRepository @Inject constructor(
                     val merged = ExerciseStatsCalculator.merge(exId, readStatsSidecar(exId), updated)
                     writeStatsSidecar(merged)
                 }
+                invalidateGitgraphCacheIfInWindow(date)
             }
 
             updated
+        }
+    }
+
+    /**
+     * Drop the home gitgraph cache when a completed session lands in (or is removed from) the
+     * 4-week history window it covers. Normally a no-op: sessions are registered *today*, which
+     * is the current week — outside the cached window — so the home just recomputes the cheap
+     * current-week row and keeps using the cache for history. But a back-dated edit, or the
+     * window not having slid yet, can put `date` inside it. Must be called with [mutex] held.
+     */
+    private fun invalidateGitgraphCacheIfInWindow(date: LocalDate) {
+        val cached = readGitgraphCache() ?: return
+        val start = runCatching { LocalDate.parse(cached.windowStartMonday) }.getOrNull() ?: return
+        val end = start.plusDays((GitgraphHistory.DAY_COUNT - 1).toLong())
+        if (!date.isBefore(start) && !date.isAfter(end)) {
+            deleteGitgraphCache()
         }
     }
 
@@ -372,6 +523,7 @@ class WorkoutRepository @Inject constructor(
             // was blocking the *next* routine open's save() on the shared mutex.
             if (session.completedAt.isNotBlank()) {
                 session.exercises.map { it.exerciseId }.distinct().forEach { rebuildExerciseStats(it) }
+                invalidateGitgraphCacheIfInWindow(LocalDate.parse(session.date))
             }
         }
     }
@@ -382,46 +534,66 @@ class WorkoutRepository @Inject constructor(
         startDate: LocalDate,
         endDate: LocalDate,
     ): List<WorkoutSession> = withContext(Dispatchers.IO) {
-        val sessions = mutableListOf<WorkoutSession>()
+        // Collect the in-range files by filename first (no I/O beyond listing), then parse
+        // them in parallel — session .md files carry the full nested exercise/set YAML, so a
+        // month's worth is meaningfully faster read concurrently than one at a time.
+        val inRange = mutableListOf<File>()
         var current = startDate.withDayOfMonth(1)
         val end = endDate.withDayOfMonth(1)
-
         while (!current.isAfter(end)) {
             val dir = File(
                 fileManager.root,
                 "history/${current.year}/${current.monthValue.toString().padStart(2, '0')}"
             )
-            if (dir.exists()) {
-                dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                    try {
-                        val fileDate = LocalDate.parse(
-                            file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE
-                        )
-                        if (!fileDate.isBefore(startDate) && !fileDate.isAfter(endDate)) {
-                            sessions.add(WorkoutParser.fromMarkdown(file.readText()))
-                        }
-                    } catch (_: Exception) { /* Skip malformed */ }
+            dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                val fileDate = runCatching {
+                    LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
+                }.getOrNull()
+                if (fileDate != null && !fileDate.isBefore(startDate) && !fileDate.isAfter(endDate)) {
+                    inRange.add(file)
                 }
             }
             current = current.plusMonths(1)
         }
-        sessions.sortedBy { it.date }
+        coroutineScope {
+            inRange
+                .map { file -> async { runCatching { WorkoutParser.fromMarkdown(file.readText()) }.getOrNull() } }
+                .awaitAll()
+                .filterNotNull()
+                .sortedBy { it.date }
+        }
     }
 
     /**
      * Returns the most recent completed session for [routineId].
-     * Uses filename-based lookup: O(files for that routine) instead of O(all files).
+     *
+     * The filename is `YYYY-MM-DD_{routineId}_{sessionId}.md`, so its date prefix sorts in the
+     * same order as the day the session belongs to. We only parse from the newest filenames
+     * inward until we hit a completed one — normally the very first — instead of parsing every
+     * session that routine ever had. A handful of extra candidates covers the rare case of two
+     * sessions of the same routine on one day (their `completedAt` breaks the tie once parsed).
      */
     suspend fun getLastSessionForRoutine(routineId: String): WorkoutSession? =
         withContext(Dispatchers.IO) {
-            getRoutineSessionFiles(routineId)
-                .mapNotNull { file ->
-                    try {
-                        WorkoutParser.fromMarkdown(file.readText())
-                            .takeIf { it.completedAt.isNotBlank() }
-                    } catch (_: Exception) { null }
+            // Newest filename first (date prefix sorts chronologically).
+            val files = getRoutineSessionFiles(routineId).sortedByDescending { it.name }
+            var best: WorkoutSession? = null
+            for ((i, file) in files.withIndex()) {
+                val session = try {
+                    WorkoutParser.fromMarkdown(file.readText()).takeIf { it.completedAt.isNotBlank() }
+                } catch (_: Exception) { null }
+                if (session != null && (best == null || session.completedAt > best!!.completedAt)) {
+                    best = session
                 }
-                .maxByOrNull { it.completedAt }
+                // Once a completed session is found, only a file with the same date prefix
+                // (a same-day sibling) could still have a later completedAt — stop otherwise.
+                if (best != null) {
+                    val datePrefix = file.name.take(10)
+                    val nextSameDay = files.getOrNull(i + 1)?.name?.startsWith(datePrefix) == true
+                    if (!nextSameDay) break
+                }
+            }
+            best
         }
 
     /**
@@ -610,6 +782,11 @@ class WorkoutRepository @Inject constructor(
             // but pruning old sessions genuinely can.
             staleStatsExerciseIds.forEach { rebuildExerciseStats(it) }
 
+            // A pruned session (>3 months old) can fall in the gitgraph cache's 2-month
+            // lookback and thus change the oldest visible days' "previous" comparison. Ghosts
+            // never can. Drop the cache only when something was actually pruned.
+            if (prunedDeleted > 0) deleteGitgraphCache()
+
             sentinel.writeText("")
             MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)
         }
@@ -656,15 +833,20 @@ class WorkoutRepository @Inject constructor(
     suspend fun updateRoutineNameInHistory(routineId: String, newName: String) =
         withContext(Dispatchers.IO) {
             mutex.withLock {
+                var anyChanged = false
                 getRoutineSessionFiles(routineId).forEach { file ->
                     try {
                         val session = WorkoutParser.fromMarkdown(file.readText())
                         if (session.routineName != newName) {
                             file.writeText(WorkoutParser.toMarkdown(session.copy(routineName = newName)))
                             syncLedgerRepository.requeueIfChanged(session.id, file)
+                            anyChanged = true
                         }
                     } catch (_: Exception) { /* Skip */ }
                 }
+                // The gitgraph cache denormalizes routineName per day square — drop it so the
+                // renamed name shows on the home. MainViewModel also reloads on this signal.
+                if (anyChanged) deleteGitgraphCache()
             }
         }
 }

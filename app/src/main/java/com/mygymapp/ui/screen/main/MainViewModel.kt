@@ -18,7 +18,10 @@ import com.mygymapp.ui.components.DayStatus
 import com.mygymapp.ui.components.ScheduleCell
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -68,23 +71,29 @@ class MainViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val dataChangedSignal: DataChangedSignal,
     private val appLogger: AppLogger,
-    private val powerliftingScheduleRepository: com.mygymapp.data.PowerliftingScheduleRepository,
+    private val homeStateLoader: HomeStateLoader,
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "MainViewModel"
     }
 
-    private val _uiState = MutableStateFlow(MainUiState())
-    val uiState: StateFlow<MainUiState> = _uiState
+    // Only the debug-seed spinner is ViewModel-local now; the home content comes from the
+    // process-wide HomeStateLoader (kicked off in MyGymApp.onCreate, so it overlaps Activity
+    // creation instead of running after it).
+    private val _isSeedingData = MutableStateFlow(false)
+
+    val uiState: StateFlow<MainUiState> =
+        combine(homeStateLoader.state, _isSeedingData) { home, seeding ->
+            home.copy(isSeedingData = seeding)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, homeStateLoader.state.value)
 
     init {
+        // A resume of the home screen should pick up anything that landed since (a finished
+        // workout, a new routine). Coalesced inside the loader, so overlapping with the
+        // onCreate kick is free.
+        homeStateLoader.refresh()
         viewModelScope.launch {
-            // Gitgraph load doesn't depend on any of the boot maintenance below, so it runs
-            // as its own concurrent child job — the screen populates as soon as the slower of
-            // the two finishes, instead of waiting for maintenance to complete first.
-            launch { loadGitgraphInternal() }
-
             workoutRepository.migrateOldSessionFiles()
             // Ghost-session cleanup, old-session pruning, and orphan-ECG cleanup, combined into
             // one pass over history/ and throttled internally (see WorkoutRepository.runMaintenance)
@@ -99,228 +108,28 @@ class MainViewModel @Inject constructor(
             routineRepository.fixInvalidRepRanges()
         }
         viewModelScope.launch {
-            dataChangedSignal.routinesChanged.collect { loadGitgraphInternal() }
+            dataChangedSignal.routinesChanged.collect { homeStateLoader.refresh(force = true) }
         }
     }
 
-    fun loadGitgraph() {
-        viewModelScope.launch { loadGitgraphInternal() }
-    }
+    /** Called from MainScreen on (re)entry — a resume should reflect a just-finished workout. */
+    fun loadGitgraph() = homeStateLoader.refresh()
 
-    private suspend fun loadGitgraphInternal() {
-        val today = LocalDate.now()
-        val todayDow = today.dayOfWeek.value // 1=Mon, 7=Sun
-        val currentWeekMonday = today.minusDays((todayDow - 1).toLong())
-        // The 4 history rows cover the 4 weeks BEFORE the current one — the current week lives
-        // only in the schedule row below, not duplicated here. So the oldest row starts 4 weeks
-        // before last Monday, and the newest row ends on last Sunday.
-        val startDate = currentWeekMonday.minusWeeks(4)
-        val historyEndDate = currentWeekMonday.minusDays(1) // last Sunday
-
-        val sessions = workoutRepository.getSessionsInRange(startDate, historyEndDate)
-        // Fetched further back than the visible 4 weeks purely so the FIRST visible week has
-        // something to compare against too — without this, every square in the oldest row
-        // would look like "first time doing this routine" (green, no %) whenever the routine's
-        // actual previous session falls just outside the visible window.
-        val lookbackSessions = workoutRepository.getSessionsInRange(startDate.minusMonths(2), startDate.minusDays(1))
-        // Current week's sessions (for the schedule row's "today" cell + tap targets) queried
-        // separately since they're outside the history window above.
-        val currentWeekSessions = workoutRepository.getSessionsInRange(currentWeekMonday, today)
-        val sessionsByRoutine = (sessions + lookbackSessions + currentWeekSessions).groupBy { it.routineId }
-
-        val days = mutableListOf<DayStatus>()
-        val gitgraphTonnageChanges = mutableListOf<Double?>()
-        val gitgraphCardioMinutes = mutableListOf<Int?>()
-        val routineNames = mutableListOf<String?>()
-        val sessionIds = mutableListOf<String?>()
-        val sessionDates = mutableListOf<String?>()
-
-        for (dayOffset in 0 until 28) {
-            val date = startDate.plusDays(dayOffset.toLong())
-            val dateStr = date.toString()
-            val daySessions = sessions.filter { it.date == dateStr }
-            val lastSession = daySessions.maxByOrNull { it.completedAt }
-
-            routineNames.add(lastSession?.routineName)
-            sessionIds.add(lastSession?.id)
-            sessionDates.add(if (lastSession != null) dateStr else null)
-
-            if (lastSession == null) {
-                days.add(DayStatus.NONE)
-                gitgraphTonnageChanges.add(null)
-                gitgraphCardioMinutes.add(null)
-                continue
-            }
-
-            val cell = computeDayCell(lastSession, sessionsByRoutine)
-            days.add(cell.status)
-            gitgraphTonnageChanges.add(cell.tonnageChange)
-            gitgraphCardioMinutes.add(cell.cardioMinutes)
-        }
-
-        // One flag per week-row: the row's Monday is startDate + week*7.
-        val powerliftingWeeks = (0 until 4).map { week ->
-            powerliftingScheduleRepository.isPowerliftingWeek(startDate.plusWeeks(week.toLong()))
-        }
-
-        // Schedule row (current week, Monday..Sunday): for each day, the enabled routine(s)
-        // assigned to it (Routine.day), PLUS — for any day already trained this week — that
-        // day's session outcome (status/%/minutes/name/id), same shape as a history cell, so
-        // GitgraphView renders it like one. Yesterday's workout showing up here is this path.
-        val allRoutines = routineRepository.getAll()
-        val todayStr = today.toString()
-        val todaySession = currentWeekSessions.filter { it.date == todayStr }.maxByOrNull { it.completedAt }
-        val completedTodayRoutineIds = currentWeekSessions
-            .filter { it.date == todayStr && it.completedAt.isNotBlank() }
-            .map { it.routineId }
-            .toSet()
-
-        // Most-recent completed session per day of the current week, keyed by date string.
-        val currentWeekSessionByDate = currentWeekSessions
-            .groupBy { it.date }
-            .mapValues { (_, s) -> s.maxByOrNull { it.completedAt } }
-
-        var todayStatus = DayStatus.NONE
-        var todayTonnageChange: Double? = null
-        var todayCardioMinutes: Int? = null
-        todaySession?.let {
-            val cell = computeDayCell(it, sessionsByRoutine)
-            todayStatus = cell.status
-            todayTonnageChange = cell.tonnageChange
-            todayCardioMinutes = cell.cardioMinutes
-        }
-
-        val dowKeys = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-        val scheduleCells = dowKeys.mapIndexed { col, key ->
-            val routines = allRoutines.filter { it.day.equals(key, ignoreCase = true) && it.enabled }
-            // Tapping opens the first one not yet completed today, so finishing one and
-            // tapping the same cell again moves on to the next.
-            val toOpen = routines.firstOrNull { it.id !in completedTodayRoutineIds } ?: routines.firstOrNull()
-
-            // The today cell is rendered from the today* fields, not from here — leave its
-            // session fields null so GitgraphView doesn't double-handle it.
-            val dayDate = currentWeekMonday.plusDays(col.toLong())
-            val session = if (col == todayDow - 1) null else currentWeekSessionByDate[dayDate.toString()]
-            val sessionCell = session?.let { computeDayCell(it, sessionsByRoutine) }
-
-            ScheduleCell(
-                routineNames = routines.map { it.name },
-                openRoutineId = toOpen?.id,
-                sessionStatus = sessionCell?.status ?: DayStatus.NONE,
-                sessionTonnageChange = sessionCell?.tonnageChange,
-                sessionCardioMinutes = sessionCell?.cardioMinutes,
-                sessionRoutineName = session?.routineName,
-                sessionId = session?.id,
-                sessionDate = session?.date,
-            )
-        }
-
-        _uiState.value = MainUiState(
-            gitgraphDays = days,
-            gitgraphTonnageChanges = gitgraphTonnageChanges,
-            gitgraphCardioMinutes = gitgraphCardioMinutes,
-            routineNames = routineNames,
-            sessionIds = sessionIds,
-            sessionDates = sessionDates,
-            powerliftingWeeks = powerliftingWeeks,
-            scheduleCells = scheduleCells,
-            todayDowIndex = todayDow - 1,
-            todayStatus = todayStatus,
-            todayTonnageChange = todayTonnageChange,
-            todayCardioMinutes = todayCardioMinutes,
-            todayRoutineName = todaySession?.routineName,
-            todaySessionId = todaySession?.id,
-            todaySessionDate = todaySession?.date,
-            isLoading = false,
-        )
-    }
-
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    /** Status / tonnage-% / cardio-minutes for one day's session, compared against that
-     *  routine's most recent earlier session. Same logic the 4 history rows and the "today"
-     *  cell use — extracted so the other current-week days (schedule row) can reuse it. */
-    data class DayCell(
-        val status: DayStatus,
-        val tonnageChange: Double?,
-        val cardioMinutes: Int?,
-    )
-
-    private fun computeDayCell(
-        session: WorkoutSession,
-        sessionsByRoutine: Map<String, List<WorkoutSession>>,
-    ): DayCell {
-        val previous = sessionsByRoutine[session.routineId]
-            ?.filter { it.date < session.date }
-            ?.maxByOrNull { it.completedAt }
-
-        val (currTonnage, prevTonnage) = if (previous != null)
-            computeCommonTonnage(session, previous)
-        else Pair(session.totalTonnage, 0.0)
-
-        val status = if (previous != null) {
-            if (currTonnage >= prevTonnage) DayStatus.IMPROVED else DayStatus.REGRESSED
-        } else {
-            DayStatus.IMPROVED // first time doing this routine
-        }
-        val tonnageChange = if (previous != null && prevTonnage > 0)
-            (currTonnage - prevTonnage) / prevTonnage * 100.0
-        else null
-        val cardioMinutes = if (tonnageChange == null) cardioMinutesFor(session) else null
-        return DayCell(status, tonnageChange, cardioMinutes)
-    }
-
-    /**
-     * Total minutes across every ExerciseSet.Cardio block in the session (all cardio
-     * exercises, all blocks), rounded down. Null if the session has no closed cardio blocks —
-     * mirrors CardioExerciseViewModel.blockDurationSeconds()'s parsing.
-     */
-    private fun cardioMinutesFor(session: WorkoutSession): Int? {
-        val totalSeconds = session.exercises
-            .flatMap { it.sets }
-            .filterIsInstance<ExerciseSet.Cardio>()
-            .filter { it.startedAt.isNotBlank() && it.endedAt.isNotBlank() }
-            .sumOf { block ->
-                val start = runCatching { LocalDateTime.parse(block.startedAt) }.getOrNull()
-                val end = runCatching { LocalDateTime.parse(block.endedAt) }.getOrNull()
-                if (start != null && end != null) {
-                    java.time.Duration.between(start, end).seconds.coerceAtLeast(0)
-                } else 0
-            }
-        return if (totalSeconds > 0) (totalSeconds / 60).toInt() else null
-    }
-
-    /**
-     * Computes tonnage for each session using only exercises present in BOTH sessions.
-     * This ensures the comparison is fair when routine composition has changed between sessions.
-     * Falls back to totalTonnage if the two sessions share no exercises.
-     */
-    private fun computeCommonTonnage(s1: WorkoutSession, s2: WorkoutSession): Pair<Double, Double> {
-        // Warmup + fixed-daily exercises never contribute to tonnage comparisons. An exercise the
-        // lifter never touched (completed=false, no sets — see docs/CONVENTIONS.md "Untouched-exercise
-        // guard") is excluded too: it wasn't really performed, so it shouldn't drag either session's
-        // common-tonnage average toward zero.
-        val commonIds = s1.exercises.filterNot { it.excludeFromTonnage || it.isUntouched() || it.completedEmpty }.map { it.exerciseId }.toSet()
-            .intersect(s2.exercises.filterNot { it.excludeFromTonnage || it.isUntouched() || it.completedEmpty }.map { it.exerciseId }.toSet())
-        if (commonIds.isEmpty()) return Pair(s1.totalTonnage, s2.totalTonnage)
-        fun tonnageFor(s: WorkoutSession): Double = s.exercises
-            .filter { it.exerciseId in commonIds && !it.excludeFromTonnage }
-            .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
-        return Pair(tonnageFor(s1), tonnageFor(s2))
-    }
 
     // ─── Debug seed ───────────────────────────────────────────────────────────
 
     fun seedDebugData() {
-        if (_uiState.value.isSeedingData) return
+        if (_isSeedingData.value) return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isSeedingData = true)
+            _isSeedingData.value = true
             try {
                 seedDebugDataInternal()
             } finally {
-                _uiState.value = _uiState.value.copy(isSeedingData = false)
+                _isSeedingData.value = false
             }
-            loadGitgraphInternal()
+            // The seed's save()/delete() calls already dropped the gitgraph cache; force a
+            // full recompute so the home reflects the reseeded week immediately.
+            homeStateLoader.refresh(force = true)
         }
     }
 
