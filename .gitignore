@@ -11,3 +11,8 @@ local.properties
 /app/build
 /baseline-profile/build
 .kotlin
+
+# One-off data-recovery workspace (personal workout/weigh-in/ECG data pulled from
+# the sync server after the on-device data was wiped — see CLAUDE.md banner). Not
+# project source; contains personal data.
+/gym-recovery
