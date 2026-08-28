@@ -29,8 +29,13 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
-/** State of the small "invio al server" reassurance box shown right after finishing a session. */
-enum class SessionSyncStatus { SYNC_OFF, PENDING, SENT, FAILED }
+/**
+ * State of the small "invio al server" reassurance box shown right after finishing a
+ * session. [CHECKING] is the initial state: the box opens on "verifica connessione al
+ * server…" and only resolves to [SYNC_OFF] once we've actually confirmed sync is off —
+ * so a configured-and-enabled sync never flashes a misleading "disattivata" first.
+ */
+enum class SessionSyncStatus { CHECKING, SYNC_OFF, PENDING, SENT, FAILED }
 
 data class SessionProgressUiState(
     val isLoading: Boolean = true,
@@ -56,7 +61,14 @@ data class SessionProgressUiState(
     // shown, even when sync is off (SYNC_OFF), so its absence is never mistaken for a bug.
     // Re-derived from the sync ledger, not a one-shot snapshot: refreshed whenever the
     // expedited SyncWorker (enqueued by ActiveRoutineViewModel.registerRoutine()) finishes.
-    val syncStatus: SessionSyncStatus = SessionSyncStatus.SYNC_OFF,
+    val syncStatus: SessionSyncStatus = SessionSyncStatus.CHECKING,
+    // Only meaningful when syncStatus == SENT: the upload the server confirmed. bytesSent
+    // is the raw session-file size, syncDurationMs the wall time of that POST, and
+    // syncServerStatus the server's own receipt word ("stored" / "duplicate"). All from
+    // the sync ledger entry for this session.
+    val syncBytesSent: Long = 0,
+    val syncDurationMs: Long = 0,
+    val syncServerStatus: String = "",
     // Involuntary Polar strap drops during the session just finished. Only populated when
     // this screen is opened right after completing (justCompleted) — it's read live off
     // the @Singleton PolarManager, which resets the counter at the next session's start,
@@ -98,7 +110,10 @@ class SessionProgressViewModel @Inject constructor(
      */
     private fun pollSyncStatusWhilePending() {
         viewModelScope.launch {
-            while (_uiState.value.syncStatus == SessionSyncStatus.PENDING || _uiState.value.isLoading) {
+            while (_uiState.value.syncStatus == SessionSyncStatus.PENDING ||
+                _uiState.value.syncStatus == SessionSyncStatus.CHECKING ||
+                _uiState.value.isLoading
+            ) {
                 kotlinx.coroutines.delay(2_000L)
                 refreshSyncStatus()
             }
@@ -133,7 +148,12 @@ class SessionProgressViewModel @Inject constructor(
             // Not in the ledger yet (enqueue() hasn't landed the write) — treat as still in flight.
             null -> SessionSyncStatus.PENDING
         }
-        _uiState.value = _uiState.value.copy(syncStatus = status)
+        _uiState.value = _uiState.value.copy(
+            syncStatus = status,
+            syncBytesSent = entry?.bytesSent ?: 0L,
+            syncDurationMs = entry?.durationMs ?: 0L,
+            syncServerStatus = entry?.serverStatus ?: "",
+        )
     }
 
     private suspend fun load() {

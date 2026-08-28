@@ -102,7 +102,12 @@ class SyncWorker @AssistedInject constructor(
                 file = file,
             )) {
                 is SyncResult.Success -> {
-                    ledger.markSent(entry.sessionId)
+                    ledger.markSent(
+                        entry.sessionId,
+                        bytesSent = result.bytesSent,
+                        durationMs = result.durationMs,
+                        serverStatus = result.status,
+                    )
                     appLogger.i(TAG, "Synced session ${entry.sessionId}: ${result.status}")
                 }
                 is SyncResult.Failure -> {

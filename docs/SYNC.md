@@ -144,7 +144,15 @@ sessions:
     lastAttemptAt: 2026-08-05T09:15:00
     lastError: ""
     contentHash: 9f8e7d6c5b4a...
+    bytesSent: 4312           # size of the file uploaded on the successful attempt
+    durationMs: 380           # wall time of that POST
+    serverStatus: stored      # server's own receipt word: "stored" | "duplicate"
 ```
+
+`bytesSent` / `durationMs` / `serverStatus` are written by `SyncLedgerRepository.markSent`
+only (from `SyncWorker`, off `SyncResult.Success`) and are surfaced on the end-of-session
+summary box (`SessionProgressScreen.SyncStatusBox`) — "4.2 KB in 0.4 s" plus the server's
+confirmation. The readiness/scale ledgers reuse `SyncLedgerEntry` but never persist them.
 
 Owned by a new `SyncRepository` (mirrors the existing repository pattern — in-memory cache
 + mutex + IO dispatcher, same as `ExerciseRepository`/`WorkoutRepository`). Read/write
