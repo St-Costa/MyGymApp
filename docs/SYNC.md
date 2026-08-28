@@ -6,6 +6,14 @@ in a separate repository (`MyGymApp_server`) per `docs/sync-ingestion/SPEC.md` t
 in this codebase. This document is the design this implementation followed; kept in sync
 with the code per CLAUDE.md's working conventions.
 
+> **Extending this to a full versioned backup:** the four record types below cover
+> *sessions, readiness, scale weigh-ins, and raw ECG* — **not** `exercises/*.md` or
+> `routines/*.md`. When the on-device data was wiped in Phase 82, those two had to be
+> lossily reconstructed from session YAML. [docs/BACKUP.md](BACKUP.md) designs a fifth
+> pipeline (`POST /v1/repo`) plus restore endpoints and a git-commit-per-push on the
+> server, so *every* human-authored file is incrementally backed up and any past state is
+> recoverable. Server-side brief: [docs/backup-server-brief.md](backup-server-brief.md).
+
 ## Goal
 
 At the end of every workout session, push that session's data (tonnage, calories, TRIMP,
