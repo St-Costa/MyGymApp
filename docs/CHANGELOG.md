@@ -888,6 +888,16 @@ The "invio al server" reassurance card on the session-completed screen used to o
 
 On success the box now shows what moved: **"4.2 KB in 0.4 s"** plus the server's own confirmation word — `stored` ("Il server ha confermato la ricezione e l'ha salvata") vs `duplicate` ("Il server aveva già questa versione"). This is a real receipt: the ledger only flips to `SENT` on a confirmed 2xx (`docs/SYNC.md` §1.3 step 4), and the server echoes what it did. `SyncResult.Success` carries `bytesSent` (raw file size) + `durationMs` (wall time of the POST, measured in `SyncApi.postSession`); `SyncLedgerRepository.markSent` persists those plus `serverStatus` into three new optional fields on `SyncLedgerEntry` (`bytesSent` / `durationMs` / `serverStatus`, all default 0/""). Only the session ledger writes them — the readiness/scale ledgers reuse the type and ignore them. `SessionProgressViewModel` reads them back off the ledger entry and hands them to `SyncStatusBox`. Ledger schema + debug preview (`SessionSummaryPreviewScreen`) updated.
 
+## Phase 76 — Readiness card + Polar-connection box: shared, restyled, and in the debug preview
+
+The HRV-readiness UI on `HeartRateScreen` and the Polar strap facts below it were both inline in `ConnectedContent`; they're now `ReadinessCard` and `PolarDeviceBox` in a new `ReadinessCard.kt`, reused verbatim by the end-of-routine debug preview (`SessionSummaryPreviewScreen`).
+
+Readiness card changes: the "Readiness" title is gone; the verdict word (`NORMAL`/`PEAK`/…) jumps from `headlineSmall` to `displaySmall`; the recommendation line shows only its actionable half — `recommendation.substringAfterLast(". ")`, so "HRV within normal range. Proceed with planned workout." renders as just **"Proceed with planned workout."** — centred. Steps lose the "passi" suffix and get a `.`-grouped thousands separator (`12.641`). Under the resting-HR figure sits the raw mean of `bpmTrace` ("media 61 bpm"). The BPM sparkline's header is one centred line: `[57, 70] bpm   Δ 13 bpm`.
+
+The live-HR block at the top of the connected view drops its "BPM" caption under the big number.
+
+`PolarDeviceBox` replaces the old one-line "Connected to … · 88% · 62 / 410 h" row with a boxed `SpaceEvenly` row of three large items: **MAC address · battery % with icon · active-hours / estimated-lifespan h**. The standalone low-battery warning row underneath is unchanged.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,17 +22,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.BluetoothSearching
-import androidx.compose.material.icons.filled.BatteryAlert
-import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Sync
@@ -44,7 +38,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -56,10 +49,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -69,7 +59,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.R
 import com.mygymapp.data.polar.ConnectionState
-import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.scale.ScaleConnectionState
 import com.mygymapp.ui.components.ScaleTrendSection
 
@@ -418,11 +407,6 @@ private fun ColumnScope.ConnectedContent(
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,
     )
-    Text(
-        "BPM",
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -431,188 +415,20 @@ private fun ColumnScope.ConnectedContent(
     // mean something — the active-routine and session-progress screens.
 
     // HRV Readiness
-    val readiness = uiState.readiness
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (readiness.readiness == Readiness.MEASURING) {
-                Text(
-                    "HRV Readiness",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    "Lie still... ${readiness.secondsRemaining}s",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                LinearProgressIndicator(
-                    progress = { 1f - readiness.secondsRemaining / 60f },
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                )
-            } else {
-                val readinessColor = when (readiness.readiness) {
-                    Readiness.DELOAD_RECOMMENDED -> Color(0xFFEF5350)
-                    Readiness.LIGHT_DAY -> Color(0xFFFFCA28)
-                    Readiness.NORMAL -> Color(0xFF66BB6A)
-                    Readiness.GOOD -> Color(0xFF4CAF50)
-                    Readiness.PEAK -> Color(0xFF2196F3)
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                val readinessLabel = when (readiness.readiness) {
-                    Readiness.DELOAD_RECOMMENDED -> "DELOAD"
-                    Readiness.LIGHT_DAY -> "LIGHT DAY"
-                    Readiness.NORMAL -> "NORMAL"
-                    Readiness.GOOD -> "GOOD"
-                    Readiness.PEAK -> "PEAK"
-                    Readiness.NO_BASELINE -> "BASELINE ${if (readiness.lnRmssd > 0) "(collecting)" else ""}"
-                    else -> ""
-                }
-                Text("Readiness", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    readinessLabel,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = readinessColor,
-                )
-                if (readiness.recommendation.isNotBlank()) {
-                    Text(
-                        readiness.recommendation,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Favorite,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = Color.Red,
-                        )
-                        Text(
-                            "${readiness.restingHr} bpm",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                    if (uiState.vo2max != null) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Air,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color(0xFF4FC3F7),
-                            )
-                            Text(
-                                "%.1f VO2max".format(uiState.vo2max),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-                    // Yesterday's complete calendar-day total, not the checkpoint
-                    // average: a whole day is comparable day to day, whereas the
-                    // average shifted with whatever time the test was taken. Lands a
-                    // moment after the rest of readiness (Health Connect query is
-                    // async) — see PolarManager.finishReadinessMeasurement(). Absent
-                    // entirely (not "0") until then, and stays absent if Health
-                    // Connect can't answer.
-                    if (readiness.stepsPreviousDay != null) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.DirectionsWalk,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                "${readiness.stepsPreviousDay} passi",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-                }
-                // How much HR actually moved during the 60s "lie still" window — a quick
-                // visual sanity check alongside the readiness verdict. Absent when this
-                // result came from reusing today's earlier measurement (bpmTrace isn't
-                // persisted, only held in memory for the duration of the live measurement).
-                if (readiness.bpmTrace.size >= 2) {
-                    ReadinessBpmSparkline(
-                        bpmTrace = readiness.bpmTrace,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            }
-        }
-    }
+    ReadinessCard(
+        readiness = uiState.readiness,
+        vo2max = uiState.vo2max,
+    )
 
     Spacer(modifier = Modifier.height(8.dp))
 
-    // Battery + device info
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(
-            "Connected to ${uiState.connectedDeviceId ?: "device"}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (uiState.batteryLevel != null) {
-            val batteryColor = if (uiState.batteryLow) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (uiState.batteryLow) Icons.Default.BatteryAlert else Icons.Default.BatteryFull,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = batteryColor,
-                )
-                Text(
-                    "${uiState.batteryLevel}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = batteryColor,
-                )
-            }
-        }
-        // Active-use tracker for the current CR2025: hours accumulated vs the average
-        // measured lifespan of a cell in this setup (mean of every past cell's active
-        // hours). Install and swap are detected automatically from a >5% jump in the
-        // reported level. The percentage itself is near-useless as a wear gauge — see the
-        // 70% warning comment below — so this is the more honest "how worn is it" signal.
-        // Until at least one cell has been swapped out there's no average yet, so we fall
-        // back to showing active hours + days since install.
-        uiState.batteryLife?.let { life ->
-            val avg = life.avgLifeHours
-            val text = if (avg != null) {
-                "· ${"%.0f".format(life.activeHours)} / ${"%.0f".format(avg)} h" +
-                    if (life.measuredCellCount > 1) " (media ${life.measuredCellCount} batt.)" else ""
-            } else {
-                "· ${"%.0f".format(life.activeHours)} h attive · ${life.daysSinceInstall()} gg"
-            }
-            Text(
-                text,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    // Polar strap connection facts, boxed
+    PolarDeviceBox(
+        deviceId = uiState.connectedDeviceId,
+        batteryLevel = uiState.batteryLevel,
+        batteryLow = uiState.batteryLow,
+        batteryLife = uiState.batteryLife,
+    )
 
     // The H10's percentage comes from cell voltage, which stays near 3V until the
     // CR2025 is nearly spent — the strap typically goes silent while still reporting
@@ -643,60 +459,4 @@ private fun ColumnScope.ConnectedContent(
         Text("Disconnect")
     }
     Spacer(modifier = Modifier.height(16.dp))
-}
-
-/**
- * Minimal line chart of the BPM samples collected during the 60s readiness measurement —
- * just enough to see how much (or little) HR actually moved while lying still. Y-axis is
- * auto-scaled to the trace's own min/max (with a small floor so a dead-flat trace doesn't
- * divide by zero); min/max labels are printed instead of drawn gridlines to keep it simple.
- */
-@Composable
-private fun ReadinessBpmSparkline(
-    bpmTrace: List<Int>,
-    modifier: Modifier = Modifier,
-) {
-    val minBpm = bpmTrace.min()
-    val maxBpm = bpmTrace.max()
-    val range = (maxBpm - minBpm).coerceAtLeast(1)
-    val lineColor = MaterialTheme.colorScheme.primary
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                "$minBpm–$maxBpm bpm",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Δ ${maxBpm - minBpm} bpm",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .padding(top = 4.dp),
-        ) {
-            val w = size.width
-            val h = size.height
-            if (w <= 0f || h <= 0f) return@Canvas
-            val stepX = w / (bpmTrace.size - 1).toFloat()
-            fun yOf(bpm: Int): Float = h - ((bpm - minBpm).toFloat() / range) * h
-            val path = Path().apply {
-                moveTo(0f, yOf(bpmTrace[0]))
-                for (i in 1 until bpmTrace.size) {
-                    lineTo(i * stepX, yOf(bpmTrace[i]))
-                }
-            }
-            drawPath(path = path, color = lineColor, style = Stroke(width = 2.dp.toPx()))
-            val lastX = (bpmTrace.size - 1) * stepX
-            drawCircle(color = lineColor, radius = 3.dp.toPx(), center = Offset(lastX, yOf(bpmTrace.last())))
-        }
-    }
 }
