@@ -1,6 +1,9 @@
 package com.mygymapp.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -25,11 +28,16 @@ import com.mygymapp.ui.screen.heartrate.HeartRateScreen
 import com.mygymapp.ui.screen.options.OptionsScreen
 import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun AppNavigation(navController: NavHostController) {
     NavHost(
         navController = navController,
         startDestination = Screen.Main.route,
+        // Surface Compose testTags as Android resource-ids so UiAutomator (baseline-profile
+        // generator + macrobenchmark, docs/CHANGELOG.md § Baseline Profile) can wait on
+        // GITGRAPH_TEST_TAG. No-op for the normal app; nothing else reads these.
+        modifier = Modifier.semantics { testTagsAsResourceId = true },
     ) {
         composable(Screen.Main.route) {
             MainScreen(

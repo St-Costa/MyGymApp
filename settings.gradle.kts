@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MyGymApp"
 include(":app")
+include(":baseline-profile")

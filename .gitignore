@@ -9,3 +9,5 @@
 .cxx
 local.properties
 /app/build
+/baseline-profile/build
+.kotlin
