@@ -17,9 +17,11 @@ import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessLedgerRepository
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.RepoLedgerRepository
+import com.mygymapp.data.sync.RepoSyncApi
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.RestoreApi
 import com.mygymapp.data.sync.RestoreResult
+import com.mygymapp.data.sync.SyncResult
 import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncApi
@@ -39,6 +41,36 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import javax.inject.Inject
+
+/**
+ * Structured result of "Verifica backup sul server" (docs/BACKUP.md §3.7), rendered as a
+ * git-diff-style block in Options.
+ *
+ * [exercisesPushed] / [routinesPushed]: files this run actually sent (server said `stored` —
+ * i.e. new or changed), shown as green `+` lines. Files the server already had unchanged
+ * (`duplicate`) are counted in [exercisesUnchanged] / [routinesUnchanged], not listed. There
+ * is no red `-` for repo backup — the phone never deletes exercises/routines during a
+ * verify — but the field name/shape is kept diff-like for the UI.
+ *
+ * [serverSummary]: one short line paraphrasing what the server did across the whole run
+ * (e.g. "12 stored, 37 duplicate, manifest 49 file, 0 errori").
+ */
+data class BackupVerifyReport(
+    val exercisesPushed: List<String> = emptyList(),
+    val routinesPushed: List<String> = emptyList(),
+    val exercisesUnchanged: Int = 0,
+    val routinesUnchanged: Int = 0,
+    val pushFailed: List<String> = emptyList(),      // file -> stayed local, server rejected/unreachable
+    val missingAfter: List<String> = emptyList(),    // still not on the server after the push
+    val hashMismatch: List<String> = emptyList(),    // on the server but bytes differ
+    val readBackMismatch: List<String> = emptyList(),// GET /v1/file didn't return identical bytes
+    val verifiedIdentical: Int = 0,
+    val serverSummary: String = "",
+) {
+    val allGood: Boolean
+        get() = pushFailed.isEmpty() && missingAfter.isEmpty() &&
+            hashMismatch.isEmpty() && readBackMismatch.isEmpty()
+}
 
 data class OptionsUiState(
     // Profile (gender, birth year, height) — feeds every age/gender-dependent formula
@@ -69,7 +101,8 @@ data class OptionsUiState(
     val syncRestoreResult: String? = null,
     // Backup round-trip check (docs/BACKUP.md §3.7) — "Verifica backup sul server".
     val backupVerifyRunning: Boolean = false,
-    val backupVerifyResult: String? = null,
+    val backupVerifyError: String? = null,          // set instead of report on a hard failure
+    val backupVerifyReport: BackupVerifyReport? = null,
     // ECG debug send (docs/SYNC.md "Fourth record type: raw ECG")
     val ecgDebugRecording: Boolean = false,
     val ecgDebugSecondsLeft: Int = 0,
@@ -93,6 +126,7 @@ class OptionsViewModel @Inject constructor(
     private val scaleWeighInLedgerRepository: ScaleWeighInLedgerRepository,
     private val ecgSyncLedgerRepository: EcgSyncLedgerRepository,
     private val repoLedgerRepository: RepoLedgerRepository,
+    private val repoSyncApi: RepoSyncApi,
     private val restoreApi: RestoreApi,
     private val fileManager: FileManager,
     private val polarManager: PolarManager,
@@ -477,20 +511,21 @@ class OptionsViewModel @Inject constructor(
     // ─── Backup round-trip check (docs/BACKUP.md §3.7) ──────────────────────
 
     /**
-     * Verifies the repo-file backup against **real** data, end to end:
+     * Verifies the repo-file backup against **real** data, end to end, and reports it as a
+     * git-diff-style block ([BackupVerifyReport]):
      *
-     * 1. **Push** — re-enqueues every exercise/routine `.md` on disk
-     *    ([RepoLedgerRepository.requeueIfChanged] is a no-op on already-`SENT` identical
-     *    bytes, so this only sends what's missing/changed), fires [RepoSyncWorker], then
-     *    polls the ledger until the repo `PENDING`/`FAILED` count hits 0 or a timeout.
-     * 2. **Manifest check** — `GET /v1/manifest`; for each local file, compares
-     *    `sha256(local)` against the server's hash to list anything missing or divergent.
-     * 3. **Read-back** — for every aligned file, `GET /v1/file` and compares the
-     *    bytes, exercising the actual restore path (the thing that matters after a wipe).
+     * 1. **Diff** — `GET /v1/manifest`; compare `sha256(local)` per exercise/routine file
+     *    against the server's hash.
+     * 2. **Push** — for every file the server is missing or has a different hash for,
+     *    `POST /v1/repo` `op:"upsert"` **directly** (via [RepoSyncApi], awaited — not the
+     *    background worker), so we know exactly what was sent and what the server answered
+     *    per file (`stored` = new/changed → green `+`; `duplicate` shouldn't occur here
+     *    since we only push diffs; a failure → listed under `pushFailed`).
+     * 3. **Read-back** — re-fetch the manifest, then `GET /v1/file` for each file and
+     *    compare bytes, exercising the exact restore path.
      *
      * **No delete** — these are the user's real exercises/routines; leaving them on the
-     * server is the whole point of the backup. Nothing synthetic is written, so there's no
-     * `deleted/` tombstone churn.
+     * server is the whole point. Nothing synthetic is written.
      *
      * Requires a configured server (URL + token); ignores the "sincronizzazione attiva"
      * toggle — pressing the button is the opt-in, same as "Invia dati in coda".
@@ -498,13 +533,18 @@ class OptionsViewModel @Inject constructor(
     fun verifyBackupRoundTrip() {
         if (_uiState.value.backupVerifyRunning) return
         if (!syncConfigRepository.isConfigured()) {
-            _uiState.value = _uiState.value.copy(backupVerifyResult = "Server sync non configurato")
+            _uiState.value = _uiState.value.copy(backupVerifyError = "Server sync non configurato", backupVerifyReport = null)
             return
         }
-        _uiState.value = _uiState.value.copy(backupVerifyRunning = true, backupVerifyResult = null)
+        _uiState.value = _uiState.value.copy(
+            backupVerifyRunning = true,
+            backupVerifyError = null,
+            backupVerifyReport = null,
+        )
         viewModelScope.launch {
             val serverUrl = syncConfigRepository.serverUrl()
             val token = syncConfigRepository.bearerToken()
+            val appVersion = com.mygymapp.BuildConfig.VERSION_NAME
 
             val localFiles = withContext(Dispatchers.IO) {
                 (fileManager.getDir("exercises").listFiles { f -> f.extension == "md" }?.toList().orEmpty() +
@@ -514,86 +554,151 @@ class OptionsViewModel @Inject constructor(
             if (localFiles.isEmpty()) {
                 _uiState.value = _uiState.value.copy(
                     backupVerifyRunning = false,
-                    backupVerifyResult = "Nessun esercizio/routine da verificare.",
+                    backupVerifyError = "Nessun esercizio/routine da verificare.",
                 )
                 return@launch
             }
 
-            // 1. Push everything not already on the server.
-            withContext(Dispatchers.IO) {
-                localFiles.forEach { f ->
-                    val relPath = "${f.parentFile?.name}/${f.name}"
-                    repoLedgerRepository.requeueIfChanged(relPath, f.readBytes())
-                }
-            }
-            RepoSyncWorker.Scheduler.runExpedited(appContext)
-            val drained = awaitRepoLedgerDrained()
-
-            // 2 + 3. Manifest check + byte-for-byte read-back.
-            val result = withContext(Dispatchers.IO) {
-                when (val manifest = restoreApi.fetchManifest(serverUrl, token)) {
-                    is RestoreResult.Failure -> "Manifest non recuperato: ${manifest.reason}"
-                    is RestoreResult.Manifest -> {
-                        val serverHashes = manifest.entries.associate { it.relPath to it.contentHash }
-                        val missing = mutableListOf<String>()
-                        val hashMismatch = mutableListOf<String>()
-                        val readBackMismatch = mutableListOf<String>()
-                        var verified = 0
-
-                        for (f in localFiles) {
-                            val relPath = "${f.parentFile?.name}/${f.name}"
-                            val localBytes = f.readBytes()
-                            val localHash = repoLedgerRepository.hashOf(localBytes)
-                            val serverHash = serverHashes[relPath]
-                            when {
-                                serverHash == null -> missing += f.name
-                                serverHash != localHash -> hashMismatch += f.name
-                                else -> {
-                                    val got = restoreApi.fetchFile(serverUrl, token, relPath)
-                                    if (got is RestoreResult.FileBytes && got.bytes.contentEquals(localBytes)) {
-                                        verified++
-                                    } else {
-                                        readBackMismatch += f.name
-                                    }
-                                }
-                            }
-                        }
-
-                        val exCount = localFiles.count { it.parentFile?.name == "exercises" }
-                        val rtCount = localFiles.count { it.parentFile?.name == "routines" }
-                        buildString {
-                            if (missing.isEmpty() && hashMismatch.isEmpty() && readBackMismatch.isEmpty()) {
-                                append("OK — $exCount esercizi + $rtCount routine sul server, ")
-                                append("hash allineati e $verified riletti identici.")
-                            } else {
-                                append("$verified/${localFiles.size} verificati.")
-                                if (missing.isNotEmpty())
-                                    append(" Mancanti sul server (${missing.size}): ${missing.take(5).joinToString(", ")}${if (missing.size > 5) "…" else ""}.")
-                                if (hashMismatch.isNotEmpty())
-                                    append(" Hash diverso (${hashMismatch.size}): ${hashMismatch.take(5).joinToString(", ")}${if (hashMismatch.size > 5) "…" else ""}.")
-                                if (readBackMismatch.isNotEmpty())
-                                    append(" Rilettura non identica (${readBackMismatch.size}): ${readBackMismatch.take(5).joinToString(", ")}${if (readBackMismatch.size > 5) "…" else ""}.")
-                            }
-                            if (!drained) append(" (invio non completato entro il timeout — riprova o usa \"Invia dati in coda\".)")
-                        }
-                    }
-                    is RestoreResult.FileBytes -> "Risposta inattesa dal server (manifest)"
-                }
+            val outcome = withContext(Dispatchers.IO) {
+                runVerify(serverUrl, token, appVersion, localFiles)
             }
             refreshSyncStatus()
-            _uiState.value = _uiState.value.copy(backupVerifyRunning = false, backupVerifyResult = result)
+            _uiState.value = when (outcome) {
+                is VerifyOutcome.HardFail -> _uiState.value.copy(
+                    backupVerifyRunning = false,
+                    backupVerifyError = outcome.reason,
+                    backupVerifyReport = null,
+                )
+                is VerifyOutcome.Done -> _uiState.value.copy(
+                    backupVerifyRunning = false,
+                    backupVerifyError = null,
+                    backupVerifyReport = outcome.report,
+                )
+            }
         }
     }
 
-    /** Polls the repo ledger until nothing is PENDING/FAILED/DELETED_PENDING, or ~45s pass.
-     *  Returns true if it actually drained. */
-    private suspend fun awaitRepoLedgerDrained(): Boolean {
-        val deadline = System.currentTimeMillis() + 45_000L
-        while (System.currentTimeMillis() < deadline) {
-            if (repoLedgerRepository.pendingCount() == 0) return true
-            kotlinx.coroutines.delay(1_500L)
+    private sealed interface VerifyOutcome {
+        data class HardFail(val reason: String) : VerifyOutcome
+        data class Done(val report: BackupVerifyReport) : VerifyOutcome
+    }
+
+    private suspend fun runVerify(
+        serverUrl: String,
+        token: String,
+        appVersion: String,
+        localFiles: List<java.io.File>,
+    ): VerifyOutcome {
+        fun cat(f: java.io.File) = f.parentFile?.name ?: ""
+        fun rel(f: java.io.File) = "${cat(f)}/${f.name}"
+
+        // 1. Diff against the current manifest.
+        val manifest0 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
+            is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
+            is RestoreResult.Failure -> return VerifyOutcome.HardFail("Manifest non recuperato: ${m.reason}")
+            is RestoreResult.FileBytes -> return VerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
-        return repoLedgerRepository.pendingCount() == 0
+
+        data class Local(val file: java.io.File, val bytes: ByteArray, val hash: String)
+        val locals = localFiles.map {
+            val b = it.readBytes()
+            Local(it, b, repoLedgerRepository.hashOf(b))
+        }
+
+        val toPush = locals.filter { manifest0[rel(it.file)] != it.hash }
+
+        // 2. Push the diffs directly, one POST per file, recording the server's word.
+        val exPushed = mutableListOf<String>()
+        val rtPushed = mutableListOf<String>()
+        val pushFailed = mutableListOf<String>()
+        var storedCount = 0
+        var duplicateCount = 0
+        var pushErrCount = 0
+        val tmp = java.io.File.createTempFile("repo-verify", ".md", appContext.cacheDir)
+        try {
+            for (l in toPush) {
+                tmp.writeBytes(l.bytes)
+                when (val r = repoSyncApi.postUpsert(serverUrl, token, rel(l.file), l.hash, appVersion, tmp)) {
+                    is SyncResult.Success -> {
+                        when (r.status) {
+                            "duplicate" -> duplicateCount++
+                            else -> storedCount++
+                        }
+                        if (cat(l.file) == "exercises") exPushed += l.file.name else rtPushed += l.file.name
+                    }
+                    is SyncResult.Failure -> {
+                        pushErrCount++
+                        pushFailed += "${l.file.name} — ${r.reason.take(80)}"
+                    }
+                }
+            }
+        } finally {
+            tmp.delete()
+        }
+
+        // Keep the local ledger in step with what the server now has, for the files we
+        // just pushed OK — otherwise the next real sync would re-send them. requeueIfChanged
+        // marks them PENDING with the current hash; the periodic RepoSyncWorker then confirms
+        // SENT on its next run. Best-effort.
+        runCatching {
+            for (l in toPush) {
+                if (pushFailed.none { it.startsWith(l.file.name) }) {
+                    repoLedgerRepository.markRestored(rel(l.file), l.hash)
+                }
+            }
+        }
+
+        // 3. Re-fetch the manifest and read every file back.
+        val manifest1 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
+            is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
+            is RestoreResult.Failure -> return VerifyOutcome.HardFail(
+                "Push completato ($storedCount inviati) ma manifest di verifica non recuperato: ${m.reason}"
+            )
+            is RestoreResult.FileBytes -> return VerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+        }
+
+        val missingAfter = mutableListOf<String>()
+        val hashMismatch = mutableListOf<String>()
+        val readBackMismatch = mutableListOf<String>()
+        var verifiedIdentical = 0
+        for (l in locals) {
+            val serverHash = manifest1[rel(l.file)]
+            when {
+                serverHash == null -> missingAfter += l.file.name
+                serverHash != l.hash -> hashMismatch += l.file.name
+                else -> {
+                    val got = restoreApi.fetchFile(serverUrl, token, rel(l.file))
+                    if (got is RestoreResult.FileBytes && got.bytes.contentEquals(l.bytes)) verifiedIdentical++
+                    else readBackMismatch += l.file.name
+                }
+            }
+        }
+
+        val serverSummary = buildString {
+            append("$storedCount file accettati (stored)")
+            if (duplicateCount > 0) append(", $duplicateCount già presenti (duplicate)")
+            if (pushErrCount > 0) append(", $pushErrCount rifiutati/non inviati")
+            append(". Manifest: ${manifest1.count { it.key.startsWith("exercises/") || it.key.startsWith("routines/") }} file schede/routine sul server")
+            append(", $verifiedIdentical riletti identici")
+            if (hashMismatch.isNotEmpty()) append(", ${hashMismatch.size} con hash diverso")
+            if (missingAfter.isNotEmpty()) append(", ${missingAfter.size} ancora mancanti")
+            append(".")
+        }
+
+        return VerifyOutcome.Done(
+            BackupVerifyReport(
+                exercisesPushed = exPushed.sorted(),
+                routinesPushed = rtPushed.sorted(),
+                exercisesUnchanged = locals.count { cat(it.file) == "exercises" } - exPushed.size,
+                routinesUnchanged = locals.count { cat(it.file) == "routines" } - rtPushed.size,
+                pushFailed = pushFailed,
+                missingAfter = missingAfter,
+                hashMismatch = hashMismatch,
+                readBackMismatch = readBackMismatch,
+                verifiedIdentical = verifiedIdentical,
+                serverSummary = serverSummary,
+            )
+        )
     }
 
     // ─── ECG debug send (docs/SYNC.md "Fourth record type: raw ECG") ────────
