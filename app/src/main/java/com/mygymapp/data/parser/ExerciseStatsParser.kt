@@ -29,7 +29,9 @@ import com.mygymapp.data.model.SlotContext
  *         weight: 82.5
  * ---
  * ```
- * (`pr` is a 0-or-1 element list so the nested-map serializer can render it uniformly.)
+ * `pr` is modelled as a 0-or-1 element list (not a bare nested map): it reuses the exact same
+ * `setMap` shape as `previousSets`, so both go through one well-tested serializer path and the
+ * reader is a single `parseSetList(...).firstOrNull()`.
  */
 object ExerciseStatsParser {
 

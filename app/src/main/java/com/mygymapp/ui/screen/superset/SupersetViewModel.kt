@@ -1,7 +1,6 @@
 package com.mygymapp.ui.screen.superset
 
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
@@ -13,14 +12,13 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
+import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +27,7 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 data class SupersetSetUi(
-    val exerciseIndex: Int,  // position of the exercise within the chain (0..2)
+    val exerciseIndex: Int,  // position of the exercise within the chain (0 until MAX_SUPERSET_SIZE)
     val exerciseName: String,
     val exerciseType: ExerciseType,
     val setIndex: Int,
@@ -80,25 +78,22 @@ class SupersetViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
     private val scaleHistoryRepository: ScaleHistoryRepository,
-) : ViewModel() {
+) : ExerciseSessionViewModel() {
 
     private val sessionId: String = savedStateHandle["sessionId"] ?: ""
-    // The 2–3 chain members in execution order, comma-separated in the nav arg.
+    // The 2–3 chain members in execution order, comma-separated in the nav arg. Capped at
+    // MAX_SUPERSET_SIZE defensively (a hand-edited route could carry more).
     private val exerciseIds: List<String> =
         (savedStateHandle.get<String>("exerciseIds") ?: "")
             .split(",")
             .filter { it.isNotBlank() }
+            .take(MAX_SUPERSET_SIZE)
 
     private val _uiState = MutableStateFlow(SupersetUiState())
     val uiState: StateFlow<SupersetUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
-    private var supersetCompleted = false
-    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var timerJob: Job? = null
-    // The completeSuperset() save, tracked so onCleared() can join it before cancelling
-    // clearScope — see StrengthExerciseViewModel for the full reasoning.
-    private var completionJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -108,8 +103,8 @@ class SupersetViewModel @Inject constructor(
             if (exercises.isEmpty()) return@launch
 
             val today = LocalDate.now()
-            val sessions = workoutRepository.getSessionsInRange(today, today)
-            val session = sessions.find { it.id == sessionId }
+            // The active session is always dated today; fetch it straight by id.
+            val session = workoutRepository.getSession(sessionId, today)
             currentSession = session
 
             val sessionRoutineId = session?.routineId ?: ""
@@ -253,6 +248,12 @@ class SupersetViewModel @Inject constructor(
         updateSetAt(listIndex) { it.copy(weightModified = true, weightTouched = true) }
     }
 
+    /**
+     * A lightweight in-VM rest timer, deliberately NOT the foreground [StopwatchService] (which
+     * the CARDIO screen uses): a superset rest countdown is only meaningful while this screen is
+     * on top, and it resets when the lifter leaves. No notification / background survival needed
+     * — it stops with the ViewModel. Same choice in StretchExerciseViewModel.
+     */
     fun toggleStopwatch() {
         val wasRunning = _uiState.value.isStopwatchRunning
         if (wasRunning) {
@@ -300,39 +301,34 @@ class SupersetViewModel @Inject constructor(
         }
     }
 
-    private val _completionSaved = MutableStateFlow(false)
-    val completionSaved: StateFlow<Boolean> = _completionSaved
-
     /**
-     * Called when the user taps "Complete Superset".
-     * Saves set data to disk and then emits [completionSaved] = true so the screen
-     * can navigate back only after the write is guaranteed to be on disk.
+     * Called when the user taps "Complete Superset". Persists on [clearScope], flips
+     * `completionSaved` once on disk — see [ExerciseSessionViewModel].
      */
     fun completeSuperset() {
-        supersetCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
-        // Save on clearScope, not viewModelScope, so a process death between the tap and the
-        // write completing can't lose it — see StrengthExerciseViewModel.completeExercise().
-        completionJob = clearScope.launch {
+        markCompletionAndSave {
             if (session != null) {
                 session.buildUpdatedSession(sets, completed = true)
                     .let { workoutRepository.save(it) }
             }
-            _completionSaved.value = true
         }
     }
 
-    /**
-     * Materialized `weight` for a bodyweight member: `bwLoadPercent% of the lifter's body
-     * weight` from the latest weigh-in on or before [sessionDate], rounded to 0.5 kg. Returns
-     * (0.0, 0) when the exercise is not bodyweight, and (0.0, percent) when it is bodyweight
-     * but no weigh-in was available — mirrors StrengthExerciseViewModel.
-     */
-    private suspend fun bwMaterializedFor(exercise: Exercise?, sessionDate: String): Pair<Double, Double> {
-        if (exercise?.isBodyweight != true) return 0.0 to 0.0
-        val base = scaleHistoryRepository.getLatestWeightOnOrBefore(LocalDate.parse(sessionDate))
-        return materializeBodyweightWeight(exercise.bwLoadPercent, base) to (base ?: 0.0)
+    // The lifter's body weight doesn't change within a session, so the weigh-in lookup that
+    // feeds bodyweight materialization is done once (lazily, first time a save needs it) and
+    // cached — not once per member per save/autosave. Null means "not resolved yet"; the inner
+    // value can itself be null when there is no weigh-in on or before the session date.
+    private var cachedBaseWeight: Result<Double?>? = null
+
+    private suspend fun sessionBaseWeight(sessionDate: String): Double? {
+        cachedBaseWeight?.let { return it.getOrNull() }
+        val resolved = runCatching {
+            scaleHistoryRepository.getLatestWeightOnOrBefore(LocalDate.parse(sessionDate))
+        }
+        cachedBaseWeight = resolved
+        return resolved.getOrNull()
     }
 
     // "Switch exercise": the switched member reports its own position + new exerciseId once
@@ -349,25 +345,17 @@ class SupersetViewModel @Inject constructor(
             val updated = session.withExerciseSwitched(oldExerciseId, newExercise)
             if (updated === session) return@launch
             workoutRepository.save(updated)
-            supersetCompleted = true
+            markSwitched()
             _switchedMember.value = memberIndex to newExerciseId
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
-        if (supersetCompleted) {
-            // Wait for completeSuperset()'s clearScope save to finish before tearing the
-            // scope down — see StrengthExerciseViewModel.onCleared().
-            clearScope.launch {
-                try {
-                    completionJob?.join()
-                } finally {
-                    clearScope.cancel()
-                }
-            }
-            return
-        }
+        super.onCleared()
+    }
+
+    override fun saveProgressOnExit() {
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {
@@ -393,11 +381,15 @@ class SupersetViewModel @Inject constructor(
         completed: Boolean,
     ): WorkoutSession {
         val members = _uiState.value.members
-        // Resolve the materialized bodyweight load once per member (see bwMaterializedFor).
+        // One weigh-in lookup for the whole chain; per-member differences are only the percent.
+        val base = if (members.any { it.exercise.isBodyweight }) sessionBaseWeight(date) else null
         data class Bw(val percent: Int, val weight: Double, val base: Double)
         val bwByIndex = members.map { m ->
-            val (w, base) = bwMaterializedFor(m.exercise, date)
-            Bw(m.exercise.takeIf { it.isBodyweight }?.bwLoadPercent ?: 0, w, base)
+            if (m.exercise.isBodyweight) Bw(
+                percent = m.exercise.bwLoadPercent,
+                weight = materializeBodyweightWeight(m.exercise.bwLoadPercent, base),
+                base = base ?: 0.0,
+            ) else Bw(0, 0.0, 0.0)
         }
         fun strengthSet(setUi: SupersetSetUi, bw: Bw) =
             if (bw.percent > 0) ExerciseSet.Strength(

@@ -72,6 +72,19 @@ fun buildExerciseSegments(exercises: List<RoutineExerciseUi>): List<ExerciseSegm
         group = { idxs -> ExerciseSegment.Superset(idxs) },
     )
 
+/**
+ * Whether turning on the superset link at [index] (which merges the segment holding [index]
+ * with the one starting at `index + 1`) keeps the chain within [MAX_SUPERSET_SIZE]. Pure so
+ * the cap rule is unit-testable without the ViewModel. Returns false if [index] is the last
+ * element (nothing to link forward) or already linked.
+ */
+fun canEnableSupersetLink(segments: List<ExerciseSegment>, index: Int, count: Int): Boolean {
+    if (index < 0 || index + 1 >= count) return false
+    val here = segments.firstOrNull { index in it.indices() }?.indices()?.size ?: 1
+    val next = segments.firstOrNull { (index + 1) in it.indices() }?.indices()?.size ?: 1
+    return here + next <= MAX_SUPERSET_SIZE
+}
+
 @HiltViewModel
 class RoutineEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -179,14 +192,9 @@ class RoutineEditViewModel @Inject constructor(
         if (index + 1 == _uiState.value.warmupCount) return
         val exercises = _uiState.value.exercises
         val turningOn = index in exercises.indices && !exercises[index].supersetWithNext
-        if (turningOn) {
-            // Linking [index] to the next exercise merges the segment [index] belongs to with
-            // the one starting at [index + 1]. Reject the link if the merged chain would exceed
-            // MAX_SUPERSET_SIZE (e.g. an existing A+B+C can't absorb a D).
-            val segments = buildExerciseSegments(exercises)
-            val here = segments.firstOrNull { index in it.indices() }?.indices()?.size ?: 1
-            val next = segments.firstOrNull { (index + 1) in it.indices() }?.indices()?.size ?: 1
-            if (here + next > MAX_SUPERSET_SIZE) return
+        if (turningOn && !canEnableSupersetLink(buildExerciseSegments(exercises), index, exercises.size)) {
+            // Merged chain would exceed MAX_SUPERSET_SIZE (e.g. an existing A+B+C can't absorb a D).
+            return
         }
         updateExercise(index) { it.copy(supersetWithNext = !it.supersetWithNext) }
     }

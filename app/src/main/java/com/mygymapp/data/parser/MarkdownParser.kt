@@ -58,24 +58,7 @@ object MarkdownParser {
                 is Number -> sb.appendLine("$prefix$key: ${formatValue(value)}")
                 is List<*> -> {
                     sb.appendLine("$prefix$key:")
-                    for (item in value) {
-                        when (item) {
-                            is Map<*, *> -> {
-                                @Suppress("UNCHECKED_CAST")
-                                val itemMap = item as Map<String, Any?>
-                                val entries = itemMap.entries.toList()
-                                if (entries.isNotEmpty()) {
-                                    val (firstKey, firstVal) = entries.first()
-                                    serializeMapEntry(sb, firstKey, firstVal, "$prefix    ", isFirst = true)
-                                    for (i in 1 until entries.size) {
-                                        val (k, v) = entries[i]
-                                        serializeMapEntry(sb, k, v, "$prefix    ", isFirst = false)
-                                    }
-                                }
-                            }
-                            else -> sb.appendLine("$prefix  - ${formatValue(item)}")
-                        }
-                    }
+                    serializeList(sb, value, dashIndent = indent + 1)
                 }
                 is Map<*, *> -> {
                     sb.appendLine("$prefix$key:")
@@ -87,40 +70,49 @@ object MarkdownParser {
         }
     }
 
+    /**
+     * Renders a list whose `- ` markers sit at [dashIndent] levels of indent. A scalar item is
+     * `- value`; a map item hangs its first key off the dash and aligns the rest one level
+     * deeper. Byte-identical to the pre-refactor serializer so on-disk YAML round-trips.
+     */
+    private fun serializeList(sb: StringBuilder, list: List<*>, dashIndent: Int) {
+        val dashPrefix = "  ".repeat(dashIndent)
+        for (item in list) {
+            when (item) {
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val entries = (item as Map<String, Any?>).entries.toList()
+                    entries.forEachIndexed { i, (k, v) ->
+                        serializeMapEntry(sb, k, v, dashIndent, isFirst = i == 0)
+                    }
+                }
+                else -> sb.appendLine("$dashPrefix- ${formatValue(item)}")
+            }
+        }
+    }
+
+    /**
+     * One key of a map that is an item of a list whose dash sits at [dashIndent]. The first key
+     * hangs off `"  "*dashIndent + "- "`; the rest align one level deeper (`"  "*(dashIndent+1)`).
+     */
     private fun serializeMapEntry(
         sb: StringBuilder,
         key: String,
         value: Any?,
-        prefix: String,
+        dashIndent: Int,
         isFirst: Boolean,
     ) {
-        val linePrefix = if (isFirst) "${prefix.dropLast(2)}- " else prefix
+        val keyPrefix = "  ".repeat(dashIndent + 1)
+        val linePrefix = if (isFirst) "  ".repeat(dashIndent) + "- " else keyPrefix
         when (value) {
             is List<*> -> {
                 sb.appendLine("$linePrefix$key:")
-                for (item in value) {
-                    when (item) {
-                        is Map<*, *> -> {
-                            @Suppress("UNCHECKED_CAST")
-                            val itemMap = item as Map<String, Any?>
-                            val entries = itemMap.entries.toList()
-                            if (entries.isNotEmpty()) {
-                                val (fk, fv) = entries.first()
-                                serializeMapEntry(sb, fk, fv, "$prefix    ", isFirst = true)
-                                for (i in 1 until entries.size) {
-                                    val (k, v) = entries[i]
-                                    serializeMapEntry(sb, k, v, "$prefix    ", isFirst = false)
-                                }
-                            }
-                        }
-                        else -> sb.appendLine("$prefix  - ${formatValue(item)}")
-                    }
-                }
+                serializeList(sb, value, dashIndent = dashIndent + 2)
             }
             is Map<*, *> -> {
                 sb.appendLine("$linePrefix$key:")
                 @Suppress("UNCHECKED_CAST")
-                serializeYaml(sb, value as Map<String, Any?>, prefix.length / 2)
+                serializeYaml(sb, value as Map<String, Any?>, dashIndent + 2)
             }
             else -> sb.appendLine("$linePrefix$key: ${formatValue(value)}")
         }

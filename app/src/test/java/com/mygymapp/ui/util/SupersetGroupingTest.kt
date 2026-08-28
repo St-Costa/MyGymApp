@@ -48,6 +48,26 @@ class SupersetGroupingTest {
     }
 
     @Test
+    fun `exactly MAX_SUPERSET_SIZE-1 leading flags form one full-size chain`() {
+        // 2 flags on a 3-element list -> [0,1,2] is one chain of exactly MAX_SUPERSET_SIZE.
+        assertEquals(listOf(listOf(0, 1, 2)), group(listOf(true, true, false)))
+    }
+
+    @Test
+    fun `five consecutive flags split into two capped chains`() {
+        assertEquals(
+            listOf(listOf(0, 1, 2), listOf(3, 4, 5)),
+            group(listOf(true, true, true, true, true, false)),
+        )
+    }
+
+    @Test
+    fun `run stops at the end even with a trailing flag inside a full chain`() {
+        // [true,true] on a 2-element list: boundary flag on index 1 has nothing after it.
+        assertEquals(listOf(listOf(0, 1)), group(listOf(true, true)))
+    }
+
+    @Test
     fun `two separate pairs`() {
         assertEquals(
             listOf(listOf(0, 1), listOf(2, 3)),

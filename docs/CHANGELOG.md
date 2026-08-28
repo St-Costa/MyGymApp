@@ -993,3 +993,73 @@ device first; the full backup/restore procedure and all the generation gotchas (
 phone / AOSP image; `benchmark-macro` ≥ 1.4.0 for Android 14+; not in CI) are in
 [CONVENTIONS.md § Baseline Profile](CONVENTIONS.md#baseline-profile) and the banner at the
 top of [CLAUDE.md](../CLAUDE.md).
+
+## Phase 83 — Post-Phase-82 review: correctness, dedup, docs
+
+A full re-read of the Phase 78–82 diff. No behaviour changes visible to the lifter; the point
+was to close correctness gaps and collapse the copy-paste those phases left behind.
+
+**Correctness**
+- `ExerciseStatsCalculator` now stores/compares `previousSessionDate` as a bare `YYYY-MM-DD`
+  **day key** (`dayKey()`), not a datetime. `rebuild` was writing a full `completedAt` while
+  `merge`'s `>=` guard could see a date-only value on the other side — a lexicographic compare
+  between the two formats is only accidentally right. New tests: a same-day re-save replaces
+  "previous" (the `>=` case), and a stored date-only value vs an incoming datetime.
+- `getExerciseStats` only serves a sidecar whose `exerciseId` matches the requested one (it
+  already checked `schemaVersion`); a stray/mis-named file can no longer be handed back as
+  another exercise's stats. Mirrors the guard `merge` already had.
+- `invalidateGitgraphCacheIfInWindow` now also fires for a completed session saved/deleted in
+  the cache's **2-month lookback**, not just its visible 28-day window — a back-dated edit in
+  the lookback shifts the oldest visible days' "previous" comparison. `runMaintenance` already
+  covered the prune case.
+- `ActiveRoutineViewModel.applyExerciseSwitch`: a switched-in exercise whose history is only
+  completed-empty (skipped) slots no longer gets flagged as "has prior tonnage" (it would
+  lose the "primo dato" badge). The history walk now requires a slot with real load, matching
+  how `exercisesWithPriorTonnage` is built in `init`.
+
+**Dedup / structure**
+- `ExerciseSessionViewModel` (`ui/screen/exercise/`) — new base class for
+  `StrengthExerciseViewModel` / `StretchExerciseViewModel` / `SupersetViewModel`. The
+  `clearScope` + `completionJob` + `completionSaved` + `onCleared()` teardown was byte-for-byte
+  in all three; small drifts between the copies were a real bug source. Subclasses now
+  implement only `saveProgressOnExit()` and pass the completion write to
+  `markCompletionAndSave { … }`. Cardio VM is deliberately not a subclass.
+- `WorkoutRepository.historyMonthDirs()` / `historySessionFiles()` — the `history/` tree walk
+  (skip `_idx`/`_stats`, then month dirs) was open-coded in 4 places; now one helper.
+  `getRoutineSessionFiles` / `getAllCompletedSessions` / `warmUpParsers` / migration /
+  `runMaintenance` all go through it.
+- `MarkdownParser`'s nested serializer no longer re-derives indent from `prefix.length / 2`;
+  `serializeList` / `serializeMapEntry` take an explicit level. Byte-identical output (all
+  round-trip tests unchanged) + a new test pinning the deep list-of-maps-with-inner-lists
+  shape the stats sidecar uses.
+- `groupSupersets` rewritten with `start`/`end` indices instead of a growing `MutableList`.
+- The 4 exercise VMs fetch the active session with `getSession(id, today)` (filename
+  fast-path) instead of `getSessionsInRange(today, today).find { … }` (parses every session
+  dated today).
+- `ActiveRoutineViewModel.finalizeSession` loads the last 12 weeks once, not twice.
+- Stats pre-warm in `ActiveRoutineViewModel.init` is capped at 4 concurrent scans
+  (`Semaphore`) — a 12-exercise routine on a fresh install was launching 12 full history
+  scans at once, on top of boot maintenance.
+- `SupersetViewModel` resolves the weigh-in for bodyweight materialization once per session,
+  not once per member per save/autosave.
+- `ActiveRoutineViewModel` logging unified on `appLogger` (which already tees to `Log`); the
+  duplicate `Log.*` + `appLogger.*` pairs and the hardcoded-tag `Log.e("ActiveRoutineVM", …)`
+  calls are gone.
+
+**Home**
+- `HomeStateLoader`'s phase-1-emit guard is now `everCompleted` (set once a phase-2 state has
+  shipped), not `_state.value.isLoading`. A `force` refresh landing between phase 1 and phase 2
+  of the first load used to see `isLoading == false`, skip its own phase 1, and leave the bare
+  scaffold on screen until its phase 2. The weekday-column routine filter is resolved once and
+  shared between the scaffold and the phase-2 cells.
+
+**New pure helper + test**
+- `canEnableSupersetLink(segments, index, count)` extracted from `RoutineEditViewModel
+  .toggleSuperset` so the "merged chain ≤ `MAX_SUPERSET_SIZE`" rule is unit-tested without the
+  ViewModel (`SupersetLinkCapTest`). `groupSupersets` cap tests extended (exactly-max, five
+  flags → two chains).
+
+Docs: [CONVENTIONS.md § Derived-data sidecars](CONVENTIONS.md#derived-data-sidecars) and
+[§ ExerciseSessionViewModel](CONVENTIONS.md#per-exercise-viewmodels-exercisesessionviewmodel)
+added; STORAGE.md sidecar sections updated for the day-key format and the lookback
+invalidation; CLAUDE.md "Crucial facts" gained both entries.

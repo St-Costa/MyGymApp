@@ -1,5 +1,6 @@
 package com.mygymapp.data.parser
 
+import com.mygymapp.data.model.ContextStats
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseStats
 import com.mygymapp.data.model.ExerciseType
@@ -72,7 +73,8 @@ class ExerciseStatsCalculatorTest {
             strengthSession("2026-08-20T10:00:00", listOf(0 to 0.0, 0 to 0.0)),
         )
         val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
-        assertEquals("2026-08-10T10:00:00", ctx.previousSessionDate)
+        // Stored day-only (see ExerciseStatsCalculator.dayKey) so merge/rebuild compare like-for-like.
+        assertEquals("2026-08-10", ctx.previousSessionDate)
         assertEquals(listOf(PreviousSet(8, 65.0), PreviousSet(8, 65.0)), ctx.previousSets)
     }
 
@@ -112,7 +114,7 @@ class ExerciseStatsCalculatorTest {
         val ctx = merged.forContext(SlotContext.NORMAL)!!
         assertEquals(PreviousSet(3, 200.0), ctx.pr)
         // newer session has real data → it also becomes "previous"
-        assertEquals("2026-08-05T10:00:00", ctx.previousSessionDate)
+        assertEquals("2026-08-05", ctx.previousSessionDate)
         assertEquals(listOf(PreviousSet(3, 200.0)), ctx.previousSets)
     }
 
@@ -125,8 +127,47 @@ class ExerciseStatsCalculatorTest {
         val emptySession = strengthSession("2026-08-05T10:00:00", listOf(0 to 0.0, 0 to 0.0))
         val merged = ExerciseStatsCalculator.merge(EX, base, emptySession)
         val ctx = merged.forContext(SlotContext.NORMAL)!!
-        assertEquals("2026-08-01T10:00:00", ctx.previousSessionDate)
+        assertEquals("2026-08-01", ctx.previousSessionDate)
         assertEquals(PreviousSet(8, 60.0), ctx.pr)
+    }
+
+    @Test
+    fun `merge of a same-day re-save replaces previous with the latest set data`() {
+        // First save of the day.
+        val first = strengthSession("2026-08-05T10:00:00", listOf(8 to 60.0, 8 to 60.0))
+        var stats = ExerciseStatsCalculator.merge(EX, null, first)
+        assertEquals(
+            listOf(PreviousSet(8, 60.0), PreviousSet(8, 60.0)),
+            stats.forContext(SlotContext.NORMAL)!!.previousSets,
+        )
+        // Same day, later time, edited numbers — must overwrite "previous" (>= guard).
+        val resave = strengthSession("2026-08-05T18:30:00", listOf(8 to 62.5, 8 to 62.5))
+        stats = ExerciseStatsCalculator.merge(EX, stats, resave)
+        val ctx = stats.forContext(SlotContext.NORMAL)!!
+        assertEquals("2026-08-05", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(8, 62.5), PreviousSet(8, 62.5)), ctx.previousSets)
+        assertEquals(PreviousSet(8, 62.5), ctx.pr)
+    }
+
+    @Test
+    fun `merge tolerates a stored previousSessionDate that is date-only vs an incoming datetime`() {
+        // Simulate a sidecar whose previousSessionDate was written date-only (older data / a
+        // session with a blank completedAt that fell back to date).
+        val stale = ExerciseStats(
+            exerciseId = EX,
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(5, 100.0)),
+                    previousSessionDate = "2026-08-04",
+                    pr = PreviousSet(5, 100.0),
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+        val newer = strengthSession("2026-08-05T09:00:00", listOf(6 to 100.0))
+        val ctx = ExerciseStatsCalculator.merge(EX, stale, newer).forContext(SlotContext.NORMAL)!!
+        assertEquals("2026-08-05", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(6, 100.0)), ctx.previousSets)
     }
 
     @Test
