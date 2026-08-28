@@ -2,6 +2,15 @@
 
 Patterns that are load-bearing but non-obvious, plus things that bit us once and should not bite again. Read this before touching ViewModels, navigation callbacks, or the Polar subsystem.
 
+## ⛔ Back up on-device data before ANY install/uninstall/test op
+
+The user's entire data set is **only** in `/data/data/com.mygymapp/files/gymdata/` on the
+phone — not in git, not on this machine. A `pm uninstall` / `pm clear` / differently-signed
+APK install / **any `:baseline-profile` or `connected…AndroidTest` run**
+(`uninstall_after_test: true`) wipes it for good. It has already cost real data once. Pull a
+verified `tar` backup first — full procedure and restore command in the banner at the top of
+[CLAUDE.md](../CLAUDE.md) and [STORAGE.md](STORAGE.md). No backup ⇒ don't proceed, ask first.
+
 ## DataChangedSignal
 
 Singleton event bus defined in [data/DataChangedSignal.kt](../app/src/main/java/com/mygymapp/data/DataChangedSignal.kt). Two `MutableSharedFlow`s:
@@ -515,8 +524,19 @@ journey.
 Regenerate after a large refactor of the startup path or a dependency bump:
 
 ```bash
-adb shell pm uninstall com.mygymapp          # start from a clean install
-./gradlew :app:generateBaselineProfile        # ~20–30 min on the phone
+# ⛔ FIRST back up the on-device data — generateBaselineProfile UNINSTALLS the app
+#    (uninstall_after_test: true), which destroys /data/data/com.mygymapp/files/gymdata/.
+#    See the banner at the top of CLAUDE.md. Do not skip this.
+adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -cf - gymdata \
+  > gymdata-backup-$(date +%Y%m%d-%H%M%S).tar   # needs a debuggable build installed
+tar -tvf gymdata-backup-*.tar | head            # verify non-empty BEFORE continuing
+
+adb shell pm uninstall com.mygymapp             # start from a clean install
+./gradlew :app:generateBaselineProfile          # ~20–30 min on the phone
+
+# afterwards, reinstall the user's normal build and restore:
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -xf - < gymdata-backup-*.tar
 ```
 
 Gotchas that cost time here:
