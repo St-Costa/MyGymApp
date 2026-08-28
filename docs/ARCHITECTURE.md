@@ -58,7 +58,7 @@ Defined in [Screen.kt](../app/src/main/java/com/mygymapp/ui/navigation/Screen.kt
 | ActiveRoutine | `workout/{routineId}` | Live workout; routes to exercise screens |
 | StrengthExercise | `workout/{sessionId}/strength/{exerciseId}` | Sets with scroll picker |
 | StretchExercise | `workout/{sessionId}/stretch/{exerciseId}` | Sets with stopwatch |
-| Superset | `workout/{sessionId}/superset/{id1}/{id2}` | Interleaved sets for paired exercises |
+| Superset | `workout/{sessionId}/superset/{exerciseIds}` | Interleaved sets for a 2–3 exercise chain (`exerciseIds` comma-separated) |
 | ExercisePicker | `exercises/pick` | ExerciseList in picker mode (hidden) |
 | SessionProgress | `session/{sessionId}/{date}` | Post-workout charts + ECG/cardio analysis |
 | HeartRate | `heartrate` | Polar pairing, live ECG, readiness, cardio trends |
@@ -106,14 +106,14 @@ The `ExerciseEditViewModel` and `RoutineEditViewModel` auto-save in `onCleared()
 | `HrZoneTraceChart` | Live ~90s %HRR trace over proportional Z1-Z5 bands (routine + cardio screens) |
 | `LiveEcgCard` | Live ECG waveform + beat counter + arrhythmia flags |
 | `CardioTrendSection` | 4-week cardio sparklines + self-diagnosis (HeartRateScreen) |
-| `SupersetPairContainer` | Primary-bordered wrapper for paired exercises in edit/active |
+| `SupersetContainer` | Primary-bordered wrapper for a 2–3 exercise chain in the routine editor |
 | `CommonComposables` | `FullscreenLoading`, `EmptyStateBox`, `DeleteConfirmationDialog`, `RoundStepButton` |
 
 Shared utilities in `ui/util/`:
 
 | Helper | Role |
 |---|---|
-| `groupSupersets` (in [SupersetGrouping.kt](../app/src/main/java/com/mygymapp/ui/util/SupersetGrouping.kt)) | Generic inline function that walks a list left-to-right, pairing each element with the next one when a predicate matches. Used by both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups` (which produce different sealed classes from the same grouping logic). |
+| `groupSupersets` (in [SupersetGrouping.kt](../app/src/main/java/com/mygymapp/ui/util/SupersetGrouping.kt)) | Generic inline function that walks a list left-to-right, folding maximal runs of consecutive elements (predicate true on all but the last) into one group, capped at `MAX_SUPERSET_SIZE` (3). Used by both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups` (which produce different sealed classes from the same grouping logic). |
 
 Shared theme extensions (`theme/`):
 
@@ -128,7 +128,7 @@ Shared theme extensions (`theme/`):
 | `FileManager` | Directory layout | Owns `filesDir/gymdata` + subdirs |
 | `ExerciseRepository` | Exercises CRUD | In-memory cache + mutex; `ex-{8hex}` IDs; updates history on rename; `getBodyparts()` memoizes the sorted-distinct list and invalidates on save/delete |
 | `RoutineRepository` | Routines CRUD | Like Exercise; `rt-{8hex}` IDs |
-| `WorkoutRepository` | Session history | See [STORAGE.md](STORAGE.md#workout-history-and-exercise-index) for index structure. Exercise-index updates are batched per save/migration so each `.idx` file is read + written at most once per operation. |
+| `WorkoutRepository` | Session history | See [STORAGE.md](STORAGE.md#workout-history-and-exercise-index) for index structure. Exercise-index updates are batched per save/migration so each `.idx` file is read + written at most once per operation. Also maintains `history/_stats/{id}.yaml` — a per-exercise materialized view (previous sets + tonnage PR, by slot context) so the exercise screens skip the history scan; `getExerciseStats(id)` is the fast read. See [STORAGE.md](STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml). |
 | `ImageCacheRepository` | URL → local file | SHA-256 hash, Google Drive URL rewrite |
 | `CardioTrendLoader` | 4-week cardio aggregates | Used by HeartRate and SessionProgress screens |
 | `UserProfileRepository` | Age / weight / sex | SharedPreferences; needed for calorie & TRIMP formulas |

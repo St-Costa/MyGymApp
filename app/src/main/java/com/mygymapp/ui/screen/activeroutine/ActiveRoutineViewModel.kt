@@ -27,6 +27,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -205,21 +207,30 @@ class ActiveRoutineViewModel @Inject constructor(
                         ?.let { ex.exerciseId to it }
                 }?.toMap() ?: emptyMap()
 
-            // For each exercise in this routine, check its own history (across all routines,
-            // not just this one) for any earlier session with real tonnage recorded. A session
-            // where the exercise was completed empty (skipped/untouched) doesn't count — see
-            // exercisesWithPriorTonnage doc comment above.
+            // For every strength exercise in this routine, warm its stats sidecar now — in
+            // parallel. Two reasons: (1) `exercisesWithPriorTonnage` below needs the NORMAL
+            // context's `hasPriorRealTonnage`; (2) pre-building here (including warmup/daily
+            // slots, which `exercisesWithPriorTonnage` filters out) means the strength /
+            // superset screen opened next reads a ready sidecar instead of doing its own
+            // first-time history scan mid-open — which is what made a 3-member superset feel
+            // slow the first time. getExerciseStats scans lock-free, so N of these overlap.
+            val statsExerciseIds = exercises
+                .filter { it.type == ExerciseType.FORZA }
+                .map { it.exerciseId }
+                .distinct()
+            val statsByExercise = statsExerciseIds
+                .map { exId -> async { exId to workoutRepository.getExerciseStats(exId) } }
+                .awaitAll()
+                .toMap()
+
+            // A session where the exercise was completed empty (skipped/untouched) never sets
+            // hasPriorRealTonnage — see the exercisesWithPriorTonnage doc comment above.
             exercisesWithPriorTonnage = exercises
                 .filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
                 .filter { ex ->
-                    workoutRepository.getSessionsForExercise(ex.exerciseId).any { session ->
-                        session.exercises
-                            .filter { it.exerciseId == ex.exerciseId && !it.excludeFromTonnage }
-                            .any { we ->
-                                we.sets.filterIsInstance<ExerciseSet.Strength>()
-                                    .sumOf { it.reps * it.weight } > 0.0
-                            }
-                    }
+                    statsByExercise[ex.exerciseId]
+                        ?.forContext(com.mygymapp.data.model.SlotContext.NORMAL)
+                        ?.hasPriorRealTonnage == true
                 }
                 .map { it.exerciseId }
                 .toSet()

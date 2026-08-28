@@ -106,7 +106,7 @@ without a valid 0-9 rating.
 
 **Touching any one value = the whole exercise is done, with every shown number saved.** Tap "Complete Exercise"/"Complete Superset" after touching at least one reps/weight picker (or, for stretch, toggling at least one set `done`), and the exercise closes as `completed = true` with **all** its sets persisted as shown — the touched ones *and* the still-grey pre-filled ones. This is the intended behaviour for fixed-load warmup/daily exercises: the lifter has no reason to re-enter "8 × 30" every session, so tapping any single value confirms "yes, I did this at the numbers on screen".
 
-**Touching nothing = not performed.** Tap Complete without touching anything and the exercise is saved as `completed = false` — but its `sets` still carry the grey pre-fill that was on screen (not `emptyList()`), so re-entry shows the same numbers again and nothing is lost. The screen still navigates back (`_completionSaved` fires regardless); only the row's completed/dimmed state differs. For supersets this is per-side: `buildUpdatedSession(respectTouch = true)` sets `completed = completed && sideNPerformed` for each side independently, always persisting that side's shown sets.
+**Touching nothing = not performed.** Tap Complete without touching anything and the exercise is saved as `completed = false` — but its `sets` still carry the grey pre-fill that was on screen (not `emptyList()`), so re-entry shows the same numbers again and nothing is lost. The screen still navigates back (`_completionSaved` fires regardless); only the row's completed/dimmed state differs. For supersets this is per-member: `buildUpdatedSession(respectTouch = true)` sets `completed = completed && performed` for each chain member (2–3 of them) independently, always persisting that member's shown sets.
 
 Touch tracking: each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `repsTouched`/`weightTouched`, set `true` only by an explicit user action (`updateReps`/`updateWeight`/`confirmReps`/`confirmWeight`, or the stepper buttons that call them) — never by the prefill logic in `init`. Stretch sets have no prefill, so `done` itself (only ever flipped by an explicit toggle) is the touch signal.
 
@@ -146,7 +146,9 @@ When a repository caches a derived value, the cache must be invalidated wherever
 
 ## Shared grouping for supersets
 
-Both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups` produce a list of "pair or single" items using the same rule: if `supersetWithNext` is true on element *i* and *i+1* exists, emit a pair; otherwise emit a single. The logic is one place now — [`ui/util/SupersetGrouping.kt`](../app/src/main/java/com/mygymapp/ui/util/SupersetGrouping.kt) — parametrized on domain-specific sealed classes. Don't re-implement this loop.
+Both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.buildExerciseGroups` produce a list of "chain or single" items using the same rule: walk left-to-right, folding a maximal run of consecutive elements where `supersetWithNext` is true on every one but the last into a single group; everything else is a single. The logic is one place — [`ui/util/SupersetGrouping.kt`](../app/src/main/java/com/mygymapp/ui/util/SupersetGrouping.kt) — parametrized on domain-specific sealed classes (`ExerciseSegment.Superset(indices)`, `ExerciseGroup.Superset(exercises)`). Don't re-implement this loop.
+
+**The cap is on the grouping, not the flag.** A superset chain holds at most `MAX_SUPERSET_SIZE` (= 3) exercises. `groupSupersets` stops extending a run at 3 even if more `true` flags follow, so a hand-edited YAML with 4+ consecutive `supersetWithNext: true` is split (`[A,B,C] [D]`) and D's flag is simply ignored. The routine editor never *creates* an over-long chain: `RoutineEditViewModel.toggleSuperset` computes the size of the merged segment before linking and no-ops if it would exceed 3, and `RoutineEditScreen` hides the link button in the same case. `SupersetViewModel`/`SupersetScreen` are arity-generic — they take a `List<String>` of member ids (nav arg `exerciseIds`, comma-separated) and a `members: List<SupersetMemberUi>`, interleaving sets round-by-round across all members.
 
 ## Exercise type color
 
@@ -187,7 +189,7 @@ A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: "
 
 ## Warmup exercises & `excludeFromTonnage`
 
-`RoutineExercise.isWarmup` marks the contiguous **leading prefix** of a routine's exercise list as warmup. The editor models this as a positional `warmupCount` (number of exercises above a divider line) snapped to segment boundaries so a superset pair is never split; `buildRoutine` writes `isWarmup = index < warmupCount`.
+`RoutineExercise.isWarmup` marks the contiguous **leading prefix** of a routine's exercise list as warmup. The editor models this as a positional `warmupCount` (number of exercises above a divider line) snapped to segment boundaries so a superset chain is never split; `buildRoutine` writes `isWarmup = index < warmupCount`.
 
 Warmup **and** fixed-daily exercises are excluded from tonnage. The exclusion is resolved when the session is built and persisted per-exercise as `WorkoutExercise.excludeFromTonnage`, so every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, and the active-session previous/historical comparisons — just filters `!excludeFromTonnage`. Cardio metrics are session-global (PolarManager) and intentionally still include these exercises.
 
@@ -222,12 +224,12 @@ unit-tested in `TonnageMathTest`.
 
 ## Previous-set preview: match type, skip zeros, inherit last set
 
-When a strength exercise screen opens ([StrengthExerciseViewModel](../app/src/main/java/com/mygymapp/ui/screen/strengthexercise/StrengthExerciseViewModel.kt), [SupersetViewModel](../app/src/main/java/com/mygymapp/ui/screen/superset/SupersetViewModel.kt)), the grey "previous" defaults must be picked **like-with-like** along three rules:
+When a strength exercise screen opens ([StrengthExerciseViewModel](../app/src/main/java/com/mygymapp/ui/screen/strengthexercise/StrengthExerciseViewModel.kt), [SupersetViewModel](../app/src/main/java/com/mygymapp/ui/screen/superset/SupersetViewModel.kt)), the grey "previous" defaults must be picked **like-with-like** along these rules:
 
 - **Match the slot context.** An exercise can be performed as one of three mutually exclusive kinds in a session, exposed as `WorkoutExercise.slotContext` (`SlotContext.NORMAL` / `WARMUP` / `DAILY`): **daily** (`isDaily`), **warmup** (`excludeFromTonnage && !isDaily`), or **normal** (neither). Note `isDaily` wins — a fixed-daily entry also carries `excludeFromTonnage = true` but is `DAILY`, not `WARMUP`. The preview is sourced only from prior sessions where this exercise had the **same** `slotContext`. Comparing only `isDaily` is wrong — it conflates warmup with normal; filtering on `!excludeFromTonnage` is wrong — it conflates daily with warmup.
-- **The all-time PR badge uses the same `slotContext` filter.** `tonnagePr` (the "PR: reps × weight" line) scans *all* history for the highest-tonnage set, but only within the current slot's `slotContext`. Before Phase 77 it filtered `!excludeFromTonnage`, so a fixed-daily slot's PR was pulled from the exercise's unrelated *routine* appearances (and vice versa) — a daily run at 13×16 for weeks could show "PR: 11 × 16", below its own pre-filled numbers.
-- **Skip empty sessions.** Walk back through `getSessionsForExercise(id, 30)` (already sorted newest-first) and take the first matching session that has **at least one non-zero set**, so an aborted/skipped 0-0 session doesn't blank out the preview.
-- **Inherit the last set for extra sets.** Sets are matched positionally (`previousSets.getOrNull(i)`). If today has more sets than the previous session recorded, the extra indices fall back to the **last non-zero previous set** (`lastMeaningfulPrev`) rather than showing 0-0.
+- **The all-time PR badge uses the same `slotContext` filter.** The "PR: reps × weight" line is the highest-tonnage set *ever* for this exercise, but only within the current slot's `slotContext`. Before Phase 77 it filtered `!excludeFromTonnage`, so a fixed-daily slot's PR was pulled from the exercise's unrelated *routine* appearances (and vice versa) — a daily run at 13×16 for weeks could show "PR: 11 × 16", below its own pre-filled numbers.
+- **Both come from the stats sidecar now, not a history scan.** As of Phase 79 the ViewModels read `workoutRepository.getExerciseStats(id).forContext(slotContext)` — a single small `history/_stats/{id}.yaml` read — instead of parsing every session file that contains the exercise (`getSessionsForExercise` ×2, once for previous and once for PR; ×N for a superset). The sidecar already stores `previousSets` (most recent session with real data), `previousSessionDate`, `pr`, and `hasPriorRealTonnage`, all pre-split by context. See [STORAGE.md](STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml). The rules above are the sidecar's derivation rules — implemented once in `ExerciseStatsCalculator`, so nothing about *what* "previous"/"PR" mean changed, only where it's computed. `ActiveRoutineViewModel.exercisesWithPriorTonnage` uses the same sidecar's `hasPriorRealTonnage`.
+- **Inherit the last set for extra sets.** Sets are matched positionally (`previousSets.getOrNull(i)`). If today has more sets than the previous session recorded, the extra indices fall back to the **last non-zero previous set** (`lastMeaningfulPrev`) rather than showing 0-0. (This stays in the ViewModel — the sidecar stores the raw previous sets, not the positional fill.)
 - **Check "has current data" per set, not per exercise.** `StrengthExerciseViewModel` used to gate the whole exercise on one `hasProgress` flag (`currentSets.any { reps>0 || weight>0 }`): filling in set 1's reps flipped that flag, and every *other*, still-untouched set switched from showing its previous-session value to showing 0-0 on the next recompose/reopen — looking exactly like "the preview stopped working." Each set must decide independently, the way `SupersetViewModel` already did it: `curr = currentSet.takeIf { it.reps > 0 || it.weight > 0.0 }`, falling back to `prev` only for that one set.
 
 ## Image caches — two of them
@@ -257,6 +259,8 @@ Entering an active routine creates the `.md` file eagerly (so `StrengthExerciseV
 The same ruleset lives server-side in `WorkoutRepository.runMaintenance()`, called at boot from `MainViewModel.init`, so shells created by older builds (or by a process killed before `onCleared`) still get scrubbed. `runMaintenance()` also prunes sessions older than 3 months and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md` — all three checks happen in one walk over `history/` that parses each session file only once (previously three separate walks/parses; merged in Phase 68 for app-start speed), and the whole pass is throttled to at most once per 12h via an mtime sentinel (`history/_idx/.last_maintenance`).
 
 **Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
+
+**Deleting a ghost session must not touch the stats sidecars.** `WorkoutRepository.delete()` / `runMaintenance()` rebuild an exercise's `_stats/` sidecar only when the removed session was **completed** (`completedAt.isNotBlank()`) — a ghost/incomplete session never fed a sidecar (`save()` only merges completed sessions), so rebuilding on ghost cleanup is pure waste. It's also actively harmful: ghost cleanup runs on the `clearScope` after every back-out, and a full per-exercise history rebuild there was holding the repo mutex long enough to stall the *next* routine open's `save()` by up to ~2.4 s (Phase 79). Same reasoning as the [`completionSaved` mutex discipline](#completionsaved-pattern) — background work on the shared lock is on the critical path of the next screen.
 
 ## Switch exercise
 
@@ -288,8 +292,8 @@ warmup/daily/tonnage flags — only `exerciseId/exerciseName/bodypart/type/sets`
 as-is inside the raw session file — no `SyncApi`/`SyncWorker` change needed). This function is
 the **only** place that ever writes the switch to disk. It's called from the three exercise
 ViewModels — `StrengthExerciseViewModel.switchExercise`, `StretchExerciseViewModel.switchExercise`,
-`SupersetViewModel.switchExercise1/2` (a superset's two sides are independent slots, one can be
-switched while the other already has sets) — each of which does its own
+`SupersetViewModel.switchExerciseAt(memberIndex, id)` (a superset's members are independent
+slots, one can be switched while another already has sets) — each of which does its own
 `workoutRepository.save(...)` right after. `ActiveRoutineViewModel` does **not** call it — see
 "Two ViewModels, one session file" below for why that matters.
 
@@ -299,9 +303,10 @@ re-navigates to the same route with the new `exerciseId` in the path (`popUpTo` 
 rep range, name, previous-session preview) one-shot in `init{}` from `SavedStateHandle`, so a
 fresh VM instance for the new id is simpler and safer than replaying that logic mid-flight. The
 picker result flows back through the standard `savedStateHandle.set("pickedExerciseId", id)` /
-`LaunchedEffect` pattern (same as `completedExerciseId`); Superset uses two separate keys,
-`pickedExerciseIdSide{1,2}`, chosen via `ExercisePicker.createRoute(..., resultKeySide = 1|2)`,
-so a switch on one side can never cross-apply to the other.
+`LaunchedEffect` pattern (same as `completedExerciseId`); Superset uses one key per member,
+`pickedExerciseIdSide{N}` (N = 1-based member position), chosen via
+`ExercisePicker.createRoute(..., resultKeySide = N)`, so a switch on one member can never
+cross-apply to another.
 
 **Two ViewModels, one session file — the bug this section exists to prevent regressing.** The
 active-routine list (`ActiveRoutineScreen` / `ActiveRoutineViewModel`) and the exercise screen

@@ -56,6 +56,7 @@ import com.mygymapp.ui.theme.StretchColor
 fun SupersetScreen(
     onComplete: () -> Unit,
     onBack: () -> Unit,
+    // `side` is the 1-based position of the chain member (1..3).
     onSwitchExercise: (bodypart: String, type: String, excludeIds: Set<String>, side: Int) -> Unit =
         { _, _, _, _ -> },
     onSwitched: (side: Int, newExerciseId: String) -> Unit = { _, _ -> },
@@ -67,13 +68,9 @@ fun SupersetScreen(
     LaunchedEffect(completionSaved) {
         if (completionSaved) onComplete()
     }
-    val switchedExerciseId1 by viewModel.switchedExerciseId1.collectAsState()
-    LaunchedEffect(switchedExerciseId1) {
-        switchedExerciseId1?.let { onSwitched(1, it) }
-    }
-    val switchedExerciseId2 by viewModel.switchedExerciseId2.collectAsState()
-    LaunchedEffect(switchedExerciseId2) {
-        switchedExerciseId2?.let { onSwitched(2, it) }
+    val switchedMember by viewModel.switchedMember.collectAsState()
+    LaunchedEffect(switchedMember) {
+        switchedMember?.let { (index, id) -> onSwitched(index + 1, id) }
     }
 
     Scaffold(
@@ -101,65 +98,45 @@ fun SupersetScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Header showing exercise names
+                // Header showing exercise names, "+"-separated
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ExerciseLabel(
-                        name = uiState.exercise1?.name ?: "",
-                        type = uiState.exercise1?.type ?: ExerciseType.FORZA,
-                        modifier = Modifier.weight(1f),
-                        switchEligible = uiState.switchEligible1,
-                        onSwitch = onSwitch@{
-                            val exercise = uiState.exercise1 ?: return@onSwitch
-                            onSwitchExercise(
-                                exercise.bodypart,
-                                exercise.type.toFileString(),
-                                uiState.excludeIds,
-                                1,
+                    uiState.members.forEachIndexed { index, member ->
+                        if (index > 0) {
+                            Text(
+                                text = "+",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp),
                             )
-                        },
-                    )
-                    Text(
-                        text = "+",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
-                    ExerciseLabel(
-                        name = uiState.exercise2?.name ?: "",
-                        type = uiState.exercise2?.type ?: ExerciseType.FORZA,
-                        modifier = Modifier.weight(1f),
-                        switchEligible = uiState.switchEligible2,
-                        onSwitch = onSwitch@{
-                            val exercise = uiState.exercise2 ?: return@onSwitch
-                            onSwitchExercise(
-                                exercise.bodypart,
-                                exercise.type.toFileString(),
-                                uiState.excludeIds,
-                                2,
-                            )
-                        },
-                    )
+                        }
+                        ExerciseLabel(
+                            name = member.exercise.name,
+                            type = member.exercise.type,
+                            modifier = Modifier.weight(1f),
+                            switchEligible = member.switchEligible,
+                            onSwitch = {
+                                onSwitchExercise(
+                                    member.exercise.bodypart,
+                                    member.exercise.type.toFileString(),
+                                    uiState.excludeIds,
+                                    index + 1,
+                                )
+                            },
+                        )
+                    }
                 }
 
                 // Exercise info cards (media + notes)
-                uiState.exercise1?.let { ex ->
+                uiState.members.forEachIndexed { index, member ->
                     ExerciseInfoCard(
-                        exercise = ex,
-                        description = uiState.description1,
-                        onDescriptionChange = viewModel::updateDescription1,
-                        onDescriptionSave = viewModel::saveDescription1,
-                    )
-                }
-                uiState.exercise2?.let { ex ->
-                    ExerciseInfoCard(
-                        exercise = ex,
-                        description = uiState.description2,
-                        onDescriptionChange = viewModel::updateDescription2,
-                        onDescriptionSave = viewModel::saveDescription2,
+                        exercise = member.exercise,
+                        description = member.description,
+                        onDescriptionChange = { viewModel.updateDescriptionAt(index, it) },
+                        onDescriptionSave = { viewModel.saveDescriptionAt(index, it) },
                     )
                 }
 
@@ -167,8 +144,7 @@ fun SupersetScreen(
                 HeartRateBar()
 
                 // Single stopwatch shown once if at least one exercise is STRETCH
-                val hasStretch = uiState.exercise1?.type == ExerciseType.STRETCH
-                    || uiState.exercise2?.type == ExerciseType.STRETCH
+                val hasStretch = uiState.members.any { it.exercise.type == ExerciseType.STRETCH }
                 if (hasStretch) {
                     val formatted = remember(uiState.elapsedSeconds) {
                         "%02d:%02d".format(uiState.elapsedSeconds / 60, uiState.elapsedSeconds % 60)
@@ -206,8 +182,9 @@ fun SupersetScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.primary, thickness = 1.dp)
 
-                // Interleaved set items grouped in pairs (one card per superset round)
-                uiState.sets.chunked(2).forEachIndexed { roundIndex, roundSets ->
+                // Interleaved set items grouped per round (one card per superset round)
+                val chainSize = uiState.members.size.coerceAtLeast(1)
+                uiState.sets.chunked(chainSize).forEachIndexed { roundIndex, roundSets ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
@@ -218,15 +195,15 @@ fun SupersetScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             roundSets.forEachIndexed { localIndex, setUi ->
-                                val listIndex = roundIndex * 2 + localIndex
+                                val listIndex = roundIndex * chainSize + localIndex
+                                val member = uiState.members.getOrNull(setUi.exerciseIndex)
                                 SupersetSetItem(
                                     setUi = setUi,
-                                    repRangeMin = if (setUi.exerciseIndex == 0) uiState.repRangeMin1 else uiState.repRangeMin2,
-                                    repRangeMax = if (setUi.exerciseIndex == 0) uiState.repRangeMax1 else uiState.repRangeMax2,
-                                    prReps = if (setUi.exerciseIndex == 0) uiState.prReps1 else uiState.prReps2,
-                                    prWeight = if (setUi.exerciseIndex == 0) uiState.prWeight1 else uiState.prWeight2,
-                                    isBodyweight = if (setUi.exerciseIndex == 0) uiState.exercise1?.isBodyweight == true
-                                        else uiState.exercise2?.isBodyweight == true,
+                                    repRangeMin = member?.repRangeMin ?: 0,
+                                    repRangeMax = member?.repRangeMax ?: 0,
+                                    prReps = member?.prReps ?: 0,
+                                    prWeight = member?.prWeight ?: 0.0,
+                                    isBodyweight = member?.exercise?.isBodyweight == true,
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
                                     onToggleDone = { viewModel.toggleSetDone(listIndex) },
