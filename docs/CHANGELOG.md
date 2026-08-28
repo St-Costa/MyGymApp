@@ -898,6 +898,12 @@ The live-HR block at the top of the connected view drops its "BPM" caption under
 
 `PolarDeviceBox` replaces the old one-line "Connected to … · 88% · 62 / 410 h" row with a boxed `SpaceEvenly` row of three large items: **MAC address · battery % with icon · active-hours / estimated-lifespan h**. The standalone low-battery warning row underneath is unchanged.
 
+## Phase 77 — All-time PR: match the slot's own context (daily / warmup / normal)
+
+The "PR: reps × weight" badge on the strength and superset screens was computed over `!excludeFromTonnage` sets only. That flag is true for **both** warmup sets and fixed-daily entries, so a fixed-daily slot's PR was drawn from the *routine* history of the same exercise (which excludes daily executions entirely) — and vice versa. In practice: Bulgarian glute run daily at 13×16 for weeks, but its badge read "11 × 16" (the best set from its unrelated routine appearances), i.e. a PR sitting *below* the grey pre-filled numbers from last session. Reported from a screenshot.
+
+Fix: introduced `WorkoutExercise.slotContext` (`SlotContext.NORMAL` / `WARMUP` / `DAILY`) — the same three-way split the "previous" pre-fill already did inline with `ex.isDaily == isDaily && (ex.excludeFromTonnage && !ex.isDaily) == isWarmup`. Both `StrengthExerciseViewModel` and `SupersetViewModel` now filter *both* the previous-session lookup and the all-time-PR scan by `ex.slotContext == <current slot's context>`, so a daily slot's PR comes only from prior daily executions, a normal slot's only from normal ones, a warmup slot's only from warmup ones. Four hand-rolled copies of the predicate collapsed to one. New `WorkoutExerciseSlotContextTest` covers the classification (notably: `isDaily` wins over `excludeFromTonnage`).
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

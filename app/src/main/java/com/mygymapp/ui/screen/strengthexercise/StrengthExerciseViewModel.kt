@@ -90,10 +90,12 @@ class StrengthExerciseViewModel @Inject constructor(
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
             // Whether this exercise is being performed as a fixed-daily exercise in this session.
             val isDaily = workoutExercise?.isDaily ?: false
-            // The exercise "type" in this session, used to compare like-with-like below.
-            // Three mutually exclusive types: warmup, fixed-daily, normal.
-            val currentExcludeFromTonnage = workoutExercise?.excludeFromTonnage ?: false
-            val isWarmup = currentExcludeFromTonnage && !isDaily
+            val isWarmup = (workoutExercise?.excludeFromTonnage ?: false) && !isDaily
+            // Which of the three mutually-exclusive slot categories (normal / warmup / daily)
+            // this exercise is in right now — "previous" pre-fills and the all-time PR both
+            // compare only against prior sessions in the same category.
+            val slotContext = workoutExercise?.slotContext
+                ?: com.mygymapp.data.model.SlotContext.NORMAL
 
             // Get set count + rep range from the owning routine. Daily exercises live in the
             // fixed-daily routine, not the session's routine, so look them up there.
@@ -118,9 +120,7 @@ class StrengthExerciseViewModel @Inject constructor(
             val matchingSetsPerSession = workoutRepository.getSessionsForExercise(exerciseId, 30)
                 .mapNotNull { prev ->
                     prev.exercises.firstOrNull { ex ->
-                        ex.exerciseId == exerciseId &&
-                            ex.isDaily == isDaily &&
-                            (ex.excludeFromTonnage && !ex.isDaily) == isWarmup
+                        ex.exerciseId == exerciseId && ex.slotContext == slotContext
                     }
                 }
                 .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
@@ -158,11 +158,16 @@ class StrengthExerciseViewModel @Inject constructor(
 
             // All-time PR: the single set with the highest tonnage (reps * weight) ever recorded
             // for this exercise, across every session (not just the last 30 used for "previous").
-            // Warmup sets don't count toward a real PR.
+            // Matched per-context, like the "previous" preview above: a daily slot's PR is drawn
+            // only from prior daily executions, a normal slot's only from normal ones, a warmup
+            // slot's only from warmup ones. The same exercise can be both a fixed-daily entry
+            // (run at full intensity, but excluded from tonnage) and a routine entry, and their
+            // load histories are unrelated — mixing them made the daily screen show a PR below
+            // its own recent sets.
             val tonnagePr = workoutRepository.getSessionsForExercise(exerciseId, Int.MAX_VALUE)
                 .asSequence()
                 .flatMap { prev -> prev.exercises.asSequence() }
-                .filter { it.exerciseId == exerciseId && !it.excludeFromTonnage }
+                .filter { ex -> ex.exerciseId == exerciseId && ex.slotContext == slotContext }
                 .flatMap { it.sets.asSequence().filterIsInstance<ExerciseSet.Strength>() }
                 .filter { it.reps > 0 && it.weight > 0.0 }
                 .maxByOrNull { it.reps * it.weight }
