@@ -918,8 +918,110 @@ New: `history/_stats/{exerciseId}.yaml` — a materialized view holding, **per s
 
 Maintenance in `WorkoutRepository`: `save()` of a completed session folds it in with an incremental merge (`ExerciseStatsCalculator.merge` — PR compare-and-set, `previousSets` replaced only on real data, no scan); `delete()` and the `runMaintenance()` prune rebuild each affected sidecar from a per-exercise scan **only for a completed session** (an incomplete/ghost session never fed a sidecar, so its deletion invalidates nothing) — this matters because ghost cleanup runs on every routine back-out; a missing or old-`schemaVersion` sidecar is rebuilt lazily on first read, so bumping `ExerciseStats.SCHEMA_VERSION` is the entire migration story. `getExerciseStats` scans **outside** the write lock (only the persist takes it, with a re-check), so the N first-time reads a superset or routine-open fires don't serialize; `SupersetViewModel.init` and `ActiveRoutineViewModel.init` issue them with `async`/`awaitAll`, and the routine open also pre-warms every strength exercise's sidecar (warmup/daily included) so the screen opened next reads a ready file. Derivation lives in one pure object, `ExerciseStatsCalculator`, exercised by `ExerciseStatsCalculatorTest` (12 cases, incl. "a chain of `merge`s equals one `rebuild`") and `ExerciseStatsParserTest` (YAML round-trip incl. the nested list-of-maps). Verified on-device: all sidecars the app generated from real history matched an independent recomputation exactly (PR, previous sets + date, per-context split, bodyweight-materialized weight), and instrumented timing of `ActiveRoutineViewModel.init` showed the stats phase at ~12 ms (14 exercises) and total time-to-render steady at ~220 ms, down from spikes of 2.4 s caused by ghost-delete rebuilds blocking the next open's `save()` on the shared mutex.
 
+## Phase 80 — Home cold start: 2–3 s → ~670 ms
+
+The home screen parsed ~3 months of session files on every open — the visible 4-week window plus a 2-month lookback (so the oldest days had a same-routine "previous" to compare against), 60+ `WorkoutParser.fromMarkdown` calls — to compute 28 day squares (status / tonnage-% / cardio-minutes) and the current-week schedule row.
+
+- **`history/_gitgraph.yaml`** — the 28 history squares, pre-computed. A square depends only on that day's registered session and the previous same-routine session, both immutable once registered, so a square for a day before the current week never changes. `WorkoutRepository.getGitgraphHistory` serves the cache when its `windowStartMonday` still matches (recompute once per week as the window slides, or after a drop; recompute is outside the write lock). `save()` of an in-window completed session, `delete()`, a routine rename, a maintenance prune, and the index migration all drop it. Derivation is one pure object, `GitgraphHistoryCalculator` — `HomeStateLoader` calls the same `dayCell` for the live current-week row so it can't diverge from the cached rows. `GitgraphHistoryParserTest` / `GitgraphHistoryCalculatorTest` (15 cases) pin the YAML round-trip and the rule, incl. "a chain of ... equals a full rebuild"-style parity for the current-week reuse.
+- **`HomeStateLoader`** (`@Singleton`) owns the home state. `MyGymApp.onCreate` kicks its `refresh()` so the build overlaps Activity/Compose creation instead of running after it; `MainViewModel` shrank to exposing `loader.state` + the debug-seed flag + boot maintenance. Concurrent triggers (onCreate, screen `LaunchedEffect`, `routinesChanged`) coalesce.
+- **Two-phase emit, first-load only.** Cold start emits phase 1 (history rows from the cache + a routine-name-only schedule scaffold, `isLoading = false`) so the screen paints in ~200 ms, then phase 2 (schedule outcomes + `today*`) ~260 ms later once the current-week session files parse. Guarded by `_state.value.isLoading` — a *refresh* (returning to the home) already has complete state and emits once, no scaffold, no flicker.
+- **Parsing made concurrent.** `getSessionsInRange` collects in-range files by filename then parses them in parallel. `getLastSessionForRoutine` walks newest-filename-first and stops at the first completed session (+ same-day siblings) instead of parsing a routine's entire history — ~40 parses → ~5.
+- **Parser warm-up.** `WorkoutRepository.warmUpParsers()` parses one session file from `MyGymApp.onCreate` on a side coroutine, class-loading snakeyaml / `WorkoutParser` in parallel with the rest of startup.
+
+On-device (real history): the `_gitgraph.yaml` the app generated matched an independent recomputation of all 28 squares exactly (status, %, cardio minutes, routine name incl. an emoji name, session id, per-context comparison). Instrumented timing: cold start to history-rows-visible ~670 ms (was 2–3 s), current-week row filled ~260 ms later, returns to the home ~90 ms. The remaining cold-start tax is JIT/interpretation of the parser path — see the Baseline Profile brief below.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip
 - R8 / ProGuard minify for release with `-keep` rules for Polar SDK + RxJava
 - Consolidate `cache/images/` and `image_cache/` under Coil
+- **Baseline Profile** for cold-start speed — see the dedicated brief below.
+
+---
+
+## TODO — Baseline Profile (cold-start AOT compilation)
+
+> **To pick this up**: tell Claude Code "do the baseline profile" and point it here. Everything
+> it needs is in this section.
+
+### Why
+
+At first launch after install/update the ART interprets DEX bytecode and only JIT-compiles a
+method after thousands of invocations — the JIT itself competing for CPU *while the user
+waits*. That's why the home's `getSessionsInRange(currentWeek)` (8 session files) takes
+~500 ms cold and ~30 ms warm, and `getGitgraphHistory` ~260 ms cold vs ~10 ms warm — the gap
+is interpretation + cold JIT of `WorkoutParser` / `MarkdownParser` / snakeyaml, not I/O.
+
+Phase 79 (gitgraph cache + `HomeStateLoader` + two-phase emit) already cut perceived home
+cold start from 2–3 s to ~670 ms (history rows visible), with the current-week row filling
+~260 ms later; returns to the home are ~90 ms. The remaining ~200–300 ms of cold start is
+JIT/interpretation tax that only a Baseline Profile removes: it ships a list of hot
+methods/classes in the APK/AAB, and `ProfileInstaller` has ART compile them **AOT at install
+time**, so those paths start as native code. Typical win: 20–40 % faster cold start, plus
+every "first time" a screen/feature is opened.
+
+### Why app-wide, not just the home
+
+The setup cost (a `:baseline-profile` module, AGP plugin, a navigation test) is fixed
+regardless of coverage. Every *first* open of a routine (`ActiveRoutineViewModel` — 15
+`getExerciseStats`, `getLastSessionForRoutine`, `save`), a strength/superset exercise, the
+session-progress screen (`getSessionsInRange` over months), or the tonnage chart pays the
+same cold tax, over the *same* shared code (`WorkoutParser`, repositories, base ViewModels,
+Compose runtime, Hilt). One profile generated from a journey that touches those screens
+covers the whole app. `androidx.compose` itself ships a baseline profile — this is standard
+for Android apps, not a niche tweak.
+
+### How
+
+1. **Add the module + plugin.**
+   - New Gradle module `:baseline-profile` applying `com.android.test` + `androidx.baselineprofile`.
+   - App module: apply `androidx.baselineprofile` plugin, add `androidx.profileinstaller:profileinstaller`
+     dependency (so the profile is actually installed on-device), and a
+     `baselineProfile(project(":baseline-profile"))` dependency.
+   - Root/`libs.versions.toml`: `androidx.benchmark:benchmark-macro-junit4`,
+     `androidx.test.ext:junit`, `androidx.test:runner`, and the `androidx.baselineprofile`
+     plugin (matching the AGP version already in use).
+   - AGP is already recent enough (check `gradle/libs.versions.toml`); the plugin version must
+     track it.
+
+2. **Write the generator test** (`:baseline-profile/src/main/java/.../BaselineProfileGenerator.kt`),
+   a `@RunWith(AndroidJUnit4::class)` class with a `BaselineProfileRule`, `collect(packageName = "com.mygymapp")`,
+   `includeInStartupProfile = true`, driving via UiAutomator:
+   - cold-start to the home, wait for the gitgraph to render (a `waitUntil` on a stable
+     `testTag` / content-desc — add one to `GitgraphView` if missing);
+   - tap a scheduled-routine cell → `ActiveRoutineScreen` renders → open one exercise
+     (`StrengthExercise` or `Superset`) → back → back to home;
+   - open a history square → `SessionProgressScreen` → back;
+   - open the routine list and the exercise list once each.
+   This is the "critical user journey". Keep it short — 5–8 screens is plenty.
+
+3. **Generate.** Needs a rooted emulator or a **physical device / AOSP (non-Google-Play)
+   emulator image** — the user's phone connected over adb works. Run:
+   `./gradlew :baseline-profile:pixel<...>NonMinifiedReleaseAndroidTest` (task name is
+   printed by the plugin) — it produces
+   `app/src/<variant>/generated/baselineProfiles/baseline-prof.txt` (and a
+   `startup-prof.txt`). **Commit both.**
+
+4. **Wire release build.** The `androidx.baselineprofile` plugin already merges the committed
+   `baseline-prof.txt` into release `assemble`/`bundle`. Confirm R8 is on for release first
+   (see the "R8 / ProGuard minify" item above — do that *before* this, or the profile
+   references pre-shrink method signatures). If R8 lands after, regenerate the profile.
+
+5. **Measure the delta.** Add a `StartupBenchmark` (`MacrobenchmarkRule`,
+   `startupMode = COLD`, `iterations = 10`, `CompilationMode.None()` vs
+   `CompilationMode.Partial(BaselineProfileMode.Require)`), run on the same device, record
+   `timeToInitialDisplay` before/after in this changelog. Target: cold start (home rows
+   visible) from ~670 ms → ~450–500 ms.
+
+### Gotchas
+
+- Generation requires a device where the profile can actually be installed — a standard
+  Google Play emulator image **won't** work; use the physical phone or an AOSP image.
+- `includeInStartupProfile = true` also emits a startup profile (`dexopt` at install for the
+  very first frames) — keep it.
+- Regenerate the profile after any large refactor of the startup path or a dependency bump;
+  a stale profile degrades gracefully (just covers less), it never breaks the build.
+- Don't run the generator test in the normal unit/instrumented CI job — it's slow and
+  device-specific. Give it its own optional workflow.
+- Keep the journey deterministic: seed a known routine/session set first (the existing
+  `seedDebugData` path, or a fixture) so the test doesn't flake on an empty install.
