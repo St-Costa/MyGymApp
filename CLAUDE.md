@@ -57,7 +57,8 @@ ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 | "How was old VitaFit scale history imported? Is there an official export?" | [docs/vitafit-cloud-api.md](docs/vitafit-cloud-api.md) |
 | "There's an odd pattern — is this intentional?" | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
 | "What happened over time?" | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
-| "How does syncing data to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (design only, not yet implemented) |
+| "How does syncing sessions/readiness/scale/ECG to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (implemented for sessions; readiness/scale/ECG phone-side done, server-side WIP) |
+| "How does the git-style full-store backup (exercises + routines too) work?" | [docs/BACKUP.md](docs/BACKUP.md) (design only) + [docs/backup-server-brief.md](docs/backup-server-brief.md) (hand to the server repo) |
 
 Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementation-guide.md).
 
