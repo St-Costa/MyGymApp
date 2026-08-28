@@ -229,28 +229,44 @@ main sync card — that does a **real round-trip** of the repo-file pipeline aga
 actual exercises and routines: it pushes anything not yet on the server, then reads
 everything back and compares byte-for-byte. Nothing synthetic is sent; nothing is deleted.
 
-Behaviour (`OptionsViewModel.verifyBackupRoundTrip()`):
+Behaviour (`OptionsViewModel.verifyBackupRoundTrip()` → `runVerify()`):
 
-1. **Push.** For every `exercises/*.md` + `routines/*.md` on disk,
-   `RepoLedgerRepository.requeueIfChanged(relPath, bytes)` — a no-op on files already
-   `SENT` with identical bytes, so only what's missing/changed is queued. Fire
-   `RepoSyncWorker` expedited, then poll `RepoLedgerRepository.pendingCount()` until it
-   hits 0 (or ~45 s elapse — reported as "invio non completato entro il timeout").
-2. **Manifest check.** `GET /v1/manifest`; for each local file compare `sha256(local)`
-   against the server's hash. Anything absent → "Mancanti sul server"; anything with a
-   different hash → "Hash diverso".
-3. **Read-back.** For every file whose hash matched, `GET /v1/file?relPath=…` and compare
-   the returned bytes to the local file. A mismatch → "Rilettura non identica". This
-   exercises the exact code path a post-wipe restore uses.
-4. Result line, e.g. `OK — 42 esercizi + 7 routine sul server, hash allineati e 49 riletti
-   identici.` or `47/49 verificati. Mancanti sul server (2): pull-rt-71284f58.md, …`.
+1. **Diff.** `GET /v1/manifest`; compare `sha256(local)` for every `exercises/*.md` +
+   `routines/*.md` on disk against the server's hash. The set that differs (missing or
+   changed) is the push list.
+2. **Push, directly.** For each file in the push list, `POST /v1/repo` `op:"upsert"` **via
+   `RepoSyncApi`, awaited** — *not* the background `RepoSyncWorker` — so the result records
+   the server's per-file answer (`stored` → counted + shown as a green `+ name` line under
+   its category; a `SyncResult.Failure` → `pushFailed`, shown as a red `-` line with the
+   reason). The local ledger is then set to `SENT`/current-hash for each accepted file
+   (`RepoLedgerRepository.markRestored`) so the next real sync doesn't re-send them.
+3. **Read-back.** Re-fetch `GET /v1/manifest`, then for every local file `GET /v1/file` and
+   compare bytes. Buckets: `missingAfter` (still not on the server), `hashMismatch` (there
+   but different), `readBackMismatch` (`/v1/file` didn't return identical bytes),
+   `verifiedIdentical` (count). This exercises the exact code path a post-wipe restore uses.
+
+The result is a **`BackupVerifyReport`** rendered in Options as a git-diff-style block:
+
+```
+esercizi  (2 inviati, 40 invariati)
++ incline-db-press-ex-0f1e2d3c.md
++ calf-raise-ex-7ca58254.md
+routine  (1 inviati, 6 invariati)
++ pull-rt-71284f58.md
+────────────────────────────
+Risposta server: 3 file accettati (stored). Manifest: 49 file schede/routine
+sul server, 49 riletti identici.
+```
+
+Any problem file gets a red `- name (motivo)` line (push rifiutato / mancante sul server /
+hash diverso / rilettura non identica), and the server-summary line turns red.
 
 Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
 toggle — pressing the button is the opt-in, same as "Invia dati in coda".
 
-**Server-visible side effects**: one commit per file that was actually new/changed (the
-common re-run case pushes nothing → no commit). **No deletes, no `deleted/` tombstones** —
-the files it uploads are the user's real data and are meant to stay.
+**Server-visible side effects**: one commit per file that was actually new/changed (a
+re-run with nothing changed pushes nothing → no commit). **No deletes, no `deleted/`
+tombstones** — the files it uploads are the user's real data and are meant to stay.
 
 ---
 
@@ -335,9 +351,10 @@ also excluded.
       "Ripristina dal server" (confirm dialog + result summary via `restoreFromServer()`),
       `resyncAll()` walks `exercises/` + `routines/`
 - [x] "Verifica backup sul server" debug button (§3.7) — real round-trip against actual
-      exercises/routines: push what's missing/changed via the normal ledger+worker, wait for
-      drain, then `GET /v1/manifest` + `GET /v1/file` and compare byte-for-byte. No synthetic
-      file, no delete.
+      exercises/routines: `GET /v1/manifest` → diff → `POST /v1/repo` (direct, awaited, one
+      per changed file) → `GET /v1/manifest`+`GET /v1/file` byte-for-byte. Result is a
+      `BackupVerifyReport` shown as a git-diff block (`+`/`-` per category) plus a one-line
+      paraphrase of the server's response. No synthetic file, no delete.
 - [x] `STORAGE.md` — `_sync/repo_state.yml` documented; root-layout tree updated
 - [x] `SYNC.md` — "Fifth record type: repo files" pointer added
 - [x] `CLAUDE.md` banner softened (still mandates the tar before any install/test op)
