@@ -316,7 +316,7 @@ class SupersetViewModel @Inject constructor(
         // write completing can't lose it — see StrengthExerciseViewModel.completeExercise().
         completionJob = clearScope.launch {
             if (session != null) {
-                session.buildUpdatedSession(sets, completed = true, respectTouch = true)
+                session.buildUpdatedSession(sets, completed = true)
                     .let { workoutRepository.save(it) }
             }
             _completionSaved.value = true
@@ -372,7 +372,7 @@ class SupersetViewModel @Inject constructor(
         val session = currentSession
         clearScope.launch {
             if (session != null) {
-                session.buildUpdatedSession(sets, completed = false, respectTouch = false)
+                session.buildUpdatedSession(sets, completed = false)
                     .let { workoutRepository.save(it) }
             }
             clearScope.cancel()
@@ -380,16 +380,17 @@ class SupersetViewModel @Inject constructor(
     }
 
     /**
-     * @param respectTouch when true (only on explicit "Complete Superset"), a member with no
-     * touched FORZA field and no toggled STRETCH set stays incomplete (completed=false) — but
-     * its shown numbers, grey pre-fills included, are still persisted so re-entry shows them
-     * again. Touching any one value on a member is the signal it was performed: it then closes
-     * as completed with every shown number saved as-is.
+     * @param completed true only on an explicit "Complete Superset" tap: every member closes
+     * out. A member the lifter never touched (no touched FORZA field, no toggled STRETCH set)
+     * closes as completedEmpty=true — the active-routine row then shows the neutral "skipped"
+     * styling (grey border + X) for that member and tonnage math skips it. Its shown numbers,
+     * grey pre-fills included, are still persisted so the next session's prefill finds real
+     * numbers. Touching any one value clears the flag: the member closes as real work.
+     * When false (back-out / autosave) nothing closes — completed/completedEmpty stay false.
      */
     private suspend fun WorkoutSession.buildUpdatedSession(
         sets: List<SupersetSetUi>,
         completed: Boolean,
-        respectTouch: Boolean,
     ): WorkoutSession {
         val members = _uiState.value.members
         // Resolve the materialized bodyweight load once per member (see bwMaterializedFor).
@@ -410,19 +411,19 @@ class SupersetViewModel @Inject constructor(
             it.repsTouched || it.weightTouched || (it.exerciseType == ExerciseType.STRETCH && it.done)
         }
 
-        // A member counts as "performed" only if the lifter touched at least one of its
-        // values. An untouched member stays incomplete on an explicit Complete tap too
-        // (respectTouch=true) — but its shown numbers are still saved (grey pre-fills
-        // included), same as a touched member, so nothing is lost and re-entry shows them.
+        // On an explicit "Complete Superset" (completed=true) every member closes out; a member
+        // the lifter never touched closes as completedEmpty (skipped) rather than staying open.
+        // Its shown numbers are still saved (grey pre-fills included) so nothing is lost.
+        // On back-out / autosave (completed=false) nothing closes.
         val updatedExercises = exercises.map { ex ->
             val mi = exerciseIds.indexOf(ex.exerciseId)
             if (mi < 0) return@map ex
             val memberSets = sets.filter { it.exerciseIndex == mi }.sortedBy { it.setIndex }
-            val performed = !respectTouch || anyTouched(memberSets)
+            val performed = anyTouched(memberSets)
             val bw = bwByIndex.getOrElse(mi) { Bw(0, 0.0, 0.0) }
             ex.copy(
-                completed = completed && performed,
-                completedEmpty = false,
+                completed = completed,
+                completedEmpty = completed && !performed,
                 sets = memberSets.map { setUi ->
                     when (setUi.exerciseType) {
                         ExerciseType.FORZA -> strengthSet(setUi, bw)

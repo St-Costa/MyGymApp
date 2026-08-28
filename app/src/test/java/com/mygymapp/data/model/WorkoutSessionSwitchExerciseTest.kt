@@ -142,22 +142,28 @@ class WorkoutSessionSwitchExerciseTest {
     }
 
     @Test
-    fun `isUntouched keys off completed only, ignoring set contents`() {
-        // Since the untouched-exercise guard change, "Complete without touching" saves
-        // completed = false but keeps the grey pre-fill in `sets`. isUntouched() must still
-        // report such an exercise as not-performed — it keys off `completed` alone, not on
-        // whether `sets` is empty or carries pre-filled numbers.
+    fun `isUntouched reports not-performed work, ignoring set contents`() {
+        // "Complete without touching" now closes the exercise out (completed = true) but flags
+        // it completedEmpty = true and keeps the grey pre-fill in `sets`. isUntouched() must
+        // report both the never-opened case (completed = false) and the completed-empty case
+        // as not-performed — regardless of whether `sets` carries pre-filled numbers.
         val neverOpened = untouchedSlot.copy(sets = emptyList())
         assertTrue(neverOpened.isUntouched())
 
-        val completedWithoutTouching = untouchedSlot.copy(
+        val stillOpenWithPrefill = untouchedSlot.copy(
             completed = false,
             sets = listOf(ExerciseSet.Strength(reps = 13, weight = 16.0)),
         )
-        assertTrue(completedWithoutTouching.isUntouched())
+        assertTrue(stillOpenWithPrefill.isUntouched())
 
-        val completedEmptySlot = untouchedSlot.copy(completed = true, completedEmpty = true, sets = emptyList())
-        assertFalse(completedEmptySlot.isUntouched())
+        // Completed-empty: closed out, but the pre-fill is retained on `sets` (so next
+        // session's walk-back finds real numbers) and it is still "not performed".
+        val completedEmptySlot = untouchedSlot.copy(
+            completed = true,
+            completedEmpty = true,
+            sets = listOf(ExerciseSet.Strength(reps = 13, weight = 16.0)),
+        )
+        assertTrue(completedEmptySlot.isUntouched())
 
         val reallyDone = untouchedSlot.copy(
             completed = true,

@@ -247,7 +247,13 @@ class StrengthExerciseViewModel @Inject constructor(
         // performed: leave it open (completed = false), don't navigate away.
         val anyTouched = sets.any { it.repsTouched || it.weightTouched }
         // Either way this screen navigates back (exerciseCompleted stops onCleared() from
-        // re-saving); only the completed flag differs.
+        // re-saving) and the exercise closes out of the active list. What differs is how it
+        // reads back:
+        //  - touched  -> completed, completedEmpty = false: real performed work.
+        //  - untouched -> completed, completedEmpty = true: the lifter deliberately tapped
+        //    "Complete" but recorded nothing. The active-routine row then shows the neutral
+        //    "skipped" styling (grey border + X) instead of a tonnage change, and all tonnage
+        //    math skips it (see WorkoutExercise.completedEmpty / GitgraphHistoryCalculator).
         exerciseCompleted = true
         // Run the save on clearScope, not viewModelScope: if the process dies between the tap
         // and the write completing, viewModelScope would be cancelled with the save half-done
@@ -260,11 +266,13 @@ class StrengthExerciseViewModel @Inject constructor(
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         ex.copy(
-                            completed = anyTouched,
-                            completedEmpty = false,
+                            completed = true,
+                            completedEmpty = !anyTouched,
                             // Persist the shown numbers either way — grey pre-fills included.
-                            // When nothing was touched the exercise stays incomplete, but the
-                            // pre-filled sets are kept so re-entry shows them again.
+                            // Even a completed-empty exercise keeps its pre-filled sets (not
+                            // emptyList()) so the next session's prefill walk-back still finds
+                            // this exercise's last real numbers instead of restarting at 0x0
+                            // (the fixed-load warmup/daily regression — see CHANGELOG Phase 74).
                             sets = builtSets,
                         )
                     } else ex
