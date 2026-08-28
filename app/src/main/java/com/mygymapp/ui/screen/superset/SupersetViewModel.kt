@@ -112,26 +112,29 @@ class SupersetViewModel @Inject constructor(
             val isDaily2 = workoutEx2?.isDaily ?: false
             val isWarmup1 = (workoutEx1?.excludeFromTonnage ?: false) && !isDaily1
             val isWarmup2 = (workoutEx2?.excludeFromTonnage ?: false) && !isDaily2
+            // Which of the three mutually-exclusive slot categories each exercise is in right
+            // now — both the "previous" pre-fill and the all-time PR compare only against prior
+            // sessions in the same category.
+            val slotContext1 = workoutEx1?.slotContext ?: com.mygymapp.data.model.SlotContext.NORMAL
+            val slotContext2 = workoutEx2?.slotContext ?: com.mygymapp.data.model.SlotContext.NORMAL
 
-            // Previous FORZA sets for showing defaults. Compare like-with-like on exercise type
+            // Previous FORZA sets for showing defaults. Compare like-with-like on slot context
             // (daily / warmup / normal), and walk back to the most recent matching session that
             // actually has non-zero data so an empty 0-0 session doesn't blank out the preview.
-            suspend fun matchingSetsPerSession(exId: String, daily: Boolean, warmup: Boolean): List<List<ExerciseSet.Strength>> =
+            suspend fun matchingSetsPerSession(exId: String, ctx: com.mygymapp.data.model.SlotContext): List<List<ExerciseSet.Strength>> =
                 workoutRepository.getSessionsForExercise(exId, 30)
                     .mapNotNull { prev ->
                         prev.exercises.firstOrNull { ex ->
-                            ex.exerciseId == exId &&
-                                ex.isDaily == daily &&
-                                (ex.excludeFromTonnage && !ex.isDaily) == warmup
+                            ex.exerciseId == exId && ex.slotContext == ctx
                         }
                     }
                     .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
 
             val matchingSessions1 = if (ex1.type == ExerciseType.FORZA) {
-                matchingSetsPerSession(exerciseId1, isDaily1, isWarmup1)
+                matchingSetsPerSession(exerciseId1, slotContext1)
             } else emptyList()
             val matchingSessions2 = if (ex2.type == ExerciseType.FORZA) {
-                matchingSetsPerSession(exerciseId2, isDaily2, isWarmup2)
+                matchingSetsPerSession(exerciseId2, slotContext2)
             } else emptyList()
 
             val prevStrengthSets1 = matchingSessions1.firstOrNull { s -> s.any { it.reps > 0 || it.weight > 0.0 } } ?: emptyList()
@@ -139,21 +142,23 @@ class SupersetViewModel @Inject constructor(
 
             // All-time PR: the single set with the highest tonnage (reps * weight) ever
             // recorded for this exercise, across every session (not just the last 30 used
-            // for "previous") and every non-excluded category — mirrors
-            // StrengthExerciseViewModel's tonnagePr so the badge agrees whether the exercise
-            // is opened standalone or as part of a superset. Warmup/daily sets don't count.
-            suspend fun tonnagePr(exId: String, type: ExerciseType): ExerciseSet.Strength? {
+            // for "previous"). Matched per-context (daily / warmup / normal) like the
+            // "previous" preview above and StrengthExerciseViewModel's tonnagePr, so the
+            // badge agrees whether the exercise is opened standalone or as part of a
+            // superset — and so a fixed-daily slot's PR isn't drawn from unrelated routine
+            // history (or vice versa).
+            suspend fun tonnagePr(exId: String, type: ExerciseType, ctx: com.mygymapp.data.model.SlotContext): ExerciseSet.Strength? {
                 if (type != ExerciseType.FORZA) return null
                 return workoutRepository.getSessionsForExercise(exId, Int.MAX_VALUE)
                     .asSequence()
                     .flatMap { prev -> prev.exercises.asSequence() }
-                    .filter { it.exerciseId == exId && !it.excludeFromTonnage }
+                    .filter { ex -> ex.exerciseId == exId && ex.slotContext == ctx }
                     .flatMap { it.sets.asSequence().filterIsInstance<ExerciseSet.Strength>() }
                     .filter { it.reps > 0 && it.weight > 0.0 }
                     .maxByOrNull { it.reps * it.weight }
             }
-            val prSet1 = tonnagePr(exerciseId1, ex1.type)
-            val prSet2 = tonnagePr(exerciseId2, ex2.type)
+            val prSet1 = tonnagePr(exerciseId1, ex1.type, slotContext1)
+            val prSet2 = tonnagePr(exerciseId2, ex2.type, slotContext2)
 
             // Fallback for sets beyond what the previous session recorded.
             val lastMeaningful1 = prevStrengthSets1.lastOrNull { it.reps > 0 || it.weight > 0.0 }

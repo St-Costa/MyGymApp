@@ -108,7 +108,24 @@ data class WorkoutExercise(
      * is locked for the rest of this session. See docs/CONVENTIONS.md#switch-exercise.
      */
     fun isSwitchEligible(): Boolean = substitutedFor == null && hasNoRecordedSets() && !completed
+
+    /**
+     * Which of the three mutually-exclusive slot categories this exercise was performed as.
+     * The same exercise can appear across history in more than one category (e.g. as a
+     * fixed-daily entry and also inside a routine), and their load histories are unrelated —
+     * "previous" pre-fills and the all-time tonnage PR must both compare like-with-like, so
+     * they filter prior sessions by matching [slotContext]. See docs/CONVENTIONS.md.
+     */
+    val slotContext: SlotContext
+        get() = when {
+            isDaily -> SlotContext.DAILY
+            excludeFromTonnage -> SlotContext.WARMUP
+            else -> SlotContext.NORMAL
+        }
 }
+
+/** The three mutually-exclusive kinds of exercise slot in a session. See [WorkoutExercise.slotContext]. */
+enum class SlotContext { NORMAL, WARMUP, DAILY }
 
 /**
  * Replaces the slot currently holding [oldExerciseId] with [newExercise] — see
