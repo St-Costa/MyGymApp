@@ -1098,6 +1098,12 @@ that gap; this is its phone side.
   (`restoreFromServer()` — confirm dialog, manifest-diff, pull-only, never deletes local
   files, marks pulled files `SENT` so they don't bounce back), and `resyncAll()` now also
   walks `exercises/` + `routines/`.
+- Options debug section: **"Test backup verso il server"** (`sendDebugBackup()`) — a
+  synchronous upsert-then-delete of a throwaway `routines/_debug-backup-{ts}.md` straight
+  through `RepoSyncApi` (no ledger row, no file on disk — a `cacheDir` temp file deleted in
+  `finally`). Exercises `POST /v1/repo` end to end and reports the failing leg precisely.
+  The `_` prefix is the server's cue to keep it out of the parsed SQL view
+  (`docs/backup-server-brief.md` §2.1 / §2.5).
 
 **Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
 unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.

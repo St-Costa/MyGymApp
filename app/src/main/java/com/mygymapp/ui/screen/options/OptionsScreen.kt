@@ -116,6 +116,7 @@ fun OptionsScreen(
                 onScaleDebugClick = onNavigateToScaleDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
+                onSendDebugBackup = viewModel::sendDebugBackup,
                 onSummaryPreviewClick = onNavigateToSummaryPreview,
             )
         }
@@ -384,8 +385,8 @@ private fun PendingItemsList(uiState: OptionsUiState) {
 }
 
 /**
- * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send.
- * Each is its own short explanation + button, separated by a divider.
+ * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send,
+ * backup debug send. Each is its own short explanation + button, separated by a divider.
  */
 @Composable
 private fun DebugSection(
@@ -393,6 +394,7 @@ private fun DebugSection(
     onScaleDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
+    onSendDebugBackup: () -> Unit,
     onSummaryPreviewClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
@@ -486,6 +488,36 @@ private fun DebugSection(
             if (uiState.ecgDebugResult != null) {
                 Text(
                     uiState.ecgDebugResult,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Backup — synthesises a throwaway .md, upserts then deletes it via POST /v1/repo,
+            // both awaited, to exercise the full-store backup pipeline end to end without
+            // touching any real exercise/routine (docs/BACKUP.md §3.7). No ledger entry, no
+            // local file left behind.
+            Text(
+                "Invia e cancella un file di prova via POST /v1/repo per verificare il backup.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onSendDebugBackup,
+                enabled = configured && !uiState.backupDebugRunning,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.backupDebugRunning) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Test backup verso il server")
+                }
+            }
+            if (uiState.backupDebugResult != null) {
+                Text(
+                    uiState.backupDebugResult,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
