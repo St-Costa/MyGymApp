@@ -16,3 +16,4 @@ local.properties
 # the sync server after the on-device data was wiped — see CLAUDE.md banner). Not
 # project source; contains personal data.
 /gym-recovery
+gymdata-backup-*.tar
