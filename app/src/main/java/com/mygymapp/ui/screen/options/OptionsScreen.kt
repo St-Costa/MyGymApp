@@ -102,6 +102,7 @@ fun OptionsScreen(
                 onEnabledChange = viewModel::setSyncEnabled,
                 onTestConnection = viewModel::testConnection,
                 onResyncAll = viewModel::resyncAll,
+                onRestoreFromServer = viewModel::restoreFromServer,
             )
             PowerliftingSection(
                 anchorMonday = uiState.anchorMonday,
@@ -215,8 +216,10 @@ private fun ServerSettingsSection(
     onEnabledChange: (Boolean) -> Unit,
     onTestConnection: () -> Unit,
     onResyncAll: () -> Unit,
+    onRestoreFromServer: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
+    var showRestoreConfirm by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -309,8 +312,47 @@ private fun ServerSettingsSection(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+
+                // Full-store restore (docs/BACKUP.md §3.6): pull-only, never deletes local
+                // files. Confirmed because it can overwrite local edits that haven't synced.
+                OutlinedButton(
+                    onClick = { showRestoreConfirm = true },
+                    enabled = !uiState.syncIsRestoring && configured,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina dal server")
+                }
+                uiState.syncRestoreResult?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
+    }
+
+    if (showRestoreConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("Ripristina dal server") },
+            text = {
+                Text(
+                    "Scarica dal server ogni file mancante o diverso (schede, esercizi, " +
+                        "sessioni, pesate…). Non cancella nulla in locale.",
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showRestoreConfirm = false
+                    onRestoreFromServer()
+                }) { Text("Ripristina") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showRestoreConfirm = false }) { Text("Annulla") }
+            },
+        )
     }
 }
 
@@ -323,6 +365,7 @@ private fun PendingItemsList(uiState: OptionsUiState) {
             "Sessioni" to uiState.syncSessionsPending,
             "Pesate" to uiState.syncScalePending,
             "ECG" to uiState.syncEcgPending,
+            "Schede/esercizi" to uiState.syncRepoPending,
         ).forEach { (label, count) ->
             Text(
                 "• $label: $count",

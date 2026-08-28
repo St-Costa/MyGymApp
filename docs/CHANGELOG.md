@@ -1063,3 +1063,49 @@ Docs: [CONVENTIONS.md § Derived-data sidecars](CONVENTIONS.md#derived-data-side
 [§ ExerciseSessionViewModel](CONVENTIONS.md#per-exercise-viewmodels-exercisesessionviewmodel)
 added; STORAGE.md sidecar sections updated for the day-key format and the lookback
 invalidation; CLAUDE.md "Crucial facts" gained both entries.
+
+## Phase 84 — Full-store backup: exercises + routines join the sync pipelines (phone side)
+
+The Phase 82 baseline-profile wipe was recoverable for sessions/readiness/scale/ECG (all
+synced) but **not** for `exercises/*.md` / `routines/*.md` — never synced, and lossily
+rebuilt from session YAML (no image links, notes, `day`/`enabled`/warmup flags).
+`docs/BACKUP.md` designs a fifth pipeline plus a git-commit-per-push server that closes
+that gap; this is its phone side.
+
+**New (`data/sync/`)**
+- `RepoLedgerRepository` (`_sync/repo_state.yml`) — mirrors `SyncLedgerRepository` but keyed
+  by **relative path** (the slug in the filename changes on rename) and is the only ledger
+  that syncs **deletions**: `markDeleted()` writes an `op: delete` tombstone as
+  `DELETED_PENDING`, kept (not dropped) so a later re-scan can't resurrect the file
+  server-side. `requeueIfChanged()` is a no-op when the exact bytes are already `SENT` —
+  that's what makes the push incremental. New `SyncStatus` values `DELETED_PENDING` /
+  `DELETED_SENT`.
+- `RepoSyncApi` — `POST /v1/repo`, `postUpsert` (raw `.md` bytes as a file part) /
+  `postDelete` (envelope only). `stored`/`duplicate`/`deleted`/`already_absent` all count
+  as success.
+- `RepoSyncWorker` (`@HiltWorker`) + `Scheduler` — expedited on enqueue, 4h periodic
+  durability net (added to `MyGymApp.onCreate()`'s batch alongside the other four).
+- `RestoreApi` — `GET /v1/manifest` + `GET /v1/file?relPath=…`, the pull-only restore path.
+
+**Hooks**
+- `ExerciseRepository.save/delete` and `RoutineRepository.save/delete` now queue the file
+  (and, on a rename, tombstone the old `{slug}-{id}.md` path) — non-blocking, after the file
+  write, same discipline as the `completionSaved` / `onCleared()` save patterns. Both repos
+  gained a `RepoLedgerRepository` + `@ApplicationContext` dependency.
+- `ActiveRoutineViewModel.registerRoutine()` fires an expedited `RepoSyncWorker` run so a
+  routine edited mid-session lands with its session.
+- Options: a "Schede/esercizi" pending bullet, a "Ripristina dal server" action
+  (`restoreFromServer()` — confirm dialog, manifest-diff, pull-only, never deletes local
+  files, marks pulled files `SENT` so they don't bounce back), and `resyncAll()` now also
+  walks `exercises/` + `routines/`.
+
+**Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
+unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.
+`RepoLedgerRepositoryTest` covers the incremental no-op, rename tombstone, delete/upsert
+ordering, failed-state retryability, and YAML round-trip of a slash-and-dash path key (10
+cases).
+
+**Not in this phase**: the server side (`MyGymApp_server` — `POST /v1/repo`, restore
+endpoints, `data/raw/` as a git repo) per `docs/backup-server-brief.md`, and the
+end-to-end test that needs it. Until the server exists the phone queues but nothing
+receives — the CLAUDE.md banner still mandates the tar backup before any install/test op.

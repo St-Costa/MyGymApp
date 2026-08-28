@@ -147,6 +147,9 @@ class SessionProgressViewModel @Inject constructor(
             SyncStatus.PENDING -> SessionSyncStatus.PENDING
             // Not in the ledger yet (enqueue() hasn't landed the write) — treat as still in flight.
             null -> SessionSyncStatus.PENDING
+            // DELETED_PENDING/DELETED_SENT are only produced by the repo-file ledger
+            // (docs/BACKUP.md), never the session ledger — unreachable here.
+            else -> SessionSyncStatus.PENDING
         }
         _uiState.value = _uiState.value.copy(
             syncStatus = status,
