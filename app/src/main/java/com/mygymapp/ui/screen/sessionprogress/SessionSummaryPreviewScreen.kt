@@ -18,13 +18,19 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.DisconnectStats
+import com.mygymapp.data.polar.Readiness
+import com.mygymapp.data.polar.ReadinessResult
+import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
+import com.mygymapp.ui.screen.heartrate.ReadinessCard
+import java.time.LocalDate
 
 /**
- * Debug-only screen (reachable from Options → Debug) that renders the two end-of-routine
- * status panels — server-sync box and Polar-disconnection box — with hand-made sample data,
- * so their look can be checked without a real flaky Polar session. Not part of any real
- * user flow.
+ * Debug-only screen (reachable from Options → Debug) that renders the end-of-routine
+ * status panels — server-sync box, readiness card, Polar-connection box, and
+ * Polar-disconnection box — with hand-made sample data, so their look can be checked
+ * without a real flaky Polar session. Not part of any real user flow.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +77,35 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             SyncStatusBox(SessionSyncStatus.PENDING)
             SyncStatusBox(SessionSyncStatus.FAILED)
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
+
+            Text("Scheda readiness", style = MaterialTheme.typography.titleSmall)
+            ReadinessCard(
+                readiness = ReadinessResult(
+                    readiness = Readiness.NORMAL,
+                    lnRmssd = 4.1,
+                    restingHr = 54,
+                    secondsRemaining = 0,
+                    recommendation = "HRV within normal range. Proceed with planned workout.",
+                    stepsPreviousDay = 12_641,
+                    bpmTrace = listOf(62, 61, 63, 60, 59, 58, 60, 62, 64, 61, 59, 57, 58, 60, 61, 63, 62, 60, 59, 58, 57, 59, 61, 62, 70, 66, 63, 61, 60, 58),
+                ),
+                vo2max = 48.2,
+            )
+
+            Text("Box connessione Polar", style = MaterialTheme.typography.titleSmall)
+            PolarDeviceBox(
+                deviceId = "Polar H10 B79A5D2A",
+                batteryLevel = 88,
+                batteryLow = false,
+                batteryLife = BatteryLifeState(
+                    installedAtDate = LocalDate.now().minusDays(37),
+                    installedAtLevel = 100,
+                    activeSeconds = 62L * 3600,
+                    lastLevel = 88,
+                    lastReadingEpochSec = 0,
+                    pastLifeSeconds = listOf(410L * 3600, 380L * 3600),
+                ),
+            )
 
             Text("Box disconnessioni Polar", style = MaterialTheme.typography.titleSmall)
             PolarConnectionBox(sampleDrops)
