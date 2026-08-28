@@ -2,6 +2,23 @@
 
 All user data lives under `context.filesDir/gymdata/` (app-internal storage). No database, no cloud, no external media — everything is files you can inspect with `adb pull` or a file manager with root access.
 
+> ## ⛔ BACK THIS UP BEFORE ANY INSTALL/UNINSTALL/TEST OPERATION
+>
+> This directory is the **only** copy of the user's data — not in git, not on the dev
+> machine, no OS backup guaranteed. `pm uninstall`, `pm clear`, installing a
+> differently-signed APK, and **any `:baseline-profile` / `connected…AndroidTest` run**
+> (they carry `uninstall_after_test: true`) **delete it permanently**. This has already
+> destroyed real user data once.
+>
+> Pull it off the device first (needs a *debuggable* build installed):
+> ```bash
+> adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -cf - gymdata \
+>   > gymdata-backup-$(date +%Y%m%d-%H%M%S).tar
+> tar -tvf gymdata-backup-*.tar | head            # verify it's non-empty
+> ```
+> Restore with `... tar -C /data/data/com.mygymapp/files -xf - < gymdata-backup-*.tar`.
+> See the banner at the top of [CLAUDE.md](../CLAUDE.md) for the full rule.
+
 ## Root layout
 
 ```
