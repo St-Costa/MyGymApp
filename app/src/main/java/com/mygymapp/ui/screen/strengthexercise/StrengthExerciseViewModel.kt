@@ -112,22 +112,14 @@ class StrengthExerciseViewModel @Inject constructor(
                 ?: routineExercise?.sets
                 ?: 3
 
-            // Find previous workout data for this exercise (for showing grey "previous" values).
-            // Progress must compare like-with-like: only against prior sessions where this exercise
-            // had the same type (daily / warmup / normal). Walk back through history and use the
-            // most recent matching session that actually has non-zero set data, so an empty 0-0
-            // session doesn't blank out the preview.
-            val matchingSetsPerSession = workoutRepository.getSessionsForExercise(exerciseId, 30)
-                .mapNotNull { prev ->
-                    prev.exercises.firstOrNull { ex ->
-                        ex.exerciseId == exerciseId && ex.slotContext == slotContext
-                    }
-                }
-                .map { it.sets.filterIsInstance<ExerciseSet.Strength>() }
-
-            val previousSets = matchingSetsPerSession.firstOrNull { strengthSets ->
-                strengthSets.any { it.reps > 0 || it.weight > 0.0 }
-            } ?: emptyList()
+            // Previous workout data + all-time PR for this exercise come from the per-exercise
+            // stats sidecar (history/_stats/{id}.yaml) — a single small read instead of parsing
+            // every session file that contains the exercise. Both are already matched
+            // like-with-like on slot context (daily / warmup / normal) inside the sidecar, and
+            // "previous" is already the most recent session with real (non-zero) set data.
+            val ctxStats = workoutRepository.getExerciseStats(exerciseId).forContext(slotContext)
+            val previousSets = ctxStats?.previousSets.orEmpty()
+                .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
 
             // Rep range from the routine lookup above (routineExercise).
             val repMin = routineExercise?.repRangeMin ?: 0
@@ -156,22 +148,9 @@ class StrengthExerciseViewModel @Inject constructor(
                 )
             }
 
-            // All-time PR: the single set with the highest tonnage (reps * weight) ever recorded
-            // for this exercise, across every session (not just the last 30 used for "previous").
-            // Matched per-context, like the "previous" preview above: a daily slot's PR is drawn
-            // only from prior daily executions, a normal slot's only from normal ones, a warmup
-            // slot's only from warmup ones. The same exercise can be both a fixed-daily entry
-            // (run at full intensity, but excluded from tonnage) and a routine entry, and their
-            // load histories are unrelated — mixing them made the daily screen show a PR below
-            // its own recent sets.
-            val tonnagePr = workoutRepository.getSessionsForExercise(exerciseId, Int.MAX_VALUE)
-                .asSequence()
-                .flatMap { prev -> prev.exercises.asSequence() }
-                .filter { ex -> ex.exerciseId == exerciseId && ex.slotContext == slotContext }
-                .flatMap { it.sets.asSequence().filterIsInstance<ExerciseSet.Strength>() }
-                .filter { it.reps > 0 && it.weight > 0.0 }
-                .maxByOrNull { it.reps * it.weight }
-                ?.let { TonnagePr(reps = it.reps, weight = it.weight) }
+            // All-time PR (highest reps*weight set ever, in this slot context) — also from the
+            // sidecar, same as "previous" above.
+            val tonnagePr = ctxStats?.pr?.let { TonnagePr(reps = it.reps, weight = it.weight) }
 
             // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
             // never reaches this screen) that hasn't recorded anything yet, matching

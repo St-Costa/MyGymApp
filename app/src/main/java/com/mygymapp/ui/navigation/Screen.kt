@@ -39,11 +39,11 @@ sealed class Screen(val route: String) {
          * current session. The unfiltered `ExercisePicker.route` (used by RoutineEdit) still
          * works as-is — all query params default to empty/no-op.
          *
-         * [resultKeySide]: for the Superset screen only, which side (1 or 2) opened the
-         * picker — the result is written back under `pickedExerciseIdSide{1,2}` instead of the
-         * plain `pickedExerciseId` key, so the two independent slots can never cross-apply a
-         * switch meant for the other side. 0 (default) means "not a superset side" and uses
-         * the plain key.
+         * [resultKeySide]: for the Superset screen only, the 1-based position (1..3) of the
+         * chain member that opened the picker — the result is written back under
+         * `pickedExerciseIdSide{N}` instead of the plain `pickedExerciseId` key, so the
+         * independent slots can never cross-apply a switch meant for another member. 0
+         * (default) means "not a superset member" and uses the plain key.
          */
         fun createRoute(
             bodypart: String,
@@ -57,9 +57,10 @@ sealed class Screen(val route: String) {
             "exercises/pick?bodypart=${Uri.encode(bodypart)}&type=${Uri.encode(type)}" +
                 "&excludeIds=${Uri.encode(excludeIds.joinToString(","))}&resultKeySide=$resultKeySide"
     }
-    data object Superset : Screen("workout/{sessionId}/superset/{exerciseId1}/{exerciseId2}") {
-        fun createRoute(sessionId: String, exerciseId1: String, exerciseId2: String): String =
-            "workout/$sessionId/superset/$exerciseId1/$exerciseId2"
+    data object Superset : Screen("workout/{sessionId}/superset/{exerciseIds}") {
+        /** [exerciseIds] holds the 2–3 chain members in execution order, comma-separated. */
+        fun createRoute(sessionId: String, exerciseIds: List<String>): String =
+            "workout/$sessionId/superset/${exerciseIds.joinToString(",")}"
     }
     data object SessionProgress : Screen("session/{sessionId}/{date}?justCompleted={justCompleted}") {
         fun createRoute(sessionId: String, date: String, justCompleted: Boolean = false): String =

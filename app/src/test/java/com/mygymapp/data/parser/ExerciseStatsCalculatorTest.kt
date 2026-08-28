@@ -1,0 +1,206 @@
+package com.mygymapp.data.parser
+
+import com.mygymapp.data.model.ExerciseSet
+import com.mygymapp.data.model.ExerciseStats
+import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.PreviousSet
+import com.mygymapp.data.model.SlotContext
+import com.mygymapp.data.model.WorkoutExercise
+import com.mygymapp.data.model.WorkoutSession
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * The calculator must reproduce, from the sidecar, exactly what StrengthExerciseViewModel /
+ * SupersetViewModel computed inline before: "previous" = the most recent (by completedAt)
+ * matching-context session with a real set; PR = the single highest reps*weight set ever, in
+ * that context. And [ExerciseStatsCalculator.merge] must agree with
+ * [ExerciseStatsCalculator.rebuild] fed the same sessions.
+ */
+class ExerciseStatsCalculatorTest {
+
+    private val EX = "ex-11112222"
+
+    private fun strengthSession(
+        completedAt: String,
+        sets: List<Pair<Int, Double>>,
+        ctx: SlotContext = SlotContext.NORMAL,
+        exerciseId: String = EX,
+        date: String = completedAt.take(10).ifBlank { "2026-01-01" },
+    ) = WorkoutSession(
+        id = completedAt.ifBlank { "x" },
+        routineId = "rt-aaaa1111",
+        routineName = "R",
+        date = date,
+        completedAt = completedAt,
+        exercises = listOf(
+            WorkoutExercise(
+                exerciseId = exerciseId,
+                exerciseName = "Bench",
+                bodypart = "chest",
+                type = ExerciseType.FORZA,
+                completed = true,
+                excludeFromTonnage = ctx != SlotContext.NORMAL,
+                isDaily = ctx == SlotContext.DAILY,
+                sets = sets.map { (r, w) -> ExerciseSet.Strength(reps = r, weight = w) },
+            ),
+        ),
+    )
+
+    @Test
+    fun `no sessions yields empty stats`() {
+        val stats = ExerciseStatsCalculator.rebuild(EX, emptyList())
+        assertEquals(emptyMap<SlotContext, Any>(), stats.perContext)
+    }
+
+    @Test
+    fun `non-completed sessions are ignored`() {
+        val open = strengthSession("", listOf(10 to 50.0))
+        val stats = ExerciseStatsCalculator.rebuild(EX, listOf(open))
+        assertNull(stats.forContext(SlotContext.NORMAL))
+    }
+
+    @Test
+    fun `previous is the most recent session with real data`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0, 8 to 60.0)),
+            strengthSession("2026-08-10T10:00:00", listOf(8 to 65.0, 8 to 65.0)),
+            // most recent, but all-zero → must be skipped for "previous"
+            strengthSession("2026-08-20T10:00:00", listOf(0 to 0.0, 0 to 0.0)),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals("2026-08-10T10:00:00", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(8, 65.0), PreviousSet(8, 65.0)), ctx.previousSets)
+    }
+
+    @Test
+    fun `pr is the single highest tonnage set across all history`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(10 to 40.0, 5 to 80.0)), // best 400
+            strengthSession("2026-08-10T10:00:00", listOf(8 to 60.0)),             // best 480
+            strengthSession("2026-08-20T10:00:00", listOf(6 to 70.0)),             // best 420
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(8, 60.0), ctx.pr)
+        assertTrue(ctx.hasPriorRealTonnage)
+    }
+
+    @Test
+    fun `contexts are kept separate`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0), ctx = SlotContext.NORMAL),
+            strengthSession("2026-08-02T10:00:00", listOf(15 to 20.0), ctx = SlotContext.DAILY),
+            strengthSession("2026-08-03T10:00:00", listOf(12 to 30.0), ctx = SlotContext.WARMUP),
+        )
+        val stats = ExerciseStatsCalculator.rebuild(EX, sessions)
+        assertEquals(PreviousSet(8, 60.0), stats.forContext(SlotContext.NORMAL)!!.pr)
+        assertEquals(PreviousSet(15, 20.0), stats.forContext(SlotContext.DAILY)!!.pr)
+        assertEquals(PreviousSet(12, 30.0), stats.forContext(SlotContext.WARMUP)!!.pr)
+    }
+
+    @Test
+    fun `merge of a new PR session updates pr but keeps older previous when new session weaker per-set ordering`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0, 8 to 60.0))),
+        )
+        val newSession = strengthSession("2026-08-05T10:00:00", listOf(3 to 200.0)) // huge PR
+        val merged = ExerciseStatsCalculator.merge(EX, base, newSession)
+        val ctx = merged.forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(3, 200.0), ctx.pr)
+        // newer session has real data → it also becomes "previous"
+        assertEquals("2026-08-05T10:00:00", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(3, 200.0)), ctx.previousSets)
+    }
+
+    @Test
+    fun `merge of an all-zero session does not touch previous or pr`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0))),
+        )
+        val emptySession = strengthSession("2026-08-05T10:00:00", listOf(0 to 0.0, 0 to 0.0))
+        val merged = ExerciseStatsCalculator.merge(EX, base, emptySession)
+        val ctx = merged.forContext(SlotContext.NORMAL)!!
+        assertEquals("2026-08-01T10:00:00", ctx.previousSessionDate)
+        assertEquals(PreviousSet(8, 60.0), ctx.pr)
+    }
+
+    @Test
+    fun `merge onto null current is same as rebuild from that one session`() {
+        val session = strengthSession("2026-08-05T10:00:00", listOf(5 to 100.0, 4 to 110.0))
+        val merged = ExerciseStatsCalculator.merge(EX, null, session)
+        val rebuilt = ExerciseStatsCalculator.rebuild(EX, listOf(session))
+        assertEquals(rebuilt.perContext, merged.perContext)
+    }
+
+    @Test
+    fun `merge onto stale schema version rebuilds from just this session`() {
+        val stale = ExerciseStats(exerciseId = EX, schemaVersion = 0)
+        val session = strengthSession("2026-08-05T10:00:00", listOf(5 to 100.0))
+        val merged = ExerciseStatsCalculator.merge(EX, stale, session)
+        assertEquals(ExerciseStats.SCHEMA_VERSION, merged.schemaVersion)
+        assertEquals(PreviousSet(5, 100.0), merged.forContext(SlotContext.NORMAL)!!.pr)
+    }
+
+    @Test
+    fun `incremental merge chain agrees with full rebuild`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0, 8 to 60.0)),
+            strengthSession("2026-08-05T10:00:00", listOf(3 to 200.0)),               // PR
+            strengthSession("2026-08-10T10:00:00", listOf(0 to 0.0)),                 // empty
+            strengthSession("2026-08-15T10:00:00", listOf(10 to 50.0, 10 to 52.5)),   // latest real
+            strengthSession("2026-08-20T10:00:00", listOf(6 to 62.0), ctx = SlotContext.WARMUP),
+        )
+
+        var incremental: ExerciseStats? = null
+        for (s in sessions) incremental = ExerciseStatsCalculator.merge(EX, incremental, s)
+
+        val full = ExerciseStatsCalculator.rebuild(EX, sessions)
+
+        assertEquals(full.forContext(SlotContext.NORMAL), incremental!!.forContext(SlotContext.NORMAL))
+        assertEquals(full.forContext(SlotContext.WARMUP), incremental.forContext(SlotContext.WARMUP))
+    }
+
+    @Test
+    fun `bodyweight materialized weight is used as-is`() {
+        // A materialized bodyweight set arrives with weight already filled in.
+        val session = WorkoutSession(
+            id = "bw", routineId = "rt-a", routineName = "R", date = "2026-08-01",
+            completedAt = "2026-08-01T10:00:00",
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = EX, exerciseName = "Pull-up", bodypart = "back",
+                    type = ExerciseType.FORZA, completed = true,
+                    sets = listOf(
+                        ExerciseSet.Strength(reps = 10, weight = 75.0, isBodyweight = true, bwLoadPercent = 100),
+                    ),
+                ),
+            ),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(10, 75.0), ctx.pr)
+        assertEquals(listOf(PreviousSet(10, 75.0)), ctx.previousSets)
+    }
+
+    @Test
+    fun `stretch-only history yields no context stats`() {
+        val session = WorkoutSession(
+            id = "s", routineId = "rt-a", routineName = "R", date = "2026-08-01",
+            completedAt = "2026-08-01T10:00:00",
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = EX, exerciseName = "Hamstring stretch", bodypart = "legs",
+                    type = ExerciseType.STRETCH, completed = true,
+                    sets = listOf(ExerciseSet.Stretch(timeSeconds = 60, done = true)),
+                ),
+            ),
+        )
+        val stats = ExerciseStatsCalculator.rebuild(EX, listOf(session))
+        assertNull(stats.forContext(SlotContext.NORMAL))
+        assertFalse(stats.perContext.containsKey(SlotContext.NORMAL))
+    }
+}

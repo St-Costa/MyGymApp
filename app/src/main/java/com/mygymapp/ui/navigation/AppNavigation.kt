@@ -23,6 +23,7 @@ import com.mygymapp.ui.screen.superset.SupersetScreen
 import com.mygymapp.ui.screen.sessionprogress.SessionProgressScreen
 import com.mygymapp.ui.screen.heartrate.HeartRateScreen
 import com.mygymapp.ui.screen.options.OptionsScreen
+import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
@@ -125,7 +126,7 @@ fun AppNavigation(navController: NavHostController) {
                 }
             }
 
-            // Observe superset completion result (comma-separated exerciseId1,exerciseId2)
+            // Observe superset completion result (comma-separated chain member exerciseIds)
             val completedSupersetIds = backStackEntry.savedStateHandle.get<String>("completedSupersetIds")
             LaunchedEffect(completedSupersetIds) {
                 if (completedSupersetIds != null) {
@@ -161,8 +162,8 @@ fun AppNavigation(navController: NavHostController) {
                     }
                     navController.navigate(route)
                 },
-                onNavigateToSuperset = { sessionId, exerciseId1, exerciseId2 ->
-                    navController.navigate(Screen.Superset.createRoute(sessionId, exerciseId1, exerciseId2))
+                onNavigateToSuperset = { sessionId, exerciseIds ->
+                    navController.navigate(Screen.Superset.createRoute(sessionId, exerciseIds))
                 },
                 onBack = { navController.popBackStack() },
                 onSessionRegistered = { sessionId, date ->
@@ -291,30 +292,25 @@ fun AppNavigation(navController: NavHostController) {
             route = Screen.Superset.route,
             arguments = listOf(
                 navArgument("sessionId") { type = NavType.StringType },
-                navArgument("exerciseId1") { type = NavType.StringType },
-                navArgument("exerciseId2") { type = NavType.StringType },
+                navArgument("exerciseIds") { type = NavType.StringType },
             ),
         ) { backStackEntry ->
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
-            val exerciseId1 = backStackEntry.arguments?.getString("exerciseId1") ?: ""
-            val exerciseId2 = backStackEntry.arguments?.getString("exerciseId2") ?: ""
+            val exerciseIds = (backStackEntry.arguments?.getString("exerciseIds") ?: "")
+                .split(",").filter { it.isNotBlank() }
             val viewModel: com.mygymapp.ui.screen.superset.SupersetViewModel = hiltViewModel()
 
-            // Each side's picker result is stored under its own key (set by the picker
-            // composable below, keyed on the "side" the picker was opened for) so a switch on
-            // side 1 can never be misapplied to side 2's slot.
-            val pickedId1 = backStackEntry.savedStateHandle.get<String>("pickedExerciseIdSide1")
-            LaunchedEffect(pickedId1) {
-                if (pickedId1 != null) {
-                    viewModel.switchExercise1(pickedId1)
-                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseIdSide1")
-                }
-            }
-            val pickedId2 = backStackEntry.savedStateHandle.get<String>("pickedExerciseIdSide2")
-            LaunchedEffect(pickedId2) {
-                if (pickedId2 != null) {
-                    viewModel.switchExercise2(pickedId2)
-                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseIdSide2")
+            // A member's picker result is stored under its own 1-based key ("pickedExerciseIdSideN",
+            // set by the picker composable below, keyed on the member the picker was opened for)
+            // so a switch on one member can never be misapplied to another member's slot.
+            exerciseIds.indices.forEach { i ->
+                val key = "pickedExerciseIdSide${i + 1}"
+                val picked = backStackEntry.savedStateHandle.get<String>(key)
+                LaunchedEffect(picked) {
+                    if (picked != null) {
+                        viewModel.switchExerciseAt(i, picked)
+                        backStackEntry.savedStateHandle.remove<String>(key)
+                    }
                 }
             }
 
@@ -322,7 +318,7 @@ fun AppNavigation(navController: NavHostController) {
                 onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
-                        ?.set("completedSupersetIds", "$exerciseId1,$exerciseId2")
+                        ?.set("completedSupersetIds", exerciseIds.joinToString(","))
                     navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() },
@@ -331,21 +327,21 @@ fun AppNavigation(navController: NavHostController) {
                         Screen.ExercisePicker.createRoute(bodypart, type, excludeIds, resultKeySide = side)
                     )
                 },
-                onSwitched = { side, newExerciseId ->
+                onSwitched = onSwitched@{ side, newExerciseId ->
                     // Tell the ActiveRoutine screen about the swap — same reasoning as the
-                    // Strength/Stretch onSwitched above.
-                    val oldExerciseId = if (side == 1) exerciseId1 else exerciseId2
+                    // Strength/Stretch onSwitched above. `side` is 1-based.
+                    val memberIndex = side - 1
+                    val oldExerciseId = exerciseIds.getOrNull(memberIndex) ?: return@onSwitched
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("switchedExerciseIds", "$oldExerciseId,$newExerciseId")
-                    // Re-navigate to the same Superset route with only the switched side's id
-                    // replaced — the other side's id (and thus its own VM state) is unaffected.
-                    val newExerciseId1 = if (side == 1) newExerciseId else exerciseId1
-                    val newExerciseId2 = if (side == 2) newExerciseId else exerciseId2
+                    // Re-navigate to the same Superset route with only the switched member's id
+                    // replaced — the other members' ids (and thus their own VM state) are unaffected.
+                    val newIds = exerciseIds.toMutableList().also { it[memberIndex] = newExerciseId }
                     navController.navigate(
-                        Screen.Superset.createRoute(sessionId, newExerciseId1, newExerciseId2)
+                        Screen.Superset.createRoute(sessionId, newIds)
                     ) {
-                        popUpTo(Screen.Superset.createRoute(sessionId, exerciseId1, exerciseId2)) { inclusive = true }
+                        popUpTo(Screen.Superset.createRoute(sessionId, exerciseIds)) { inclusive = true }
                     }
                 },
                 viewModel = viewModel,
@@ -393,8 +389,7 @@ fun AppNavigation(navController: NavHostController) {
             // uses the shared "pickedExerciseId" key.
             val resultKeySide = backStackEntry.arguments?.getInt("resultKeySide") ?: 0
             val resultKey = when (resultKeySide) {
-                1 -> "pickedExerciseIdSide1"
-                2 -> "pickedExerciseIdSide2"
+                in 1..MAX_SUPERSET_SIZE -> "pickedExerciseIdSide$resultKeySide"
                 else -> "pickedExerciseId"
             }
             ExerciseListScreen(

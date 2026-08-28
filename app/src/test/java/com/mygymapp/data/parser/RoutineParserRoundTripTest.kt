@@ -68,6 +68,26 @@ class RoutineParserRoundTripTest {
     }
 
     @Test
+    fun `three-member superset chain round-trips`() {
+        val routine = Routine(
+            id = "rt-abcd1234",
+            name = "Giant set day",
+            exercises = listOf(
+                RoutineExercise(exerciseId = "ex-aaaa1111", sets = 3, supersetWithNext = true),
+                RoutineExercise(exerciseId = "ex-bbbb2222", sets = 3, supersetWithNext = true),
+                RoutineExercise(exerciseId = "ex-cccc3333", sets = 3, supersetWithNext = false),
+            ),
+        )
+
+        val result = roundTrip(routine)
+
+        assertEquals(3, result.exercises.size)
+        assertTrue(result.exercises[0].supersetWithNext)
+        assertTrue(result.exercises[1].supersetWithNext)
+        assertFalse(result.exercises[2].supersetWithNext)
+    }
+
+    @Test
     fun `cardio duration stored in timePerSetSeconds round-trips`() {
         val routine = Routine(
             id = "rt-abcd1234",

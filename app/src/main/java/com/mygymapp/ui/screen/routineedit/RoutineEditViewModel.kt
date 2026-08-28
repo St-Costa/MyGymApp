@@ -11,6 +11,7 @@ import com.mygymapp.data.model.Routine
 import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
+import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 import com.mygymapp.ui.util.groupSupersets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,11 +56,11 @@ val DAYS_OF_WEEK = listOf("monday", "tuesday", "wednesday", "thursday", "friday"
 
 sealed class ExerciseSegment {
     data class Single(val index: Int) : ExerciseSegment()
-    data class SupersetPair(val index1: Int, val index2: Int) : ExerciseSegment()
+    data class Superset(val indices: List<Int>) : ExerciseSegment()
 
     fun indices(): List<Int> = when (this) {
         is Single -> listOf(index)
-        is SupersetPair -> listOf(index1, index2)
+        is Superset -> indices
     }
 }
 
@@ -68,7 +69,7 @@ fun buildExerciseSegments(exercises: List<RoutineExerciseUi>): List<ExerciseSegm
         items = exercises,
         isPairedWithNext = { it.supersetWithNext },
         single = { i -> ExerciseSegment.Single(i) },
-        pair = { i, j -> ExerciseSegment.SupersetPair(i, j) },
+        group = { idxs -> ExerciseSegment.Superset(idxs) },
     )
 
 @HiltViewModel
@@ -156,9 +157,13 @@ class RoutineEditViewModel @Inject constructor(
     fun removeExercise(index: Int) {
         val list = _uiState.value.exercises.toMutableList()
         if (index in list.indices) {
-            // If the previous exercise has supersetWithNext=true (this is its second element),
-            // clear the previous exercise's supersetWithNext flag to avoid a dangling link.
-            if (index > 0 && list[index - 1].supersetWithNext) {
+            // If the previous exercise has supersetWithNext=true, this exercise was a member of
+            // that chain. Removing a middle member (A+[B]+C) just re-links A to C via A's own
+            // still-true flag, which is fine. Removing the last member (A+B+[C]) would leave B's
+            // flag dangling past the end of its segment — clear it so no chain runs off the end.
+            if (index > 0 && list[index - 1].supersetWithNext &&
+                (index == list.lastIndex || !list[index].supersetWithNext)
+            ) {
                 list[index - 1] = list[index - 1].copy(supersetWithNext = false)
             }
             list.removeAt(index)
@@ -172,6 +177,17 @@ class RoutineEditViewModel @Inject constructor(
     fun toggleSuperset(index: Int) {
         // Never link the last warmup exercise with the first normal exercise across the line.
         if (index + 1 == _uiState.value.warmupCount) return
+        val exercises = _uiState.value.exercises
+        val turningOn = index in exercises.indices && !exercises[index].supersetWithNext
+        if (turningOn) {
+            // Linking [index] to the next exercise merges the segment [index] belongs to with
+            // the one starting at [index + 1]. Reject the link if the merged chain would exceed
+            // MAX_SUPERSET_SIZE (e.g. an existing A+B+C can't absorb a D).
+            val segments = buildExerciseSegments(exercises)
+            val here = segments.firstOrNull { index in it.indices() }?.indices()?.size ?: 1
+            val next = segments.firstOrNull { (index + 1) in it.indices() }?.indices()?.size ?: 1
+            if (here + next > MAX_SUPERSET_SIZE) return
+        }
         updateExercise(index) { it.copy(supersetWithNext = !it.supersetWithNext) }
     }
 
