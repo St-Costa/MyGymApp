@@ -478,6 +478,16 @@ correctly on their own.
 
 Applies in both `ExerciseEditViewModel.onRepMin/MaxChange` and `RoutineEditViewModel.updateExerciseRepMin/Max`. One-shot boot migration (`fixInvalidRepRanges` in `ExerciseRepository` and `RoutineRepository`, guarded by `.reprange_fixed` sentinel files in `exercises/` and `routines/`) repairs any pre-existing `min > max` by setting `max = min`.
 
+## Home load: `HomeStateLoader`, two-phase but only on first load
+
+The home screen's state is built by the `@Singleton` `HomeStateLoader`, not `MainViewModel`. `MyGymApp.onCreate` calls `homeStateLoader.refresh()` immediately so the work overlaps Activity/Compose creation; `MainViewModel` just exposes `homeStateLoader.state` and calls `refresh()` again on resume / `routinesChanged`. Concurrent `refresh()` calls coalesce (`force = false` joins the in-flight job; `force = true` cancels + restarts).
+
+`loadHomeState()` emits **twice on a cold start**: phase 1 = the 4 gitgraph history rows (from the `_gitgraph.yaml` cache, fast) + a schedule-row *scaffold* (routine names only) with `isLoading = false`, so the screen paints in ~200 ms instead of waiting ~500 ms for the current-week session files to parse; phase 2 = the schedule row's session outcomes + `today*` fields, a beat later.
+
+**The phase-1 emit is guarded by `_state.value.isLoading`** — it fires only on the very first load. On every later `refresh()` (returning to the home, a routine change) `_state` already holds a complete state; emitting the scaffold then would blank the schedule row's outcomes for ~100 ms — a visible flicker. So a refresh skips phase 1 and emits once, with everything. Don't remove that `isFirstLoad` check.
+
+`GitgraphHistoryCalculator.dayCell` is the single per-day status/%/cardio rule — used for both the cached history rows and the live current-week row, so they can't diverge. Parsing helpers (`getSessionsInRange`, `getLastSessionForRoutine`) parse their in-range `.md` files concurrently; `getLastSessionForRoutine` walks newest-filename-first and stops at the first completed session (plus same-day siblings) instead of parsing a routine's whole history.
+
 ## Gradle wrapper
 
 `gradle/wrapper/gradle-wrapper.jar` was copied from `~/.gradle/caches/` — there is no global Gradle installed on this machine. If the jar ever goes missing, pull it from a cached distribution rather than running `gradle wrapper` (which requires Gradle to be installed in the first place).

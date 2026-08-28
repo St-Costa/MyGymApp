@@ -83,7 +83,7 @@ Every screen has one ViewModel (same package). A few non-obvious collaborators:
 
 | ViewModel | Key dependencies | Notes |
 |---|---|---|
-| `MainViewModel` | WorkoutRepository, RoutineRepository, DataChangedSignal | Computes gitgraph data (28 days, routine-name overlay) |
+| `MainViewModel` | `HomeStateLoader`, WorkoutRepository, DataChangedSignal | Thin: exposes `HomeStateLoader.state` (+ debug-seed flag), runs boot maintenance. The home state (gitgraph rows + schedule row) is built by the `@Singleton` `HomeStateLoader`, kicked from `MyGymApp.onCreate` so it overlaps Activity/Compose creation; emits in two phases (history rows first, current-week outcomes ~a beat later) only on the first cold load. History rows come from the `_gitgraph.yaml` cache (see [STORAGE.md](STORAGE.md#home-gitgraph-cache-history_gitgraphyaml)). |
 | `ActiveRoutineViewModel` | WorkoutRepository, RoutineRepository, ExerciseRepository, PolarManager, EcgAnalyzer | Starts/stops ECG recording + HR series capture |
 | `SessionProgressViewModel` | WorkoutRepository, EcgAnalyzer, CardioTrendLoader | Post-workout charts and cardio analysis |
 | `HeartRateViewModel` | PolarManager, UserProfileRepository, CardioTrendLoader | Combines ~9 PolarManager StateFlows for the Heart Rate screen |
