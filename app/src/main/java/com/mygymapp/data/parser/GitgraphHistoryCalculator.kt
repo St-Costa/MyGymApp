@@ -107,7 +107,7 @@ object GitgraphHistoryCalculator {
      */
     private fun computeCommonTonnage(s1: WorkoutSession, s2: WorkoutSession): Pair<Double, Double> {
         fun comparableIds(s: WorkoutSession) = s.exercises
-            .filterNot { it.excludeFromTonnage || it.isUntouched() || it.completedEmpty }
+            .filterNot { it.excludeFromTonnage || it.isUntouched() }
             .map { it.exerciseId }
             .toSet()
 

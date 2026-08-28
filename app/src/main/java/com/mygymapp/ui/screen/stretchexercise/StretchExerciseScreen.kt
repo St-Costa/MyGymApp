@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.service.StopwatchService
+import com.mygymapp.ui.theme.SkippedColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -190,14 +192,25 @@ fun StretchExerciseScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // Label reflects what tapping records: no set toggled done -> closes as
+                // "skipped" (grey border + X, excluded from history); any set done -> closes
+                // as performed. See StretchExerciseViewModel.completeExercise().
+                val anyDone = uiState.sets.any { it.done }
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    colors = if (anyDone) {
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        ButtonDefaults.buttonColors(
+                            containerColor = SkippedColor,
+                            contentColor = Color(0xFF1E1E1E),
+                        )
+                    },
                 ) {
-                    Text("Complete Exercise")
+                    Text(if (anyDone) "Completa esercizio" else "Segna come non eseguito")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

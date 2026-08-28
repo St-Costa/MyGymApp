@@ -930,6 +930,19 @@ The home screen parsed ~3 months of session files on every open — the visible 
 
 On-device (real history): the `_gitgraph.yaml` the app generated matched an independent recomputation of all 28 squares exactly (status, %, cardio minutes, routine name incl. an emoji name, session id, per-context comparison). Instrumented timing: cold start to history-rows-visible ~670 ms (was 2–3 s), current-week row filled ~260 ms later, returns to the home ~90 ms. The remaining cold-start tax is JIT/interpretation of the parser path — see the Baseline Profile brief below.
 
+## Phase 81 — Skipped exercise: restore the "completed-empty" state
+
+Phase 74 fixed fixed-load warmup/daily exercises losing their numbers, but did it by making a Complete-without-touching save `completed = false` — which dropped the on-screen "skipped" indicator entirely: back in the active routine the exercise looked exactly as if never opened (full-colour border, "N sets"), and `markExerciseCompleted` bailed on `completed != true` so the row never updated. The neutral grey-border + `Close`-icon "skipped" styling in `ActiveRoutineScreen` (keyed on `completedEmpty`) became dead code, only `CardioExerciseViewModel` still set the flag.
+
+Root cause was conflating two things Phase 74 tied together: the `completedEmpty` *flag* and an empty `sets` *list*. Separated here:
+
+- **Complete-without-touching → `completed = true, completedEmpty = true`, sets = the shown pre-fill** (not `emptyList()`). The exercise closes out of the active list and renders skipped; the retained pre-fill still feeds the next session's walk-back so the warmup/daily regression stays fixed. Uniform across `StrengthExerciseViewModel`, `SupersetViewModel` (per member), `StretchExerciseViewModel`. `SupersetViewModel.buildUpdatedSession` lost its now-dead `respectTouch` param.
+- **`WorkoutExercise.isUntouched()` is now `!completed || completedEmpty`** — "not performed work" covers both the never-tapped case and the skipped case. `GitgraphHistoryCalculator.computeCommonTonnage` drops the redundant `|| it.completedEmpty`.
+- **Ghost-session detection unchanged** (`completedAt.isBlank() && none { it.completed }`): a skipped exercise now keeps a session alive again, same as pre-Phase-74 — the lifter did deliberately tap Complete.
+- **"Complete Exercise" button reflects the outcome**: "Completa esercizio" (primary colour) when any value is touched, "Segna come non eseguito" (`surfaceVariant`) when nothing is — so the result is visible before the tap. Superset button keys on whether any member was touched.
+
+Tests: `WorkoutSessionSwitchExerciseTest` (isUntouched semantics) and `WorkoutParserRoundTripTest` (completedEmpty now implies completed, sets retained) updated; `./gradlew test` green (144 tests). Docs: CONVENTIONS.md "Untouched-exercise guard" rewritten.
+
 ## Future enhancements
 
 - Export / import `gymdata/` as a zip

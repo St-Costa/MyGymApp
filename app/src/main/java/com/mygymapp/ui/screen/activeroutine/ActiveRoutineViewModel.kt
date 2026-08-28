@@ -312,10 +312,10 @@ class ActiveRoutineViewModel @Inject constructor(
             val reloaded = workoutRepository.getSession(session.id, today) ?: session
 
             val reloadedExercise = reloaded.exercises.find { it.exerciseId == exerciseId }
-            // The exercise screen itself decides completed=false when the lifter never touched
-            // any pre-filled value (see StrengthExerciseViewModel/SupersetViewModel/
-            // StretchExerciseViewModel completeExercise()) — honor that here instead of always
-            // ticking the row off, so an untouched exercise stays open rather than counting as done.
+            // A "Complete" tap always closes the exercise out (completed=true), whether or not
+            // the lifter touched a value — an untouched one comes back completedEmpty=true and
+            // renders as "skipped" (grey border + X), handled below. Only bail if the reload
+            // genuinely shows it still open (e.g. this fired without a preceding complete).
             if (reloadedExercise?.completed != true) {
                 return@launch
             }

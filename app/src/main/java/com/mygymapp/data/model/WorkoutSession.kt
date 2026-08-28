@@ -61,9 +61,12 @@ data class WorkoutExercise(
     val isDaily: Boolean = false,
     /**
      * True when the lifter tapped "Complete" without ever touching a pre-filled value (see
-     * docs/CONVENTIONS.md "Untouched-exercise guard"). Unlike [isUntouched], this exercise IS
-     * marked completed — it closes out of the active list like any other — but carries no set
-     * data, so the UI flags it (red border, warning icon) instead of showing a tonnage change.
+     * docs/CONVENTIONS.md "Untouched-exercise guard"). The exercise IS marked completed — it
+     * closes out of the active list like any other — and its `sets` still carry the grey
+     * pre-fill that was on screen (persisted so the next session's prefill walk-back finds
+     * real numbers, not 0x0 — see CHANGELOG Phase 74). But it does not represent performed
+     * work: the active-routine row shows the neutral "skipped" styling (grey border + X icon)
+     * instead of a tonnage change, and all tonnage / history / PR math skips it.
      */
     val completedEmpty: Boolean = false,
     /**
@@ -77,15 +80,14 @@ data class WorkoutExercise(
     val substitutedFor: String? = null,
 ) {
     /**
-     * True when this exercise does not represent performed work: the lifter never tapped
-     * "Complete" for it (or tapped it without touching any value, which no longer marks it
-     * completed — see docs/CONVENTIONS.md "Untouched-exercise guard"). Its `sets` may be
-     * non-empty — they carry the grey pre-fill that was on screen, persisted so re-entry
-     * shows the same numbers — but a non-completed exercise is still "not done", so tonnage
-     * comparisons and the like must skip it. Distinct from [completedEmpty], where the user
-     * did close the exercise out (completed = true) but recorded no data.
+     * True when this exercise does not represent performed work — either the lifter never
+     * tapped "Complete" for it (`completed == false`) or they tapped it without touching any
+     * value (`completedEmpty == true`; see docs/CONVENTIONS.md "Untouched-exercise guard").
+     * In both cases `sets` may be non-empty — they carry the grey pre-fill that was on screen
+     * — but tonnage / history / PR math must skip the exercise. Callers that only want the
+     * "still open in the active list" case check `!completed` directly.
      */
-    fun isUntouched(): Boolean = !completed
+    fun isUntouched(): Boolean = !completed || completedEmpty
 
     /**
      * True when no set in this slot carries any real data yet — same "did the lifter actually
