@@ -6,7 +6,12 @@ This file is the entry point for AI tooling. The details of the project live in 
 > ## ⛔ FERMATI — FAI IL BACKUP DEI DATI SUL TELEFONO PRIMA DI TUTTO
 >
 > **All user data lives ONLY in `/data/data/com.mygymapp/files/gymdata/` on the phone.**
-> It is **NOT** in git, **NOT** on this machine, and there is **no automatic backup**.
+> It is **NOT** in git and **NOT** on this machine. A phone-side full-store backup pipeline
+> now exists (`docs/BACKUP.md`: sessions/readiness/scale/ECG + exercises/routines queue for
+> upload), **but it is not a safety net you can rely on**: it only sends when a sync server
+> is configured *and* reachable, the server side isn't built yet, and its config lives in
+> wipeable `SharedPreferences`. **A backup you haven't verified is not a backup — take the
+> tar below before any install/test op regardless.**
 > Any `pm uninstall`, `pm clear`, `adb install` of a differently-signed APK, a
 > `com.android.test` / baseline-profile / macrobenchmark run (those set
 > `uninstall_after_test: true`), a factory-reset-ish `cmd package` call, or a wipe by the OS

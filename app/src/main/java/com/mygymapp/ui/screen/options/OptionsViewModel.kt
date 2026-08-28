@@ -16,6 +16,10 @@ import com.mygymapp.data.sync.EcgSyncLedgerRepository
 import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessLedgerRepository
 import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.RepoLedgerRepository
+import com.mygymapp.data.sync.RepoSyncWorker
+import com.mygymapp.data.sync.RestoreApi
+import com.mygymapp.data.sync.RestoreResult
 import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncApi
@@ -53,12 +57,16 @@ data class OptionsUiState(
     val syncSessionsPending: Int = 0,
     val syncScalePending: Int = 0,
     val syncEcgPending: Int = 0,
+    val syncRepoPending: Int = 0,
     val syncLastSuccessAt: String? = null,
     val syncIsTestingConnection: Boolean = false,
     val syncConnectionTestResult: Boolean? = null, // null = not tested yet this session
     val syncIsResyncing: Boolean = false,
     // Set when syncIsResyncing starts, to 0..1 as ledgers drain — see resyncAll().
     val syncResyncProgress: Float = 0f,
+    // Full-store restore (docs/BACKUP.md §3.6) — "Ripristina dal server".
+    val syncIsRestoring: Boolean = false,
+    val syncRestoreResult: String? = null,
     // ECG debug send (docs/SYNC.md "Fourth record type: raw ECG")
     val ecgDebugRecording: Boolean = false,
     val ecgDebugSecondsLeft: Int = 0,
@@ -81,6 +89,8 @@ class OptionsViewModel @Inject constructor(
     private val scaleHistoryRepository: ScaleHistoryRepository,
     private val scaleWeighInLedgerRepository: ScaleWeighInLedgerRepository,
     private val ecgSyncLedgerRepository: EcgSyncLedgerRepository,
+    private val repoLedgerRepository: RepoLedgerRepository,
+    private val restoreApi: RestoreApi,
     private val fileManager: FileManager,
     private val polarManager: PolarManager,
     private val stepLedgerRepository: StepLedgerRepository,
@@ -123,6 +133,7 @@ class OptionsViewModel @Inject constructor(
             ReadinessSyncWorker.EXPEDITED_WORK_NAME,
             ScaleWeighInSyncWorker.EXPEDITED_WORK_NAME,
             EcgSyncWorker.EXPEDITED_WORK_NAME,
+            RepoSyncWorker.EXPEDITED_WORK_NAME,
         ).forEach { workName ->
             viewModelScope.launch {
                 workManager.getWorkInfosForUniqueWorkFlow(workName).collect { infos ->
@@ -244,12 +255,14 @@ class OptionsViewModel @Inject constructor(
             val readinessPending = readinessLedgerRepository.getPending().size
             val scalePending = scaleWeighInLedgerRepository.getPending().size
             val ecgPending = ecgSyncLedgerRepository.getPending().size
+            val repoPending = repoLedgerRepository.pendingCount()
             val lastSuccess = syncLedgerRepository.lastSuccessfulSyncAt()
             _uiState.value = _uiState.value.copy(
-                syncPendingCount = sessionsPending + readinessPending + scalePending + ecgPending,
+                syncPendingCount = sessionsPending + readinessPending + scalePending + ecgPending + repoPending,
                 syncSessionsPending = sessionsPending,
                 syncScalePending = scalePending,
                 syncEcgPending = ecgPending,
+                syncRepoPending = repoPending,
                 syncLastSuccessAt = lastSuccess,
             )
         }
@@ -284,6 +297,14 @@ class OptionsViewModel @Inject constructor(
             val readinessEvents = readinessRepository.getAll()
             val weighIns = scaleHistoryRepository.getAll()
             val ecgFiles = fileManager.getDir("ecg").listFiles { f -> f.extension == "ecg" }?.toList().orEmpty()
+            // Full-store backup (docs/BACKUP.md §3.3): every exercise/routine .md on disk,
+            // re-queued regardless of prior SENT status — the phone-side backfill for the
+            // fifth pipeline. Deletions are not re-derived here (a gone file leaves no
+            // trace to walk); those flow through markDeleted() at delete time only.
+            val repoFiles = (
+                fileManager.getDir("exercises").listFiles { f -> f.extension == "md" }?.toList().orEmpty() +
+                    fileManager.getDir("routines").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
+                )
 
             withContext(Dispatchers.IO) {
                 sessions.forEach { session ->
@@ -317,6 +338,15 @@ class OptionsViewModel @Inject constructor(
                         ecgSyncLedgerRepository.enqueue(sessionId, "ecg/${file.name}", file.readBytes())
                     }
                 }
+                repoFiles.forEach { file ->
+                    if (file.exists()) {
+                        val relPath = "${file.parentFile?.name}/${file.name}"
+                        // requeueIfChanged is a no-op if the exact bytes are already SENT —
+                        // so a "resync all" tap won't needlessly re-POST an unchanged
+                        // exercise, only genuinely-stale or never-sent ones.
+                        repoLedgerRepository.requeueIfChanged(relPath, file.readBytes())
+                    }
+                }
             }
 
             // Snapshot the total just-enqueued count once, right after enqueueing — this is
@@ -324,12 +354,13 @@ class OptionsViewModel @Inject constructor(
             // would undercount if new items got queued concurrently (e.g. a session ending
             // mid-resync) or overcount completed work as still-total, so the denominator is
             // fixed at start and the numerator (below) is "how many of THIS batch drained."
-            val totalQueued = sessions.size + readinessEvents.size + weighIns.size + ecgFiles.size
+            val totalQueued = sessions.size + readinessEvents.size + weighIns.size + ecgFiles.size + repoFiles.size
 
             SyncWorker.Scheduler.runExpedited(appContext)
             ReadinessSyncWorker.Scheduler.runExpedited(appContext)
             ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext)
             EcgSyncWorker.Scheduler.runExpedited(appContext)
+            RepoSyncWorker.Scheduler.runExpedited(appContext)
 
             if (totalQueued > 0) {
                 trackResyncProgress(totalQueued)
@@ -352,12 +383,91 @@ class OptionsViewModel @Inject constructor(
             val stillPending = syncLedgerRepository.pendingCount() +
                 readinessLedgerRepository.getPending().size +
                 scaleWeighInLedgerRepository.getPending().size +
-                ecgSyncLedgerRepository.getPending().size
+                ecgSyncLedgerRepository.getPending().size +
+                repoLedgerRepository.pendingCount()
             val sent = (totalQueued - stillPending).coerceIn(0, totalQueued)
             val progress = sent.toFloat() / totalQueued
             _uiState.value = _uiState.value.copy(syncResyncProgress = progress)
             if (stillPending <= 0) return
             kotlinx.coroutines.delay(1_000L)
+        }
+    }
+
+    // ─── Full-store restore (docs/BACKUP.md §3.6) ───────────────────────────
+
+    /**
+     * "Ripristina dal server": `GET /v1/manifest`, then pull every file the phone is
+     * missing or whose local bytes differ. Pull-only — never deletes a local file the
+     * server lacks (a local-only draft must survive), and hash-diffed so an unchanged file
+     * is skipped. After writing, the repo ledger entry is set to SENT so the next push
+     * doesn't bounce the just-restored file back. Derived caches (`_idx`, `_stats`,
+     * `_gitgraph.yaml`) are left to rebuild lazily on next read.
+     *
+     * Covers all record types on the server (sessions/readiness/scale/ecg/exercises/
+     * routines) — a fresh install rebuilds its whole `history/` from here.
+     */
+    fun restoreFromServer() {
+        if (_uiState.value.syncIsRestoring) return
+        if (!syncConfigRepository.isConfigured()) {
+            _uiState.value = _uiState.value.copy(syncRestoreResult = "Server sync non configurato")
+            return
+        }
+        _uiState.value = _uiState.value.copy(syncIsRestoring = true, syncRestoreResult = null)
+        viewModelScope.launch {
+            val serverUrl = syncConfigRepository.serverUrl()
+            val token = syncConfigRepository.bearerToken()
+            val result = withContext(Dispatchers.IO) {
+                val manifest = restoreApi.fetchManifest(serverUrl, token)
+                if (manifest !is RestoreResult.Manifest) {
+                    return@withContext "Manifest non recuperato: ${(manifest as? RestoreResult.Failure)?.reason ?: "errore"}"
+                }
+                var restoredExercises = 0
+                var restoredRoutines = 0
+                var restoredOther = 0
+                var failed = 0
+                for (entry in manifest.entries) {
+                    // Skip path-traversal attempts defensively even though the server should
+                    // never emit them — this writes to disk under filesDir.
+                    if (entry.relPath.contains("..") || entry.relPath.startsWith("/")) {
+                        failed++
+                        continue
+                    }
+                    val target = java.io.File(fileManager.root, entry.relPath)
+                    val localHash = if (target.exists()) {
+                        "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(target.readBytes())
+                            .joinToString("") { "%02x".format(it) }
+                    } else null
+                    if (localHash == entry.contentHash) continue // already have this exact content
+
+                    when (val fetched = restoreApi.fetchFile(serverUrl, token, entry.relPath)) {
+                        is RestoreResult.FileBytes -> {
+                            target.parentFile?.mkdirs()
+                            // Raw bytes — the manifest also covers binary `ecg/*.ecg`.
+                            target.writeBytes(fetched.bytes)
+                            when {
+                                entry.relPath.startsWith("exercises/") -> {
+                                    restoredExercises++
+                                    repoLedgerRepository.markRestored(entry.relPath, entry.contentHash)
+                                }
+                                entry.relPath.startsWith("routines/") -> {
+                                    restoredRoutines++
+                                    repoLedgerRepository.markRestored(entry.relPath, entry.contentHash)
+                                }
+                                else -> restoredOther++
+                            }
+                        }
+                        else -> failed++
+                    }
+                }
+                buildString {
+                    append("Ripristinati $restoredExercises esercizi, $restoredRoutines routine")
+                    if (restoredOther > 0) append(", $restoredOther altri file")
+                    if (failed > 0) append(" ($failed non riusciti)")
+                }
+            }
+            refreshSyncStatus()
+            _uiState.value = _uiState.value.copy(syncIsRestoring = false, syncRestoreResult = result)
         }
     }
 
