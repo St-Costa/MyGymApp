@@ -839,6 +839,24 @@ readiness/scale/ECG each got a companion spec above.
 
 ---
 
+## Fifth record type: repo files (exercises + routines)
+
+Implemented (phone side), same dedicated-classes pattern as the four above. This is the
+**full-store backup** — the fifth pipeline covers every human-authored `exercises/*.md` and
+`routines/*.md`, turning the server's raw store into a git repo so any past state is
+recoverable. Two structural differences: it's keyed by relative path (not an id), and it's
+the only pipeline that syncs *deletions* (as `op: delete` tombstones).
+
+Full design (phone + server): **[docs/BACKUP.md](BACKUP.md)**. Server-side brief for the
+`MyGymApp_server` repo: [docs/backup-server-brief.md](backup-server-brief.md). New classes:
+`RepoLedgerRepository` (`_sync/repo_state.yml`), `RepoSyncApi` (`POST /v1/repo`),
+`RepoSyncWorker`, `RestoreApi` (`GET /v1/manifest`, `GET /v1/file`). Hooked into
+`ExerciseRepository`/`RoutineRepository` `save()`/`delete()`, `MyGymApp.onCreate()`'s
+periodic batch, and `ActiveRoutineViewModel.registerRoutine()`'s expedited nudge. Options
+gains a "Schede/esercizi" pending bullet and a "Ripristina dal server" restore action.
+
+---
+
 ## Implementation status
 
 Phone side (this repo, package `data/sync/`):

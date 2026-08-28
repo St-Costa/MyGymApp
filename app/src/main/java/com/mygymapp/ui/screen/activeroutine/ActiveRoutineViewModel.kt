@@ -560,6 +560,11 @@ class ActiveRoutineViewModel @Inject constructor(
                             syncLedgerRepository.enqueue(saved.id, relPath, file)
                             SyncWorker.Scheduler.runExpedited(appContext)
                         }
+                        // Full-store backup (docs/BACKUP.md §3.3): a routine edited
+                        // mid-session was already queued by RoutineRepository.save(); nudge
+                        // its worker now so it lands together with this session rather than
+                        // waiting for the 4h periodic net.
+                        com.mygymapp.data.sync.RepoSyncWorker.Scheduler.runExpedited(appContext)
                     }
                 } catch (e: Throwable) {
                     appLogger.e(TAG, "Save session failed", e)

@@ -1,9 +1,12 @@
 # Full-store backup — git-style incremental sync of *all* app data
 
-> **Status:** design only, not implemented. This extends the existing session/readiness/
-> scale/ECG sync (`docs/SYNC.md`) to cover **every** user-authored file — exercises and
-> routines included — and turns the server's raw store into a versioned git repo so any
-> past state is recoverable.
+> **Status:** **phone side implemented** (branch `feature/full-store-backup`, see
+> CHANGELOG.md). The server side (`POST /v1/repo`, `GET /v1/manifest`, `GET /v1/file`, the
+> git-commit-per-push hook) lives in `MyGymApp_server` — brief:
+> [docs/backup-server-brief.md](backup-server-brief.md) — and is not yet built. This
+> extends the existing session/readiness/scale/ECG sync (`docs/SYNC.md`) to cover **every**
+> user-authored file — exercises and routines included — and turns the server's raw store
+> into a versioned git repo so any past state is recoverable.
 >
 > **Why this exists:** on 2026-08-28 a `:baseline-profile` generation run uninstalled the
 > app and wiped `filesDir/gymdata/`. Sessions/readiness/scale/ECG were recoverable from the
@@ -288,20 +291,25 @@ also excluded.
 
 ## 7. Implementation checklist (phone side)
 
-- [ ] `RepoLedgerRepository.kt` + `_sync/repo_state.yml` (mirror `SyncLedgerRepository`)
-- [ ] `RepoSyncApi.kt` — multipart `POST /v1/repo`, `op` upsert/delete, `/health` reuse
-- [ ] `RepoSyncWorker.kt` (`@HiltWorker`) + add to `SyncWorker.Scheduler` expedited & periodic
-- [ ] `RestoreApi.kt` — `GET /v1/manifest`, `GET /v1/file`
-- [ ] Hooks: `ExerciseRepository.save/delete`, `RoutineRepository.save/delete`,
-      rename path (new-upsert + old-tombstone), `ActiveRoutineViewModel.registerRoutine()`
-      expedited trigger, `MyGymApp.onCreate()` periodic
-- [ ] `OptionsViewModel` — repo count in status line, "Ripristina dal server",
+- [x] `RepoLedgerRepository.kt` + `_sync/repo_state.yml` (mirrors `SyncLedgerRepository`;
+      keyed by relPath; `requeueIfChanged` / `markDeleted` / `markSent` / `markFailed` /
+      `markRestored`; `DELETED_PENDING`/`DELETED_SENT` added to `SyncStatus`)
+- [x] `RepoSyncApi.kt` — multipart `POST /v1/repo`, `postUpsert` (file part) / `postDelete`
+      (envelope only)
+- [x] `RepoSyncWorker.kt` (`@HiltWorker`) + `RepoSyncWorker.Scheduler` (expedited + 4h periodic)
+- [x] `RestoreApi.kt` — `GET /v1/manifest`, `GET /v1/file?relPath=…`
+- [x] Hooks: `ExerciseRepository.save/delete`, `RoutineRepository.save/delete` (rename path
+      does new-upsert + old-tombstone), `ActiveRoutineViewModel.registerRoutine()` expedited
+      trigger, `MyGymApp.onCreate()` periodic batch
+- [x] `OptionsViewModel` / `OptionsScreen` — "Schede/esercizi" count in the pending list,
+      "Ripristina dal server" (confirm dialog + result summary via `restoreFromServer()`),
       `resyncAll()` walks `exercises/` + `routines/`
-- [ ] `STORAGE.md` — document `_sync/repo_state.yml`; note exercises/routines are now synced
-- [ ] `SYNC.md` — add "Fifth record type: repo files" pointer to this doc
-- [ ] `CLAUDE.md` banner — once this ships and is verified, soften "no automatic backup" to
-      "automatic incremental backup exists (docs/BACKUP.md) **but still take the tar before
-      any install/test op** — a backup you haven't verified is not a backup"
+- [x] `STORAGE.md` — `_sync/repo_state.yml` documented; root-layout tree updated
+- [x] `SYNC.md` — "Fifth record type: repo files" pointer added
+- [x] `CLAUDE.md` banner softened (still mandates the tar before any install/test op)
+- [x] `RepoLedgerRepositoryTest` — round-trip + state-machine coverage (10 cases)
+- [x] `FileManager` given a test-only `constructor(root: File)` seam (this project's unit
+      suite has no Robolectric/Context)
 - [ ] End-to-end test against the live server: create/edit/delete an exercise and a routine,
       confirm one commit per push on the server, then wipe `exercises/`+`routines/` locally
-      and restore via `GET /v1/manifest`
+      and restore via `GET /v1/manifest` — **blocked on the server side being built**
