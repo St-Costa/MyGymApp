@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.AutoSaveTextField
@@ -37,6 +38,7 @@ import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.ScrollPickerInput
+import com.mygymapp.ui.theme.SkippedColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,15 +201,26 @@ fun StrengthExerciseScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Complete button
+                // Complete button — its label reflects what tapping it will record: an exercise
+                // where no reps/weight value was touched closes as "skipped" (grey border + X
+                // in the active list, excluded from tonnage), one where any value was touched
+                // closes as done. See StrengthExerciseViewModel.completeExercise().
+                val anyTouched = uiState.sets.any { it.repsTouched || it.weightTouched }
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
+                    colors = if (anyTouched) {
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        ButtonDefaults.buttonColors(
+                            containerColor = SkippedColor,
+                            contentColor = Color(0xFF1E1E1E),
+                        )
+                    },
                 ) {
-                    Text("Complete Exercise")
+                    Text(if (anyTouched) "Completa esercizio" else "Segna come non eseguito")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

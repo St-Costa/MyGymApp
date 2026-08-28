@@ -143,9 +143,13 @@ class WorkoutParserRoundTripTest {
                     exerciseName = "Incline Press",
                     bodypart = "chest",
                     type = ExerciseType.FORZA,
+                    completed = true,
+                    // completedEmpty always implies completed: the lifter tapped "Complete"
+                    // without touching a value. The pre-fill on `sets` is still persisted.
+                    completedEmpty = true,
+                    sets = listOf(ExerciseSet.Strength(reps = 8, weight = 40.0)),
                     excludeFromTonnage = true,
                     isDaily = true,
-                    completedEmpty = true,
                     substitutedFor = "ex-oldexerc",
                 ),
             ),
@@ -156,7 +160,9 @@ class WorkoutParserRoundTripTest {
         val ex = result.exercises[0]
         assertTrue(ex.excludeFromTonnage)
         assertTrue(ex.isDaily)
+        assertTrue(ex.completed)
         assertTrue(ex.completedEmpty)
+        assertEquals(1, ex.sets.size)
         assertEquals("ex-oldexerc", ex.substitutedFor)
     }
 

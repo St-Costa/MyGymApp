@@ -146,13 +146,16 @@ class StretchExerciseViewModel @Inject constructor(
      */
     fun completeExercise() {
         // Either way this screen navigates back (exerciseCompleted stops onCleared() from
-        // re-saving); only the completed flag differs.
+        // re-saving) and the exercise closes out of the active list. What differs is how it
+        // reads back — see StrengthExerciseViewModel.completeExercise():
+        //  - a set toggled done -> completed, completedEmpty = false: real performed work.
+        //  - none toggled        -> completed, completedEmpty = true: the "skipped" row styling
+        //    (grey border + X); tonnage/history math skips it.
         exerciseCompleted = true
         val sets = _uiState.value.sets
         val session = currentSession
         // A stretch set only becomes `done` via an explicit toggle. Marking at least one set
-        // done is the signal the exercise was performed — all sets are then saved as-is.
-        // Marking none means it was not performed: leave it open (completed = false).
+        // done is the signal the exercise was performed.
         val anyDone = sets.any { it.done }
         // Save on clearScope, not viewModelScope, so a process death between the tap and the
         // write completing can't lose it — see StrengthExerciseViewModel.completeExercise().
@@ -161,8 +164,8 @@ class StretchExerciseViewModel @Inject constructor(
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         ex.copy(
-                            completed = anyDone,
-                            completedEmpty = false,
+                            completed = true,
+                            completedEmpty = !anyDone,
                             sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
                         )
                     } else ex
