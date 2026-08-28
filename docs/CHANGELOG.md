@@ -985,8 +985,11 @@ gitgraph, 10 cold iterations each:
 | `Partial(Require)` (baseline profile) | **355 ms** | 345 | 407 |
 
 ~39 % faster median cold start, and the JIT-driven long tail (spikes to ~700 ms) collapses
-to a tight ±30 ms. Regenerate after a large refactor of the startup path or a dependency
-bump: `adb shell pm uninstall com.mygymapp && ./gradlew :app:generateBaselineProfile` — see
-[CONVENTIONS.md § Baseline Profile](CONVENTIONS.md#baseline-profile) for the device
-requirements and gotchas (needs a physical phone / AOSP image; `benchmark-macro` ≥ 1.4.0 for
-Android 14+; not wired into CI on purpose).
+to a tight ±30 ms.
+
+**⛔ Regenerating uninstalls the app and destroys `filesDir/gymdata/`** — this happened
+during this phase and wiped the maintainer's on-device data. Always `tar` the data off the
+device first; the full backup/restore procedure and all the generation gotchas (physical
+phone / AOSP image; `benchmark-macro` ≥ 1.4.0 for Android 14+; not in CI) are in
+[CONVENTIONS.md § Baseline Profile](CONVENTIONS.md#baseline-profile) and the banner at the
+top of [CLAUDE.md](../CLAUDE.md).

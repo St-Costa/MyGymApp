@@ -2,6 +2,42 @@
 
 This file is the entry point for AI tooling. The details of the project live in [`docs/`](docs/); this file exists to give a fresh assistant a fast mental model and pointers to the right document.
 
+> ## ⛔ STOP — BACK UP THE ON-DEVICE DATA FIRST
+> ## ⛔ FERMATI — FAI IL BACKUP DEI DATI SUL TELEFONO PRIMA DI TUTTO
+>
+> **All user data lives ONLY in `/data/data/com.mygymapp/files/gymdata/` on the phone.**
+> It is **NOT** in git, **NOT** on this machine, and there is **no automatic backup**.
+> Any `pm uninstall`, `pm clear`, `adb install` of a differently-signed APK, a
+> `com.android.test` / baseline-profile / macrobenchmark run (those set
+> `uninstall_after_test: true`), a factory-reset-ish `cmd package` call, or a wipe by the OS
+> **destroys it permanently**. This has already happened once and cost the user real data.
+>
+> **Before ANY of the following — no exceptions, even "just a quick test":**
+> building/installing a non-debug variant, running anything under `:baseline-profile` or
+> `connected…AndroidTest`, uninstalling/reinstalling the app, changing its signing, or
+> anything else that could touch the app's install or its `filesDir`:
+>
+> ```bash
+> # 1. Pull the data off the device (works only while a *debuggable* build is installed):
+> adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -cf - gymdata \
+>   > gymdata-backup-$(date +%Y%m%d-%H%M%S).tar
+> # If the installed build is NOT debuggable, install the debug build first
+> # (adb install -r app/build/outputs/apk/debug/app-debug.apk) — install -r keeps data —
+> # THEN run the line above.
+>
+> # 2. Verify the tar is non-empty and lists real files before proceeding:
+> tar -tvf gymdata-backup-*.tar | head
+>
+> # 3. To restore afterwards:
+> adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -xf - < gymdata-backup-*.tar
+> ```
+>
+> Keep the backup tar until the user has confirmed their data is intact in the app.
+> If you cannot produce a verified backup, **do not proceed** — ask the user first.
+> There is a server-sync feature (`docs/SYNC.md`) but it is opt-in, may be unconfigured,
+> and its client config also lives in wipeable `SharedPreferences` — it is not a substitute
+> for the tar backup above.
+
 ## What it is
 
 Android gym tracking app. Kotlin + Jetpack Compose, dark-only, single activity. File-based storage (no database): everything is Markdown + YAML in `filesDir/gymdata/`. Optional Polar H10 integration for live HR, ECG, HRV, VO2max.
