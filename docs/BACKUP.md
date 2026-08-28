@@ -222,6 +222,39 @@ Extend the existing sync section:
   "Ripristinati 12 esercizi, 3 routine, 0 sessioni".
 - The existing **"Invia tutti i dati in coda"** now also backfills `exercises/` + `routines/`.
 
+#### "Test backup verso il server" (debug section)
+
+A debug-only button — grouped with the Scale-BLE / step-counter / ECG debug sends, not the
+main sync card — that exercises `POST /v1/repo` **end to end** without touching a single
+real exercise or routine. It is the repo-file counterpart of the existing "Debug ECG:
+registra e invia".
+
+Behaviour (`OptionsViewModel.sendDebugBackup()`):
+
+1. Synthesise a throwaway markdown file in memory with a YAML frontmatter carrying
+   `debug: true`, `id: _debug-backup-{epochMillis}`, and `clientSentAt`. Body is one line of
+   explanatory text.
+2. `POST /v1/repo` with `op: "upsert"`, `relPath = "routines/_debug-backup-{epochMillis}.md"`,
+   `contentHash` over those bytes. **Awaited synchronously** (via `RepoSyncApi.postUpsert`) —
+   *not* routed through `RepoLedgerRepository`/`RepoSyncWorker`, so it writes **no** ledger
+   entry (can't inflate the pending count or strand a row) and **no** file on disk (a
+   `File.createTempFile` in `cacheDir`, deleted in `finally`).
+3. On upsert success, immediately `POST /v1/repo` with `op: "delete"` for the same path,
+   also awaited.
+4. Surface a single-line result: `OK — upsert: stored, delete: deleted (312 byte in 240 ms)`,
+   or the exact failing leg (`Upsert fallito: HTTP 401: …`, `Upsert OK (stored), ma delete
+   fallito: …`).
+
+Requires only a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
+toggle — pressing the button is the opt-in, same as "Invia dati in coda" and the ECG debug
+send.
+
+**Server-visible side effects**: one commit for the upsert, one for the delete (so `git log`
+shows a `repo:1` pair per run), and one dated tombstone left in `data/raw/deleted/` per run.
+Both are expected and harmless — the `_`-prefixed filename lets the server keep these out of
+its parsed SQL view (see `docs/backup-server-brief.md` §2.1 / §2.5). If `deleted/` ever
+needs trimming, that's a deliberate manual `git rm`.
+
 ---
 
 ## 4. Server side (summary — full brief for the server repo is separate)
@@ -304,6 +337,9 @@ also excluded.
 - [x] `OptionsViewModel` / `OptionsScreen` — "Schede/esercizi" count in the pending list,
       "Ripristina dal server" (confirm dialog + result summary via `restoreFromServer()`),
       `resyncAll()` walks `exercises/` + `routines/`
+- [x] "Test backup verso il server" debug button (§3.7) — synchronous upsert+delete of a
+      throwaway `routines/_debug-backup-{ts}.md` via `RepoSyncApi` directly (no ledger, no
+      disk); server keeps `_`-prefixed paths out of its SQL view
 - [x] `STORAGE.md` — `_sync/repo_state.yml` documented; root-layout tree updated
 - [x] `SYNC.md` — "Fifth record type: repo files" pointer added
 - [x] `CLAUDE.md` banner softened (still mandates the tar before any install/test op)
