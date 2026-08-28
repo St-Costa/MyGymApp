@@ -20,6 +20,17 @@ workManager = "2.10.0"
 hiltWork = "1.2.0"
 healthConnect = "1.1.0"
 junit = "4.13.2"
+# Baseline Profile (docs/CHANGELOG.md § Baseline Profile). The androidx.baselineprofile
+# Gradle plugin and the benchmark libraries share this version; it must stay compatible
+# with the AGP version above (1.4.x needs AGP ≥ 8.1.1). 1.4.0+ is required for the fix to
+# `pm dump-profiles` parsing on Android 14+/16 devices (the older parser chokes on the
+# "Waiting for app processes to flush profiles..." line the newer platform prints).
+benchmark = "1.4.1"
+baselineProfile = "1.4.1"
+androidxTestExtJunit = "1.2.1"
+androidxTestRunner = "1.6.2"
+uiAutomator = "2.3.0"
+profileInstaller = "1.4.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -51,9 +62,19 @@ androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", vers
 androidx-health-connect-client = { group = "androidx.health.connect", name = "connect-client", version.ref = "healthConnect" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
+# Baseline Profile: consumed only by the :baseline-profile module (macrobenchmark +
+# generator test) and by the app module's profileinstaller dependency.
+androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "benchmark" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiAutomator" }
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileInstaller" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+android-test = { id = "com.android.test", version.ref = "agp" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineProfile" }

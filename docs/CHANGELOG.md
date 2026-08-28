@@ -928,7 +928,7 @@ The home screen parsed ~3 months of session files on every open — the visible 
 - **Parsing made concurrent.** `getSessionsInRange` collects in-range files by filename then parses them in parallel. `getLastSessionForRoutine` walks newest-filename-first and stops at the first completed session (+ same-day siblings) instead of parsing a routine's entire history — ~40 parses → ~5.
 - **Parser warm-up.** `WorkoutRepository.warmUpParsers()` parses one session file from `MyGymApp.onCreate` on a side coroutine, class-loading snakeyaml / `WorkoutParser` in parallel with the rest of startup.
 
-On-device (real history): the `_gitgraph.yaml` the app generated matched an independent recomputation of all 28 squares exactly (status, %, cardio minutes, routine name incl. an emoji name, session id, per-context comparison). Instrumented timing: cold start to history-rows-visible ~670 ms (was 2–3 s), current-week row filled ~260 ms later, returns to the home ~90 ms. The remaining cold-start tax is JIT/interpretation of the parser path — see the Baseline Profile brief below.
+On-device (real history): the `_gitgraph.yaml` the app generated matched an independent recomputation of all 28 squares exactly (status, %, cardio minutes, routine name incl. an emoji name, session id, per-context comparison). Instrumented timing: cold start to history-rows-visible ~670 ms (was 2–3 s), current-week row filled ~260 ms later, returns to the home ~90 ms. The remaining cold-start tax is JIT/interpretation of the parser path — addressed by Phase 82 (Baseline Profile).
 
 ## Phase 81 — Skipped exercise: restore the "completed-empty" state
 
@@ -948,93 +948,45 @@ Tests: `WorkoutSessionSwitchExerciseTest` (isUntouched semantics) and `WorkoutPa
 - Export / import `gymdata/` as a zip
 - R8 / ProGuard minify for release with `-keep` rules for Polar SDK + RxJava
 - Consolidate `cache/images/` and `image_cache/` under Coil
-- **Baseline Profile** for cold-start speed — see the dedicated brief below.
 
----
+## Phase 82 — Baseline Profile: cold start ~580 ms → ~355 ms
 
-## TODO — Baseline Profile (cold-start AOT compilation)
+Phases 79–80 cut the home's *work* (gitgraph cache, `HomeStateLoader`, concurrent parsing);
+what remained was ART interpreting DEX + cold-JITing `WorkoutParser` / `MarkdownParser` /
+snakeyaml / the Compose+Hilt runtime *while the user waits* on the first launch after an
+install or update. A Baseline Profile removes that: a list of hot classes/methods ships in
+the APK/AAB and `ProfileInstaller` has ART compile them **AOT at install time**, so those
+paths start as native code.
 
-> **To pick this up**: tell Claude Code "do the baseline profile" and point it here. Everything
-> it needs is in this section.
+- **`:baseline-profile` module** — `com.android.test` + `androidx.baselineprofile` plugin,
+  `targetProjectPath = ":app"`, `useConnectedDevices = true`. Two instrumentation classes:
+  - `BaselineProfileGenerator` — a `BaselineProfileRule` recording the critical journey via
+    UiAutomator: cold-start → wait for the gitgraph → open the routine list + a routine
+    (`RoutineParser`, exercise resolution) → a history square → `SessionProgressScreen`
+    (`getSessionsInRange` over months, tonnage math) → the exercise list → Options. It
+    pre-grants every runtime permission (`pm grant`, incl. `health.READ_STEPS`) so no system
+    dialog can sit on top of the app and hang the run.
+  - `StartupBenchmark` — `MacrobenchmarkRule`, `StartupMode.COLD`, 10 iterations,
+    `CompilationMode.None()` vs `Partial(BaselineProfileMode.Require)`.
+- **App wiring** — `androidx.baselineprofile` plugin + `androidx.profileinstaller`
+  dependency + `baselineProfile(project(":baseline-profile"))`. The committed
+  `app/src/release/generated/baselineProfiles/{baseline-prof,startup-prof}.txt` (~22.8 k
+  rules, covering `HomeStateLoader` / `WorkoutRepository` / `GitgraphHistoryCalculator` /
+  snakeyaml / Compose / Hilt) is merged into `release` `assemble`/`bundle` automatically.
+- **`testTagsAsResourceId`** set on the NavHost so UiAutomator can wait on `GitgraphView`'s
+  `testTag("gitgraph")` — Compose surfaces it as the bare tag string (`By.res("gitgraph")`).
 
-### Why
+Measured on the SM-A556B (Android 16), same device, `timeToInitialDisplay` to the home's
+gitgraph, 10 cold iterations each:
 
-At first launch after install/update the ART interprets DEX bytecode and only JIT-compiles a
-method after thousands of invocations — the JIT itself competing for CPU *while the user
-waits*. That's why the home's `getSessionsInRange(currentWeek)` (8 session files) takes
-~500 ms cold and ~30 ms warm, and `getGitgraphHistory` ~260 ms cold vs ~10 ms warm — the gap
-is interpretation + cold JIT of `WorkoutParser` / `MarkdownParser` / snakeyaml, not I/O.
+| Compilation | median | min | max |
+|---|---|---|---|
+| `None` (no profile) | **578 ms** | 451 | 706 |
+| `Partial(Require)` (baseline profile) | **355 ms** | 345 | 407 |
 
-Phase 79 (gitgraph cache + `HomeStateLoader` + two-phase emit) already cut perceived home
-cold start from 2–3 s to ~670 ms (history rows visible), with the current-week row filling
-~260 ms later; returns to the home are ~90 ms. The remaining ~200–300 ms of cold start is
-JIT/interpretation tax that only a Baseline Profile removes: it ships a list of hot
-methods/classes in the APK/AAB, and `ProfileInstaller` has ART compile them **AOT at install
-time**, so those paths start as native code. Typical win: 20–40 % faster cold start, plus
-every "first time" a screen/feature is opened.
-
-### Why app-wide, not just the home
-
-The setup cost (a `:baseline-profile` module, AGP plugin, a navigation test) is fixed
-regardless of coverage. Every *first* open of a routine (`ActiveRoutineViewModel` — 15
-`getExerciseStats`, `getLastSessionForRoutine`, `save`), a strength/superset exercise, the
-session-progress screen (`getSessionsInRange` over months), or the tonnage chart pays the
-same cold tax, over the *same* shared code (`WorkoutParser`, repositories, base ViewModels,
-Compose runtime, Hilt). One profile generated from a journey that touches those screens
-covers the whole app. `androidx.compose` itself ships a baseline profile — this is standard
-for Android apps, not a niche tweak.
-
-### How
-
-1. **Add the module + plugin.**
-   - New Gradle module `:baseline-profile` applying `com.android.test` + `androidx.baselineprofile`.
-   - App module: apply `androidx.baselineprofile` plugin, add `androidx.profileinstaller:profileinstaller`
-     dependency (so the profile is actually installed on-device), and a
-     `baselineProfile(project(":baseline-profile"))` dependency.
-   - Root/`libs.versions.toml`: `androidx.benchmark:benchmark-macro-junit4`,
-     `androidx.test.ext:junit`, `androidx.test:runner`, and the `androidx.baselineprofile`
-     plugin (matching the AGP version already in use).
-   - AGP is already recent enough (check `gradle/libs.versions.toml`); the plugin version must
-     track it.
-
-2. **Write the generator test** (`:baseline-profile/src/main/java/.../BaselineProfileGenerator.kt`),
-   a `@RunWith(AndroidJUnit4::class)` class with a `BaselineProfileRule`, `collect(packageName = "com.mygymapp")`,
-   `includeInStartupProfile = true`, driving via UiAutomator:
-   - cold-start to the home, wait for the gitgraph to render (a `waitUntil` on a stable
-     `testTag` / content-desc — add one to `GitgraphView` if missing);
-   - tap a scheduled-routine cell → `ActiveRoutineScreen` renders → open one exercise
-     (`StrengthExercise` or `Superset`) → back → back to home;
-   - open a history square → `SessionProgressScreen` → back;
-   - open the routine list and the exercise list once each.
-   This is the "critical user journey". Keep it short — 5–8 screens is plenty.
-
-3. **Generate.** Needs a rooted emulator or a **physical device / AOSP (non-Google-Play)
-   emulator image** — the user's phone connected over adb works. Run:
-   `./gradlew :baseline-profile:pixel<...>NonMinifiedReleaseAndroidTest` (task name is
-   printed by the plugin) — it produces
-   `app/src/<variant>/generated/baselineProfiles/baseline-prof.txt` (and a
-   `startup-prof.txt`). **Commit both.**
-
-4. **Wire release build.** The `androidx.baselineprofile` plugin already merges the committed
-   `baseline-prof.txt` into release `assemble`/`bundle`. Confirm R8 is on for release first
-   (see the "R8 / ProGuard minify" item above — do that *before* this, or the profile
-   references pre-shrink method signatures). If R8 lands after, regenerate the profile.
-
-5. **Measure the delta.** Add a `StartupBenchmark` (`MacrobenchmarkRule`,
-   `startupMode = COLD`, `iterations = 10`, `CompilationMode.None()` vs
-   `CompilationMode.Partial(BaselineProfileMode.Require)`), run on the same device, record
-   `timeToInitialDisplay` before/after in this changelog. Target: cold start (home rows
-   visible) from ~670 ms → ~450–500 ms.
-
-### Gotchas
-
-- Generation requires a device where the profile can actually be installed — a standard
-  Google Play emulator image **won't** work; use the physical phone or an AOSP image.
-- `includeInStartupProfile = true` also emits a startup profile (`dexopt` at install for the
-  very first frames) — keep it.
-- Regenerate the profile after any large refactor of the startup path or a dependency bump;
-  a stale profile degrades gracefully (just covers less), it never breaks the build.
-- Don't run the generator test in the normal unit/instrumented CI job — it's slow and
-  device-specific. Give it its own optional workflow.
-- Keep the journey deterministic: seed a known routine/session set first (the existing
-  `seedDebugData` path, or a fixture) so the test doesn't flake on an empty install.
+~39 % faster median cold start, and the JIT-driven long tail (spikes to ~700 ms) collapses
+to a tight ±30 ms. Regenerate after a large refactor of the startup path or a dependency
+bump: `adb shell pm uninstall com.mygymapp && ./gradlew :app:generateBaselineProfile` — see
+[CONVENTIONS.md § Baseline Profile](CONVENTIONS.md#baseline-profile) for the device
+requirements and gotchas (needs a physical phone / AOSP image; `benchmark-macro` ≥ 1.4.0 for
+Android 14+; not wired into CI on purpose).
