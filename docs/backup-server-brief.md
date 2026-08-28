@@ -130,6 +130,17 @@ Authorization: Bearer <shared-secret>
 `data/raw/{exercises,routines}/`. This is the one place a malicious/buggy client could write
 arbitrary paths — be strict.
 
+**Debug-test files** — the phone's Options screen has a "Test backup verso il server" button
+that exercises this endpoint end to end without a real exercise/routine. It sends an
+`upsert` immediately followed by a `delete` for a path of the form
+`routines/_debug-backup-{epochMillis}.md` (leading underscore in the basename, `debug: true`
+in the frontmatter). Treat it as a completely normal request — same auth, hash check, write,
+soft-delete, commit. The **only** special handling: a basename starting with `_` must be
+**excluded from the parsed SQL view** (§4) — don't try to upsert a `routines` row for it,
+just log at debug level and skip. It still gets written to `data/raw/`, still committed, and
+its `delete` still tombstones into `deleted/` normally. Expect one such tombstone per button
+press; harmless, prune manually if ever wanted.
+
 ### 2.2 Handling `op: "upsert"`
 
 1. Bearer check (constant-time) → `401` on mismatch.
@@ -278,6 +289,12 @@ session parser already uses. Factor the parse into a shared function callable fr
 live `/v1/repo` handler and a `reparse.py --all` batch (same pattern as the sessions
 `reparse.py`).
 
+**Skip `_`-prefixed basenames.** Any `exercises/_*.md` / `routines/_*.md` (currently only the
+phone's `routines/_debug-backup-{ts}.md` test file — see §2.1) is written and committed like
+any other file but must **not** produce a `routines`/`exercises` row. The parse function
+should early-return on `Path(rel_path).name.startswith("_")`. `reparse.py --all` applies the
+same rule.
+
 ---
 
 ## Task 5 — docs
@@ -307,3 +324,7 @@ Update the server repo's README / sync-ingestion docs:
 6. `GET /v1/manifest` → lists the session and other live files, **not** the deleted exercise.
 7. `GET /v1/file?relPath=<the session>` → exact bytes, `X-Content-SHA256` matches.
 8. Path-traversal: `GET /v1/file?relPath=../../etc/passwd` → `422`, nothing served.
+9. Phone's Options → "Test backup verso il server": `POST /v1/repo` upsert then delete for
+   `routines/_debug-backup-{ts}.md` → two `repo:1` commits, tombstone in `data/raw/deleted/`,
+   **no** `routines` row created (skipped on the `_` prefix), button shows
+   `OK — upsert: stored, delete: deleted`.

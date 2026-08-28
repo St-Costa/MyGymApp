@@ -17,6 +17,7 @@ import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessLedgerRepository
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.RepoLedgerRepository
+import com.mygymapp.data.sync.RepoSyncApi
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.RestoreApi
 import com.mygymapp.data.sync.RestoreResult
@@ -67,6 +68,9 @@ data class OptionsUiState(
     // Full-store restore (docs/BACKUP.md §3.6) — "Ripristina dal server".
     val syncIsRestoring: Boolean = false,
     val syncRestoreResult: String? = null,
+    // Backup debug send (docs/BACKUP.md §3.7) — "Test backup verso il server".
+    val backupDebugRunning: Boolean = false,
+    val backupDebugResult: String? = null,
     // ECG debug send (docs/SYNC.md "Fourth record type: raw ECG")
     val ecgDebugRecording: Boolean = false,
     val ecgDebugSecondsLeft: Int = 0,
@@ -90,6 +94,7 @@ class OptionsViewModel @Inject constructor(
     private val scaleWeighInLedgerRepository: ScaleWeighInLedgerRepository,
     private val ecgSyncLedgerRepository: EcgSyncLedgerRepository,
     private val repoLedgerRepository: RepoLedgerRepository,
+    private val repoSyncApi: RepoSyncApi,
     private val restoreApi: RestoreApi,
     private val fileManager: FileManager,
     private val polarManager: PolarManager,
@@ -468,6 +473,89 @@ class OptionsViewModel @Inject constructor(
             }
             refreshSyncStatus()
             _uiState.value = _uiState.value.copy(syncIsRestoring = false, syncRestoreResult = result)
+        }
+    }
+
+    // ─── Backup debug send (docs/BACKUP.md §3.7) ────────────────────────────
+
+    /**
+     * End-to-end check of the repo-file backup pipeline (`POST /v1/repo`), without touching
+     * any real exercise/routine: synthesises a throwaway `.md`, `upsert`s it, then `delete`s
+     * it — both calls awaited synchronously so the result says exactly which leg failed.
+     *
+     * Deliberately does **not** go through [RepoLedgerRepository] / [RepoSyncWorker]: it
+     * writes no ledger entry (so it can't inflate the pending count or leave a stuck row)
+     * and no file on disk. Uses a reserved `routines/_debug-backup-{epochMillis}.md` path —
+     * the leading `_` marks it so the server can keep it out of its parsed SQL view (see
+     * docs/backup-server-brief.md §2.5). The trailing `delete` leg leaves the server's
+     * `deleted/` tombstone dir with one dated entry per run; that's expected and harmless.
+     *
+     * Requires a configured server (URL + token). Ignores the "sincronizzazione attiva"
+     * toggle — same as "Invia dati in coda" / the ECG debug send, pressing the button is
+     * itself the opt-in.
+     */
+    fun sendDebugBackup() {
+        if (_uiState.value.backupDebugRunning) return
+        if (!syncConfigRepository.isConfigured()) {
+            _uiState.value = _uiState.value.copy(backupDebugResult = "Server sync non configurato")
+            return
+        }
+        _uiState.value = _uiState.value.copy(backupDebugRunning = true, backupDebugResult = null)
+        viewModelScope.launch {
+            val serverUrl = syncConfigRepository.serverUrl()
+            val token = syncConfigRepository.bearerToken()
+            val ts = System.currentTimeMillis()
+            val relPath = "routines/_debug-backup-$ts.md"
+            val body = buildString {
+                appendLine("---")
+                appendLine("id: _debug-backup-$ts")
+                appendLine("name: \"[debug] backup test\"")
+                appendLine("debug: true")
+                appendLine("clientSentAt: \"${java.time.Instant.now()}\"")
+                appendLine("---")
+                appendLine()
+                appendLine("Synthetic file from Opzioni → \"Test backup verso il server\". Safe to ignore/prune.")
+            }
+            val bytes = body.toByteArray()
+            val hash = repoLedgerRepository.hashOf(bytes)
+
+            val result = withContext(Dispatchers.IO) {
+                // Write to a temp file — RepoSyncApi.postUpsert takes a File (it streams the
+                // multipart part straight off disk). Cache dir, cleaned up in `finally`.
+                val tmp = java.io.File.createTempFile("debug-backup", ".md", appContext.cacheDir)
+                try {
+                    tmp.writeBytes(bytes)
+                    val up = repoSyncApi.postUpsert(
+                        serverUrl = serverUrl,
+                        bearerToken = token,
+                        relPath = relPath,
+                        contentHash = hash,
+                        appVersion = com.mygymapp.BuildConfig.VERSION_NAME,
+                        file = tmp,
+                    )
+                    if (up is com.mygymapp.data.sync.SyncResult.Failure) {
+                        return@withContext "Upsert fallito: ${up.reason}"
+                    }
+                    val upStatus = (up as com.mygymapp.data.sync.SyncResult.Success).status
+                    val del = repoSyncApi.postDelete(
+                        serverUrl = serverUrl,
+                        bearerToken = token,
+                        relPath = relPath,
+                        lastKnownHash = hash,
+                        appVersion = com.mygymapp.BuildConfig.VERSION_NAME,
+                    )
+                    when (del) {
+                        is com.mygymapp.data.sync.SyncResult.Failure ->
+                            "Upsert OK ($upStatus), ma delete fallito: ${del.reason}"
+                        is com.mygymapp.data.sync.SyncResult.Success ->
+                            "OK — upsert: $upStatus, delete: ${del.status} " +
+                                "(${up.bytesSent} byte in ${up.durationMs} ms)"
+                    }
+                } finally {
+                    tmp.delete()
+                }
+            }
+            _uiState.value = _uiState.value.copy(backupDebugRunning = false, backupDebugResult = result)
         }
     }
 
