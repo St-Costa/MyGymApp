@@ -1,7 +1,10 @@
 package com.mygymapp.data.repository
 
 import com.mygymapp.data.model.ExerciseSet
+import com.mygymapp.data.model.ExerciseStats
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.parser.ExerciseStatsCalculator
+import com.mygymapp.data.parser.ExerciseStatsParser
 import com.mygymapp.data.parser.WorkoutParser
 import com.mygymapp.data.sync.SyncLedgerRepository
 import kotlinx.coroutines.Dispatchers
@@ -29,9 +32,17 @@ import javax.inject.Singleton
  * one entry per session that contains that exercise.  Maintained automatically on every
  * save/delete so exercise-based queries never need a full directory scan.
  *
+ * ## Exercise stats sidecar
+ * `history/_stats/{exerciseId}.yaml` — a per-exercise materialized view (most recent real
+ * sets + all-time tonnage PR + "has prior tonnage" flag, split by slot context). Refreshed
+ * incrementally on [save] of a completed session and rebuilt from a full per-exercise scan on
+ * [delete] / [runMaintenance] cleanup / schema-version mismatch. Lets the exercise screens
+ * skip parsing dozens of session files per open. See [ExerciseStats].
+ *
  * ## Migration
  * Old-format files (`YYYY-MM-DD_{routineSlug}-{sessionId}.md`) are renamed and the exercise
- * index is rebuilt on first run, guarded by `history/_idx/.migrated`.
+ * index is rebuilt on first run, guarded by `history/_idx/.migrated`. The stats sidecars are
+ * wiped at the same time and regenerated lazily on first read.
  */
 @Singleton
 class WorkoutRepository @Inject constructor(
@@ -108,6 +119,76 @@ class WorkoutRepository @Inject constructor(
         idxFile.writeText(updated.joinToString("\n"))
     }
 
+    // ─── Exercise stats sidecar ──────────────────────────────────────────────
+
+    private fun statsDir(): File = File(File(fileManager.root, "history"), "_stats")
+
+    private fun statsFile(exerciseId: String): File =
+        File(statsDir(), "$exerciseId.yaml")
+
+    /** Reads and parses the sidecar for [exerciseId], or null if absent/unparseable. */
+    private fun readStatsSidecar(exerciseId: String): ExerciseStats? {
+        val f = statsFile(exerciseId)
+        if (!f.exists()) return null
+        return try {
+            ExerciseStatsParser.fromYaml(f.readText())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun writeStatsSidecar(stats: ExerciseStats) {
+        val dir = statsDir().also { it.mkdirs() }
+        File(dir, "${stats.exerciseId}.yaml").writeText(ExerciseStatsParser.toYaml(stats))
+    }
+
+    /**
+     * Computes [exerciseId]'s stats from a full scan of that one exercise's history (via the
+     * exercise index — bounded by how many sessions contain it, not the whole tree). Pure
+     * read: no lock needed, and several of these can run concurrently on different exercises.
+     */
+    private fun computeExerciseStats(exerciseId: String): ExerciseStats {
+        val sessions = getExerciseSessionFiles(exerciseId).mapNotNull { file ->
+            try {
+                WorkoutParser.fromMarkdown(file.readText())
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return ExerciseStatsCalculator.rebuild(exerciseId, sessions)
+    }
+
+    /**
+     * [computeExerciseStats] + persist. Used on delete/cleanup and to backfill a missing or
+     * stale sidecar. Must be called with [mutex] held (writes the sidecar).
+     */
+    private fun rebuildExerciseStats(exerciseId: String): ExerciseStats =
+        computeExerciseStats(exerciseId).also { writeStatsSidecar(it) }
+
+    /**
+     * The exercise stats for [exerciseId] — the fast read the exercise screens use instead of
+     * scanning history. Returns a cheap parse of the sidecar when it exists and matches the
+     * current schema; otherwise computes it from a per-exercise scan (**outside** the write
+     * lock, so concurrent first-time reads for different exercises of a superset / routine
+     * don't serialize), then takes the lock only to persist it so the next call is fast.
+     */
+    suspend fun getExerciseStats(exerciseId: String): ExerciseStats =
+        withContext(Dispatchers.IO) {
+            readStatsSidecar(exerciseId)
+                ?.takeIf { it.schemaVersion == ExerciseStats.SCHEMA_VERSION }
+                ?: run {
+                    val computed = computeExerciseStats(exerciseId)
+                    // Re-check under the lock: another caller (or a concurrent save) may have
+                    // written a fresh sidecar while we were scanning — prefer that, it can only
+                    // be newer. Otherwise persist ours.
+                    mutex.withLock {
+                        readStatsSidecar(exerciseId)
+                            ?.takeIf { it.schemaVersion == ExerciseStats.SCHEMA_VERSION }
+                            ?: computed.also { writeStatsSidecar(it) }
+                    }
+                }
+        }
+
     /**
      * Returns the session [File]s listed in the index for [exerciseId].
      * Stale entries (deleted files) are silently filtered out.
@@ -134,7 +215,7 @@ class WorkoutRepository @Inject constructor(
         val historyRoot = File(fileManager.root, "history")
         val result = mutableListOf<File>()
         historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+            if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
             yearDir.listFiles()?.forEach { monthDir ->
                 if (!monthDir.isDirectory) return@forEach
                 monthDir.listFiles()?.filterTo(result) { file ->
@@ -184,12 +265,16 @@ class WorkoutRepository @Inject constructor(
         mutex.withLock {
             // Rebuild index from scratch
             idxDir.listFiles()?.filter { it.extension == "idx" }?.forEach { it.delete() }
+            // Drop every stats sidecar — they regenerate lazily on first read, and this is the
+            // simplest way to guarantee none survives a rename/reindex with a stale relPath or
+            // an old schema.
+            statsDir().listFiles()?.filter { it.extension == "yaml" }?.forEach { it.delete() }
 
             val batch = ExerciseIndexBatch()
             val historyRoot = File(fileManager.root, "history")
             if (historyRoot.exists()) {
                 historyRoot.listFiles()?.forEach { yearDir ->
-                    if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                    if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
                     yearDir.listFiles()?.forEach { monthDir ->
                         if (!monthDir.isDirectory) return@forEach
                         // snapshot to avoid ConcurrentModification during rename
@@ -241,6 +326,16 @@ class WorkoutRepository @Inject constructor(
             updated.exercises.forEach { ex -> batch.add(ex.exerciseId, rel) }
             flushExerciseIndexBatch(batch)
 
+            // Refresh the per-exercise stats sidecars. Only a completed session carries data
+            // worth folding in; an in-progress save (autosave, back-out) leaves them untouched.
+            // Incremental merge — no history scan — so this stays cheap on the save path.
+            if (updated.completedAt.isNotBlank()) {
+                updated.exercises.map { it.exerciseId }.distinct().forEach { exId ->
+                    val merged = ExerciseStatsCalculator.merge(exId, readStatsSidecar(exId), updated)
+                    writeStatsSidecar(merged)
+                }
+            }
+
             updated
         }
     }
@@ -265,6 +360,18 @@ class WorkoutRepository @Inject constructor(
                         WorkoutParser.fromMarkdown(f.readText()).id == session.id
                     } catch (_: Exception) { false }
                 }?.delete()
+            }
+
+            // A completed session may have held an exercise's PR or its most-recent sets — the
+            // incremental sidecar can't "un-merge", so rebuild each affected sidecar from
+            // what's left on disk. Skip this for a session that was never completed: `save()`
+            // only ever folds a completed session into a sidecar (see `merge`), so an
+            // incomplete one — a ghost session backed out of, in particular — contributed
+            // nothing and its deletion invalidates nothing. This matters: ghost cleanup runs
+            // on every back-out, and a 15-exercise rebuild there (each a full history scan)
+            // was blocking the *next* routine open's save() on the shared mutex.
+            if (session.completedAt.isNotBlank()) {
+                session.exercises.map { it.exerciseId }.distinct().forEach { rebuildExerciseStats(it) }
             }
         }
     }
@@ -380,7 +487,7 @@ class WorkoutRepository @Inject constructor(
         if (!historyRoot.exists()) return@withContext emptyList()
         val sessions = mutableListOf<WorkoutSession>()
         historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+            if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
             yearDir.listFiles()?.forEach { monthDir ->
                 if (!monthDir.isDirectory) return@forEach
                 monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
@@ -437,10 +544,12 @@ class WorkoutRepository @Inject constructor(
             var ghostsDeleted = 0
             var prunedDeleted = 0
             val validSessionIds = mutableSetOf<String>()
+            // Exercises whose history shrank this run — their sidecars are rebuilt at the end.
+            val staleStatsExerciseIds = mutableSetOf<String>()
 
             if (historyRoot.exists()) {
                 historyRoot.listFiles()?.forEach { yearDir ->
-                    if (!yearDir.isDirectory || yearDir.name == "_idx") return@forEach
+                    if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
                     yearDir.listFiles()?.forEach { monthDir ->
                         if (!monthDir.isDirectory) return@forEach
                         monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
@@ -465,8 +574,13 @@ class WorkoutRepository @Inject constructor(
                             val isGhost = session != null && isGhostSession(session)
 
                             if (isPruneCandidate || isGhost) {
+                                // A ghost session has no completed work, so it never fed a stats
+                                // sidecar — only a *completed* pruned session can invalidate one.
+                                val affectsStats =
+                                    session != null && session.completedAt.isNotBlank()
                                 session?.exercises?.forEach { ex ->
                                     removeFromExerciseIndex(ex.exerciseId, rel)
+                                    if (affectsStats) staleStatsExerciseIds.add(ex.exerciseId)
                                 }
                                 file.delete()
                                 if (isGhost) ghostsDeleted++ else prunedDeleted++
@@ -489,6 +603,12 @@ class WorkoutRepository @Inject constructor(
                     }
                 }
             }
+
+            // Ghost/pruned sessions removed above may have been the source of a sidecar's PR or
+            // "previous" — rebuild each affected one from surviving history. A ghost session by
+            // definition has no completed work, so in practice this rarely changes anything,
+            // but pruning old sessions genuinely can.
+            staleStatsExerciseIds.forEach { rebuildExerciseStats(it) }
 
             sentinel.writeText("")
             MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)

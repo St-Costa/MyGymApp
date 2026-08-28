@@ -13,9 +13,11 @@ filesDir/gymdata/              ← FileManager.root
 ├── history/                   ← Workout sessions
 │   ├── YYYY/MM/
 │   │   └── YYYY-MM-DD_rt-{8hex}_{sessionId}.md
-│   └── _idx/
-│       ├── ex-{8hex}.idx      ← exercise → session paths index
-│       └── .migrated          ← one-time migration sentinel
+│   ├── _idx/
+│   │   ├── ex-{8hex}.idx      ← exercise → session paths index
+│   │   └── .migrated          ← one-time migration sentinel
+│   └── _stats/
+│       └── ex-{8hex}.yaml     ← per-exercise derived stats (previous sets + tonnage PR)
 ├── ecg/                       ← Raw ECG recordings (ephemeral)
 │   └── {sessionId}.ecg
 ├── cache/images/              ← ImageCacheRepository (exercise link previews)
@@ -278,17 +280,50 @@ For exercise-based lookups, `history/_idx/{exerciseId}.idx` maps each exercise t
 
 Maintained transactionally by [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt) on every `save()` / `delete()`. Updates are accumulated in an in-memory `Map<exerciseId, Set<relPath>>` and flushed in a single pass, so each `.idx` file is read and written at most once per save or migration — regardless of how many times the same exercise appears. Stale entries (pointing at deleted files) are silently filtered out at read time, then cleaned up on the next prune.
 
+### Exercise stats sidecar (`history/_stats/{exerciseId}.yaml`)
+
+A per-exercise **materialized view** over that exercise's session history, so the strength / stretch / superset exercise screens and the active-routine open don't have to parse dozens of session files each time. One file per exercise, front-matter-only YAML:
+
+```yaml
+---
+exerciseId: "ex-3e4195a9"
+schemaVersion: 1
+contexts:
+  - context: "DAILY"                              # NORMAL | WARMUP | DAILY, one block each
+    previousSessionDate: "2026-08-28T09:34:52..."
+    hasPriorRealTonnage: true                     # drives the "primo dato" badge
+    pr:                                           # all-time best reps*weight set (0-or-1 element)
+      - reps: 10
+        weight: 3.0
+    previousSets:                                 # sets of the most recent session with real data
+      - reps: 10
+        weight: 3.0
+      - reps: 10
+        weight: 3.0
+---
+```
+
+Everything is split by [SlotContext] (a fixed-daily execution's history is unrelated to the same exercise's routine history — see [CONVENTIONS.md](CONVENTIONS.md#all-time-tonnage-pr--previous-preview-slot-context-match)). Bodyweight sets are stored with their materialized `weight` already applied, so `reps * weight` works with no special-casing.
+
+**Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
+- **`save()` of a completed session**: each of its exercises' sidecars is updated by an *incremental merge* (`ExerciseStatsCalculator.merge`) — PR compare-and-set, `previousSets` replaced only if the new session has real data. No history scan; cheap on the save path. An in-progress save (autosave / back-out, blank `completedAt`) touches nothing.
+- **`delete()` / `runMaintenance()` prune**: the incremental view can't "un-merge" a removed session, so each affected sidecar is *rebuilt* from a full scan of that one exercise's history (bounded by its `.idx`, not the whole tree). Deletes are rare.
+- **Missing or old-schema sidecar** (`schemaVersion` ≠ `ExerciseStats.SCHEMA_VERSION`): rebuilt on first read (`getExerciseStats`) and persisted, so the next read is fast again. Bumping the constant is the whole "migration" — every sidecar regenerates lazily.
+- The one-time index migration also wipes `_stats/` (lazy regen afterwards).
+
+The `.md` files remain the source of truth; the sidecar is a cache. The derivation rules (what "previous" is, what the PR is) live in one pure, unit-tested place — `ExerciseStatsCalculator` — used by both the incremental and full-rebuild paths, with a test pinning that a chain of `merge`s equals a single `rebuild`.
+
 ### Migration
 
 One-time migration for early adopters:
 - Old format: `YYYY-MM-DD_{slug}-{id}.md` (2 `_`-segments)
 - New format: `YYYY-MM-DD_{routineId}_{sessionId}.md` (3 segments)
 
-Runs on app startup in [MainViewModel](../app/src/main/java/com/mygymapp/ui/screen/main/MainViewModel.kt), guarded by `history/_idx/.migrated`. Rebuilds the exercise index from scratch. Idempotent.
+Runs on app startup in [MainViewModel](../app/src/main/java/com/mygymapp/ui/screen/main/MainViewModel.kt), guarded by `history/_idx/.migrated`. Rebuilds the exercise index from scratch and wipes `_stats/`. Idempotent.
 
 ### Auto-prune
 
-On startup, sessions older than 3 months are deleted. Exercise index entries for removed files are cleaned up as part of the same pass.
+On startup, sessions older than 3 months are deleted. Exercise index entries for removed files are cleaned up as part of the same pass, and the affected exercises' stats sidecars are rebuilt.
 
 ## Name sync on rename
 

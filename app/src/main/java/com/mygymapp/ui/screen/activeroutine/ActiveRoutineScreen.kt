@@ -71,7 +71,7 @@ import com.mygymapp.ui.util.groupSupersets
 
 private sealed class ExerciseGroup {
     data class Single(val exercise: ActiveExerciseUi) : ExerciseGroup()
-    data class Superset(val ex1: ActiveExerciseUi, val ex2: ActiveExerciseUi) : ExerciseGroup()
+    data class Superset(val exercises: List<ActiveExerciseUi>) : ExerciseGroup()
 }
 
 private fun buildExerciseGroups(exercises: List<ActiveExerciseUi>): List<ExerciseGroup> =
@@ -79,13 +79,13 @@ private fun buildExerciseGroups(exercises: List<ActiveExerciseUi>): List<Exercis
         items = exercises,
         isPairedWithNext = { it.supersetWithNext },
         single = { i -> ExerciseGroup.Single(exercises[i]) },
-        pair = { i, j -> ExerciseGroup.Superset(exercises[i], exercises[j]) },
+        group = { idxs -> ExerciseGroup.Superset(idxs.map { exercises[it] }) },
     )
 
-// A superset pair never spans a category boundary, so the first exercise's category is the group's.
+// A superset chain never spans a category boundary, so the first exercise's category is the group's.
 private fun ExerciseGroup.category(): SessionExerciseCategory = when (this) {
     is ExerciseGroup.Single -> exercise.category
-    is ExerciseGroup.Superset -> ex1.category
+    is ExerciseGroup.Superset -> exercises.first().category
 }
 
 @Composable
@@ -121,7 +121,7 @@ private fun SessionSectionHeader(
 @Composable
 fun ActiveRoutineScreen(
     onNavigateToExercise: (sessionId: String, exerciseId: String, type: ExerciseType) -> Unit,
-    onNavigateToSuperset: (sessionId: String, exerciseId1: String, exerciseId2: String) -> Unit,
+    onNavigateToSuperset: (sessionId: String, exerciseIds: List<String>) -> Unit,
     onBack: () -> Unit,
     onSessionRegistered: (sessionId: String, date: String) -> Unit,
     viewModel: ActiveRoutineViewModel = hiltViewModel(),
@@ -187,7 +187,8 @@ fun ActiveRoutineScreen(
                     key = { _, group ->
                         when (group) {
                             is ExerciseGroup.Single -> group.exercise.exerciseId
-                            is ExerciseGroup.Superset -> "${group.ex1.exerciseId}_${group.ex2.exerciseId}"
+                            is ExerciseGroup.Superset ->
+                                "ss_" + group.exercises.joinToString("_") { it.exerciseId }
                         }
                     },
                 ) { index, group ->
@@ -216,16 +217,14 @@ fun ActiveRoutineScreen(
                                 )
                             }
                             is ExerciseGroup.Superset -> {
-                                val bothCompleted = group.ex1.completed && group.ex2.completed
+                                val allCompleted = group.exercises.all { it.completed }
                                 SupersetGroupRow(
-                                    ex1 = group.ex1,
-                                    ex2 = group.ex2,
+                                    exercises = group.exercises,
                                     onClick = {
-                                        if (!bothCompleted) {
+                                        if (!allCompleted) {
                                             onNavigateToSuperset(
                                                 uiState.sessionId,
-                                                group.ex1.exerciseId,
-                                                group.ex2.exerciseId,
+                                                group.exercises.map { it.exerciseId },
                                             )
                                         }
                                     },
@@ -478,21 +477,19 @@ private fun ExerciseRow(
 
 @Composable
 private fun SupersetGroupRow(
-    ex1: ActiveExerciseUi,
-    ex2: ActiveExerciseUi,
+    exercises: List<ActiveExerciseUi>,
     onClick: () -> Unit,
 ) {
-    val bothCompleted = ex1.completed && ex2.completed
-    // A superset pair can mix exercise types (FORZA + STRETCH, …), so the border is a
-    // gradient from ex1's accent color (top) to ex2's (bottom). When they're the same
-    // type it just reads as a solid color, exactly like ExerciseRow.
+    val allCompleted = exercises.all { it.completed }
+    // A superset chain can mix exercise types (FORZA + STRETCH, …), so the border is a
+    // gradient from the first member's accent color (top) to the last member's (bottom).
+    // When they're the same type it just reads as a solid color, exactly like ExerciseRow.
     fun accentFor(ex: ActiveExerciseUi) =
         if (ex.completedEmpty) SkippedColor else ex.type.accentColor()
-    // Less opaque border once both exercises in the pair are done — mirrors ExerciseRow.
-    val alpha = if (bothCompleted) 0.4f else 1f
-    val color1 = accentFor(ex1).copy(alpha = alpha)
-    val color2 = accentFor(ex2).copy(alpha = alpha)
-    val borderBrush = Brush.verticalGradient(listOf(color1, color2))
+    // Less opaque border once every exercise in the chain is done — mirrors ExerciseRow.
+    val alpha = if (allCompleted) 0.4f else 1f
+    val colors = exercises.map { accentFor(it).copy(alpha = alpha) }
+    val borderBrush = Brush.verticalGradient(colors)
 
     Card(
         onClick = onClick,
@@ -504,19 +501,23 @@ private fun SupersetGroupRow(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SupersetExerciseEntry(exercise = ex1)
-
-            HorizontalDivider(
-                color = Color.Transparent,
-                thickness = 1.dp,
-                modifier = Modifier.background(
-                    Brush.horizontalGradient(
-                        listOf(color1.copy(alpha = 0.3f), color2.copy(alpha = 0.3f)),
-                    ),
-                ),
-            )
-
-            SupersetExerciseEntry(exercise = ex2)
+            exercises.forEachIndexed { i, ex ->
+                if (i > 0) {
+                    HorizontalDivider(
+                        color = Color.Transparent,
+                        thickness = 1.dp,
+                        modifier = Modifier.background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    colors[i - 1].copy(alpha = 0.3f),
+                                    colors[i].copy(alpha = 0.3f),
+                                ),
+                            ),
+                        ),
+                    )
+                }
+                SupersetExerciseEntry(exercise = ex)
+            }
         }
     }
 }

@@ -71,6 +71,7 @@ import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.theme.CardioColor
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
+import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
@@ -301,16 +302,22 @@ private fun ExerciseDragDropList(
                 when (segment) {
                     is ExerciseSegment.Single -> {
                         val exIdx = segment.index
-                        // Show superset link button only when the next segment is also a Single,
-                        // and never across the warmup line (would straddle warmup/normal).
+                        // Show the superset link button when the next segment can still absorb
+                        // this one without the chain exceeding MAX_SUPERSET_SIZE, and never
+                        // across the warmup line (would straddle warmup/normal).
                         // Cardio exercises can never be linked into a superset — they're a
                         // time-based block (see CardioExerciseScreen), not a set-based one, and
                         // SupersetViewModel/Screen only know how to interleave FORZA/STRETCH sets.
-                        val nextSegment = segments.getOrNull(segIdx + 1) as? ExerciseSegment.Single
+                        val nextSegment = segments.getOrNull(segIdx + 1)
+                        val nextIndices = nextSegment?.indices() ?: emptyList()
+                        val nextIsCardioFree = nextIndices.all {
+                            exercises[it].exerciseType != ExerciseType.CARDIO
+                        }
                         val canLink = nextSegment != null &&
+                            1 + nextIndices.size <= MAX_SUPERSET_SIZE &&
                             exIdx + 1 != warmupCount &&
                             exercises[exIdx].exerciseType != ExerciseType.CARDIO &&
-                            exercises[nextSegment.index].exerciseType != ExerciseType.CARDIO
+                            nextIsCardioFree
                         RoutineExerciseItem(
                             exercise = exercises[exIdx],
                             isDragging = isDragging,
@@ -342,14 +349,26 @@ private fun ExerciseDragDropList(
                         )
                     }
 
-                    is ExerciseSegment.SupersetPair -> {
-                        SupersetPairContainer(
-                            exercise1 = exercises[segment.index1],
-                            exercise2 = exercises[segment.index2],
+                    is ExerciseSegment.Superset -> {
+                        val idxs = segment.indices
+                        // Whether the chain can absorb the exercise right after it: the next
+                        // segment must be a Single, the chain must still be under the cap, and
+                        // the join must not straddle the warmup line or pull in a CARDIO block.
+                        val afterSegment = segments.getOrNull(segIdx + 1)
+                        val canExtend = afterSegment is ExerciseSegment.Single &&
+                            idxs.size < MAX_SUPERSET_SIZE &&
+                            idxs.last() + 1 != warmupCount &&
+                            exercises[afterSegment.index].exerciseType != ExerciseType.CARDIO
+                        SupersetContainer(
+                            exercises = idxs.map { exercises[it] },
                             isDragging = isDragging,
+                            canExtend = canExtend,
+                            // Extending the chain = set supersetWithNext on its last member,
+                            // linking it forward to the next Single.
+                            onExtend = { onToggleSuperset(idxs.last()) },
                             onDragStart = { dragState = DragState(segIdx, 0f, segIdx) },
                             onDrag = { dy ->
-                                val state = dragState ?: return@SupersetPairContainer
+                                val state = dragState ?: return@SupersetContainer
                                 val newOffset = state.offsetY + dy
                                 val slotHeight = (segmentHeightsPx[state.fromIndex] ?: 0f) + gapPx
                                 val delta = if (slotHeight > 0) (newOffset / slotHeight).roundToInt() else 0
@@ -364,17 +383,14 @@ private fun ExerciseDragDropList(
                                 }
                             },
                             onDragCancel = { dragState = null },
-                            onRemove1 = { onRemove(segment.index1) },
-                            onRemove2 = { onRemove(segment.index2) },
-                            onSetsChange1 = { onSetsChange(segment.index1, it) },
-                            onRepMinChange1 = { onRepMinChange(segment.index1, it) },
-                            onRepMaxChange1 = { onRepMaxChange(segment.index1, it) },
-                            onTimeChange1 = { onTimeChange(segment.index1, it) },
-                            onSetsChange2 = { onSetsChange(segment.index2, it) },
-                            onRepMinChange2 = { onRepMinChange(segment.index2, it) },
-                            onRepMaxChange2 = { onRepMaxChange(segment.index2, it) },
-                            onTimeChange2 = { onTimeChange(segment.index2, it) },
-                            onUnlink = { onToggleSuperset(segment.index1) },
+                            onRemoveAt = { local -> onRemove(idxs[local]) },
+                            onSetsChangeAt = { local, v -> onSetsChange(idxs[local], v) },
+                            onRepMinChangeAt = { local, v -> onRepMinChange(idxs[local], v) },
+                            onRepMaxChangeAt = { local, v -> onRepMaxChange(idxs[local], v) },
+                            onTimeChangeAt = { local, v -> onTimeChange(idxs[local], v) },
+                            // Unlinking the whole chain: clear the flag on every member except
+                            // the last, so it collapses back to standalone singles.
+                            onUnlink = { idxs.dropLast(1).forEach { onToggleSuperset(it) } },
                         )
                     }
                 }
@@ -435,29 +451,25 @@ private fun WarmupDividerRow(
 }
 
 // ---------------------------------------------------------------------------
-// Superset pair container (purple frame wrapping two exercise cards)
+// Superset container (purple frame wrapping 2–3 exercise cards)
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun SupersetPairContainer(
-    exercise1: RoutineExerciseUi,
-    exercise2: RoutineExerciseUi,
+private fun SupersetContainer(
+    exercises: List<RoutineExerciseUi>,
     isDragging: Boolean,
     onDragStart: () -> Unit,
     onDrag: (dy: Float) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
-    onRemove1: () -> Unit,
-    onRemove2: () -> Unit,
-    onSetsChange1: (Int) -> Unit,
-    onRepMinChange1: (Int) -> Unit,
-    onRepMaxChange1: (Int) -> Unit,
-    onTimeChange1: (Int) -> Unit,
-    onSetsChange2: (Int) -> Unit,
-    onRepMinChange2: (Int) -> Unit,
-    onRepMaxChange2: (Int) -> Unit,
-    onTimeChange2: (Int) -> Unit,
+    onRemoveAt: (local: Int) -> Unit,
+    onSetsChangeAt: (local: Int, value: Int) -> Unit,
+    onRepMinChangeAt: (local: Int, value: Int) -> Unit,
+    onRepMaxChangeAt: (local: Int, value: Int) -> Unit,
+    onTimeChangeAt: (local: Int, value: Int) -> Unit,
     onUnlink: () -> Unit,
+    canExtend: Boolean = false,
+    onExtend: () -> Unit = {},
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     Card(
@@ -502,11 +514,20 @@ private fun SupersetPairContainer(
                         },
                 )
                 Text(
-                    text = "SUPERSET",
+                    text = if (exercises.size >= 3) "SUPERSET ×${exercises.size}" else "SUPERSET",
                     style = MaterialTheme.typography.labelMedium,
                     color = primaryColor,
                     modifier = Modifier.weight(1f),
                 )
+                if (canExtend) {
+                    IconButton(onClick = onExtend) {
+                        Icon(
+                            Icons.Default.Link,
+                            contentDescription = "Add next exercise to superset",
+                            tint = primaryColor,
+                        )
+                    }
+                }
                 IconButton(onClick = onUnlink) {
                     Icon(
                         Icons.Default.LinkOff,
@@ -516,41 +537,27 @@ private fun SupersetPairContainer(
                 }
             }
 
-            // Exercise 1 (no drag handle, no superset button)
-            RoutineExerciseItem(
-                exercise = exercise1,
-                isDragging = false,
-                onDragStart = {},
-                onDrag = {},
-                onDragEnd = {},
-                onDragCancel = {},
-                onRemove = onRemove1,
-                onSetsChange = onSetsChange1,
-                onRepMinChange = onRepMinChange1,
-                onRepMaxChange = onRepMaxChange1,
-                onTimeChange = onTimeChange1,
-                showDragHandle = false,
-                showSupersetButton = false,
-            )
-
-            HorizontalDivider(color = primaryColor.copy(alpha = 0.4f), thickness = 1.dp)
-
-            // Exercise 2 (no drag handle, no superset button)
-            RoutineExerciseItem(
-                exercise = exercise2,
-                isDragging = false,
-                onDragStart = {},
-                onDrag = {},
-                onDragEnd = {},
-                onDragCancel = {},
-                onRemove = onRemove2,
-                onSetsChange = onSetsChange2,
-                onRepMinChange = onRepMinChange2,
-                onRepMaxChange = onRepMaxChange2,
-                onTimeChange = onTimeChange2,
-                showDragHandle = false,
-                showSupersetButton = false,
-            )
+            // Members (no drag handle, no superset button), separated by dividers.
+            exercises.forEachIndexed { local, ex ->
+                if (local > 0) {
+                    HorizontalDivider(color = primaryColor.copy(alpha = 0.4f), thickness = 1.dp)
+                }
+                RoutineExerciseItem(
+                    exercise = ex,
+                    isDragging = false,
+                    onDragStart = {},
+                    onDrag = {},
+                    onDragEnd = {},
+                    onDragCancel = {},
+                    onRemove = { onRemoveAt(local) },
+                    onSetsChange = { onSetsChangeAt(local, it) },
+                    onRepMinChange = { onRepMinChangeAt(local, it) },
+                    onRepMaxChange = { onRepMaxChangeAt(local, it) },
+                    onTimeChange = { onTimeChangeAt(local, it) },
+                    showDragHandle = false,
+                    showSupersetButton = false,
+                )
+            }
         }
     }
 }
