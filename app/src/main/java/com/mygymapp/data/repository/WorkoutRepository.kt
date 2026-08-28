@@ -57,6 +57,37 @@ class WorkoutRepository @Inject constructor(
 ) {
     private val mutex = Mutex()
 
+    // ─── History tree traversal ──────────────────────────────────────────────
+
+    /** `history/` root. */
+    private fun historyRoot(): File = File(fileManager.root, "history")
+
+    /** Reserved sub-directory names under `history/` that are not `YYYY` session buckets. */
+    private fun isReservedHistoryDir(name: String): Boolean =
+        name == "_idx" || name == "_stats"
+
+    /**
+     * Every `history/YYYY/MM/` directory that currently exists, in no particular order. The one
+     * place the "walk year dirs, skip `_idx`/`_stats`, then month dirs" shape lives — callers
+     * (`getRoutineSessionFiles`, `getAllCompletedSessions`, migration, maintenance) iterate this
+     * instead of re-deriving the reserved-name skip each time (miss one and a reserved dir gets
+     * parsed as a session bucket).
+     */
+    private fun historyMonthDirs(): List<File> {
+        val root = historyRoot()
+        if (!root.exists()) return emptyList()
+        return root.listFiles()
+            ?.filter { it.isDirectory && !isReservedHistoryDir(it.name) }
+            ?.flatMap { yearDir -> yearDir.listFiles()?.filter { it.isDirectory }?.toList() ?: emptyList() }
+            ?: emptyList()
+    }
+
+    /** Every `*.md` session file under `history/YYYY/MM/`. */
+    private fun historySessionFiles(): List<File> =
+        historyMonthDirs().flatMap { dir ->
+            dir.listFiles()?.filter { it.extension == "md" }?.toList() ?: emptyList()
+        }
+
     // ─── File naming ──────────────────────────────────────────────────────────
 
     /**
@@ -180,19 +211,26 @@ class WorkoutRepository @Inject constructor(
      */
     suspend fun getExerciseStats(exerciseId: String): ExerciseStats =
         withContext(Dispatchers.IO) {
-            readStatsSidecar(exerciseId)
-                ?.takeIf { it.schemaVersion == ExerciseStats.SCHEMA_VERSION }
+            readUsableSidecar(exerciseId)
                 ?: run {
                     val computed = computeExerciseStats(exerciseId)
                     // Re-check under the lock: another caller (or a concurrent save) may have
                     // written a fresh sidecar while we were scanning — prefer that, it can only
                     // be newer. Otherwise persist ours.
                     mutex.withLock {
-                        readStatsSidecar(exerciseId)
-                            ?.takeIf { it.schemaVersion == ExerciseStats.SCHEMA_VERSION }
-                            ?: computed.also { writeStatsSidecar(it) }
+                        readUsableSidecar(exerciseId) ?: computed.also { writeStatsSidecar(it) }
                     }
                 }
+        }
+
+    /**
+     * A parsed sidecar only if it is safe to serve: current schema **and** for the exercise we
+     * asked about. A mismatched `exerciseId` (a stray/copied file, a future bug) must not be
+     * handed back as another exercise's stats — same guard [ExerciseStatsCalculator.merge] applies.
+     */
+    private fun readUsableSidecar(exerciseId: String): ExerciseStats? =
+        readStatsSidecar(exerciseId)?.takeIf {
+            it.schemaVersion == ExerciseStats.SCHEMA_VERSION && it.exerciseId == exerciseId
         }
 
     // ─── Home gitgraph cache ─────────────────────────────────────────────────
@@ -302,20 +340,8 @@ class WorkoutRepository @Inject constructor(
      */
     suspend fun warmUpParsers() = withContext(Dispatchers.IO) {
         runCatching {
-            val historyRoot = File(fileManager.root, "history")
-            val newest = historyRoot.listFiles()
-                ?.filter { it.isDirectory && it.name != "_idx" && it.name != "_stats" }
-                ?.sortedByDescending { it.name }
-                ?.firstNotNullOfOrNull { yearDir ->
-                    yearDir.listFiles()
-                        ?.filter { it.isDirectory }
-                        ?.sortedByDescending { it.name }
-                        ?.firstNotNullOfOrNull { monthDir ->
-                            monthDir.listFiles()
-                                ?.filter { it.extension == "md" }
-                                ?.maxByOrNull { it.name }
-                        }
-                }
+            // The single newest session file by name (date-prefixed, so name order == chrono order).
+            val newest = historySessionFiles().maxByOrNull { it.name }
             newest?.let { WorkoutParser.fromMarkdown(it.readText()) }
         }
         Unit
@@ -343,21 +369,11 @@ class WorkoutRepository @Inject constructor(
      * Format: `YYYY-MM-DD_{routineId}_{sessionId}.md` → split on `_`, `parts[1] == routineId`.
      * No YAML parsing required.
      */
-    private fun getRoutineSessionFiles(routineId: String): List<File> {
-        val historyRoot = File(fileManager.root, "history")
-        val result = mutableListOf<File>()
-        historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
-            yearDir.listFiles()?.forEach { monthDir ->
-                if (!monthDir.isDirectory) return@forEach
-                monthDir.listFiles()?.filterTo(result) { file ->
-                    file.extension == "md" && file.nameWithoutExtension.split("_")
-                        .let { parts -> parts.size >= 3 && parts[1] == routineId }
-                }
-            }
+    private fun getRoutineSessionFiles(routineId: String): List<File> =
+        historySessionFiles().filter { file ->
+            file.nameWithoutExtension.split("_")
+                .let { parts -> parts.size >= 3 && parts[1] == routineId }
         }
-        return result
-    }
 
     /** Relative path from `history/` root for a given [session] file. */
     private fun relPath(session: WorkoutSession): String {
@@ -405,33 +421,25 @@ class WorkoutRepository @Inject constructor(
             deleteGitgraphCache()
 
             val batch = ExerciseIndexBatch()
-            val historyRoot = File(fileManager.root, "history")
-            if (historyRoot.exists()) {
-                historyRoot.listFiles()?.forEach { yearDir ->
-                    if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
-                    yearDir.listFiles()?.forEach { monthDir ->
-                        if (!monthDir.isDirectory) return@forEach
-                        // snapshot to avoid ConcurrentModification during rename
-                        val files = monthDir.listFiles()
-                            ?.filter { it.extension == "md" }
-                            ?.toList() ?: return@forEach
-                        files.forEach { file ->
-                            try {
-                                val session = WorkoutParser.fromMarkdown(file.readText())
-                                val newFileName = sessionFileName(session)
-                                val currentFile = if (file.name != newFileName) {
-                                    val dst = File(monthDir, newFileName)
-                                    if (file.renameTo(dst)) dst else file
-                                } else {
-                                    file
-                                }
-                                val rel = "${yearDir.name}/${monthDir.name}/${currentFile.name}"
-                                session.exercises.forEach { ex ->
-                                    batch.add(ex.exerciseId, rel)
-                                }
-                            } catch (_: Exception) { /* Skip malformed */ }
+            historyMonthDirs().forEach { monthDir ->
+                val yearName = monthDir.parentFile?.name ?: return@forEach
+                // snapshot to avoid ConcurrentModification during rename
+                val files = monthDir.listFiles()?.filter { it.extension == "md" }?.toList() ?: return@forEach
+                files.forEach { file ->
+                    try {
+                        val session = WorkoutParser.fromMarkdown(file.readText())
+                        val newFileName = sessionFileName(session)
+                        val currentFile = if (file.name != newFileName) {
+                            val dst = File(monthDir, newFileName)
+                            if (file.renameTo(dst)) dst else file
+                        } else {
+                            file
                         }
-                    }
+                        val rel = "$yearName/${monthDir.name}/${currentFile.name}"
+                        session.exercises.forEach { ex ->
+                            batch.add(ex.exerciseId, rel)
+                        }
+                    } catch (_: Exception) { /* Skip malformed */ }
                 }
             }
             flushExerciseIndexBatch(batch)
@@ -477,16 +485,20 @@ class WorkoutRepository @Inject constructor(
 
     /**
      * Drop the home gitgraph cache when a completed session lands in (or is removed from) the
-     * 4-week history window it covers. Normally a no-op: sessions are registered *today*, which
-     * is the current week — outside the cached window — so the home just recomputes the cheap
-     * current-week row and keeps using the cache for history. But a back-dated edit, or the
-     * window not having slid yet, can put `date` inside it. Must be called with [mutex] held.
+     * range that [computeGitgraphHistory] reads — the 28-day visible window **plus** the 2-month
+     * lookback before it (used for the oldest visible days' "previous session" comparison, so a
+     * back-dated edit in that lookback can still shift a visible day's %/status).
+     *
+     * Normally a no-op: sessions are registered *today*, in the current week, outside both. But
+     * a back-dated edit, or the window not having slid yet, can put `date` in range. Must be
+     * called with [mutex] held.
      */
     private fun invalidateGitgraphCacheIfInWindow(date: LocalDate) {
         val cached = readGitgraphCache() ?: return
         val start = runCatching { LocalDate.parse(cached.windowStartMonday) }.getOrNull() ?: return
+        val lookbackStart = start.minusMonths(2)
         val end = start.plusDays((GitgraphHistory.DAY_COUNT - 1).toLong())
-        if (!date.isBefore(start) && !date.isAfter(end)) {
+        if (!date.isBefore(lookbackStart) && !date.isAfter(end)) {
             deleteGitgraphCache()
         }
     }
@@ -655,22 +667,11 @@ class WorkoutRepository @Inject constructor(
      * server delivery — not for anything performance-sensitive, so a full scan is fine.
      */
     suspend fun getAllCompletedSessions(): List<WorkoutSession> = withContext(Dispatchers.IO) {
-        val historyRoot = File(fileManager.root, "history")
-        if (!historyRoot.exists()) return@withContext emptyList()
-        val sessions = mutableListOf<WorkoutSession>()
-        historyRoot.listFiles()?.forEach { yearDir ->
-            if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
-            yearDir.listFiles()?.forEach { monthDir ->
-                if (!monthDir.isDirectory) return@forEach
-                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                    try {
-                        val session = WorkoutParser.fromMarkdown(file.readText())
-                        if (session.completedAt.isNotBlank()) sessions.add(session)
-                    } catch (_: Exception) { /* Skip malformed */ }
-                }
-            }
+        historySessionFiles().mapNotNull { file ->
+            try {
+                WorkoutParser.fromMarkdown(file.readText()).takeIf { it.completedAt.isNotBlank() }
+            } catch (_: Exception) { null } // Skip malformed
         }
-        sessions
     }
 
     // ─── Maintenance ─────────────────────────────────────────────────────────
@@ -712,54 +713,50 @@ class WorkoutRepository @Inject constructor(
         }
 
         mutex.withLock {
-            val historyRoot = File(fileManager.root, "history")
             var ghostsDeleted = 0
             var prunedDeleted = 0
             val validSessionIds = mutableSetOf<String>()
             // Exercises whose history shrank this run — their sidecars are rebuilt at the end.
             val staleStatsExerciseIds = mutableSetOf<String>()
 
-            if (historyRoot.exists()) {
-                historyRoot.listFiles()?.forEach { yearDir ->
-                    if (!yearDir.isDirectory || yearDir.name == "_idx" || yearDir.name == "_stats") return@forEach
-                    yearDir.listFiles()?.forEach { monthDir ->
-                        if (!monthDir.isDirectory) return@forEach
-                        monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
-                            val rel = "${yearDir.name}/${monthDir.name}/${file.name}"
+            run {
+                historyMonthDirs().forEach { monthDir ->
+                    val yearName = monthDir.parentFile?.name ?: return@forEach
+                    monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                        val rel = "$yearName/${monthDir.name}/${file.name}"
 
-                            // Malformed filename date -> discard outright, same as before.
-                            val fileDate = try {
-                                LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
-                            } catch (_: Exception) {
-                                file.delete()
-                                return@forEach
+                        // Malformed filename date -> discard outright, same as before.
+                        val fileDate = try {
+                            LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
+                        } catch (_: Exception) {
+                            file.delete()
+                            return@forEach
+                        }
+
+                        // One parse serves all three checks below.
+                        val session = try {
+                            WorkoutParser.fromMarkdown(file.readText())
+                        } catch (_: Exception) {
+                            null
+                        }
+
+                        val isPruneCandidate = fileDate.isBefore(cutoffDate)
+                        val isGhost = session != null && isGhostSession(session)
+
+                        if (isPruneCandidate || isGhost) {
+                            // A ghost session has no completed work, so it never fed a stats
+                            // sidecar — only a *completed* pruned session can invalidate one.
+                            val affectsStats =
+                                session != null && session.completedAt.isNotBlank()
+                            session?.exercises?.forEach { ex ->
+                                removeFromExerciseIndex(ex.exerciseId, rel)
+                                if (affectsStats) staleStatsExerciseIds.add(ex.exerciseId)
                             }
-
-                            // One parse serves all three checks below.
-                            val session = try {
-                                WorkoutParser.fromMarkdown(file.readText())
-                            } catch (_: Exception) {
-                                null
-                            }
-
-                            val isPruneCandidate = fileDate.isBefore(cutoffDate)
-                            val isGhost = session != null && isGhostSession(session)
-
-                            if (isPruneCandidate || isGhost) {
-                                // A ghost session has no completed work, so it never fed a stats
-                                // sidecar — only a *completed* pruned session can invalidate one.
-                                val affectsStats =
-                                    session != null && session.completedAt.isNotBlank()
-                                session?.exercises?.forEach { ex ->
-                                    removeFromExerciseIndex(ex.exerciseId, rel)
-                                    if (affectsStats) staleStatsExerciseIds.add(ex.exerciseId)
-                                }
-                                file.delete()
-                                if (isGhost) ghostsDeleted++ else prunedDeleted++
-                            } else {
-                                val id = file.nameWithoutExtension.substringAfterLast("_")
-                                if (id.isNotBlank()) validSessionIds.add(id)
-                            }
+                            file.delete()
+                            if (isGhost) ghostsDeleted++ else prunedDeleted++
+                        } else {
+                            val id = file.nameWithoutExtension.substringAfterLast("_")
+                            if (id.isNotBlank()) validSessionIds.add(id)
                         }
                     }
                 }

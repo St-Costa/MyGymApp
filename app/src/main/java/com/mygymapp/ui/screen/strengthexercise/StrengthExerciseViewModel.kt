@@ -1,7 +1,6 @@
 package com.mygymapp.ui.screen.strengthexercise
 
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
@@ -12,11 +11,8 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,7 +57,7 @@ class StrengthExerciseViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
     private val scaleHistoryRepository: ScaleHistoryRepository,
-) : ViewModel() {
+) : ExerciseSessionViewModel() {
 
     private val sessionId: String = savedStateHandle["sessionId"] ?: ""
     private val exerciseId: String = savedStateHandle["exerciseId"] ?: ""
@@ -70,21 +66,14 @@ class StrengthExerciseViewModel @Inject constructor(
     val uiState: StateFlow<StrengthExerciseUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
-    private var exerciseCompleted = false
-    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    // The completeExercise() save, tracked so onCleared() can join it before cancelling
-    // clearScope — otherwise the cancel would abort a save still in flight.
-    private var completionJob: Job? = null
 
     init {
         viewModelScope.launch {
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
-            // Find current session to get set count, rep range, daily-status, and in-progress values
-            val sessions = workoutRepository.getSessionsInRange(
-                java.time.LocalDate.now(), java.time.LocalDate.now()
-            )
-            val session = sessions.find { it.id == sessionId }
+            // The active session is always dated today; fetch it straight by id (filename
+            // fast-path) instead of parsing every one of today's session files.
+            val session = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
@@ -198,16 +187,6 @@ class StrengthExerciseViewModel @Inject constructor(
         }
     }
 
-    private val _completionSaved = MutableStateFlow(false)
-    val completionSaved: StateFlow<Boolean> = _completionSaved
-
-    /**
-     * Called when the user taps "Complete Exercise".
-     * Saves set data to disk and then emits [completionSaved] = true so the screen
-     * can navigate back only after the write is guaranteed to be on disk.
-     * This prevents the race condition where ActiveRoutineViewModel reloads the session
-     * before onCleared() has finished writing.
-     */
     /**
      * Builds the [ExerciseSet.Strength] list to persist. For a bodyweight exercise each set's
      * `weight` is materialized to `bwLoadPercent% of the lifter's body weight` (from the most
@@ -237,6 +216,11 @@ class StrengthExerciseViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Called when the user taps "Complete Exercise". Persists set data on [clearScope] and
+     * flips `completionSaved` once it lands, so the screen navigates back only after the write
+     * is on disk (see [ExerciseSessionViewModel] / docs/CONVENTIONS.md#completionsaved-pattern).
+     */
     fun completeExercise() {
         val sets = _uiState.value.sets
         val session = currentSession
@@ -244,23 +228,9 @@ class StrengthExerciseViewModel @Inject constructor(
         // Tapping any single value is the signal that this exercise was actually performed
         // this session — the pre-filled numbers on the *other* (still-grey) sets are then
         // taken as done too and saved as-is. Tapping nothing means the exercise was not
-        // performed: leave it open (completed = false), don't navigate away.
+        // performed and closes as completedEmpty (skipped styling; tonnage math skips it).
         val anyTouched = sets.any { it.repsTouched || it.weightTouched }
-        // Either way this screen navigates back (exerciseCompleted stops onCleared() from
-        // re-saving) and the exercise closes out of the active list. What differs is how it
-        // reads back:
-        //  - touched  -> completed, completedEmpty = false: real performed work.
-        //  - untouched -> completed, completedEmpty = true: the lifter deliberately tapped
-        //    "Complete" but recorded nothing. The active-routine row then shows the neutral
-        //    "skipped" styling (grey border + X) instead of a tonnage change, and all tonnage
-        //    math skips it (see WorkoutExercise.completedEmpty / GitgraphHistoryCalculator).
-        exerciseCompleted = true
-        // Run the save on clearScope, not viewModelScope: if the process dies between the tap
-        // and the write completing, viewModelScope would be cancelled with the save half-done
-        // and the completed=true would be lost — onCleared() then can't recover it because
-        // exerciseCompleted is already set. clearScope (SupervisorJob) survives VM teardown;
-        // onCleared() joins completionJob before cancelling it. Same reasoning as onCleared().
-        completionJob = clearScope.launch {
+        markCompletionAndSave {
             if (session != null) {
                 val builtSets = buildStrengthSets(sets, session.date)
                 val exercises = session.exercises.map { ex ->
@@ -279,7 +249,6 @@ class StrengthExerciseViewModel @Inject constructor(
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
             }
-            _completionSaved.value = true
         }
     }
 
@@ -302,25 +271,12 @@ class StrengthExerciseViewModel @Inject constructor(
             if (updated === session) return@launch // no longer eligible — ignore stale result
             workoutRepository.save(updated)
             // This VM instance's own slot is gone now; nothing left to save from onCleared().
-            exerciseCompleted = true
+            markSwitched()
             _switchedExerciseId.value = newExerciseId
         }
     }
 
-    override fun onCleared() {
-        if (exerciseCompleted) {
-            // completeExercise() already launched the save on clearScope — wait for it to
-            // finish before tearing the scope down, or the cancel would abort a write still
-            // in flight and lose the completed flag.
-            clearScope.launch {
-                try {
-                    completionJob?.join()
-                } finally {
-                    clearScope.cancel()
-                }
-            }
-            return
-        }
+    override fun saveProgressOnExit() {
         // Back-navigation without completing: save current progress as incomplete
         val sets = _uiState.value.sets
         val session = currentSession

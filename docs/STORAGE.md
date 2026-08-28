@@ -308,7 +308,7 @@ exerciseId: "ex-3e4195a9"
 schemaVersion: 1
 contexts:
   - context: "DAILY"                              # NORMAL | WARMUP | DAILY, one block each
-    previousSessionDate: "2026-08-28T09:34:52..."
+    previousSessionDate: "2026-08-28"             # bare YYYY-MM-DD (day key), never a datetime
     hasPriorRealTonnage: true                     # drives the "primo dato" badge
     pr:                                           # all-time best reps*weight set (0-or-1 element)
       - reps: 10
@@ -326,8 +326,10 @@ Everything is split by [SlotContext] (a fixed-daily execution's history is unrel
 **Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
 - **`save()` of a completed session**: each of its exercises' sidecars is updated by an *incremental merge* (`ExerciseStatsCalculator.merge`) — PR compare-and-set, `previousSets` replaced only if the new session has real data. No history scan; cheap on the save path. An in-progress save (autosave / back-out, blank `completedAt`) touches nothing.
 - **`delete()` / `runMaintenance()` prune**: the incremental view can't "un-merge" a removed session, so each affected sidecar is *rebuilt* from a full scan of that one exercise's history (bounded by its `.idx`, not the whole tree). Deletes are rare.
-- **Missing or old-schema sidecar** (`schemaVersion` ≠ `ExerciseStats.SCHEMA_VERSION`): rebuilt on first read (`getExerciseStats`) and persisted, so the next read is fast again. Bumping the constant is the whole "migration" — every sidecar regenerates lazily.
+- **Missing / wrong-schema / wrong-exercise sidecar**: `getExerciseStats` only serves a parsed sidecar whose `schemaVersion == ExerciseStats.SCHEMA_VERSION` **and** whose `exerciseId` matches the one asked for; anything else is discarded and rebuilt on first read, then persisted so the next read is fast. Bumping the constant is the whole "migration" — every sidecar regenerates lazily.
 - The one-time index migration also wipes `_stats/` (lazy regen afterwards).
+
+`previousSessionDate` is stored as a **bare `YYYY-MM-DD` day key** (`ExerciseStatsCalculator.dayKey`), not a datetime — both `merge` and `rebuild` derive and compare it the same way, so a re-save on the same day (`>=`) still replaces "previous" and a stored date-only value never mis-compares against an incoming ISO datetime.
 
 The `.md` files remain the source of truth; the sidecar is a cache. The derivation rules (what "previous" is, what the PR is) live in one pure, unit-tested place — `ExerciseStatsCalculator` — used by both the incremental and full-rebuild paths, with a test pinning that a chain of `merge`s equals a single `rebuild`.
 
@@ -339,8 +341,8 @@ A day square is derived from that day's registered session and the previous sess
 
 **Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
 - **Read** (`getGitgraphHistory`): serves the cache when its `windowStartMonday` matches what today implies, `schemaVersion` matches, and all 28 days are present. Otherwise recomputes the full window (once per week as it slides forward; also after a drop) and persists — recompute happens outside the write lock, with a re-check under it.
-- **`save()` of a completed session** dated inside the cached window drops the cache. Normally a no-op: sessions are registered *today* = current week = outside the window.
-- **`delete()`** of a completed session in the window, and **`runMaintenance()`** whenever it actually pruned anything (a >3-month-old session can be in the 2-month lookback), drop the cache.
+- **`save()` / `delete()` of a completed session** whose `date` falls in the cache's window **or its 2-month lookback** drops the cache (`invalidateGitgraphCacheIfInWindow`) — a back-dated edit in the lookback still shifts the oldest visible days' "previous" comparison. Normally a no-op: sessions are registered *today* = current week = outside both.
+- **`runMaintenance()`** drops the cache whenever it actually pruned anything (a >3-month-old session can be in the 2-month lookback).
 - **Routine rename** (`updateRoutineNameInHistory`) drops it — the cache denormalizes `routineName`.
 - The one-time index migration wipes it too.
 

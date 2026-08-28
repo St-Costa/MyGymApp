@@ -90,10 +90,8 @@ class CardioExerciseViewModel @Inject constructor(
         viewModelScope.launch {
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
-            val sessions = workoutRepository.getSessionsInRange(
-                java.time.LocalDate.now(), java.time.LocalDate.now()
-            )
-            val session = sessions.find { it.id == sessionId }
+            // The active session is always dated today; fetch it straight by id.
+            val session = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }

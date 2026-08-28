@@ -115,6 +115,37 @@ class GitgraphHistoryCalculatorTest {
     }
 
     @Test
+    fun `common-tonnage ignores a completed-empty (skipped) slot on either side`() {
+        // Both sessions have ex1 + ex2, but in `curr` ex2 was completed-empty (skipped): it
+        // must not count toward the comparison even though the id is shared.
+        val prev = session("p", "rt-a", MON.plusDays(1).toString(),
+            strength = listOf(Triple("ex1", 10, 50.0), Triple("ex2", 10, 40.0))) // 500 + 400
+        val curr = WorkoutSession(
+            id = "c", routineId = "rt-a", routineName = "R",
+            date = MON.plusDays(8).toString(), completedAt = "${MON.plusDays(8)}T10:00:00",
+            totalTonnage = 550.0,
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = "ex1", exerciseName = "ex1", bodypart = "b",
+                    type = ExerciseType.FORZA, completed = true,
+                    sets = listOf(ExerciseSet.Strength(reps = 10, weight = 55.0)), // 550
+                ),
+                WorkoutExercise(
+                    exerciseId = "ex2", exerciseName = "ex2", bodypart = "b",
+                    type = ExerciseType.FORZA, completed = true, completedEmpty = true,
+                    sets = listOf(ExerciseSet.Strength(reps = 10, weight = 40.0)), // grey pre-fill, skipped
+                ),
+            ),
+        )
+        val h = GitgraphHistoryCalculator.buildWindow(MON, listOf(prev, curr), emptyMap())
+        val d = h.days[8]
+        // Only ex1 comparable: 550 vs 500 -> +10%. ex2's skipped 400 on both... actually prev's
+        // ex2 IS real, but curr's ex2 is completed-empty so ex2 is not a common comparable id.
+        assertEquals(10.0, d.tonnageChangePct!!, 1e-9)
+        assertEquals(DayCellStatus.IMPROVED, d.status)
+    }
+
+    @Test
     fun `cardio minutes shown when there is no tonnage percent`() {
         // No previous session -> no %, so cardio minutes fill the slot.
         val s = session(
