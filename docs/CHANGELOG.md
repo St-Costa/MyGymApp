@@ -1098,14 +1098,17 @@ that gap; this is its phone side.
   (`restoreFromServer()` — confirm dialog, manifest-diff, pull-only, never deletes local
   files, marks pulled files `SENT` so they don't bounce back), and `resyncAll()` now also
   walks `exercises/` + `routines/`.
-- Options debug section: **"Verifica backup sul server"** (`verifyBackupRoundTrip()`) — a
-  real round-trip against the user's actual exercises/routines: push whatever isn't already
-  `SENT` via the normal ledger+`RepoSyncWorker`, poll until drained (~45 s cap), then
-  `GET /v1/manifest` (compare `sha256` for every local file) and `GET /v1/file` (byte-for-byte
-  compare of each aligned file — exercises the real restore path). No synthetic file, no
-  delete: the files it uploads are real data and stay. Result e.g. `OK — 42 esercizi +
-  7 routine sul server, hash allineati e 49 riletti identici` or a per-category breakdown of
-  what's missing / hash-diverged / read-back-mismatched.
+- Options debug section: **"Verifica backup sul server"** (`verifyBackupRoundTrip()` →
+  `runVerify()`) — real round-trip against the user's actual exercises/routines:
+  `GET /v1/manifest` → diff → `POST /v1/repo` **directly** (via `RepoSyncApi`, awaited, one
+  per changed file, so we capture the server's per-file `stored`/failure) → re-fetch the
+  manifest and `GET /v1/file` byte-for-byte. Local ledger set to `SENT` for accepted files
+  (`markRestored`) so a later real sync doesn't re-send. Rendered as a `BackupVerifyReport`:
+  a git-diff-style block with green `+ name` per pushed file grouped by category
+  (esercizi/routine, with an "N inviati, M invariati" header), red `- name (motivo)` for any
+  push-failed / missing / hash-diverged / read-back-mismatched file, then a one-line
+  paraphrase of the server's response ("3 file accettati (stored). Manifest: 49 file … 49
+  riletti identici."). No synthetic file, no delete.
 
 **Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
 unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.

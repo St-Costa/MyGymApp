@@ -515,14 +515,67 @@ private fun DebugSection(
                     Text("Verifica backup sul server")
                 }
             }
-            if (uiState.backupVerifyResult != null) {
-                Text(
-                    uiState.backupVerifyResult,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            uiState.backupVerifyError?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            uiState.backupVerifyReport?.let { BackupVerifyReportView(it) }
+        }
+    }
+}
+
+/** git-diff-style rendering of a "Verifica backup sul server" run: per-category `+`/`-`
+ *  lines for what was sent, then a short paraphrase of the server's response. */
+@Composable
+private fun BackupVerifyReportView(report: BackupVerifyReport) {
+    val green = androidx.compose.ui.graphics.Color(0xFF3FB950)
+    val red = androidx.compose.ui.graphics.Color(0xFFF85149)
+    val mono = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        @Composable
+        fun category(title: String, pushed: List<String>, unchanged: Int) {
+            Text(
+                "$title  (${pushed.size} inviati, $unchanged invariati)",
+                style = mono.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (pushed.isEmpty()) {
+                Text("  (niente da inviare)", style = mono, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                pushed.forEach { name ->
+                    Text("+ $name", style = mono, color = green)
+                }
             }
         }
+
+        category("esercizi", report.exercisesPushed, report.exercisesUnchanged)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+        category("routine", report.routinesPushed, report.routinesUnchanged)
+
+        val problems = report.pushFailed + report.missingAfter.map { "$it (mancante sul server)" } +
+            report.hashMismatch.map { "$it (hash diverso)" } +
+            report.readBackMismatch.map { "$it (rilettura non identica)" }
+        if (problems.isNotEmpty()) {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+            problems.forEach { Text("- $it", style = mono, color = red) }
+        }
+
+        androidx.compose.material3.HorizontalDivider(
+            modifier = Modifier.padding(vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        Text(
+            "Risposta server: ${report.serverSummary}",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (report.allGood) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+        )
     }
 }
 
