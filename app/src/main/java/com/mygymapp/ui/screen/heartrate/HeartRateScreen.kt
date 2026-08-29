@@ -219,7 +219,7 @@ fun HeartRateScreen(
                 RadioWarningBox("Attiva la posizione per cercare dispositivi Bluetooth")
             } else {
                 DeviceStatusHeader(
-                    heartRateConnectionState = uiState.connectionState,
+                    heartRateLinkStatus = uiState.linkStatus,
                     scaleConnectionState = uiState.scaleConnectionState,
                     scaleReading = uiState.scaleReading,
                 )
@@ -262,7 +262,7 @@ private fun RadioWarningBox(message: String) {
 
 @Composable
 private fun DeviceStatusHeader(
-    heartRateConnectionState: ConnectionState,
+    heartRateLinkStatus: com.mygymapp.data.polar.PolarLinkStatus,
     scaleConnectionState: ScaleConnectionState,
     scaleReading: com.mygymapp.data.scale.ScaleReading?,
 ) {
@@ -294,7 +294,7 @@ private fun DeviceStatusHeader(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            HeartRateStatusIcon(heartRateConnectionState)
+            com.mygymapp.ui.components.PolarLinkStatusIcon(heartRateLinkStatus)
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -323,27 +323,6 @@ private fun DeviceStatusHeader(
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF66BB6A),
-        )
-    }
-}
-
-@Composable
-private fun HeartRateStatusIcon(connectionState: ConnectionState) {
-    when (connectionState) {
-        ConnectionState.DISCONNECTED -> Icon(
-            Icons.Default.LinkOff,
-            contentDescription = "Non connesso",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        ConnectionState.CONNECTING -> Icon(
-            Icons.Default.Sync,
-            contentDescription = "Connessione in corso",
-            tint = Color(0xFFFFCA28),
-        )
-        ConnectionState.CONNECTED -> Icon(
-            Icons.Default.BluetoothSearching,
-            contentDescription = "Connesso",
-            tint = Color(0xFF66BB6A),
         )
     }
 }

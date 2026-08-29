@@ -35,7 +35,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
@@ -170,6 +173,18 @@ class PolarManager @Inject constructor(
         // After this many consecutive ECG stream restarts with no sample, stop retrying
         // the same START command and escalate to a device disconnect+reconnect.
         private const val ECG_MAX_RESTARTS = 3
+        // No HR sample for this long while still BLE-connected ⇒ flip receivingData to
+        // false so the UI shows NO_SIGNAL. Detection latency is this + up to one 5s
+        // watchdog tick. Does NOT trigger any stream restart or reconnect (that stays
+        // at the 15s HR_STALE restart threshold below) — it only drives the display.
+        private const val DATA_STALE_MS = 5_000L
+        // Data-presence watchdog poll interval. Kept short so NO_SIGNAL shows within ~1s
+        // of DATA_STALE_MS elapsing; still far below the 10-15s stream-restart thresholds.
+        private const val WATCHDOG_TICK_MS = 1_000L
+        // How long an out-of-session drop shows as NO_SIGNAL (⚠️, "may still reconnect")
+        // before falling back to DISCONNECTED (grey). Covers the SDK's own auto-reconnect
+        // attempts to a strap that's briefly off / just came back on.
+        private const val NO_SIGNAL_GRACE_MS = 15_000L
     }
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
@@ -199,6 +214,46 @@ class PolarManager @Inject constructor(
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning
+
+    // "Is the strap actually sending HR samples right now?" — set true on every HR sample,
+    // set false by the data watchdog after DATA_STALE_MS of silence. Purely a display hint:
+    // it never touches the BLE connection or the auto-reconnect loop. Combined with
+    // connectionState into linkStatus below.
+    private val _receivingData = MutableStateFlow(false)
+    val receivingData: StateFlow<Boolean> = _receivingData
+
+    // Post-drop grace window: set true when the strap vanishes OUTSIDE a session (an
+    // involuntary drop that isn't user-initiated). While true, linkStatus reports
+    // NO_SIGNAL instead of DISCONNECTED even though the BLE link is really gone — the H10
+    // drops the link almost instantly on power-off (no 20-30s supervision timeout on this
+    // phone), so this is what actually surfaces "nessun segnale" to the user. Cleared on
+    // a real reconnect, on user disconnect / BLE-off, or after NO_SIGNAL_GRACE_MS.
+    private val _noSignalGrace = MutableStateFlow(false)
+    private val noSignalGraceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * The link state the UI shows (see [PolarLinkStatus]). CONNECTED only while HR samples
+     * are flowing; a silent-but-still-connected strap, or one that just dropped outside a
+     * session, shows as NO_SIGNAL without any change to the real connection.
+     */
+    val linkStatus: StateFlow<PolarLinkStatus> = combine(
+        _connectionState, _receivingData, _noSignalGrace,
+    ) { state, receiving, grace -> linkStatusOf(state, receiving, grace) }
+        .stateIn(readinessScope, SharingStarted.Eagerly, PolarLinkStatus.DISCONNECTED)
+
+    private fun startNoSignalGrace() {
+        _noSignalGrace.value = true
+        noSignalGraceHandler.removeCallbacksAndMessages(null)
+        noSignalGraceHandler.postDelayed({
+            _noSignalGrace.value = false
+            Log.d(TAG, "no-signal grace expired — DISCONNECTED")
+        }, NO_SIGNAL_GRACE_MS)
+    }
+
+    private fun clearNoSignalGrace() {
+        noSignalGraceHandler.removeCallbacksAndMessages(null)
+        _noSignalGrace.value = false
+    }
 
     private val _rmssd = MutableStateFlow<Double?>(null)
     val rmssd: StateFlow<Double?> = _rmssd
@@ -373,6 +428,7 @@ class PolarManager @Inject constructor(
                     userInitiatedDisconnect = true
                     reconnectStartAtMs = 0L
                     reconnectHandler.removeCallbacksAndMessages(null)
+                    clearNoSignalGrace()
                     hrDisposable?.dispose(); hrDisposable = null
                     ecgDisposable?.dispose(); ecgDisposable = null
                     ecgRestartHandler.removeCallbacksAndMessages(null)
@@ -401,6 +457,10 @@ class PolarManager @Inject constructor(
                 reconnectStartAtMs = 0L
                 reconnectHandler.removeCallbacksAndMessages(null)
                 _connectionState.value = ConnectionState.CONNECTED
+                // Stays false until the first HR sample actually lands (a few seconds after
+                // feature-ready) — link is up but not yet delivering, i.e. NO_SIGNAL.
+                _receivingData.value = false
+                clearNoSignalGrace()
                 lastHrTimestamp = System.currentTimeMillis()
                 lastHrSampleAtMs = 0L
                 lastEcgSampleAtMs = 0L
@@ -425,6 +485,7 @@ class PolarManager @Inject constructor(
             override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
                 Log.d(TAG, "Connecting: ${polarDeviceInfo.deviceId}")
                 _connectionState.value = ConnectionState.CONNECTING
+                _receivingData.value = false
             }
 
             override fun deviceDisconnected(polarDeviceInfo: PolarDeviceInfo) {
@@ -482,6 +543,12 @@ class PolarManager @Inject constructor(
                 } else {
                     _connectionState.value = ConnectionState.DISCONNECTED
                     PolarStreamingService.stop(context)
+                    // Involuntary out-of-session drop (strap powered off / went out of
+                    // range): show NO_SIGNAL ⚠️ for a short window rather than jumping
+                    // straight to grey — the SDK's own auto-reconnection may still bring
+                    // it back if it was only briefly off. A user-initiated disconnect
+                    // has userInitiatedDisconnect=true and skips this.
+                    if (involuntary) startNoSignalGrace() else clearNoSignalGrace()
                 }
             }
 
@@ -602,6 +669,7 @@ class PolarManager @Inject constructor(
         userInitiatedDisconnect = true
         reconnectStartAtMs = 0L
         reconnectHandler.removeCallbacksAndMessages(null)
+        clearNoSignalGrace()
         val deviceId = connectedDeviceId ?: lastConnectedDeviceId
         hrDisposable?.dispose()
         hrDisposable = null
@@ -671,6 +739,7 @@ class PolarManager @Inject constructor(
     fun shutdown() {
         userInitiatedDisconnect = true
         reconnectHandler.removeCallbacksAndMessages(null)
+        clearNoSignalGrace()
         scanDisposable?.dispose()
         hrDisposable?.dispose()
         ecgDisposable?.dispose()
@@ -690,6 +759,9 @@ class PolarManager @Inject constructor(
         hrDisposable = api.startHrStreaming(deviceId)
             .doOnComplete {
                 Log.w(TAG, "HR stream completed (no more samples) — scheduling restart in 2s")
+                // Stream ended without a disconnect callback (strap powered off / out of
+                // range while Android still holds the link) — no data is flowing.
+                _receivingData.value = false
                 scheduleHrRestart(deviceId)
             }
             .subscribe(
@@ -697,6 +769,7 @@ class PolarManager @Inject constructor(
                     lastHrSampleAtMs = System.currentTimeMillis()
                     val sample = hrData.samples.lastOrNull()
                     if (sample != null) {
+                        _receivingData.value = true
                         _heartRate.value = sample.hr
                         PolarStreamingService.updateHr(context, sample.hr)
 
@@ -789,6 +862,7 @@ class PolarManager @Inject constructor(
                     Log.e(TAG, "HR streaming error: $error — scheduling restart in 2s")
                     appLogger.e(TAG, "HR streaming error: $error")
                     _heartRate.value = null
+                    _receivingData.value = false
                     scheduleHrRestart(deviceId)
                 }
             )
@@ -1212,6 +1286,15 @@ class PolarManager @Inject constructor(
             val now = System.currentTimeMillis()
             val deviceId = connectedDeviceId
             if (deviceId != null) {
+                // Data-presence hint for the UI (NO_SIGNAL): strap still BLE-connected but
+                // no HR sample for DATA_STALE_MS. Display only — no stream/connection change.
+                // Promotion back to true happens only on a real HR sample, never here.
+                if (_receivingData.value && lastHrSampleAtMs > 0 &&
+                    now - lastHrSampleAtMs > DATA_STALE_MS
+                ) {
+                    Log.d(TAG, "Data watchdog: no HR sample for ${(now - lastHrSampleAtMs) / 1000}s — NO_SIGNAL")
+                    _receivingData.value = false
+                }
                 // HR: if running and no sample for >15s, restart
                 if (hrDisposable != null && lastHrSampleAtMs > 0 &&
                     now - lastHrSampleAtMs > 15_000
@@ -1246,13 +1329,13 @@ class PolarManager @Inject constructor(
                     }
                 }
             }
-            watchdogHandler.postDelayed(this, 5_000)
+            watchdogHandler.postDelayed(this, WATCHDOG_TICK_MS)
         }
     }
 
     private fun startDataWatchdog() {
         watchdogHandler.removeCallbacks(watchdogRunnable)
-        watchdogHandler.postDelayed(watchdogRunnable, 5_000)
+        watchdogHandler.postDelayed(watchdogRunnable, WATCHDOG_TICK_MS)
     }
 
     private fun stopDataWatchdog() {

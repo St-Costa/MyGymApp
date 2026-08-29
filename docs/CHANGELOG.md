@@ -1204,3 +1204,58 @@ Each chart renders only when **this** session (the last data point) has a nonzer
 routine with no stretch never shows the stretch chart and one with no cardio never shows the
 cardio chart. New `SessionProgressUiState.sessionStretchMinutes` / `sessionCardioMinutes`,
 computed in `SessionProgressViewModel.load()`.
+
+## Phase 88 — Polar BLE Debug screen (mirror of Scale BLE Debug)
+Options → Debug gained a **Polar BLE Debug** button next to the existing bilancia one.
+`PolarDebugScreen` + `PolarDebugViewModel` (`ui/screen/polar/`) are thin wrappers over
+`PolarManager` — scan, list discovered straps with RSSI, connect, disconnect, and a
+"Dimentica dispositivo salvato" that calls `KnownPolarDeviceRepository.forget()`. No new
+logic: the auto-connect path was already there (`PolarManager.startScan()` auto-connects to
+`KnownPolarDeviceRepository.getKnownDeviceId()`; `deviceConnected` re-persists the ID). The
+screen exists so that after an accidental reinstall/data-wipe clears that pref — which
+stops the strap auto-connecting — the user can re-pair it once from a dedicated place
+instead of hunting through the heart-rate screen. Wired via `Screen.PolarDebug` +
+`onNavigateToPolarDebug` through `OptionsScreen`.
+
+## Phase 89 — Polar "nessun segnale" state: link vs data-presence, everywhere
+When you pull the H10 off the chest band (it loses power) Android keeps the BLE link
+"connected" for ~20-30s (supervision timeout) and the SDK's `setAutomaticReconnection`
+briefly re-grabs it as the strap dies — so the app showed CONNECTED with a frozen HR long
+after the strap was gone. Rather than force a disconnect (which would fight the in-session
+auto-reconnect we *want* during a workout), we now surface a **display-only** distinction:
+
+- New `PolarLinkStatus { CONNECTED, NO_SIGNAL, CONNECTING, DISCONNECTED }` +
+  pure `linkStatusOf(ConnectionState, receivingData, noSignalGrace)` (`data/polar/
+  PolarLinkStatus.kt`, unit-tested in `PolarLinkStatusTest`, 8 cases).
+- `PolarManager` gains `receivingData: StateFlow<Boolean>` — set `true` on every HR sample,
+  set `false` by the data watchdog after `DATA_STALE_MS` (5s) of silence. The watchdog tick
+  dropped from 5s → 1s (`WATCHDOG_TICK_MS`) so NO_SIGNAL shows within ~1s of the threshold;
+  still far below the 15s HR-stream-restart threshold.
+- Plus a **post-drop grace window**: on an *involuntary out-of-session* drop
+  (`!userInitiatedDisconnect && !hrSeriesActive`), `_noSignalGrace` is set for
+  `NO_SIGNAL_GRACE_MS` (15s) and `linkStatus` reports `NO_SIGNAL` even though the BLE link
+  is really gone — on this phone the H10 drops the link almost instantly on power-off (no
+  20-30s supervision timeout), so without this the UI would jump straight to grey. Cleared
+  on a real reconnect, on `disconnect()` / `shutdown()` / BLE-off, else after the timeout →
+  `DISCONNECTED`.
+- **Known limitation (accepted):** while the grace window is up, the Polar SDK's own
+  `setAutomaticReconnection(true)` (needed for mid-workout recovery) keeps re-grabbing the
+  browning-out strap for a few seconds — each grab fires `deviceConnected` → briefly green
+  again before it drops once more. Fully killing that would mean disabling SDK
+  auto-reconnect outside sessions; deferred, since **in-session** behaviour (the case that
+  matters) is unaffected — `hrSeriesActive` gates all of this, and mid-session drops still
+  go through the 5-min reconnect loop + audible alert + the end-of-routine `PolarConnectionBox`.
+- `PolarManager.linkStatus: StateFlow<PolarLinkStatus>` = `combine(connectionState,
+  receivingData, noSignalGrace)`, `stateIn` on the existing `readinessScope`.
+- **None of this touches the real BLE connection, the stream, or the reconnect loop** — it
+  is a view over existing state only.
+- New shared `PolarLinkStatusIcon` composable + `polarLinkStatusLabel()` in `ui/components/`
+  — single source of truth for the four icons: CONNECTED → Bluetooth (green),
+  NO_SIGNAL → ⚠️ (amber), CONNECTING → Sync arrows (amber), DISCONNECTED → LinkOff (grey).
+  Replaces the old private `HeartRateStatusIcon` in `HeartRateScreen`.
+- Consumers updated: `HeartRateScreen` (`DeviceStatusHeader`), `PolarDebugScreen` (icon +
+  label + a raw-`ConnectionState` line for debugging), `HeartRateBar` (stays visible on
+  NO_SIGNAL but BPM and the zone chip become a ⚠️; TRIMP keeps its last value so the
+  session total doesn't flash to 0 on a brief dropout — used by every exercise screen via
+  the shared bar), `LiveEcgCard` (now also hides on NO_SIGNAL, not just DISCONNECTED, so no
+  frozen trace). `HeartRateUiState` / `PolarDebugUiState` carry `linkStatus`.
