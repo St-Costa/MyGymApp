@@ -20,9 +20,17 @@ data class BackupDiffEntry(
     val removed: Int,
 )
 
-/** One file the server rejected or that failed to transfer, for the ERRORI section. */
+/** Which section a [BackupError] is rendered under. */
+enum class BackupErrorCategory { EXERCISE, ROUTINE, SESSION }
+
+/**
+ * One file the server rejected or that failed to transfer. Shown as a red row *inside its
+ * own section* (Esercizi / Routine / Sessioni), same shape as a diff row but with the raw
+ * filename: `push-rt-b997ec72.md → HTTP 422: contentHash mismatch`.
+ */
 data class BackupError(
-    /** Full filename, e.g. `calf-raise-ex-7ca58254.md` — the error section uses the raw name. */
+    val category: BackupErrorCategory,
+    /** Full filename, e.g. `calf-raise-ex-7ca58254.md` — errors use the raw name, not `name:`. */
     val fileName: String,
     /** HTTP code + any server message, or the exception summary. */
     val detail: String,
@@ -36,7 +44,7 @@ data class BackupError(
  * section header — Y is how many such files exist on the phone, X how many are byte-for-
  * byte on the server after this run. Sessions (`history/**/*.md`) are count-only.
  * [sessionsChanged] names the differing sessions (backfill case).
- * [errors]: non-empty ⇒ an ERRORI section; also written to `gymdata/logs/app.log`.
+ * [errors]: each rendered under its own section; all also written to `gymdata/logs/app.log`.
  */
 data class BackupVerifyReport(
     val exercises: List<BackupDiffEntry> = emptyList(),
@@ -50,6 +58,8 @@ data class BackupVerifyReport(
     val sessionsChanged: List<String> = emptyList(),
     val errors: List<BackupError> = emptyList(),
 ) {
+    fun errorsOf(cat: BackupErrorCategory) = errors.filter { it.category == cat }
+
     val allGood: Boolean
         get() = errors.isEmpty() &&
             exercisesMatching == exercisesLocal &&
@@ -109,6 +119,8 @@ class BackupVerifier @Inject constructor(
 
         fun cat(f: File) = f.parentFile?.name ?: ""
         fun rel(f: File) = "${cat(f)}/${f.name}"
+        fun errCat(f: File) =
+            if (cat(f) == "exercises") BackupErrorCategory.EXERCISE else BackupErrorCategory.ROUTINE
 
         // 1. Diff against the current manifest.
         val manifest0 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
@@ -152,7 +164,7 @@ class BackupVerifier @Inject constructor(
                         if (cat(l.file) == "exercises") exEntries += entry else rtEntries += entry
                     }
                     is SyncResult.Failure -> {
-                        errors += BackupError(l.file.name, r.reason.take(160))
+                        errors += BackupError(errCat(l.file), l.file.name, r.reason.take(160))
                         appLogger.w(TAG, "push failed ${l.file.name}: ${r.reason}")
                     }
                 }
@@ -182,16 +194,17 @@ class BackupVerifier @Inject constructor(
             val serverHash = manifest1[relPath]
             val ok = when {
                 serverHash == null -> {
-                    errors += BackupError(l.file.name, "assente dal manifest dopo il push"); false
+                    errors += BackupError(errCat(l.file), l.file.name, "assente dal manifest dopo il push"); false
                 }
                 serverHash != l.hash -> {
-                    errors += BackupError(l.file.name, "hash sul server diverso da quello locale"); false
+                    errors += BackupError(errCat(l.file), l.file.name, "hash sul server diverso da quello locale"); false
                 }
                 else -> {
                     val got = restoreApi.fetchFile(serverUrl, token, relPath)
                     if (got is RestoreResult.FileBytes && got.bytes.contentEquals(l.bytes)) true
                     else {
                         errors += BackupError(
+                            errCat(l.file),
                             l.file.name,
                             (got as? RestoreResult.Failure)?.reason ?: "rilettura non identica",
                         )

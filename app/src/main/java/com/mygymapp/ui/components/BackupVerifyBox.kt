@@ -27,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.mygymapp.data.sync.BackupDiffEntry
+import com.mygymapp.data.sync.BackupError
+import com.mygymapp.data.sync.BackupErrorCategory
 import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.ui.theme.JetBrainsMono
 
@@ -104,72 +106,67 @@ fun BackupVerifyBox(
 @Composable
 private fun ReportBody(r: BackupVerifyReport) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        SectionHeader(
-            "Esercizi",
-            countText = "${r.exercisesMatching}/${r.exercisesLocal} allineat${plural(r.exercisesLocal)}",
-            allAligned = r.exercisesMatching == r.exercisesLocal,
+        RecordSection(
+            title = "Esercizi",
+            local = r.exercisesLocal,
+            matching = r.exercisesMatching,
+            diffs = r.exercises,
+            errors = r.errorsOf(BackupErrorCategory.EXERCISE),
         )
-        DiffRows(r.exercises)
 
         Spacer(Modifier.height(8.dp))
-        SectionHeader(
-            "Routine",
-            countText = "${r.routinesMatching}/${r.routinesLocal} allineat${plural(r.routinesLocal)}",
-            allAligned = r.routinesMatching == r.routinesLocal,
+        RecordSection(
+            title = "Routine",
+            local = r.routinesLocal,
+            matching = r.routinesMatching,
+            diffs = r.routines,
+            errors = r.errorsOf(BackupErrorCategory.ROUTINE),
         )
-        DiffRows(r.routines)
 
         Spacer(Modifier.height(8.dp))
-        SectionHeader(
-            "Sessioni",
-            countText = "${r.sessionsMatching}/${r.sessionsLocal} allineat${plural(r.sessionsLocal)}",
-            allAligned = r.sessionsMatching == r.sessionsLocal,
+        RecordSection(
+            title = "Sessioni",
+            local = r.sessionsLocal,
+            matching = r.sessionsMatching,
+            diffs = emptyList(),
+            errors = r.errorsOf(BackupErrorCategory.SESSION),
+            extraRows = r.sessionsChanged.takeIf { it.isNotEmpty() }
+                ?.let { listOf("da inviare: " + it.joinToString(", ")) }.orEmpty(),
         )
-        if (r.sessionsChanged.isNotEmpty()) {
-            FileRow("da inviare: " + r.sessionsChanged.joinToString(", "), RED)
-        }
-
-        if (r.errors.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            SectionHeader("ERRORI", countText = null, forceColor = RED)
-            r.errors.forEach { e -> FileRow("${e.fileName} → ${e.detail}", RED) }
-        }
     }
+}
+
+/** One record-type block: header `Titolo  (X/Y allineate · N errori)` (red when off), then
+ *  the diff rows, then any error rows for this category (raw filename → reason, all red). */
+@Composable
+private fun RecordSection(
+    title: String,
+    local: Int,
+    matching: Int,
+    diffs: List<BackupDiffEntry>,
+    errors: List<BackupError>,
+    extraRows: List<String> = emptyList(),
+) {
+    val base = MaterialTheme.colorScheme.onSurface
+    val off = matching != local || errors.isNotEmpty()
+    val count = buildString {
+        append("$matching/$local allineat${plural(local)}")
+        if (errors.isNotEmpty()) append(" · ${errors.size} error${if (errors.size == 1) "e" else "i"}")
+    }
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = if (off) RED else base, fontWeight = FontWeight.Bold)) { append(title) }
+            withStyle(SpanStyle(color = if (off) RED else base, fontWeight = FontWeight.Normal)) { append("  ($count)") }
+        },
+        style = MaterialTheme.typography.titleSmall,
+    )
+    diffs.forEach { DiffRow(it) }
+    extraRows.forEach { FileRow(it, RED) }
+    errors.forEach { e -> FileRow("${e.fileName} → ${e.detail}", RED) }
 }
 
 /** "o" for exactly one, "e" otherwise (allineato / allineate). */
 private fun plural(n: Int) = if (n == 1) "o" else "e"
-
-@Composable
-private fun DiffRows(entries: List<BackupDiffEntry>) {
-    if (entries.isEmpty()) {
-        FileRow("nessuna modifica", MaterialTheme.colorScheme.onSurfaceVariant)
-    } else {
-        entries.forEach { DiffRow(it) }
-    }
-}
-
-/** Big section header, optionally with a `(X/Y allineate)` suffix in the header colour. */
-@Composable
-private fun SectionHeader(
-    title: String,
-    countText: String?,
-    allAligned: Boolean = true,
-    forceColor: Color? = null,
-) {
-    val base = forceColor ?: MaterialTheme.colorScheme.onSurface
-    Text(
-        buildAnnotatedString {
-            withStyle(SpanStyle(color = base, fontWeight = FontWeight.Bold)) { append(title) }
-            if (countText != null) {
-                withStyle(
-                    SpanStyle(color = if (allAligned) base else RED, fontWeight = FontWeight.Normal),
-                ) { append("  ($countText)") }
-            }
-        },
-        style = MaterialTheme.typography.titleSmall,
-    )
-}
 
 /** One `<name>  -++` diff row in JetBrains Mono — name normal colour, `-` red, `+` green. */
 @Composable
