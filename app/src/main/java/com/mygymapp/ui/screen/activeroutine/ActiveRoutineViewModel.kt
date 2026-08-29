@@ -97,6 +97,11 @@ data class ActiveExerciseUi(
     val tonnageChangePct: Double? = null,
     val rmChangePct: Double? = null,
     val isFirstTimeTonnage: Boolean = false,
+    // Total seconds of stretch actually performed this session (sum of `timeSeconds` over
+    // the sets the lifter toggled done). Set once a STRETCH exercise is completed with real
+    // work — the active-routine row shows this in place of the tonnage/1RM badge that FORZA
+    // exercises get. Null for non-stretch, or a stretch closed empty.
+    val stretchTotalSeconds: Int? = null,
     val completedEmpty: Boolean = false,
     val supersetWithNext: Boolean = false,
     val excludeFromTonnage: Boolean = false,
@@ -268,15 +273,46 @@ class ActiveRoutineViewModel @Inject constructor(
 
             // A session where the exercise was completed empty (skipped/untouched) never sets
             // hasPriorRealTonnage — see the exercisesWithPriorTonnage doc comment above.
+            // For a DAILY strength slot, "previous" and "first time" are read from the sidecar's
+            // DAILY context (not the previous routine session, which may not even contain the
+            // fixed-daily exercise) — same like-with-like rule the strength screen itself uses.
             exercisesWithPriorTonnage = exercises
-                .filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
+                .filter { it.type == ExerciseType.FORZA }
                 .filter { ex ->
-                    statsByExercise[ex.exerciseId]
-                        ?.forContext(com.mygymapp.data.model.SlotContext.NORMAL)
-                        ?.hasPriorRealTonnage == true
+                    val ctx = if (ex.category == SessionExerciseCategory.DAILY) {
+                        com.mygymapp.data.model.SlotContext.DAILY
+                    } else if (ex.excludeFromTonnage) {
+                        return@filter false // warmup — never gets a change badge
+                    } else {
+                        com.mygymapp.data.model.SlotContext.NORMAL
+                    }
+                    statsByExercise[ex.exerciseId]?.forContext(ctx)?.hasPriorRealTonnage == true
                 }
                 .map { it.exerciseId }
                 .toSet()
+
+            // Seed the previous-tonnage / previous-1RM maps for DAILY strength slots from their
+            // DAILY-context sidecar entry (the NORMAL slots were seeded from previousSession
+            // above). Only fills keys not already present, so a genuine NORMAL entry always wins.
+            exercises
+                .filter { it.type == ExerciseType.FORZA && it.category == SessionExerciseCategory.DAILY }
+                .forEach { ex ->
+                    val dailyPrev = statsByExercise[ex.exerciseId]
+                        ?.forContext(com.mygymapp.data.model.SlotContext.DAILY)
+                        ?.previousSets.orEmpty()
+                        .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                    if (dailyPrev.isNotEmpty()) {
+                        if (ex.exerciseId !in previousTonnageByExercise) {
+                            previousTonnageByExercise = previousTonnageByExercise +
+                                (ex.exerciseId to dailyPrev.sumOf { it.reps * it.weight })
+                        }
+                        if (ex.exerciseId !in previousBestE1RMByExercise) {
+                            dailyPrev.bestEstimated1RM()?.let {
+                                previousBestE1RMByExercise = previousBestE1RMByExercise + (ex.exerciseId to it)
+                            }
+                        }
+                    }
+                }
 
             // Compute previous tonnage using only exercises common to the current session,
             // so it matches the chart (which also filters to current exercise IDs).
@@ -386,17 +422,31 @@ class ActiveRoutineViewModel @Inject constructor(
                 ((currentBestE1RM - prevBestE1RM) / prevBestE1RM) * 100.0
             } else null
 
+            // Total stretch seconds actually performed = sum of `timeSeconds` over the sets the
+            // lifter toggled done. Shown in the active-routine row for STRETCH exercises (daily
+            // and normal alike) in place of the tonnage/1RM badge.
+            val stretchDoneSeconds = reloadedExercise
+                .sets.filterIsInstance<ExerciseSet.Stretch>()
+                .filter { it.done }
+                .sumOf { it.timeSeconds }
+
             val completedEmpty = reloadedExercise.completedEmpty
             val updatedExercises = _uiState.value.exercises.map { ex ->
                 if (ex.exerciseId == exerciseId) {
+                    // Tonnage/1RM change is shown for NORMAL and DAILY strength slots (each
+                    // compared against its own like-with-like history), but not for warmup
+                    // slots, and never when the exercise was completed with no data.
+                    val strengthWithBadge = ex.type == ExerciseType.FORZA && !completedEmpty &&
+                        (ex.category != SessionExerciseCategory.WARMUP)
                     ex.copy(
                         completed = true,
                         completedEmpty = completedEmpty,
-                        // No tonnage/1RM comparison for warmup/fixed-daily exercises, or when
-                        // completed with no data (nothing to compare — see completedEmpty above).
-                        tonnageChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && !completedEmpty) changePct else null,
-                        rmChangePct = if (ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && !completedEmpty) rmChangePct else null,
-                        isFirstTimeTonnage = ex.type == ExerciseType.FORZA && !ex.excludeFromTonnage && !completedEmpty && isFirstTime,
+                        tonnageChangePct = if (strengthWithBadge) changePct else null,
+                        rmChangePct = if (strengthWithBadge) rmChangePct else null,
+                        isFirstTimeTonnage = strengthWithBadge && isFirstTime,
+                        stretchTotalSeconds = if (ex.type == ExerciseType.STRETCH && !completedEmpty) {
+                            stretchDoneSeconds
+                        } else null,
                     )
                 } else ex
             }
