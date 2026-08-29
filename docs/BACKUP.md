@@ -1,9 +1,9 @@
 # Full-store backup — git-style incremental sync of *all* app data
 
 > **Status:** **phone side implemented** (branch `feature/full-store-backup`, see
-> CHANGELOG.md). The server side (`POST /v1/repo`, `GET /v1/manifest`, `GET /v1/file`, the
-> git-commit-per-push hook) lives in `MyGymApp_server` — brief:
-> [docs/backup-server-brief.md](backup-server-brief.md) — and is not yet built. This
+> CHANGELOG.md). **Server side implemented** too — `POST /v1/repo`, `GET /v1/manifest`,
+> `GET /v1/file` and the git-commit-per-push hook are live in `MyGymApp_server` (brief:
+> [docs/backup-server-brief.md](backup-server-brief.md)). This
 > extends the existing session/readiness/scale/ECG sync (`docs/SYNC.md`) to cover **every**
 > user-authored file — exercises and routines included — and turns the server's raw store
 > into a versioned git repo so any past state is recoverable.
@@ -195,6 +195,19 @@ Response (mirrors `/v1/sessions`):
 All of `stored` / `duplicate` / `deleted` / `already_absent` are **success** to the worker
 (retries stay safe).
 
+#### `POST /v1/repo/bulk` (Phase 90) — the drain fast path
+
+`RepoSyncWorker` no longer POSTs one file at a time. It builds a single
+`POST /v1/repo/bulk` (`RepoSyncApi.postBulk`): a JSON-array `envelope` of
+`{relPath, op, contentHash}` plus `file_0..file_N-1` parts aligned by index to the
+`upsert` entries. The server writes all of them and makes **one** debounced git commit for
+the whole burst. Response is `{"results":[{relPath,status,error?}]}` in request order —
+`stored`/`duplicate`/`deleted`/`already_absent` → `markSent`, `error` → `markFailed`, and
+the worker `Result.retry()`s if anything failed. `postBulk` auto-splits into chunks of ≤500
+entries / ≤50 MB of file bytes (`RepoSyncApi.chunkForBulk`, the server's hard cap);
+whole-request failures (`401`, malformed envelope, `413`, network) fail just that chunk and
+trigger a retry. The single-file `postUpsert`/`postDelete` stay as the fallback.
+
 ### 3.6 Restore — `GET /v1/manifest` + `GET /v1/file`
 
 New `RestoreApi.kt`. Used by a **"Ripristina dal server"** action in Options (and could run
@@ -213,6 +226,29 @@ This is the same manifest-diff a `git fetch` does. It is **pull-only** and never
 local file the server lacks (a local-only draft the phone hasn't pushed yet must survive a
 restore) — reconciliation of local-only files is a normal push, not the restore's job.
 
+#### Batch fast paths (Phase 90)
+
+The `GET /v1/file`-per-file loop above is the **fallback**. `RestoreApi` now prefers
+whichever batch endpoint the server offers (`docs/backup/README.md` § "Batch endpoints"):
+
+- **`RestoreApi.fetchTarball(since)`** → `GET /v1/repo/tarball?since=<hash>` — one gzip'd
+  tar of every live file. `restoreFromServer()` calls it with `since=null` (an explicit
+  restore always wants the full set), writes each member via a shared `applyRestoredFiles`
+  helper, and persists the response's `X-Manifest-SHA256` in `sync_config`
+  (`SyncConfigRepository.lastTarballManifestSha`) for future incremental use. The tar is
+  read by **`UstarReader`** — a ~150-line dependency-free ustar extractor (512-byte blocks,
+  GNU `L` long-name + PAX `path=` headers, base-256 sizes; directories and unknown
+  typeflags skipped).
+- **`RestoreApi.fetchFiles(relPaths)`** → `POST /v1/repo/files` — a `multipart/mixed`
+  response, one part per requested path (`X-Status: present|absent`,
+  `X-Content-SHA256`, raw bytes), parsed with OkHttp's `MultipartReader`. Used as the
+  tarball fallback (`restoreViaManifest`, chunked at 500 paths) and by `BackupVerifier`'s
+  read-back.
+
+Both degrade cleanly: if the tarball call fails, `restoreFromServer()` falls back to
+`GET /v1/manifest` + chunked `fetchFiles`; if that server lacks `/v1/repo/files` too, the
+per-file `fetchFile` path still exists.
+
 ### 3.7 Options screen additions
 
 Extend the existing sync section:
@@ -221,7 +257,10 @@ Extend the existing sync section:
   "N in attesa (sessioni, misurazioni, pesate, **schede/esercizi**)".
 - **"Ripristina dal server"** button → runs §3.6. Confirmation dialog ("Scarica dal server
   ogni file mancante o diverso. Non cancella nulla in locale."). Show a result summary:
-  "Ripristinati 12 esercizi, 3 routine, 0 sessioni".
+  "Ripristinati 12 esercizi, 3 routine, 0 sessioni". Shown whenever a server is
+  **configured**, regardless of the "Sincronizzazione attiva" toggle — it's the post-wipe
+  recovery action, and a fresh install may have sync still ON from restored config. (The
+  pending list + "Invia dati in coda" stay gated on toggle-off, where they're meaningful.)
 - The existing **"Invia tutti i dati in coda"** now also backfills `exercises/` + `routines/`.
 
 #### "Verifica backup sul server" (debug section)
@@ -236,16 +275,18 @@ Behaviour (`OptionsViewModel.verifyBackupRoundTrip()` → `runVerify()`):
 1. **Diff.** `GET /v1/manifest`; compare `sha256(local)` for every `exercises/*.md` +
    `routines/*.md` on disk against the server's hash. The set that differs (missing or
    changed) is the push list.
-2. **Push, directly.** For each file in the push list, `POST /v1/repo` `op:"upsert"` **via
-   `RepoSyncApi`, awaited** — *not* the background `RepoSyncWorker` — so the result records
-   the server's per-file answer (`stored` → counted + shown as a green `+ name` line under
-   its category; a `SyncResult.Failure` → `pushFailed`, shown as a red `-` line with the
-   reason). The local ledger is then set to `SENT`/current-hash for each accepted file
-   (`RepoLedgerRepository.markRestored`) so the next real sync doesn't re-send them.
-3. **Read-back.** Re-fetch `GET /v1/manifest`, then for every local file `GET /v1/file` and
-   compare bytes. Buckets: `missingAfter` (still not on the server), `hashMismatch` (there
-   but different), `readBackMismatch` (`/v1/file` didn't return identical bytes),
-   `verifiedIdentical` (count). This exercises the exact code path a post-wipe restore uses.
+2. **Push, in one bulk request** (Phase 90 — was one awaited `POST /v1/repo` per file).
+   The whole push list goes in a single `RepoSyncApi.postBulk` — *not* the background
+   `RepoSyncWorker`, still awaited — so the per-file `results` are recorded (`stored` →
+   green `+ name` line under its category; an `error` result → `pushFailed`, red `-` line
+   with the reason) and the server makes one commit. The line diffstat's "previous" copies
+   are pre-fetched with one `POST /v1/repo/files` before the push. The local ledger is then
+   set to `SENT`/current-hash for each accepted file (`RepoLedgerRepository.markRestored`).
+3. **Read-back, in one batch.** Re-fetch `GET /v1/manifest`, then pull **every** local file
+   in a single `POST /v1/repo/files` and compare bytes. Buckets: `missingAfter` (still not
+   on the server), `hashMismatch` (there but different), `readBackMismatch` (bytes not
+   identical), `verifiedIdentical` (count). This exercises the exact batch path a post-wipe
+   restore's fallback uses.
 
 The round-trip logic lives in `data/sync/BackupVerifier.kt` (`@Singleton`, injectable). It
 is run from **two** places with identical behaviour:
@@ -321,8 +362,9 @@ tombstones** — the files it uploads are the user's real data and are meant to 
 
 ## 4. Server side (summary — full brief for the server repo is separate)
 
-Give the server repo's Claude Code session the standalone brief
-(`docs/backup-server-brief.md` — copy it out of this repo). In short:
+**Implemented** in `MyGymApp_server`. The standalone brief
+(`docs/backup-server-brief.md` — copy it out of this repo) is what that repo was built
+from; kept here as the design of record. In short:
 
 ### 4.1 `data/raw/` becomes a git repo
 
@@ -410,6 +452,18 @@ also excluded.
 - [x] `RepoLedgerRepositoryTest` — round-trip + state-machine coverage (10 cases)
 - [x] `FileManager` given a test-only `constructor(root: File)` seam (this project's unit
       suite has no Robolectric/Context)
+- [x] Server side built (`MyGymApp_server`): `POST /v1/repo`, `GET /v1/manifest`,
+      `GET /v1/file`, git-commit-per-push, **plus batch endpoints** `POST /v1/repo/bulk`,
+      `POST /v1/repo/files`, `GET /v1/repo/tarball` and debounced commits.
+- [x] **Phase 90 — batch fast paths (branch `feature/backup-batch-endpoints`):**
+  - `RepoSyncApi.postBulk` + `chunkForBulk` (500 / 50 MB cap); `RepoSyncWorker` drains via
+    one bulk request, applies per-file `results` to the ledger.
+  - `RestoreApi.fetchFiles` (`POST /v1/repo/files`, `multipart/mixed` via `MultipartReader`)
+    and `fetchTarball` (`GET /v1/repo/tarball`, gzip + `UstarReader`).
+  - `restoreFromServer()` → tarball first, `manifest` + chunked `fetchFiles` fallback,
+    per-file `fetchFile` still there. `SyncConfigRepository.lastTarballManifestSha`.
+  - `BackupVerifier` push = one `postBulk`, read-back = one `fetchFiles`.
+  - Tests: `RepoSyncApiChunkTest` (7), `UstarReaderTest` (9).
 - [ ] End-to-end test against the live server: create/edit/delete an exercise and a routine,
-      confirm one commit per push on the server, then wipe `exercises/`+`routines/` locally
-      and restore via `GET /v1/manifest` — **blocked on the server side being built**
+      confirm one commit per bulk push on the server, then wipe `exercises/`+`routines/`
+      locally and restore via the tarball.

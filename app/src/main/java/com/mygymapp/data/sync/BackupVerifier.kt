@@ -131,7 +131,7 @@ class BackupVerifier @Inject constructor(
         val manifest0 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
             is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail("Manifest non recuperato: ${m.reason}")
-            is RestoreResult.FileBytes -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+            else -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
 
         data class Local(val file: File, val bytes: ByteArray, val hash: String)
@@ -141,43 +141,54 @@ class BackupVerifier @Inject constructor(
         }
         val toPush = locals.filter { manifest0[rel(it.file)] != it.hash }
 
-        // 2. Push each diff directly. Before the POST, pull the server's previous copy for a
-        //    line diffstat.
+        // 2. Push the diffs in ONE bulk request (one server-side git commit). First
+        //    batch-fetch the server's previous copies for the line diffstats.
         val exEntries = mutableListOf<BackupDiffEntry>()
         val rtEntries = mutableListOf<BackupDiffEntry>()
         val errors = mutableListOf<BackupError>()
         val pushedRel = mutableSetOf<String>()
         var bytesUploaded = 0L
-        val tmp = File.createTempFile("repo-verify", ".md", appContext.cacheDir)
-        try {
-            for (l in toPush) {
-                val relPath = rel(l.file)
-                val onServerBefore = manifest0.containsKey(relPath)
-                val diffstat = if (onServerBefore) {
-                    when (val old = restoreApi.fetchFile(serverUrl, token, relPath)) {
-                        is RestoreResult.FileBytes -> lineDiffStat(old.bytes, l.bytes)
-                        else -> lineDiffStat(ByteArray(0), l.bytes) // couldn't fetch old — treat as all-added
-                    }
-                } else {
-                    lineDiffStat(ByteArray(0), l.bytes)
-                }
 
-                tmp.writeBytes(l.bytes)
-                when (val r = repoSyncApi.postUpsert(serverUrl, token, relPath, l.hash, appVersion, tmp)) {
-                    is SyncResult.Success -> {
-                        pushedRel += relPath
-                        bytesUploaded += l.bytes.size
-                        val entry = BackupDiffEntry(displayName(l.file, l.bytes), diffstat.first, diffstat.second)
-                        if (cat(l.file) == "exercises") exEntries += entry else rtEntries += entry
+        val changedOnServer = toPush.map { rel(it.file) }.filter { manifest0.containsKey(it) }
+        val prevBytes: Map<String, ByteArray> = if (changedOnServer.isEmpty()) emptyMap() else
+            when (val f = restoreApi.fetchFiles(serverUrl, token, changedOnServer)) {
+                is RestoreResult.Files -> f.files.mapNotNull { bf -> bf.bytes?.let { bf.relPath to it } }.toMap()
+                else -> emptyMap() // couldn't fetch — every changed file shows as all-added
+            }
+
+        if (toPush.isNotEmpty()) {
+            val tmpDir = File(appContext.cacheDir, "repo-verify-${System.nanoTime()}").apply { mkdirs() }
+            try {
+                val bulkEntries = toPush.map { l ->
+                    val t = File(tmpDir, l.file.name).apply { writeBytes(l.bytes) }
+                    RepoBulkEntry(rel(l.file), "upsert", l.hash, t)
+                }
+                when (val outcome = repoSyncApi.postBulk(serverUrl, token, appVersion, bulkEntries)) {
+                    is RepoBulkOutcome.Applied -> {
+                        val byRel = toPush.associateBy { rel(it.file) }
+                        for (r in outcome.results) {
+                            val l = byRel[r.relPath] ?: continue
+                            if (r.isSuccess) {
+                                pushedRel += r.relPath
+                                bytesUploaded += l.bytes.size
+                                val prev = prevBytes[r.relPath] ?: ByteArray(0)
+                                val diffstat = lineDiffStat(prev, l.bytes)
+                                val entry = BackupDiffEntry(displayName(l.file, l.bytes), diffstat.first, diffstat.second)
+                                if (cat(l.file) == "exercises") exEntries += entry else rtEntries += entry
+                            } else {
+                                errors += BackupError(errCat(l.file), l.file.name, (r.error ?: "error").take(160))
+                                appLogger.w(TAG, "push failed ${l.file.name}: ${r.error}")
+                            }
+                        }
                     }
-                    is SyncResult.Failure -> {
-                        errors += BackupError(errCat(l.file), l.file.name, r.reason.take(160))
-                        appLogger.w(TAG, "push failed ${l.file.name}: ${r.reason}")
+                    is RepoBulkOutcome.Failure -> {
+                        for (l in toPush) errors += BackupError(errCat(l.file), l.file.name, outcome.reason.take(160))
+                        appLogger.w(TAG, "bulk push failed: ${outcome.reason}")
                     }
                 }
+            } finally {
+                tmpDir.deleteRecursively()
             }
-        } finally {
-            tmp.delete()
         }
 
         // Keep the local ledger in step with the server for files we just pushed OK.
@@ -191,8 +202,18 @@ class BackupVerifier @Inject constructor(
             is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail(
                 "Push completato ma manifest di verifica non recuperato: ${m.reason}"
             )
-            is RestoreResult.FileBytes -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+            else -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
+
+        // Read every exercise/routine back in ONE batch request and compare bytes.
+        val readBack: Map<String, ByteArray> =
+            when (val f = restoreApi.fetchFiles(serverUrl, token, locals.map { rel(it.file) })) {
+                is RestoreResult.Files -> f.files.mapNotNull { bf -> bf.bytes?.let { bf.relPath to it } }.toMap()
+                is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail(
+                    "Push completato ma rilettura non riuscita: ${f.reason}"
+                )
+                else -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (rilettura).")
+            }
 
         var exMatching = 0
         var rtMatching = 0
@@ -207,13 +228,12 @@ class BackupVerifier @Inject constructor(
                     errors += BackupError(errCat(l.file), l.file.name, "hash sul server diverso da quello locale"); false
                 }
                 else -> {
-                    val got = restoreApi.fetchFile(serverUrl, token, relPath)
-                    if (got is RestoreResult.FileBytes && got.bytes.contentEquals(l.bytes)) true
+                    val got = readBack[relPath]
+                    if (got != null && got.contentEquals(l.bytes)) true
                     else {
                         errors += BackupError(
-                            errCat(l.file),
-                            l.file.name,
-                            (got as? RestoreResult.Failure)?.reason ?: "rilettura non identica",
+                            errCat(l.file), l.file.name,
+                            if (got == null) "assente nella rilettura batch" else "rilettura non identica",
                         )
                         false
                     }
