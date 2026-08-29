@@ -73,10 +73,14 @@ class EcgSyncWorker @AssistedInject constructor(
             appLogger.w(TAG, "ECG sync expired for $id after $MAX_AGE_DAYS days pending; raw file deleted, unrecoverable")
         }
 
-        // isEnabled() gates whether ActiveRoutineViewModel queues a NEW ECG, not whether
-        // already-queued entries get drained here — same reasoning as the other three
-        // workers (docs/SYNC.md §1.5).
-        if (!config.isConfigured()) return@withContext Result.success()
+        // See docs/SYNC.md §1.5 + [shouldSyncRun]. Toggle OFF ⇒ only a forced run drains
+        // the queue (session finalize / manual send); periodic net is a no-op. The age-cap
+        // sweep above is deliberately *outside* this gate — stale .ecg files must be pruned
+        // whatever the toggle says.
+        val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
+        if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {
+            return@withContext Result.success()
+        }
 
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
@@ -137,9 +141,12 @@ class EcgSyncWorker @AssistedInject constructor(
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        fun runExpedited(context: Context) {
+        /** [force] `true` bypasses the "Sincronizzazione attiva" toggle for this run —
+         *  session finalize / manual send only. (The age-cap sweep in doWork() ignores it.) */
+        fun runExpedited(context: Context, force: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<EcgSyncWorker>()
                 .setConstraints(constraints)
+                .setInputData(androidx.work.workDataOf(SYNC_FORCE_KEY to force))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context)

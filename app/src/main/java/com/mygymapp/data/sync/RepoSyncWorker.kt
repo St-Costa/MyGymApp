@@ -59,10 +59,15 @@ class RepoSyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        // isConfigured() (not isEnabled()) — same reasoning as SyncWorker.doWork(): the
-        // enabled toggle gates whether NEW work is queued, never whether an already-queued
-        // entry gets drained (those exist only from an explicit action).
-        if (!config.isConfigured()) return@withContext Result.success()
+        // See docs/SYNC.md §1.5 + [shouldSyncRun]. With the "Sincronizzazione attiva" toggle
+        // OFF, only a forced run drains the queue — the periodic net is a no-op, and a
+        // catalogue edit no longer kicks an upload (RepoLedgerRepository still queues it, so
+        // it rides out on the next end-of-session sync or "Invia dati in coda"). A forced
+        // run is set by registerRoutine() (finalize) and the manual send buttons.
+        val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
+        if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {
+            return@withContext Result.success()
+        }
 
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
@@ -121,9 +126,16 @@ class RepoSyncWorker @AssistedInject constructor(
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        fun runExpedited(context: Context) {
+        /**
+         * [force] `true` bypasses the "Sincronizzazione attiva" toggle for this one run —
+         * pass it only from an explicit user-meaningful action (session finalize, "Invia
+         * dati in coda"). A plain edit-triggered nudge passes `false` and does nothing while
+         * the toggle is off.
+         */
+        fun runExpedited(context: Context, force: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<RepoSyncWorker>()
                 .setConstraints(constraints)
+                .setInputData(androidx.work.workDataOf(SYNC_FORCE_KEY to force))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context)
