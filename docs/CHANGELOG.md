@@ -1113,6 +1113,17 @@ that gap; this is its phone side.
   screen with sample states (running / clean / with problems / hard-fail). No synthetic
   file, no delete.
 
+  Report format reworked to read like `git diff --stat`: sections **Esercizi** / **Routine**
+  / **Sessioni** (no counts in parentheses); each changed exercise/routine shown as
+  `<name>  -++` with the name from the file's `name:` frontmatter and only the `-`/`+` runs
+  coloured — the counts are a real per-file **line diffstat** (`lineDiffStat`, multiset line
+  difference; a new `GET /v1/file` for the server's previous copy before each `POST`). A
+  rep-range edit now correctly shows `-+`, not just `+`. **Sessioni** (`history/**/*.md`)
+  added as a count-only section (`N/M allineate`, matched by manifest hash, no per-file
+  read-back). Failures go to an **ERRORI** section (raw filename → reason) *and* are logged
+  to `gymdata/logs/app.log` via `AppLogger`. Manifest line simplified to
+  `Manifest: <server>/<local> coincidono`. New `BackupVerifierDiffStatTest` (7 cases).
+
 **Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
 unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.
 `RepoLedgerRepositoryTest` covers the incremental no-op, rename tombstone, delete/upsert
