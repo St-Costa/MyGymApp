@@ -247,7 +247,17 @@ Behaviour (`OptionsViewModel.verifyBackupRoundTrip()` → `runVerify()`):
    but different), `readBackMismatch` (`/v1/file` didn't return identical bytes),
    `verifiedIdentical` (count). This exercises the exact code path a post-wipe restore uses.
 
-The result is a **`BackupVerifyReport`** rendered in Options as a git-diff-style block:
+The round-trip logic lives in `data/sync/BackupVerifier.kt` (`@Singleton`, injectable). It
+is run from **two** places with identical behaviour:
+- Options → Debug → **"Verifica backup sul server"** button (`OptionsViewModel`).
+- The **end-of-session summary** (`SessionProgressViewModel`, only when `justCompleted` and
+  a server is configured) — so a finished workout shows, right there, exactly which
+  exercises/routines it just pushed. Runs once on screen open, no retry loop.
+
+Both render the shared `ui/components/BackupVerifyBox.kt` composable (also exercised with
+sample data in the "Anteprima riepilogo" debug screen).
+
+The result is a **`BackupVerifyReport`** rendered as a git-diff-style block:
 
 ```
 esercizi  (2 inviati, 40 invariati)
