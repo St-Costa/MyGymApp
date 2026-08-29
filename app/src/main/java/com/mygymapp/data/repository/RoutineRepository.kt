@@ -7,6 +7,7 @@ import com.mygymapp.data.model.Routine
 import com.mygymapp.data.parser.RoutineParser
 import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.util.slugify
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,7 @@ class RoutineRepository @Inject constructor(
     private val fileManager: FileManager,
     private val workoutRepository: WorkoutRepository,
     private val repoLedgerRepository: RepoLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
     @ApplicationContext private val appContext: Context,
 ) {
     private val cache = ConcurrentHashMap<String, Routine>()
@@ -94,11 +96,15 @@ class RoutineRepository @Inject constructor(
         if (nameChanged) {
             workoutRepository.updateRoutineNameInHistory(saved.id, saved.name)
         }
-        // Full-store backup (docs/BACKUP.md §3.3) — queue the file, tombstone the stale
-        // rename path, never blocking.
+        // Full-store backup (docs/BACKUP.md §3.3): always queue in the ledger (never lost),
+        // but only kick an immediate upload when the sync toggle is on — same rule as
+        // ExerciseRepository.save() and the per-session enqueue. Toggle off ⇒ the edit
+        // waits for end-of-session sync / the 4h periodic net / "Invia dati in coda".
         newBytes?.let { repoLedgerRepository.requeueIfChanged(newRelPath, it) }
         obsoleteRelPath?.let { repoLedgerRepository.markDeleted(it, obsoleteHash) }
-        RepoSyncWorker.Scheduler.runExpedited(appContext)
+        if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+            RepoSyncWorker.Scheduler.runExpedited(appContext)
+        }
         saved
     }
 
@@ -116,7 +122,9 @@ class RoutineRepository @Inject constructor(
         }
         deletedRelPath?.let {
             repoLedgerRepository.markDeleted(it, deletedHash)
-            RepoSyncWorker.Scheduler.runExpedited(appContext)
+            if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                RepoSyncWorker.Scheduler.runExpedited(appContext)
+            }
         }
     }
 

@@ -1116,6 +1116,21 @@ unit suite has no Robolectric/Context, so file-based repos are tested against a 
 ordering, failed-state retryability, and YAML round-trip of a slash-and-dash path key (10
 cases).
 
+**Sync toggle semantics reworked** (`data/sync/SyncGate.kt`, `shouldSyncRun`): the
+"Sincronizzazione attiva" switch previously only gated the *automatic enqueue*; each
+`…SyncWorker.doWork()` then drained regardless, and the 4h periodic net ran whenever the
+server was merely configured. A catalogue edit therefore uploaded within seconds even with
+the toggle off. Now every worker runs iff `isConfigured() && (isEnabled() || force)`, where
+`force` is a WorkManager `inputData` flag set only by explicit actions:
+`registerRoutine()` (end of session — forces *all five* workers, so the session drags its
+trailing readiness/scale/repo/ECG data with it), "Invia dati in coda", "Verifica backup",
+and flipping the toggle on. The periodic net passes `force = false` ⇒ no-op while off.
+Separately, `PolarManager` / `BleScaleManager` were gating the *ledger enqueue itself* on
+`isEnabled()`, silently dropping a readiness measurement / weigh-in taken while off — now
+they enqueue whenever `isConfigured()` and only skip the expedite. New `SyncGateTest` (3
+cases). `registerRoutine()` no longer gates the session/ECG enqueue on `isEnabled()` — a
+finished workout always syncs if a server is configured.
+
 **Not in this phase**: the server side (`MyGymApp_server` — `POST /v1/repo`, restore
 endpoints, `data/raw/` as a git repo) per `docs/backup-server-brief.md`, and the
 end-to-end test that needs it. Until the server exists the phone queues but nothing

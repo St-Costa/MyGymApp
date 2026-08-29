@@ -17,6 +17,9 @@ import com.mygymapp.data.repository.WorkoutRepository
 import android.content.Context
 import com.mygymapp.data.sync.EcgSyncLedgerRepository
 import com.mygymapp.data.sync.EcgSyncWorker
+import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.RepoSyncWorker
+import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
@@ -547,41 +550,35 @@ class ActiveRoutineViewModel @Inject constructor(
                 try {
                     val saved = workoutRepository.save(updated)
                     currentSession = saved
-                    // Enqueue for server sync (docs/SYNC.md §1.1) — after the durable save,
-                    // never inline. The actual send happens async via WorkManager so a
-                    // flaky/offline/unreachable server can never block this flow. Gated on
-                    // isEnabled(): this is the *automatic* per-session path, distinct from
-                    // the user's explicit "Resync all" action in Options (which enqueues
-                    // regardless, since pressing that button is itself the opt-in).
-                    if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                    // Enqueue for server sync (docs/SYNC.md §1.1/§1.5) — after the durable
+                    // save, never inline. End-of-session is the one point that uploads
+                    // regardless of the "Sincronizzazione attiva" toggle (only isConfigured()
+                    // gates it), and it flushes *everything* queued: the session itself plus
+                    // any readiness / scale / repo / ECG entries sitting in their ledgers.
+                    // The forced runExpedited(force = true) bypasses the toggle for this run
+                    // (see shouldSyncRun / docs/SYNC.md §1.5).
+                    if (syncConfigRepository.isConfigured()) {
                         val relPath = workoutRepository.relPathFor(saved)
                         val file = workoutRepository.fileFor(saved)
                         if (file.exists()) {
                             syncLedgerRepository.enqueue(saved.id, relPath, file)
-                            SyncWorker.Scheduler.runExpedited(appContext)
                         }
-                        // Full-store backup (docs/BACKUP.md §3.3): a routine edited
-                        // mid-session was already queued by RoutineRepository.save(); nudge
-                        // its worker now so it lands together with this session rather than
-                        // waiting for the 4h periodic net.
-                        com.mygymapp.data.sync.RepoSyncWorker.Scheduler.runExpedited(appContext)
+                        SyncWorker.Scheduler.runExpedited(appContext, force = true)
+                        RepoSyncWorker.Scheduler.runExpedited(appContext, force = true)
+                        com.mygymapp.data.sync.ReadinessSyncWorker.Scheduler.runExpedited(appContext, force = true)
+                        com.mygymapp.data.sync.ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext, force = true)
                     }
                 } catch (e: Throwable) {
                     appLogger.e(TAG, "Save session failed", e)
                 }
-                // Raw ECG handling (docs/SYNC.md "Fourth record type: raw ECG"): when sync
-                // is configured, the raw file is queued for upload and EcgSyncWorker
-                // deletes it only after a confirmed SENT — never here. This is what makes
-                // the raw waveform available for the server's own analysis (deep ECG
-                // analysis no longer runs on the phone at all, see above), not just the
-                // lightweight metrics computed locally.
-                // When sync isn't configured/enabled, fall back to deleting the file
-                // immediately — with no local analysis and no server to send it to, there's
-                // nothing left that would ever consume it, so there's no reason to keep it.
-                // (Previously this branch was gated on ecgResult.hasAnything — i.e. "keep
-                // only if local analysis failed, for offline inspection." That no longer
-                // applies since local analysis doesn't run.)
-                if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                // Raw ECG handling (docs/SYNC.md "Fourth record type: raw ECG"): if a sync
+                // server is *configured*, the raw file is queued and EcgSyncWorker deletes
+                // it only after a confirmed SENT — never here. The "Sincronizzazione attiva"
+                // toggle no longer matters for this: end-of-session forces the upload
+                // (force = true) whether the toggle is on or off (docs/SYNC.md §1.5). Only a
+                // phone with *no server configured at all* falls back to deleting the .ecg
+                // immediately — nothing local would ever consume it.
+                if (syncConfigRepository.isConfigured()) {
                     val ecgFile = polarManager.ecgFileFor(session.id)
                     if (ecgFile.exists()) {
                         try {
@@ -590,7 +587,7 @@ class ActiveRoutineViewModel @Inject constructor(
                             // gzip-compressed bytes it transmits and updates the entry
                             // (via markSent/markFailed) — see EcgSyncWorker.doWork().
                             ecgSyncLedgerRepository.enqueue(session.id, "ecg/${session.id}.ecg", ecgFile.readBytes())
-                            EcgSyncWorker.Scheduler.runExpedited(appContext)
+                            EcgSyncWorker.Scheduler.runExpedited(appContext, force = true)
                         } catch (e: Throwable) {
                             appLogger.e(TAG, "ECG sync enqueue failed for ${session.id}: ${e.message}", e)
                         }

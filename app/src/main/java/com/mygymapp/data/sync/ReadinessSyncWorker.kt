@@ -49,10 +49,13 @@ class ReadinessSyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        // isEnabled() gates whether PolarManager queues a NEW readiness event, not
-        // whether already-queued entries get drained here — same reasoning as
-        // SyncWorker.doWork() (docs/SYNC.md §1.5).
-        if (!config.isConfigured()) return@withContext Result.success()
+        // See docs/SYNC.md §1.5 + [shouldSyncRun]. Toggle OFF ⇒ only a forced run drains
+        // the queue (session finalize / manual send); the periodic net is a no-op and a
+        // new readiness event is queued but not uploaded until then.
+        val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
+        if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {
+            return@withContext Result.success()
+        }
 
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
@@ -107,9 +110,12 @@ class ReadinessSyncWorker @AssistedInject constructor(
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        fun runExpedited(context: Context) {
+        /** [force] `true` bypasses the "Sincronizzazione attiva" toggle for this run —
+         *  session finalize / manual send only. */
+        fun runExpedited(context: Context, force: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<ReadinessSyncWorker>()
                 .setConstraints(constraints)
+                .setInputData(androidx.work.workDataOf(SYNC_FORCE_KEY to force))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context)
