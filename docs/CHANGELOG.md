@@ -1154,3 +1154,18 @@ finished workout always syncs if a server is configured.
 endpoints, `data/raw/` as a git repo) per `docs/backup-server-brief.md`, and the
 end-to-end test that needs it. Until the server exists the phone queues but nothing
 receives — the CLAUDE.md banner still mandates the tar backup before any install/test op.
+
+## Phase 85 — Superset fixes: no fabricated chain, centered PR badge
+Two active-session superset bugs. (1) `ActiveRoutineViewModel.init` drops slots from a
+section before grouping — a fixed-daily exercise that's also in the routine leaves the
+daily section, a slot for a since-deleted exercise leaves any section. The old plain
+`filter` left the *predecessor's* `supersetWithNext = true` pointing at whatever now
+followed, so `groupSupersets` built a superset in the live session that the routine never
+contained (the two exercises surrounding a removed daily member got paired). New pure
+helper `filterBreakingSupersetLinks` (same file as `groupSupersets`) drops the failing
+elements *and* clears the forward link of any survivor whose original successor was
+dropped; `clearTailLink` still runs after it for section boundaries. `existingExerciseIds`
+is now resolved once up front instead of a per-slot `getById` inside the filter. New
+`FilterBreakingSupersetLinksTest` (8 cases). (2) `SupersetScreen`'s PR badge was left-
+aligned and formatted `PR 8x80`; now `textAlign = TextAlign.Center` + `PR: 8 x 80`, matching
+`StrengthExerciseScreen`.
