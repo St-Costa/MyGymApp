@@ -22,6 +22,8 @@ import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.DisconnectStats
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.polar.ReadinessResult
+import com.mygymapp.data.sync.BackupDiffEntry
+import com.mygymapp.data.sync.BackupError
 import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.ui.components.BackupVerifyBox
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
@@ -80,38 +82,53 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             SyncStatusBox(SessionSyncStatus.FAILED)
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
 
-            Text("Box backup schede/esercizi (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
+            Text("Box backup sul server (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
             BackupVerifyBox(running = true)
+            // Clean: a range edit (one line -, one line +) plus a brand-new exercise.
             BackupVerifyBox(
                 report = BackupVerifyReport(
-                    exercisesPushed = listOf("incline-db-press-ex-0f1e2d3c.md", "calf-raise-ex-7ca58254.md"),
-                    routinesPushed = listOf("pull-rt-71284f58.md"),
+                    exercises = listOf(
+                        BackupDiffEntry("Calf Raise", added = 1, removed = 1),
+                        BackupDiffEntry("Incline DB Press", added = 12, removed = 0),
+                    ),
+                    routines = listOf(BackupDiffEntry("Pull", added = 3, removed = 2)),
                     exercisesUnchanged = 40,
                     routinesUnchanged = 6,
-                    verifiedIdentical = 49,
-                    serverSummary = "3 file accettati (stored). Manifest: 49 file schede/routine sul server, 49 riletti identici.",
+                    sessionsLocal = 62,
+                    sessionsOnServer = 62,
+                    sessionsMatching = 62,
+                    manifestServerFiles = 111,
+                    manifestLocalFiles = 111,
                 ),
             )
+            // Nothing to send — everything already aligned.
             BackupVerifyBox(
                 report = BackupVerifyReport(
-                    exercisesPushed = emptyList(),
-                    routinesPushed = emptyList(),
                     exercisesUnchanged = 42,
                     routinesUnchanged = 7,
-                    verifiedIdentical = 49,
-                    serverSummary = "0 file accettati (stored). Manifest: 49 file schede/routine sul server, 49 riletti identici.",
+                    sessionsLocal = 62,
+                    sessionsOnServer = 62,
+                    sessionsMatching = 62,
+                    manifestServerFiles = 111,
+                    manifestLocalFiles = 111,
                 ),
             )
+            // With problems + an ERRORI section.
             BackupVerifyBox(
                 report = BackupVerifyReport(
-                    exercisesPushed = listOf("squat-ex-11112222.md"),
-                    routinesPushed = emptyList(),
+                    exercises = listOf(BackupDiffEntry("Squat", added = 1, removed = 1)),
                     exercisesUnchanged = 41,
                     routinesUnchanged = 7,
-                    hashMismatch = listOf("push-rt-b997ec72.md"),
-                    missingAfter = listOf("leg-rt-97a2091f.md"),
-                    verifiedIdentical = 46,
-                    serverSummary = "1 file accettati (stored). Manifest: 48 file schede/routine sul server, 46 riletti identici, 1 con hash diverso, 1 ancora mancanti.",
+                    sessionsLocal = 62,
+                    sessionsOnServer = 61,
+                    sessionsMatching = 61,
+                    sessionsChanged = listOf("2026-08-28_rt-71284f58_b38ae530"),
+                    manifestServerFiles = 109,
+                    manifestLocalFiles = 111,
+                    errors = listOf(
+                        BackupError("push-rt-b997ec72.md", "HTTP 422: contentHash mismatch"),
+                        BackupError("leg-rt-97a2091f.md", "assente dal manifest dopo il push"),
+                    ),
                 ),
             )
             BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")

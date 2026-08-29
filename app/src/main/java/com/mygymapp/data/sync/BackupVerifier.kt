@@ -1,59 +1,78 @@
 package com.mygymapp.data.sync
 
 import com.mygymapp.BuildConfig
+import com.mygymapp.data.parser.MarkdownParser
 import com.mygymapp.data.repository.FileManager
+import com.mygymapp.data.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One changed exercise/routine, rendered git-diffstat-style: `<displayName>  -+++`. */
+data class BackupDiffEntry(
+    /** Human name from the file's `name:` frontmatter (falls back to the de-slugged filename). */
+    val displayName: String,
+    /** Lines added vs. the version the server had before this push (all lines, for a brand-new file). */
+    val added: Int,
+    /** Lines removed vs. the previous server version (0 for a brand-new file). */
+    val removed: Int,
+)
+
+/** One file the server rejected or that failed to transfer, for the ERRORI section. */
+data class BackupError(
+    /** Full filename, e.g. `calf-raise-ex-7ca58254.md` — the error section uses the raw name. */
+    val fileName: String,
+    /** HTTP code + any server message, or the exception summary. */
+    val detail: String,
+)
+
 /**
- * Structured result of a full-store backup round-trip (docs/BACKUP.md §3.7), rendered as a
- * git-diff-style block. Shared by Options ("Verifica backup sul server"), the end-of-session
- * summary, and the debug preview screen.
+ * Structured result of a full-store backup round-trip (docs/BACKUP.md §3.7).
  *
- * [exercisesPushed] / [routinesPushed]: files this run actually sent (`stored` — new or
- * changed), shown as green `+` lines. Files the server already had unchanged are counted in
- * [exercisesUnchanged] / [routinesUnchanged], not listed.
- *
- * [serverSummary]: one line paraphrasing what the server did across the whole run.
+ * [exercises] / [routines]: files this run actually pushed, each with its line diffstat.
+ * Unchanged files are only counted ([exercisesUnchanged] / [routinesUnchanged]).
+ * [sessionsLocal] / [sessionsOnServer] / [sessionsMatching]: sessions are count-only (they
+ * never change after they're recorded), plus [sessionsChanged] names for the rare backfill.
+ * [manifestServerFiles] / [manifestLocalFiles]: totals for the one-line manifest summary.
+ * [errors]: non-empty ⇒ an ERRORI section; also written to `gymdata/logs/app.log`.
  */
 data class BackupVerifyReport(
-    val exercisesPushed: List<String> = emptyList(),
-    val routinesPushed: List<String> = emptyList(),
+    val exercises: List<BackupDiffEntry> = emptyList(),
+    val routines: List<BackupDiffEntry> = emptyList(),
     val exercisesUnchanged: Int = 0,
     val routinesUnchanged: Int = 0,
-    val pushFailed: List<String> = emptyList(),
-    val missingAfter: List<String> = emptyList(),
-    val hashMismatch: List<String> = emptyList(),
-    val readBackMismatch: List<String> = emptyList(),
-    val verifiedIdentical: Int = 0,
-    val serverSummary: String = "",
+    val sessionsLocal: Int = 0,
+    val sessionsOnServer: Int = 0,
+    val sessionsMatching: Int = 0,
+    val sessionsChanged: List<String> = emptyList(),
+    val manifestServerFiles: Int = 0,
+    val manifestLocalFiles: Int = 0,
+    val errors: List<BackupError> = emptyList(),
 ) {
-    val allGood: Boolean
-        get() = pushFailed.isEmpty() && missingAfter.isEmpty() &&
-            hashMismatch.isEmpty() && readBackMismatch.isEmpty()
+    val allGood: Boolean get() = errors.isEmpty() && sessionsMatching == sessionsLocal
 }
 
 sealed interface BackupVerifyOutcome {
-    /** A precondition or a hard network failure — nothing usable to render as a diff. */
     data class HardFail(val reason: String) : BackupVerifyOutcome
     data class Done(val report: BackupVerifyReport) : BackupVerifyOutcome
 }
 
 /**
- * The full-store backup round-trip, factored out of `OptionsViewModel` so the end-of-session
- * summary can run the exact same check. See docs/BACKUP.md §3.7:
+ * The full-store backup round-trip, shared by Options ("Verifica backup sul server") and
+ * the end-of-session summary. See docs/BACKUP.md §3.7:
  *
  * 1. **Diff** — `GET /v1/manifest`; compare `sha256(local)` for every exercise/routine
  *    `.md` on disk against the server's hash.
- * 2. **Push** — for every differing file, `POST /v1/repo` `op:"upsert"` **directly** (via
- *    [RepoSyncApi], awaited), recording the server's per-file answer.
- * 3. **Read-back** — re-fetch the manifest, then `GET /v1/file` for each file and compare
- *    bytes, exercising the real restore path.
+ * 2. **Push** — for each differing file: fetch the server's *previous* copy
+ *    (`GET /v1/file`) for a line diffstat, then `POST /v1/repo` `op:"upsert"` directly
+ *    (awaited), recording the server's per-file answer.
+ * 3. **Read-back** — re-fetch the manifest, then `GET /v1/file` for each exercise/routine
+ *    and compare bytes. Sessions (`history/**/*.md`) are count-only — matched by manifest
+ *    hash, no per-file read-back.
  *
- * No delete, nothing synthetic — the user's real catalogue is meant to stay on the server.
+ * No delete, nothing synthetic.
  */
 @Singleton
 class BackupVerifier @Inject constructor(
@@ -62,8 +81,12 @@ class BackupVerifier @Inject constructor(
     private val repoSyncApi: RepoSyncApi,
     private val restoreApi: RestoreApi,
     private val config: SyncConfigRepository,
+    private val appLogger: AppLogger,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) {
+    private companion object {
+        const val TAG = "BackupVerifier"
+    }
 
     suspend fun run(): BackupVerifyOutcome = withContext(Dispatchers.IO) {
         if (!config.isConfigured()) {
@@ -73,12 +96,12 @@ class BackupVerifier @Inject constructor(
         val token = config.bearerToken()
         val appVersion = BuildConfig.VERSION_NAME
 
-        val localFiles = (
-            fileManager.getDir("exercises").listFiles { f -> f.extension == "md" }?.toList().orEmpty() +
-                fileManager.getDir("routines").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
-            ).filter { it.isFile }
-        if (localFiles.isEmpty()) {
-            return@withContext BackupVerifyOutcome.HardFail("Nessun esercizio/routine da verificare.")
+        val exerciseFiles = fileManager.getDir("exercises").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
+        val routineFiles = fileManager.getDir("routines").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
+        val sessionFiles = collectSessionFiles()
+        val repoFiles = (exerciseFiles + routineFiles).filter { it.isFile }
+        if (repoFiles.isEmpty() && sessionFiles.isEmpty()) {
+            return@withContext BackupVerifyOutcome.HardFail("Niente da verificare.")
         }
 
         fun cat(f: File) = f.parentFile?.name ?: ""
@@ -92,31 +115,42 @@ class BackupVerifier @Inject constructor(
         }
 
         data class Local(val file: File, val bytes: ByteArray, val hash: String)
-        val locals = localFiles.map {
+        val locals = repoFiles.map {
             val b = it.readBytes()
             Local(it, b, repoLedgerRepository.hashOf(b))
         }
         val toPush = locals.filter { manifest0[rel(it.file)] != it.hash }
 
-        // 2. Push the diffs directly, one POST per file, recording the server's word.
-        val exPushed = mutableListOf<String>()
-        val rtPushed = mutableListOf<String>()
-        val pushFailed = mutableListOf<String>()
-        var storedCount = 0
-        var duplicateCount = 0
-        var pushErrCount = 0
+        // 2. Push each diff directly. Before the POST, pull the server's previous copy for a
+        //    line diffstat.
+        val exEntries = mutableListOf<BackupDiffEntry>()
+        val rtEntries = mutableListOf<BackupDiffEntry>()
+        val errors = mutableListOf<BackupError>()
+        val pushedRel = mutableSetOf<String>()
         val tmp = File.createTempFile("repo-verify", ".md", appContext.cacheDir)
         try {
             for (l in toPush) {
+                val relPath = rel(l.file)
+                val onServerBefore = manifest0.containsKey(relPath)
+                val diffstat = if (onServerBefore) {
+                    when (val old = restoreApi.fetchFile(serverUrl, token, relPath)) {
+                        is RestoreResult.FileBytes -> lineDiffStat(old.bytes, l.bytes)
+                        else -> lineDiffStat(ByteArray(0), l.bytes) // couldn't fetch old — treat as all-added
+                    }
+                } else {
+                    lineDiffStat(ByteArray(0), l.bytes)
+                }
+
                 tmp.writeBytes(l.bytes)
-                when (val r = repoSyncApi.postUpsert(serverUrl, token, rel(l.file), l.hash, appVersion, tmp)) {
+                when (val r = repoSyncApi.postUpsert(serverUrl, token, relPath, l.hash, appVersion, tmp)) {
                     is SyncResult.Success -> {
-                        if (r.status == "duplicate") duplicateCount++ else storedCount++
-                        if (cat(l.file) == "exercises") exPushed += l.file.name else rtPushed += l.file.name
+                        pushedRel += relPath
+                        val entry = BackupDiffEntry(displayName(l.file, l.bytes), diffstat.first, diffstat.second)
+                        if (cat(l.file) == "exercises") exEntries += entry else rtEntries += entry
                     }
                     is SyncResult.Failure -> {
-                        pushErrCount++
-                        pushFailed += "${l.file.name} — ${r.reason.take(80)}"
+                        errors += BackupError(l.file.name, r.reason.take(160))
+                        appLogger.w(TAG, "push failed ${l.file.name}: ${r.reason}")
                     }
                 }
             }
@@ -124,66 +158,129 @@ class BackupVerifier @Inject constructor(
             tmp.delete()
         }
 
-        // Keep the local ledger in step with the server for the files we just pushed OK,
-        // so the next real sync doesn't re-send them. Best-effort.
+        // Keep the local ledger in step with the server for files we just pushed OK.
         runCatching {
-            for (l in toPush) {
-                if (pushFailed.none { it.startsWith(l.file.name) }) {
-                    repoLedgerRepository.markRestored(rel(l.file), l.hash)
-                }
-            }
+            for (l in toPush) if (rel(l.file) in pushedRel) repoLedgerRepository.markRestored(rel(l.file), l.hash)
         }
 
-        // 3. Re-fetch the manifest and read every file back.
+        // 3. Re-fetch the manifest, verify exercise/routine bytes, count sessions.
         val manifest1 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
             is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail(
-                "Push completato ($storedCount inviati) ma manifest di verifica non recuperato: ${m.reason}"
+                "Push completato ma manifest di verifica non recuperato: ${m.reason}"
             )
             is RestoreResult.FileBytes -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
 
-        val missingAfter = mutableListOf<String>()
-        val hashMismatch = mutableListOf<String>()
-        val readBackMismatch = mutableListOf<String>()
-        var verifiedIdentical = 0
         for (l in locals) {
-            val serverHash = manifest1[rel(l.file)]
+            val relPath = rel(l.file)
+            val serverHash = manifest1[relPath]
             when {
-                serverHash == null -> missingAfter += l.file.name
-                serverHash != l.hash -> hashMismatch += l.file.name
+                serverHash == null ->
+                    errors += BackupError(l.file.name, "assente dal manifest dopo il push")
+                serverHash != l.hash ->
+                    errors += BackupError(l.file.name, "hash sul server diverso da quello locale")
                 else -> {
-                    val got = restoreApi.fetchFile(serverUrl, token, rel(l.file))
-                    if (got is RestoreResult.FileBytes && got.bytes.contentEquals(l.bytes)) verifiedIdentical++
-                    else readBackMismatch += l.file.name
+                    val got = restoreApi.fetchFile(serverUrl, token, relPath)
+                    if (got !is RestoreResult.FileBytes || !got.bytes.contentEquals(l.bytes)) {
+                        errors += BackupError(
+                            l.file.name,
+                            (got as? RestoreResult.Failure)?.reason ?: "rilettura non identica",
+                        )
+                    }
                 }
             }
         }
 
-        val serverSummary = buildString {
-            append("$storedCount file accettati (stored)")
-            if (duplicateCount > 0) append(", $duplicateCount già presenti (duplicate)")
-            if (pushErrCount > 0) append(", $pushErrCount rifiutati/non inviati")
-            append(". Manifest: ${manifest1.count { it.key.startsWith("exercises/") || it.key.startsWith("routines/") }} file schede/routine sul server")
-            append(", $verifiedIdentical riletti identici")
-            if (hashMismatch.isNotEmpty()) append(", ${hashMismatch.size} con hash diverso")
-            if (missingAfter.isNotEmpty()) append(", ${missingAfter.size} ancora mancanti")
-            append(".")
+        // Sessions — count-only, matched by manifest hash.
+        val sessionLocalByRel = sessionFiles.associate { f ->
+            sessionRel(f) to repoLedgerRepository.hashOf(f.readBytes())
+        }
+        val sessionsOnServer = manifest1.keys.count { it.matches(SESSION_RELPATH_RE) }
+        var sessionsMatching = 0
+        val sessionsChanged = mutableListOf<String>()
+        for ((relPath, localHash) in sessionLocalByRel) {
+            if (manifest1[relPath] == localHash) sessionsMatching++
+            else sessionsChanged += relPath.substringAfterLast('/').removeSuffix(".md")
         }
 
-        BackupVerifyOutcome.Done(
-            BackupVerifyReport(
-                exercisesPushed = exPushed.sorted(),
-                routinesPushed = rtPushed.sorted(),
-                exercisesUnchanged = locals.count { cat(it.file) == "exercises" } - exPushed.size,
-                routinesUnchanged = locals.count { cat(it.file) == "routines" } - rtPushed.size,
-                pushFailed = pushFailed,
-                missingAfter = missingAfter,
-                hashMismatch = hashMismatch,
-                readBackMismatch = readBackMismatch,
-                verifiedIdentical = verifiedIdentical,
-                serverSummary = serverSummary,
-            )
+        val report = BackupVerifyReport(
+            exercises = exEntries.sortedBy { it.displayName.lowercase() },
+            routines = rtEntries.sortedBy { it.displayName.lowercase() },
+            exercisesUnchanged = locals.count { cat(it.file) == "exercises" } - exEntries.size,
+            routinesUnchanged = locals.count { cat(it.file) == "routines" } - rtEntries.size,
+            sessionsLocal = sessionFiles.size,
+            sessionsOnServer = sessionsOnServer,
+            sessionsMatching = sessionsMatching,
+            sessionsChanged = sessionsChanged.sorted(),
+            manifestServerFiles = manifest1.size,
+            manifestLocalFiles = repoFiles.size + sessionFiles.size,
+            errors = errors,
         )
+        if (errors.isNotEmpty()) {
+            appLogger.w(TAG, "verify finished with ${errors.size} error(s): " +
+                errors.joinToString("; ") { "${it.fileName} -> ${it.detail}" })
+        } else {
+            appLogger.i(TAG, "verify OK: ${exEntries.size} esercizi + ${rtEntries.size} routine inviati, " +
+                "$sessionsMatching/${sessionFiles.size} sessioni allineate")
+        }
+        BackupVerifyOutcome.Done(report)
     }
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    private val SESSION_RELPATH_RE = Regex("""^\d{4}/\d{2}/.+\.md$""")
+
+    private fun collectSessionFiles(): List<File> {
+        val history = File(fileManager.root, "history")
+        if (!history.isDirectory) return emptyList()
+        return history.walkTopDown()
+            .filter { it.isFile && it.extension == "md" }
+            .filterNot { it.path.contains("/_") } // skip _stats, _idx, _gitgraph
+            .toList()
+    }
+
+    /** relPath of a session as the server keys it: `YYYY/MM/<file>.md`. */
+    private fun sessionRel(f: File): String {
+        val month = f.parentFile?.name ?: ""
+        val year = f.parentFile?.parentFile?.name ?: ""
+        return "$year/$month/${f.name}"
+    }
+
+    /** `name:` from the frontmatter, else the filename de-slugged (id stripped). */
+    private fun displayName(file: File, bytes: ByteArray): String {
+        val fromYaml = runCatching {
+            MarkdownParser.parse(String(bytes)).frontmatter["name"]?.toString()?.trim()
+        }.getOrNull()
+        if (!fromYaml.isNullOrBlank()) return fromYaml
+        // "calf-raise-ex-7ca58254.md" -> "calf raise"
+        return file.name
+            .removeSuffix(".md")
+            .replace(Regex("""-(ex|rt)-[0-9a-f]{8}$"""), "")
+            .replace('-', ' ')
+            .trim()
+            .ifBlank { file.name.removeSuffix(".md") }
+    }
+
+}
+
+/**
+ * git-style line diffstat between [old] and [new] bytes: a line present in old but not new
+ * (by count) is a removal, present in new but not old is an addition. Multiset difference,
+ * not an LCS — good enough for a small YAML file and cheap. A brand-new file (`old` empty)
+ * counts every line as added, at least 1.
+ *
+ * Top-level + `internal` so it's unit-testable without constructing a [BackupVerifier].
+ */
+internal fun lineDiffStat(old: ByteArray, new: ByteArray): Pair<Int, Int> {
+    if (old.isEmpty()) return String(new).count { it == '\n' }.coerceAtLeast(1) to 0
+    val oldCounts = HashMap<String, Int>()
+    for (l in String(old).split('\n')) oldCounts[l] = (oldCounts[l] ?: 0) + 1
+    val newCounts = HashMap<String, Int>()
+    for (l in String(new).split('\n')) newCounts[l] = (newCounts[l] ?: 0) + 1
+    var added = 0
+    var removed = 0
+    for ((line, n) in newCounts) added += (n - (oldCounts[line] ?: 0)).coerceAtLeast(0)
+    for ((line, n) in oldCounts) removed += (n - (newCounts[line] ?: 0)).coerceAtLeast(0)
+    return added to removed
 }
