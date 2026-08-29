@@ -1098,17 +1098,20 @@ that gap; this is its phone side.
   (`restoreFromServer()` — confirm dialog, manifest-diff, pull-only, never deletes local
   files, marks pulled files `SENT` so they don't bounce back), and `resyncAll()` now also
   walks `exercises/` + `routines/`.
-- Options debug section: **"Verifica backup sul server"** (`verifyBackupRoundTrip()` →
-  `runVerify()`) — real round-trip against the user's actual exercises/routines:
-  `GET /v1/manifest` → diff → `POST /v1/repo` **directly** (via `RepoSyncApi`, awaited, one
-  per changed file, so we capture the server's per-file `stored`/failure) → re-fetch the
-  manifest and `GET /v1/file` byte-for-byte. Local ledger set to `SENT` for accepted files
-  (`markRestored`) so a later real sync doesn't re-send. Rendered as a `BackupVerifyReport`:
-  a git-diff-style block with green `+ name` per pushed file grouped by category
-  (esercizi/routine, with an "N inviati, M invariati" header), red `- name (motivo)` for any
+- **Backup round-trip** check — real round-trip against the user's actual exercises/routines:
+  `GET /v1/manifest` → diff → `POST /v1/repo` **directly** (awaited, one per changed file,
+  so the server's per-file `stored`/failure is captured) → re-fetch the manifest and
+  `GET /v1/file` byte-for-byte. Local ledger set to `SENT` for accepted files
+  (`markRestored`). Logic lives in `data/sync/BackupVerifier.kt` (`@Singleton`), run from
+  **two** call sites: Options → Debug → "Verifica backup sul server", and the
+  **end-of-session summary** (`SessionProgressViewModel`, `justCompleted` + server
+  configured — one run on screen open, no retry). Both render the shared
+  `ui/components/BackupVerifyBox.kt`: a git-diff-style block, green `+ name` per pushed file
+  grouped by category ("N inviati, M invariati" header), red `- name (motivo)` for any
   push-failed / missing / hash-diverged / read-back-mismatched file, then a one-line
-  paraphrase of the server's response ("3 file accettati (stored). Manifest: 49 file … 49
-  riletti identici."). No synthetic file, no delete.
+  paraphrase of the server response. Also wired into the "Anteprima riepilogo" debug
+  screen with sample states (running / clean / with problems / hard-fail). No synthetic
+  file, no delete.
 
 **Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
 unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.

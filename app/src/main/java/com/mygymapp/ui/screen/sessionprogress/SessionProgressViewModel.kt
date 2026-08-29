@@ -13,6 +13,9 @@ import com.mygymapp.data.polar.DisconnectStats
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.steps.HealthConnectStepsReader
+import com.mygymapp.data.sync.BackupVerifier
+import com.mygymapp.data.sync.BackupVerifyOutcome
+import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncStatus
@@ -74,6 +77,13 @@ data class SessionProgressUiState(
     // the @Singleton PolarManager, which resets the counter at the next session's start,
     // so reopening this screen later shows nothing. Box is hidden entirely when count==0.
     val polarDrops: DisconnectStats = DisconnectStats(),
+    // Full-store backup round-trip (docs/BACKUP.md §3.7), run once when this screen opens
+    // right after a session (justCompleted) and a sync server is configured. Same
+    // BackupVerifier the Options "Verifica backup sul server" button uses. All three null/
+    // false ⇒ box hidden.
+    val backupVerifyRunning: Boolean = false,
+    val backupVerifyError: String? = null,
+    val backupVerifyReport: BackupVerifyReport? = null,
 )
 
 @HiltViewModel
@@ -83,6 +93,7 @@ class SessionProgressViewModel @Inject constructor(
     private val healthConnectStepsReader: HealthConnectStepsReader,
     private val syncConfigRepository: SyncConfigRepository,
     private val syncLedgerRepository: SyncLedgerRepository,
+    private val backupVerifier: BackupVerifier,
     private val polarManager: PolarManager,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
@@ -99,6 +110,26 @@ class SessionProgressViewModel @Inject constructor(
         viewModelScope.launch { refreshSyncStatus() }
         observeSyncWorkerCompletion()
         pollSyncStatusWhilePending()
+        if (justCompleted) viewModelScope.launch { runBackupVerify() }
+    }
+
+    /**
+     * End-of-session full-store backup check (docs/BACKUP.md §3.7). Same [BackupVerifier]
+     * the Options button runs — a real round-trip (manifest diff → direct POST of what
+     * changed → read-back) against the user's exercises/routines. Runs once, on screen open
+     * after a completed session; no retry/poll (unlike the session `SyncStatusBox`, which
+     * tracks an async worker). A configured-but-unreachable server surfaces as
+     * [SessionProgressUiState.backupVerifyError] in the box.
+     */
+    private suspend fun runBackupVerify() {
+        if (!syncConfigRepository.isConfigured()) return
+        _uiState.value = _uiState.value.copy(backupVerifyRunning = true, backupVerifyError = null, backupVerifyReport = null)
+        _uiState.value = when (val outcome = backupVerifier.run()) {
+            is BackupVerifyOutcome.HardFail ->
+                _uiState.value.copy(backupVerifyRunning = false, backupVerifyError = outcome.reason)
+            is BackupVerifyOutcome.Done ->
+                _uiState.value.copy(backupVerifyRunning = false, backupVerifyReport = outcome.report)
+        }
     }
 
     /**
