@@ -22,6 +22,8 @@ import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.DisconnectStats
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.polar.ReadinessResult
+import com.mygymapp.data.sync.BackupVerifyReport
+import com.mygymapp.ui.components.BackupVerifyBox
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
 import com.mygymapp.ui.screen.heartrate.ReadinessCard
 import java.time.LocalDate
@@ -77,6 +79,42 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             SyncStatusBox(SessionSyncStatus.PENDING)
             SyncStatusBox(SessionSyncStatus.FAILED)
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
+
+            Text("Box backup schede/esercizi (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
+            BackupVerifyBox(running = true)
+            BackupVerifyBox(
+                report = BackupVerifyReport(
+                    exercisesPushed = listOf("incline-db-press-ex-0f1e2d3c.md", "calf-raise-ex-7ca58254.md"),
+                    routinesPushed = listOf("pull-rt-71284f58.md"),
+                    exercisesUnchanged = 40,
+                    routinesUnchanged = 6,
+                    verifiedIdentical = 49,
+                    serverSummary = "3 file accettati (stored). Manifest: 49 file schede/routine sul server, 49 riletti identici.",
+                ),
+            )
+            BackupVerifyBox(
+                report = BackupVerifyReport(
+                    exercisesPushed = emptyList(),
+                    routinesPushed = emptyList(),
+                    exercisesUnchanged = 42,
+                    routinesUnchanged = 7,
+                    verifiedIdentical = 49,
+                    serverSummary = "0 file accettati (stored). Manifest: 49 file schede/routine sul server, 49 riletti identici.",
+                ),
+            )
+            BackupVerifyBox(
+                report = BackupVerifyReport(
+                    exercisesPushed = listOf("squat-ex-11112222.md"),
+                    routinesPushed = emptyList(),
+                    exercisesUnchanged = 41,
+                    routinesUnchanged = 7,
+                    hashMismatch = listOf("push-rt-b997ec72.md"),
+                    missingAfter = listOf("leg-rt-97a2091f.md"),
+                    verifiedIdentical = 46,
+                    serverSummary = "1 file accettati (stored). Manifest: 48 file schede/routine sul server, 46 riletti identici, 1 con hash diverso, 1 ancora mancanti.",
+                ),
+            )
+            BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")
 
             Text("Scheda readiness", style = MaterialTheme.typography.titleSmall)
             ReadinessCard(
