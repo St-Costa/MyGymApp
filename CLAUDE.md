@@ -63,7 +63,7 @@ ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 | "There's an odd pattern — is this intentional?" | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
 | "What happened over time?" | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 | "How does syncing sessions/readiness/scale/ECG to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (implemented for sessions; readiness/scale/ECG phone-side done, server-side WIP) |
-| "How does the git-style full-store backup (exercises + routines too) work?" | [docs/BACKUP.md](docs/BACKUP.md) (design only) + [docs/backup-server-brief.md](docs/backup-server-brief.md) (hand to the server repo) |
+| "How does the git-style full-store backup (exercises + routines too) work?" | [docs/BACKUP.md](docs/BACKUP.md) (phone + server side implemented) + [docs/backup-server-brief.md](docs/backup-server-brief.md) (the brief the server repo was built from) |
 
 Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementation-guide.md).
 
