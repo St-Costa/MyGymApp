@@ -92,39 +92,27 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                         BackupDiffEntry("Incline DB Press", added = 12, removed = 0),
                     ),
                     routines = listOf(BackupDiffEntry("Pull", added = 3, removed = 2)),
-                    exercisesUnchanged = 40,
-                    routinesUnchanged = 6,
-                    sessionsLocal = 62,
-                    sessionsOnServer = 62,
-                    sessionsMatching = 62,
-                    manifestServerFiles = 111,
-                    manifestLocalFiles = 111,
+                    exercisesLocal = 42, exercisesMatching = 42,
+                    routinesLocal = 7, routinesMatching = 7,
+                    sessionsLocal = 62, sessionsMatching = 62,
                 ),
             )
             // Nothing to send — everything already aligned.
             BackupVerifyBox(
                 report = BackupVerifyReport(
-                    exercisesUnchanged = 42,
-                    routinesUnchanged = 7,
-                    sessionsLocal = 62,
-                    sessionsOnServer = 62,
-                    sessionsMatching = 62,
-                    manifestServerFiles = 111,
-                    manifestLocalFiles = 111,
+                    exercisesLocal = 42, exercisesMatching = 42,
+                    routinesLocal = 7, routinesMatching = 7,
+                    sessionsLocal = 62, sessionsMatching = 62,
                 ),
             )
             // With problems + an ERRORI section.
             BackupVerifyBox(
                 report = BackupVerifyReport(
                     exercises = listOf(BackupDiffEntry("Squat", added = 1, removed = 1)),
-                    exercisesUnchanged = 41,
-                    routinesUnchanged = 7,
-                    sessionsLocal = 62,
-                    sessionsOnServer = 61,
-                    sessionsMatching = 61,
+                    exercisesLocal = 42, exercisesMatching = 41,
+                    routinesLocal = 7, routinesMatching = 6,
+                    sessionsLocal = 62, sessionsMatching = 61,
                     sessionsChanged = listOf("2026-08-28_rt-71284f58_b38ae530"),
-                    manifestServerFiles = 109,
-                    manifestLocalFiles = 111,
                     errors = listOf(
                         BackupError("push-rt-b997ec72.md", "HTTP 422: contentHash mismatch"),
                         BackupError("leg-rt-97a2091f.md", "assente dal manifest dopo il push"),
