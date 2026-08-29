@@ -1259,3 +1259,38 @@ auto-reconnect we *want* during a workout), we now surface a **display-only** di
   session total doesn't flash to 0 on a brief dropout — used by every exercise screen via
   the shared bar), `LiveEcgCard` (now also hides on NO_SIGNAL, not just DISCONNECTED, so no
   frozen trace). `HeartRateUiState` / `PolarDebugUiState` carry `linkStatus`.
+
+## Phase 90 — Full-store backup: batch endpoints (bulk push, tarball restore)
+
+The server side of the full-store backup (`docs/BACKUP.md`) is now built in
+`MyGymApp_server` — including three optional **batch endpoints** that collapse a
+backfill / restore / verify from N HTTP round-trips (and, server-side, N git commits) to
+one. The phone adopted all three; the single-file endpoints stay as the fallback so an
+older server still works.
+
+- **`RepoSyncApi.postBulk`** (`POST /v1/repo/bulk`) — one multipart request for a whole
+  ledger drain: a JSON-array envelope of `{relPath, op, contentHash}` plus `file_i` parts
+  aligned by index to the `upsert` entries. Response `{"results":[…]}` in request order.
+  `chunkForBulk` auto-splits at the server's 500-entry / 50-MB cap; a per-entry `error`
+  status is applied to that entry's ledger row only, a whole-request failure retries the
+  chunk. `RepoSyncWorker` now drains via one `postBulk` instead of a `postUpsert`/
+  `postDelete` loop — the server makes one debounced git commit per burst.
+- **`RestoreApi.fetchFiles`** (`POST /v1/repo/files`) — `{"relPaths":[…]}` → a
+  `multipart/mixed` response, one part per path (`X-Status: present|absent`,
+  `X-Content-SHA256`, raw bytes), parsed with OkHttp's `MultipartReader`.
+- **`RestoreApi.fetchTarball`** (`GET /v1/repo/tarball?since=<hash>`) — one gzip'd tar of
+  every live file, read by **`UstarReader`**, a ~150-line dependency-free ustar extractor
+  (512-byte blocks, GNU `L` long-name + PAX `path=` headers, base-256 sizes; directories
+  and unknown typeflags skipped). The response's `X-Manifest-SHA256` is persisted
+  (`SyncConfigRepository.lastTarballManifestSha`) for future incremental pulls.
+- **`OptionsViewModel.restoreFromServer()`** — tarball first (with `since=null`, an
+  explicit restore always wants the full set), falling back to `GET /v1/manifest` +
+  chunked `fetchFiles`, then to the per-file `fetchFile` path. Pull-only file writing is
+  now a shared `applyRestoredFiles` helper.
+- **`BackupVerifier`** — the push list goes in one `postBulk` (previous copies for the
+  line diffstats pre-fetched with one `fetchFiles`), and the read-back pulls every
+  exercise/routine in one `fetchFiles` instead of a `GET /v1/file` per file.
+- Tests: `RepoSyncApiChunkTest` (7 — 500/50-MB split, order preservation, oversized
+  single entry), `UstarReaderTest` (9 — short names, unpadded data, GNU long-name, PAX
+  path, directory skip, `./` strip, empty archive/file). Branch
+  `feature/backup-batch-endpoints`.

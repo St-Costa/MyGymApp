@@ -35,6 +35,18 @@ class SyncConfigRepository @Inject constructor(
             .apply()
     }
 
+    /**
+     * Last `X-Manifest-SHA256` seen from `GET /v1/repo/tarball` — sent back as `?since=`
+     * so an unchanged server answers with an empty tar. Cleared implicitly on server
+     * change (a different URL makes the stored hash meaningless, but re-fetching a full
+     * tarball once is harmless).
+     */
+    fun lastTarballManifestSha(): String = prefs.getString("tarballManifestSha", "") ?: ""
+
+    fun setLastTarballManifestSha(sha: String) {
+        prefs.edit().putString("tarballManifestSha", sha).apply()
+    }
+
     /** True once both fields are non-blank — the minimum to attempt a send, regardless of [isEnabled]. */
     fun isConfigured(): Boolean = serverUrl().isNotBlank() && bearerToken().isNotBlank()
 }
