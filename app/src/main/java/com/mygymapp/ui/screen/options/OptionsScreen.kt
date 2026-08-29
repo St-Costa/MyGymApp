@@ -102,6 +102,7 @@ fun OptionsScreen(
                 onEnabledChange = viewModel::setSyncEnabled,
                 onTestConnection = viewModel::testConnection,
                 onResyncAll = viewModel::resyncAll,
+                onRestoreFromServer = viewModel::restoreFromServer,
             )
             PowerliftingSection(
                 anchorMonday = uiState.anchorMonday,
@@ -115,6 +116,7 @@ fun OptionsScreen(
                 onScaleDebugClick = onNavigateToScaleDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
+                onVerifyBackup = viewModel::verifyBackupRoundTrip,
                 onSummaryPreviewClick = onNavigateToSummaryPreview,
             )
         }
@@ -215,8 +217,10 @@ private fun ServerSettingsSection(
     onEnabledChange: (Boolean) -> Unit,
     onTestConnection: () -> Unit,
     onResyncAll: () -> Unit,
+    onRestoreFromServer: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
+    var showRestoreConfirm by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -309,8 +313,47 @@ private fun ServerSettingsSection(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+
+                // Full-store restore (docs/BACKUP.md §3.6): pull-only, never deletes local
+                // files. Confirmed because it can overwrite local edits that haven't synced.
+                OutlinedButton(
+                    onClick = { showRestoreConfirm = true },
+                    enabled = !uiState.syncIsRestoring && configured,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina dal server")
+                }
+                uiState.syncRestoreResult?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
+    }
+
+    if (showRestoreConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("Ripristina dal server") },
+            text = {
+                Text(
+                    "Scarica dal server ogni file mancante o diverso (schede, esercizi, " +
+                        "sessioni, pesate…). Non cancella nulla in locale.",
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showRestoreConfirm = false
+                    onRestoreFromServer()
+                }) { Text("Ripristina") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showRestoreConfirm = false }) { Text("Annulla") }
+            },
+        )
     }
 }
 
@@ -323,6 +366,7 @@ private fun PendingItemsList(uiState: OptionsUiState) {
             "Sessioni" to uiState.syncSessionsPending,
             "Pesate" to uiState.syncScalePending,
             "ECG" to uiState.syncEcgPending,
+            "Schede/esercizi" to uiState.syncRepoPending,
         ).forEach { (label, count) ->
             Text(
                 "• $label: $count",
@@ -341,8 +385,8 @@ private fun PendingItemsList(uiState: OptionsUiState) {
 }
 
 /**
- * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send.
- * Each is its own short explanation + button, separated by a divider.
+ * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send,
+ * backup round-trip check. Each is its own short explanation + button, separated by a divider.
  */
 @Composable
 private fun DebugSection(
@@ -350,6 +394,7 @@ private fun DebugSection(
     onScaleDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
+    onVerifyBackup: () -> Unit,
     onSummaryPreviewClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
@@ -445,6 +490,36 @@ private fun DebugSection(
                     uiState.ecgDebugResult,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Backup round-trip — pushes every real exercise/routine that isn't already on
+            // the server, then reads them all back (GET /v1/manifest + GET /v1/file) and
+            // compares byte-for-byte. No synthetic file, no delete — the user's real data
+            // stays on the server, which is the point (docs/BACKUP.md §3.7).
+            Text(
+                "Invia gli esercizi/routine non ancora sul server, poi li riscarica e verifica che siano identici.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onVerifyBackup,
+                enabled = configured && !uiState.backupVerifyRunning,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.backupVerifyRunning) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Verifica backup sul server")
+                }
+            }
+            if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
+                com.mygymapp.ui.components.BackupVerifyBox(
+                    running = uiState.backupVerifyRunning,
+                    error = uiState.backupVerifyError,
+                    report = uiState.backupVerifyReport,
                 )
             }
         }

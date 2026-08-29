@@ -1,8 +1,13 @@
 package com.mygymapp.data.repository
 
+import android.content.Context
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.parser.ExerciseParser
+import com.mygymapp.data.sync.RepoLedgerRepository
+import com.mygymapp.data.sync.RepoSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.util.slugify
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -18,6 +23,9 @@ import javax.inject.Singleton
 class ExerciseRepository @Inject constructor(
     private val fileManager: FileManager,
     private val workoutRepository: WorkoutRepository,
+    private val repoLedgerRepository: RepoLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
+    @ApplicationContext private val appContext: Context,
 ) {
     private val cache = ConcurrentHashMap<String, Exercise>()
     private val mutex = Mutex()
@@ -39,6 +47,12 @@ class ExerciseRepository @Inject constructor(
 
     suspend fun save(exercise: Exercise): Exercise = withContext(Dispatchers.IO) {
         var nameChanged = false
+        // Populated inside the lock, acted on after it (server-sync bookkeeping, no need to
+        // hold the mutex for network-adjacent work — same discipline as [nameChanged]).
+        var newRelPath = ""
+        var newBytes: ByteArray? = null
+        var obsoleteRelPath: String? = null
+        var obsoleteHash = ""
         val saved = mutex.withLock {
             val now = LocalDateTime.now().toString()
             val updated = if (exercise.id.isBlank()) {
@@ -59,28 +73,57 @@ class ExerciseRepository @Inject constructor(
             if (oldExercise != null) {
                 val oldFileName = slugify(oldExercise.name, oldExercise.id)
                 if (oldFileName != fileName) {
-                    File(exercisesDir(), "$oldFileName.md").delete()
+                    val oldFile = File(exercisesDir(), "$oldFileName.md")
+                    if (oldFile.exists()) obsoleteHash = repoLedgerRepository.hashOf(oldFile)
+                    oldFile.delete()
+                    obsoleteRelPath = "exercises/$oldFileName.md"
                 }
                 nameChanged = oldExercise.name != updated.name
             }
 
-            file.writeText(ExerciseParser.toMarkdown(updated))
+            val markdown = ExerciseParser.toMarkdown(updated)
+            file.writeText(markdown)
             cache[updated.id] = updated
             bodypartsCache = null
+            newRelPath = "exercises/$fileName.md"
+            newBytes = markdown.toByteArray()
             updated
         }
         if (nameChanged) {
             workoutRepository.updateExerciseNameInHistory(saved.id, saved.name)
         }
+        // Full-store backup (docs/BACKUP.md §3.3): queue the new/changed file in the ledger
+        // so it's never lost — this always happens, regardless of the sync toggle, so
+        // "Invia dati in coda" / the periodic net / a restore all see it.
+        newBytes?.let { repoLedgerRepository.requeueIfChanged(newRelPath, it) }
+        obsoleteRelPath?.let { repoLedgerRepository.markDeleted(it, obsoleteHash) }
+        // Only kick an *immediate* upload when the sync toggle is on — same rule as the
+        // per-session enqueue in ActiveRoutineViewModel.registerRoutine(). With the toggle
+        // off, a catalogue edit stays queued locally and rides out on the next end-of-
+        // session sync, the 4h periodic net, or "Invia dati in coda".
+        if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+            RepoSyncWorker.Scheduler.runExpedited(appContext)
+        }
         saved
     }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
+        var deletedRelPath: String? = null
+        var deletedHash = ""
         mutex.withLock {
             val exercise = cache.remove(id) ?: return@withLock
             val fileName = slugify(exercise.name, exercise.id)
-            File(exercisesDir(), "$fileName.md").delete()
+            val file = File(exercisesDir(), "$fileName.md")
+            if (file.exists()) deletedHash = repoLedgerRepository.hashOf(file)
+            file.delete()
             bodypartsCache = null
+            deletedRelPath = "exercises/$fileName.md"
+        }
+        deletedRelPath?.let {
+            repoLedgerRepository.markDeleted(it, deletedHash)
+            if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                RepoSyncWorker.Scheduler.runExpedited(appContext)
+            }
         }
     }
 

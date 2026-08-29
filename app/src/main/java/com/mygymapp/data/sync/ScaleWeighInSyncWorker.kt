@@ -47,10 +47,12 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        // isEnabled() gates whether BleScaleManager queues a NEW weigh-in, not whether
-        // already-queued entries get drained here — same reasoning as SyncWorker/
-        // ReadinessSyncWorker (docs/SYNC.md §1.5).
-        if (!config.isConfigured()) return@withContext Result.success()
+        // See docs/SYNC.md §1.5 + [shouldSyncRun]. Toggle OFF ⇒ only a forced run drains
+        // the queue (session finalize / manual send); periodic net is a no-op.
+        val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
+        if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {
+            return@withContext Result.success()
+        }
 
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
@@ -102,9 +104,12 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        fun runExpedited(context: Context) {
+        /** [force] `true` bypasses the "Sincronizzazione attiva" toggle for this run —
+         *  session finalize / manual send only. */
+        fun runExpedited(context: Context, force: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<ScaleWeighInSyncWorker>()
                 .setConstraints(constraints)
+                .setInputData(androidx.work.workDataOf(SYNC_FORCE_KEY to force))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context)

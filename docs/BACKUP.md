@@ -1,9 +1,12 @@
 # Full-store backup — git-style incremental sync of *all* app data
 
-> **Status:** design only, not implemented. This extends the existing session/readiness/
-> scale/ECG sync (`docs/SYNC.md`) to cover **every** user-authored file — exercises and
-> routines included — and turns the server's raw store into a versioned git repo so any
-> past state is recoverable.
+> **Status:** **phone side implemented** (branch `feature/full-store-backup`, see
+> CHANGELOG.md). The server side (`POST /v1/repo`, `GET /v1/manifest`, `GET /v1/file`, the
+> git-commit-per-push hook) lives in `MyGymApp_server` — brief:
+> [docs/backup-server-brief.md](backup-server-brief.md) — and is not yet built. This
+> extends the existing session/readiness/scale/ECG sync (`docs/SYNC.md`) to cover **every**
+> user-authored file — exercises and routines included — and turns the server's raw store
+> into a versioned git repo so any past state is recoverable.
 >
 > **Why this exists:** on 2026-08-28 a `:baseline-profile` generation run uninstalled the
 > app and wiped `filesDir/gymdata/`. Sessions/readiness/scale/ECG were recoverable from the
@@ -132,17 +135,19 @@ required; the content is identical so `git` may even detect the rename itself).
 
 | Trigger | Hook |
 |---|---|
-| Exercise created/edited | `ExerciseRepository.save()` — after the file write, `repoLedger.requeueIfChanged(relPath, bytes)`. |
-| Exercise deleted | `ExerciseRepository.delete()` — `repoLedger.markDeleted(relPath, lastHash)`. |
+| Exercise created/edited | `ExerciseRepository.save()` — after the file write, `repoLedger.requeueIfChanged(relPath, bytes)`. Expedites `RepoSyncWorker` **only if `syncConfigRepository.isEnabled()`** (toggle on). |
+| Exercise deleted | `ExerciseRepository.delete()` — `repoLedger.markDeleted(relPath, lastHash)`; expedites only if the toggle is on. |
 | Routine created/edited | `RoutineRepository.save()` — same as exercise save. |
 | Routine deleted | `RoutineRepository.delete()` — `repoLedger.markDeleted(...)`. |
 | `rt-fixeddaily` auto-seed on first launch | Its `save()` path already runs → picked up automatically. |
-| End of session | `ActiveRoutineViewModel.registerRoutine()` already triggers an expedited `SyncWorker`; add an expedited `RepoSyncWorker` alongside it, so a routine edited mid-session and its session land together. |
-| 4-hourly periodic net | `MyGymApp.onCreate()` — add `RepoSyncWorker` to the existing `ensurePeriodic()` batch. |
-| "Ripristina / Rinvia tutto" (Options) | `OptionsViewModel.resyncAll()` — also walk `exercises/` and `routines/`, `requeueIfChanged()` every file regardless of prior status. |
+| End of session | `ActiveRoutineViewModel.registerRoutine()` — after the session save, calls `RepoSyncWorker.Scheduler.runExpedited(force = true)` (alongside the session / readiness / scale / ECG workers, all forced). End-of-session flushes the repo queue **whether the toggle is on or off** — see SYNC.md §1.5 / `shouldSyncRun`. |
+| 4-hourly periodic net | `MyGymApp.onCreate()` adds `RepoSyncWorker` to the `ensurePeriodic()` batch. The periodic run passes `force = false`, so with the toggle off it's a no-op. |
+| "Verifica backup sul server" / "Invia tutti i dati in coda" (Options) | `verifyBackupRoundTrip()` POSTs directly; `resyncAll()` walks `exercises/`+`routines/` and forces every worker. Both bypass the toggle. |
 
-The enqueue is **never** inline/blocking — same discipline as `completionSaved` and the
-`onCleared()` save (see CONVENTIONS.md).
+The `requeueIfChanged` / `markDeleted` **ledger write always happens** when a server is
+configured, regardless of the toggle — so a catalogue edit made while sync is off is not
+lost, it just waits for the next forced run. Only the *immediate upload* is toggle-gated.
+Never inline/blocking — same discipline as `completionSaved` and the `onCleared()` save.
 
 ### 3.4 `RepoSyncWorker` logic (per pending entry)
 
@@ -219,6 +224,99 @@ Extend the existing sync section:
   "Ripristinati 12 esercizi, 3 routine, 0 sessioni".
 - The existing **"Invia tutti i dati in coda"** now also backfills `exercises/` + `routines/`.
 
+#### "Verifica backup sul server" (debug section)
+
+A debug-only button — grouped with the Scale-BLE / step-counter / ECG debug sends, not the
+main sync card — that does a **real round-trip** of the repo-file pipeline against the user's
+actual exercises and routines: it pushes anything not yet on the server, then reads
+everything back and compares byte-for-byte. Nothing synthetic is sent; nothing is deleted.
+
+Behaviour (`OptionsViewModel.verifyBackupRoundTrip()` → `runVerify()`):
+
+1. **Diff.** `GET /v1/manifest`; compare `sha256(local)` for every `exercises/*.md` +
+   `routines/*.md` on disk against the server's hash. The set that differs (missing or
+   changed) is the push list.
+2. **Push, directly.** For each file in the push list, `POST /v1/repo` `op:"upsert"` **via
+   `RepoSyncApi`, awaited** — *not* the background `RepoSyncWorker` — so the result records
+   the server's per-file answer (`stored` → counted + shown as a green `+ name` line under
+   its category; a `SyncResult.Failure` → `pushFailed`, shown as a red `-` line with the
+   reason). The local ledger is then set to `SENT`/current-hash for each accepted file
+   (`RepoLedgerRepository.markRestored`) so the next real sync doesn't re-send them.
+3. **Read-back.** Re-fetch `GET /v1/manifest`, then for every local file `GET /v1/file` and
+   compare bytes. Buckets: `missingAfter` (still not on the server), `hashMismatch` (there
+   but different), `readBackMismatch` (`/v1/file` didn't return identical bytes),
+   `verifiedIdentical` (count). This exercises the exact code path a post-wipe restore uses.
+
+The round-trip logic lives in `data/sync/BackupVerifier.kt` (`@Singleton`, injectable). It
+is run from **two** places with identical behaviour:
+- Options → Debug → **"Verifica backup sul server"** button (`OptionsViewModel`).
+- The **end-of-session summary** (`SessionProgressViewModel`, only when `justCompleted` and
+  a server is configured) — so a finished workout shows, right there, exactly which
+  exercises/routines it just pushed. Runs once on screen open, no retry loop.
+
+Both render the shared `ui/components/BackupVerifyBox.kt` composable (also exercised with
+sample data in the "Anteprima riepilogo" debug screen).
+
+For each **changed** exercise/routine, before the `POST` it also does a `GET /v1/file` for
+the server's *previous* copy and computes a **line diffstat** (`lineDiffStat` — a cheap
+multiset line difference, not an LCS). A rep-range edit is `-` + `+` (one line replaced); a
+brand-new file is all `+`.
+
+**Sessions** (`history/**/*.md`) are included but **count-only**: matched by manifest hash,
+no per-file read-back (they never change after recording, and there are ~60). The report
+shows `N/M allineate` and names any that differ (backfill case).
+
+Errors (a rejected `POST`, a post-push manifest gap, a non-identical read-back) go into an
+**ERRORI** section (raw filename → reason) *and* are written to `gymdata/logs/app.log` via
+`AppLogger` (`adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`, filter
+`BackupVerifier`).
+
+The result is a **`BackupVerifyReport`** rendered by `ui/components/BackupVerifyBox.kt`:
+a centred **"Server backup"** header with a server icon, a metrics line
+(`📤 <bytes> inviati   ⏱ <time>` — `bytesUploaded` summed over the pushed files,
+`elapsedMs` for the whole round-trip), then one section per record type (`titleSmall`).
+The section **title** stays in the normal colour; only its `(X/Y allineate)` suffix — X =
+files byte-for-byte on the server after the run, Y = files on the phone — goes **red** when
+X≠Y or the section has errors (then ` - N errori` is appended inside the parens; the parens
+themselves stay normal-coloured). Changed exercises/routines are `<name>  -++` in JetBrains
+Mono (`bodyMedium`): the name from the file's `name:` frontmatter in the normal colour,
+only the `-`/`+` runs coloured (red then green). Unchanged files aren't listed.
+
+```
+          🖳  Server backup
+     📤 1,4 KB inviati   ⏱ 1,8 s
+
+Esercizi  (42/42 allineate)
+    Calf Raise  -+
+    Incline DB Press  ++++++++++++
+Routine  (7/7 allineate)
+    Pull  --+++
+Sessioni  (62/62 allineate)
+```
+
+When a file fails, its error row is shown **inside that record type's own section** (raw
+filename, not the pretty name), and that section's count suffix turns red with ` - N errori`:
+
+```
+Esercizi  (41/42 allineate - 1 errore)      ← "Esercizi (" and ")" normal, "41/42 … 1 errore" red
+    Squat  -+
+    squat-ex-11112222.md → HTTP 422: contentHash mismatch
+Routine  (7/7 allineate)
+Sessioni  (61/62 allineate)                  ← count suffix red (off), no error row
+    da inviare: 2026-08-28_rt-71284f58_b38ae530
+```
+
+Every error is also written to `gymdata/logs/app.log` (`AppLogger`, tag `BackupVerifier`)
+regardless of where it renders — `adb shell run-as com.mygymapp cat
+files/gymdata/logs/app.log | grep BackupVerifier`.
+
+Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
+toggle — pressing the button is the opt-in, same as "Invia dati in coda".
+
+**Server-visible side effects**: one commit per file that was actually new/changed (a
+re-run with nothing changed pushes nothing → no commit). **No deletes, no `deleted/`
+tombstones** — the files it uploads are the user's real data and are meant to stay.
+
 ---
 
 ## 4. Server side (summary — full brief for the server repo is separate)
@@ -288,20 +386,30 @@ also excluded.
 
 ## 7. Implementation checklist (phone side)
 
-- [ ] `RepoLedgerRepository.kt` + `_sync/repo_state.yml` (mirror `SyncLedgerRepository`)
-- [ ] `RepoSyncApi.kt` — multipart `POST /v1/repo`, `op` upsert/delete, `/health` reuse
-- [ ] `RepoSyncWorker.kt` (`@HiltWorker`) + add to `SyncWorker.Scheduler` expedited & periodic
-- [ ] `RestoreApi.kt` — `GET /v1/manifest`, `GET /v1/file`
-- [ ] Hooks: `ExerciseRepository.save/delete`, `RoutineRepository.save/delete`,
-      rename path (new-upsert + old-tombstone), `ActiveRoutineViewModel.registerRoutine()`
-      expedited trigger, `MyGymApp.onCreate()` periodic
-- [ ] `OptionsViewModel` — repo count in status line, "Ripristina dal server",
+- [x] `RepoLedgerRepository.kt` + `_sync/repo_state.yml` (mirrors `SyncLedgerRepository`;
+      keyed by relPath; `requeueIfChanged` / `markDeleted` / `markSent` / `markFailed` /
+      `markRestored`; `DELETED_PENDING`/`DELETED_SENT` added to `SyncStatus`)
+- [x] `RepoSyncApi.kt` — multipart `POST /v1/repo`, `postUpsert` (file part) / `postDelete`
+      (envelope only)
+- [x] `RepoSyncWorker.kt` (`@HiltWorker`) + `RepoSyncWorker.Scheduler` (expedited + 4h periodic)
+- [x] `RestoreApi.kt` — `GET /v1/manifest`, `GET /v1/file?relPath=…`
+- [x] Hooks: `ExerciseRepository.save/delete`, `RoutineRepository.save/delete` (rename path
+      does new-upsert + old-tombstone), `ActiveRoutineViewModel.registerRoutine()` expedited
+      trigger, `MyGymApp.onCreate()` periodic batch
+- [x] `OptionsViewModel` / `OptionsScreen` — "Schede/esercizi" count in the pending list,
+      "Ripristina dal server" (confirm dialog + result summary via `restoreFromServer()`),
       `resyncAll()` walks `exercises/` + `routines/`
-- [ ] `STORAGE.md` — document `_sync/repo_state.yml`; note exercises/routines are now synced
-- [ ] `SYNC.md` — add "Fifth record type: repo files" pointer to this doc
-- [ ] `CLAUDE.md` banner — once this ships and is verified, soften "no automatic backup" to
-      "automatic incremental backup exists (docs/BACKUP.md) **but still take the tar before
-      any install/test op** — a backup you haven't verified is not a backup"
+- [x] "Verifica backup sul server" debug button (§3.7) — real round-trip against actual
+      exercises/routines: `GET /v1/manifest` → diff → `POST /v1/repo` (direct, awaited, one
+      per changed file) → `GET /v1/manifest`+`GET /v1/file` byte-for-byte. Result is a
+      `BackupVerifyReport` shown as a git-diff block (`+`/`-` per category) plus a one-line
+      paraphrase of the server's response. No synthetic file, no delete.
+- [x] `STORAGE.md` — `_sync/repo_state.yml` documented; root-layout tree updated
+- [x] `SYNC.md` — "Fifth record type: repo files" pointer added
+- [x] `CLAUDE.md` banner softened (still mandates the tar before any install/test op)
+- [x] `RepoLedgerRepositoryTest` — round-trip + state-machine coverage (10 cases)
+- [x] `FileManager` given a test-only `constructor(root: File)` seam (this project's unit
+      suite has no Robolectric/Context)
 - [ ] End-to-end test against the live server: create/edit/delete an exercise and a routine,
       confirm one commit per push on the server, then wipe `exercises/`+`routines/` locally
-      and restore via `GET /v1/manifest`
+      and restore via `GET /v1/manifest` — **blocked on the server side being built**

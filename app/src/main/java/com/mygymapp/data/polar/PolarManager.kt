@@ -1445,15 +1445,17 @@ class PolarManager @Inject constructor(
                     stepsPreviousDay = stepReading?.previousDayTotal,
                 )
                 appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
-                // Sync enqueue is gated the same way session sync is (docs/SYNC.md §1.5):
-                // only the automatic path respects the enabled toggle. A manual resync
-                // action for readiness events can be added later the same way "Resync
-                // all" works for sessions, if that's ever needed.
-                if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                // docs/SYNC.md §1.5: always queue in the ledger when a server is configured
+                // (so a measurement taken while the toggle is off isn't lost — it flushes
+                // at end-of-session or via "Invia dati in coda"), but only kick an immediate
+                // upload when the toggle is on.
+                if (syncConfigRepository.isConfigured()) {
                     val file = readinessRepository.fileFor(event)
                     if (file.exists()) {
                         readinessLedgerRepository.enqueue(event.id, "readiness/${event.id}.md", file)
-                        ReadinessSyncWorker.Scheduler.runExpedited(context)
+                        if (syncConfigRepository.isEnabled()) {
+                            ReadinessSyncWorker.Scheduler.runExpedited(context)
+                        }
                     }
                 }
             } catch (e: Throwable) {
