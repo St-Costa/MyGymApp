@@ -96,6 +96,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                     exercisesLocal = 42, exercisesMatching = 42,
                     routinesLocal = 7, routinesMatching = 7,
                     sessionsLocal = 62, sessionsMatching = 62,
+                    elapsedMs = 1_840, bytesUploaded = 1_432,
                 ),
             )
             // Nothing to send — everything already aligned.
@@ -104,9 +105,10 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                     exercisesLocal = 42, exercisesMatching = 42,
                     routinesLocal = 7, routinesMatching = 7,
                     sessionsLocal = 62, sessionsMatching = 62,
+                    elapsedMs = 640, bytesUploaded = 0,
                 ),
             )
-            // With problems + an ERRORI section.
+            // With problems: an error under Routine + a count-off Sessioni row.
             BackupVerifyBox(
                 report = BackupVerifyReport(
                     exercises = listOf(BackupDiffEntry("Squat", added = 1, removed = 1)),
@@ -118,6 +120,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                         BackupError(BackupErrorCategory.ROUTINE, "push-rt-b997ec72.md", "HTTP 422: contentHash mismatch"),
                         BackupError(BackupErrorCategory.ROUTINE, "leg-rt-97a2091f.md", "assente dal manifest dopo il push"),
                     ),
+                    elapsedMs = 3_120, bytesUploaded = 2_890_000,
                 ),
             )
             BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")

@@ -1121,10 +1121,12 @@ that gap; this is its phone side.
   rep-range edit now correctly shows `-+`, not just `+`. **Sessioni** (`history/**/*.md`)
   added as a count-only section (`N/M allineate`, matched by manifest hash, no per-file
   read-back). Each failure renders **inside its own record-type section** (`BackupError`
-  gained a `category`) as a red row `<raw-filename> → <reason>`, and that section's header
-  count turns red with `· N errori` appended; every error is *also* written to
-  `gymdata/logs/app.log` (`AppLogger`, tag `BackupVerifier`) for `adb`-side debugging. The
-  per-section count `(X/Y allineate)` moved into each header (no bottom Manifest line). New
+  gained a `category`) as a red row `<raw-filename> → <reason>`; the section *title* stays
+  normal-coloured and only its `(X/Y allineate - N errori)` suffix goes red. Every error is
+  *also* written to `gymdata/logs/app.log` (`AppLogger`, tag `BackupVerifier`) for
+  `adb`-side debugging. Header renamed "Server backup" + a metrics line under it
+  (`📤 <KB/MB> inviati   ⏱ <s>` — `bytesUploaded` / `elapsedMs` added to the report). The
+  per-section count `(X/Y allineate)` lives in each header (no bottom Manifest line). New
   `BackupVerifierDiffStatTest` (7 cases).
 
 **Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's

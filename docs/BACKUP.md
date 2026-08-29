@@ -272,15 +272,19 @@ Errors (a rejected `POST`, a post-push manifest gap, a non-identical read-back) 
 `BackupVerifier`).
 
 The result is a **`BackupVerifyReport`** rendered by `ui/components/BackupVerifyBox.kt`:
-a centred **"Backup sul server"** header with a server icon, then one section per record
-type (`titleSmall` bold) each carrying its own `(X/Y allineate)` — X = files byte-for-byte
-on the server after the run, Y = files on the phone — in the header colour, **red** if
-X≠Y. Changed exercises/routines are `<name>  -++` in JetBrains Mono (`bodyMedium`): the
-name from the file's `name:` frontmatter in the normal text colour, only the `-`/`+` runs
-coloured (red then green). Unchanged files aren't listed at all.
+a centred **"Server backup"** header with a server icon, a metrics line
+(`📤 <bytes> inviati   ⏱ <time>` — `bytesUploaded` summed over the pushed files,
+`elapsedMs` for the whole round-trip), then one section per record type (`titleSmall`).
+The section **title** stays in the normal colour; only its `(X/Y allineate)` suffix — X =
+files byte-for-byte on the server after the run, Y = files on the phone — goes **red** when
+X≠Y or the section has errors (then ` - N errori` is appended inside the parens; the parens
+themselves stay normal-coloured). Changed exercises/routines are `<name>  -++` in JetBrains
+Mono (`bodyMedium`): the name from the file's `name:` frontmatter in the normal colour,
+only the `-`/`+` runs coloured (red then green). Unchanged files aren't listed.
 
 ```
-          🖳  Backup sul server
+          🖳  Server backup
+     📤 1,4 KB inviati   ⏱ 1,8 s
 
 Esercizi  (42/42 allineate)
     Calf Raise  -+
@@ -291,14 +295,14 @@ Sessioni  (62/62 allineate)
 ```
 
 When a file fails, its error row is shown **inside that record type's own section** (raw
-filename, not the pretty name), and the header count turns red and gains `· N errori`:
+filename, not the pretty name), and that section's count suffix turns red with ` - N errori`:
 
 ```
-Esercizi  (41/42 allineate · 1 errore)      ← whole header red
+Esercizi  (41/42 allineate - 1 errore)      ← "Esercizi (" and ")" normal, "41/42 … 1 errore" red
     Squat  -+
     squat-ex-11112222.md → HTTP 422: contentHash mismatch
 Routine  (7/7 allineate)
-Sessioni  (61/62 allineate)                  ← red (count off, no error row)
+Sessioni  (61/62 allineate)                  ← count suffix red (off), no error row
     da inviare: 2026-08-28_rt-71284f58_b38ae530
 ```
 
