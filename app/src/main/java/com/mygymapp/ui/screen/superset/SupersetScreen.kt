@@ -368,9 +368,10 @@ private fun SupersetSetItem(
                     if (prWeight == prWeight.toLong().toDouble()) prWeight.toLong().toString() else "%.1f".format(prWeight)
                 }
                 Text(
-                    text = "PR ${prReps}x${prWeightText}",
+                    text = "PR: ${prReps} x ${prWeightText}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

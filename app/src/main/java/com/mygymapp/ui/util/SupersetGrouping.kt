@@ -20,6 +20,32 @@ const val MAX_SUPERSET_SIZE = 3
  * in an active session). They produce different sealed classes but the grouping
  * logic is the same.
  */
+/**
+ * Removes the elements of [items] for which [keep] is false, and — crucially — clears the
+ * forward superset link ([linkSet] returns a copy with the link off) of any surviving element
+ * whose immediate successor in the ORIGINAL list was removed.
+ *
+ * Without the link-clearing, a `linked`-marked element whose partner is dropped would silently
+ * re-link to the next survivor and fabricate a superset that the source list never contained.
+ * This is what happened when a fixed-daily exercise that is also in the routine got filtered
+ * out of the daily section mid-chain — see
+ * [ActiveRoutineViewModel][com.mygymapp.ui.screen.activeroutine.ActiveRoutineViewModel].
+ */
+inline fun <T> filterBreakingSupersetLinks(
+    items: List<T>,
+    linked: (T) -> Boolean,
+    linkOff: (T) -> T,
+    keep: (T) -> Boolean,
+): List<T> {
+    val out = ArrayList<T>(items.size)
+    for (i in items.indices) {
+        if (!keep(items[i])) continue
+        val nextKept = i + 1 <= items.lastIndex && keep(items[i + 1])
+        out += if (linked(items[i]) && !nextKept) linkOff(items[i]) else items[i]
+    }
+    return out
+}
+
 inline fun <T, R> groupSupersets(
     items: List<T>,
     isPairedWithNext: (T) -> Boolean,

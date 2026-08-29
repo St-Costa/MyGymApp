@@ -24,6 +24,7 @@ import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
 import com.mygymapp.data.util.AppLogger
+import com.mygymapp.ui.util.filterBreakingSupersetLinks
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -161,9 +162,39 @@ class ActiveRoutineViewModel @Inject constructor(
             val warmup = routine.exercises.filter { it.isWarmup }
             val normal = routine.exercises.filterNot { it.isWarmup }
             val routineExerciseIds = routine.exercises.map { it.exerciseId }.toSet()
+
+            // IDs referenced by any section that resolve to a real exercise. A routine can
+            // outlive an exercise it references; such a slot must be dropped.
+            val existingExerciseIds = buildSet {
+                val candidateIds = (routine.exercises +
+                    routineRepository.getById(FIXED_DAILY_ROUTINE_ID)?.exercises.orEmpty())
+                    .map { it.exerciseId }
+                    .distinct()
+                for (id in candidateIds) {
+                    if (exerciseRepository.getById(id) != null) add(id)
+                }
+            }
+
+            // Drop the elements failing `keep` and break the superset link of any survivor whose
+            // original successor was dropped — otherwise a `supersetWithNext = true` flag would
+            // silently re-link to the next survivor and fabricate a superset the routine never
+            // contained. See filterBreakingSupersetLinks. Used to remove a fixed-daily exercise
+            // that's also in the routine (a mid-chain daily member vanishing must not pair the
+            // two exercises that surrounded it), and a routine's references to deleted exercises.
+            fun List<RoutineExercise>.filterBreakingLinks(
+                keep: (RoutineExercise) -> Boolean,
+            ): List<RoutineExercise> = filterBreakingSupersetLinks(
+                items = this,
+                linked = { it.supersetWithNext },
+                linkOff = { it.copy(supersetWithNext = false) },
+                keep = keep,
+            )
+
             // Skip a fixed-daily exercise already present in the routine (duplicates unsupported).
             val fixed = (routineRepository.getById(FIXED_DAILY_ROUTINE_ID)?.exercises ?: emptyList())
-                .filterNot { it.exerciseId in routineExerciseIds }
+                .filterBreakingLinks {
+                    it.exerciseId !in routineExerciseIds && it.exerciseId in existingExerciseIds
+                }
 
             // Clear the superset link on each section's last item so no pair spans a boundary.
             fun List<RoutineExercise>.clearTailLink(): List<RoutineExercise> =
@@ -173,8 +204,10 @@ class ActiveRoutineViewModel @Inject constructor(
             // from tonnage.
             val ordered: List<Pair<RoutineExercise, SessionExerciseCategory>> =
                 fixed.clearTailLink().map { it to SessionExerciseCategory.DAILY } +
-                    warmup.clearTailLink().map { it to SessionExerciseCategory.WARMUP } +
-                    normal.clearTailLink().map { it to SessionExerciseCategory.NORMAL }
+                    warmup.filterBreakingLinks { it.exerciseId in existingExerciseIds }
+                        .clearTailLink().map { it to SessionExerciseCategory.WARMUP } +
+                    normal.filterBreakingLinks { it.exerciseId in existingExerciseIds }
+                        .clearTailLink().map { it to SessionExerciseCategory.NORMAL }
 
             val exercises = ordered.mapNotNull { (re, category) ->
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
