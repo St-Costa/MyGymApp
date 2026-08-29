@@ -57,6 +57,10 @@ data class BackupVerifyReport(
     val sessionsMatching: Int = 0,
     val sessionsChanged: List<String> = emptyList(),
     val errors: List<BackupError> = emptyList(),
+    /** Wall time of the whole round-trip (manifest → pushes → read-back). */
+    val elapsedMs: Long = 0,
+    /** Total bytes actually uploaded this run (sum of the pushed files' sizes). */
+    val bytesUploaded: Long = 0,
 ) {
     fun errorsOf(cat: BackupErrorCategory) = errors.filter { it.category == cat }
 
@@ -102,6 +106,7 @@ class BackupVerifier @Inject constructor(
     }
 
     suspend fun run(): BackupVerifyOutcome = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         if (!config.isConfigured()) {
             return@withContext BackupVerifyOutcome.HardFail("Server sync non configurato")
         }
@@ -142,6 +147,7 @@ class BackupVerifier @Inject constructor(
         val rtEntries = mutableListOf<BackupDiffEntry>()
         val errors = mutableListOf<BackupError>()
         val pushedRel = mutableSetOf<String>()
+        var bytesUploaded = 0L
         val tmp = File.createTempFile("repo-verify", ".md", appContext.cacheDir)
         try {
             for (l in toPush) {
@@ -160,6 +166,7 @@ class BackupVerifier @Inject constructor(
                 when (val r = repoSyncApi.postUpsert(serverUrl, token, relPath, l.hash, appVersion, tmp)) {
                     is SyncResult.Success -> {
                         pushedRel += relPath
+                        bytesUploaded += l.bytes.size
                         val entry = BackupDiffEntry(displayName(l.file, l.bytes), diffstat.first, diffstat.second)
                         if (cat(l.file) == "exercises") exEntries += entry else rtEntries += entry
                     }
@@ -239,6 +246,8 @@ class BackupVerifier @Inject constructor(
             sessionsMatching = sessionsMatching,
             sessionsChanged = sessionsChanged.sorted(),
             errors = errors,
+            elapsedMs = System.currentTimeMillis() - startedAt,
+            bytesUploaded = bytesUploaded,
         )
         if (errors.isNotEmpty()) {
             appLogger.w(TAG, "verify finished with ${errors.size} error(s): " +

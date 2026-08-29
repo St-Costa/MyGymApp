@@ -74,10 +74,15 @@ fun BackupVerifyBox(
             )
             Spacer(Modifier.size(8.dp))
             Text(
-                "Backup sul server",
+                "Server backup",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+        }
+
+        if (report != null) {
+            Spacer(Modifier.height(6.dp))
+            MetricsRow(report)
         }
         Spacer(Modifier.height(10.dp))
 
@@ -102,6 +107,38 @@ fun BackupVerifyBox(
         }
     }
 }
+
+/** "📤 1,4 KB inviati   ⏱ 0,8 s" — one centred line under the title. */
+@Composable
+private fun MetricsRow(r: BackupVerifyReport) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "📤 ${humanBytes(r.bytesUploaded)} inviati",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(16.dp))
+        Text(
+            "⏱ ${humanMillis(r.elapsedMs)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun humanBytes(b: Long): String = when {
+    b <= 0L -> "0 B"
+    b < 1024 -> "$b B"
+    b < 1024 * 1024 -> "%.1f KB".format(b / 1024.0)
+    else -> "%.1f MB".format(b / (1024.0 * 1024))
+}
+
+private fun humanMillis(ms: Long): String =
+    if (ms < 1000) "$ms ms" else "%.1f s".format(ms / 1000.0)
 
 @Composable
 private fun ReportBody(r: BackupVerifyReport) {
@@ -136,8 +173,9 @@ private fun ReportBody(r: BackupVerifyReport) {
     }
 }
 
-/** One record-type block: header `Titolo  (X/Y allineate · N errori)` (red when off), then
- *  the diff rows, then any error rows for this category (raw filename → reason, all red). */
+/** One record-type block. The **title** stays in the normal colour; only the
+ *  `(X/Y allineate · N errori)` suffix goes red when the count is off / there are errors.
+ *  Then the diff rows, then any error rows for this category (raw filename → reason, red). */
 @Composable
 private fun RecordSection(
     title: String,
@@ -151,12 +189,14 @@ private fun RecordSection(
     val off = matching != local || errors.isNotEmpty()
     val count = buildString {
         append("$matching/$local allineat${plural(local)}")
-        if (errors.isNotEmpty()) append(" · ${errors.size} error${if (errors.size == 1) "e" else "i"}")
+        if (errors.isNotEmpty()) append(" - ${errors.size} error${if (errors.size == 1) "e" else "i"}")
     }
     Text(
         buildAnnotatedString {
-            withStyle(SpanStyle(color = if (off) RED else base, fontWeight = FontWeight.Bold)) { append(title) }
-            withStyle(SpanStyle(color = if (off) RED else base, fontWeight = FontWeight.Normal)) { append("  ($count)") }
+            withStyle(SpanStyle(color = base, fontWeight = FontWeight.Bold)) { append(title) }
+            withStyle(SpanStyle(color = base, fontWeight = FontWeight.Normal)) { append("  (") }
+            withStyle(SpanStyle(color = if (off) RED else base, fontWeight = FontWeight.Normal)) { append(count) }
+            withStyle(SpanStyle(color = base, fontWeight = FontWeight.Normal)) { append(")") }
         },
         style = MaterialTheme.typography.titleSmall,
     )
