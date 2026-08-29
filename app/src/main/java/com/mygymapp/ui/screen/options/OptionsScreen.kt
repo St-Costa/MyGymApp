@@ -295,6 +295,8 @@ private fun ServerSettingsSection(
                 }
             }
 
+            // The pending list + "Invia dati in coda" only make sense while sync is OFF
+            // (with it ON everything drains on its own).
             if (!uiState.syncEnabled) {
                 PendingItemsList(uiState)
 
@@ -315,12 +317,16 @@ private fun ServerSettingsSection(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+            }
 
-                // Full-store restore (docs/BACKUP.md §3.6): pull-only, never deletes local
-                // files. Confirmed because it can overwrite local edits that haven't synced.
+            // Full-store restore (docs/BACKUP.md §3.6): pull-only, never deletes local
+            // files. Confirmed because it can overwrite local edits that haven't synced.
+            // Shown regardless of the toggle — it's the post-wipe recovery action, and a
+            // fresh install may well have sync still ON from a restored config.
+            if (configured) {
                 OutlinedButton(
                     onClick = { showRestoreConfirm = true },
-                    enabled = !uiState.syncIsRestoring && configured,
+                    enabled = !uiState.syncIsRestoring,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina dal server")

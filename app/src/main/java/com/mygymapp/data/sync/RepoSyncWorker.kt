@@ -75,46 +75,51 @@ class RepoSyncWorker @AssistedInject constructor(
         val pending = ledger.getPending()
         if (pending.isEmpty()) return@withContext Result.success()
 
-        var anyFailure = false
+        // Build the bulk request. An `upsert` whose file vanished between enqueue and now
+        // has a `delete` tombstone queued separately — retire the stale upsert here, don't
+        // send it.
+        val bulkEntries = mutableListOf<RepoBulkEntry>()
         for (entry in pending) {
-            val result = if (entry.op == "delete") {
-                api.postDelete(
-                    serverUrl = serverUrl,
-                    bearerToken = token,
-                    relPath = entry.relPath,
-                    lastKnownHash = entry.contentHash,
-                    appVersion = BuildConfig.VERSION_NAME,
-                )
+            if (entry.op == "delete") {
+                bulkEntries += RepoBulkEntry(entry.relPath, "delete", entry.contentHash, file = null)
             } else {
                 val file = File(fileManager.root, entry.relPath)
                 if (!file.exists()) {
-                    // The file was deleted between enqueue and now — a `delete` tombstone
-                    // for it should already be queued. Nothing to upsert; retire this entry.
                     appLogger.w(TAG, "Repo upsert skip: ${entry.relPath} gone from disk (delete queued separately)")
                     ledger.markSent(entry.relPath)
                     continue
                 }
-                val currentHash = ledger.hashOf(file)
-                api.postUpsert(
-                    serverUrl = serverUrl,
-                    bearerToken = token,
-                    relPath = entry.relPath,
-                    contentHash = currentHash,
-                    appVersion = BuildConfig.VERSION_NAME,
-                    file = file,
-                )
+                bulkEntries += RepoBulkEntry(entry.relPath, "upsert", ledger.hashOf(file), file)
             }
+        }
+        if (bulkEntries.isEmpty()) return@withContext Result.success()
 
-            when (result) {
-                is SyncResult.Success -> {
-                    ledger.markSent(entry.relPath)
-                    appLogger.i(TAG, "Synced ${entry.op} ${entry.relPath}: ${result.status}")
+        var anyFailure = false
+        when (val outcome = api.postBulk(serverUrl, token, BuildConfig.VERSION_NAME, bulkEntries)) {
+            is RepoBulkOutcome.Applied -> {
+                for (r in outcome.results) {
+                    if (r.isSuccess) {
+                        ledger.markSent(r.relPath)
+                        appLogger.i(TAG, "Synced ${r.relPath}: ${r.status}")
+                    } else {
+                        ledger.markFailed(r.relPath, r.error ?: "error")
+                        appLogger.w(TAG, "Repo sync failed for ${r.relPath}: ${r.error}")
+                        anyFailure = true
+                    }
                 }
-                is SyncResult.Failure -> {
-                    ledger.markFailed(entry.relPath, result.reason)
-                    appLogger.w(TAG, "Repo sync failed for ${entry.relPath}: ${result.reason}")
+                // A truncated `results` (fewer than we sent) means the rest are untouched —
+                // leave them PENDING and retry.
+                if (outcome.results.size < bulkEntries.size) {
+                    appLogger.w(TAG, "Bulk returned ${outcome.results.size}/${bulkEntries.size} results — retrying rest")
                     anyFailure = true
                 }
+            }
+            is RepoBulkOutcome.Failure -> {
+                // Whole-request (or per-chunk) failure — mark every not-yet-resolved entry
+                // FAILED so the status line reflects it, and retry the drain.
+                for (e in bulkEntries) ledger.markFailed(e.relPath, outcome.reason)
+                appLogger.w(TAG, "Repo bulk sync failed: ${outcome.reason}")
+                anyFailure = true
             }
         }
 

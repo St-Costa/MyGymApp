@@ -863,7 +863,7 @@ readiness/scale/ECG each got a companion spec above.
 
 ## Fifth record type: repo files (exercises + routines)
 
-Implemented (phone side), same dedicated-classes pattern as the four above. This is the
+Implemented (phone **and** server side), same dedicated-classes pattern as the four above. This is the
 **full-store backup** — the fifth pipeline covers every human-authored `exercises/*.md` and
 `routines/*.md`, turning the server's raw store into a git repo so any past state is
 recoverable. Two structural differences: it's keyed by relative path (not an id), and it's
@@ -876,6 +876,15 @@ Full design (phone + server): **[docs/BACKUP.md](BACKUP.md)**. Server-side brief
 `ExerciseRepository`/`RoutineRepository` `save()`/`delete()`, `MyGymApp.onCreate()`'s
 periodic batch, and `ActiveRoutineViewModel.registerRoutine()`'s expedited nudge. Options
 gains a "Schede/esercizi" pending bullet and a "Ripristina dal server" restore action.
+
+**Phase 90 — batch endpoints.** The N-round-trip loops are now one request each where the
+server offers it (`docs/backup/README.md` § "Batch endpoints"), single-file endpoints kept
+as fallback: `RepoSyncWorker` drains via one `POST /v1/repo/bulk` (`RepoSyncApi.postBulk`,
+auto-chunked at 500 / 50 MB, one server-side git commit per burst); `restoreFromServer()`
+pulls one `GET /v1/repo/tarball` (gzip + dependency-free `UstarReader`), falling back to
+`GET /v1/manifest` + chunked `POST /v1/repo/files` (`RestoreApi.fetchFiles`,
+`multipart/mixed`); `BackupVerifier`'s push and read-back are one `postBulk` + one
+`fetchFiles`. See [BACKUP.md §3.5–3.6](BACKUP.md).
 
 ---
 
