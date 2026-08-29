@@ -33,7 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.data.polar.ConnectionState
+import com.mygymapp.data.polar.PolarLinkStatus
 
 private val SemaphoreGreen = Color(0xFF66BB6A)
 private val SemaphoreYellow = Color(0xFFFFCA28)
@@ -45,7 +45,7 @@ fun LiveEcgCard(
     viewModel: HeartRateBarViewModel = hiltViewModel(),
 ) {
     val polarManager = viewModel.polarManager
-    val connectionState by polarManager.connectionState.collectAsState()
+    val linkStatus by polarManager.linkStatus.collectAsState()
     val waveform by polarManager.ecgWaveform.collectAsState()
     val snapshot by polarManager.liveEcgSnapshot.collectAsState()
     // HRR intentionally not shown live — it's more meaningful aggregated
@@ -54,7 +54,8 @@ fun LiveEcgCard(
     // saved (LiveEcgAnalyzer / PolarManager.liveCardiacDrift) — just not surfaced here
     // per user request. Only beats + regular% stay on this card.
 
-    if (connectionState != ConnectionState.CONNECTED) return
+    // Hide on NO_SIGNAL too (link up but strap silent) so we don't show a frozen trace.
+    if (linkStatus != PolarLinkStatus.CONNECTED) return
 
     Card(
         modifier = modifier.fillMaxWidth(),

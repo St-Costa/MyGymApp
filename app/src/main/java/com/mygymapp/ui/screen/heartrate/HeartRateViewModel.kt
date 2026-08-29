@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.ConnectionState
+import com.mygymapp.data.polar.PolarLinkStatus
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.ReadinessResult
 import com.mygymapp.data.polar.UserProfile
@@ -25,6 +26,7 @@ import javax.inject.Inject
 
 data class HeartRateUiState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
+    val linkStatus: PolarLinkStatus = PolarLinkStatus.DISCONNECTED,
     val heartRate: Int? = null,
     val batteryLevel: Int? = null,
     val batteryLow: Boolean = false,
@@ -106,6 +108,7 @@ class HeartRateViewModel @Inject constructor(
                 polarManager.sessionTrimp,
                 polarManager.readinessResult,
                 polarManager.vo2max,
+                polarManager.linkStatus,
             ) { values -> values }.collect { values ->
                 val conn = values[0] as ConnectionState
                 val hr = values[1] as Int?
@@ -117,10 +120,12 @@ class HeartRateViewModel @Inject constructor(
                 val trimp = values[6] as Double
                 val readiness = values[7] as ReadinessResult
                 val vo2 = values[8] as Double?
+                val link = values[9] as PolarLinkStatus
 
                 _uiState.update { current ->
                     current.copy(
                         connectionState = conn,
+                        linkStatus = link,
                         heartRate = hr,
                         batteryLevel = battery,
                         discoveredDevices = devices.map { d ->

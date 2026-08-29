@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,8 +33,8 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.HrZone
+import com.mygymapp.data.polar.PolarLinkStatus
 import com.mygymapp.data.polar.PolarManager
 
 fun trimpColor(trimp: Double): Color = when {
@@ -92,15 +93,20 @@ fun HeartRateBar(
     viewModel: HeartRateBarViewModel = hiltViewModel(),
 ) {
     val polarManager = viewModel.polarManager
-    val connectionState by polarManager.connectionState.collectAsState()
+    val linkStatus by polarManager.linkStatus.collectAsState()
     val heartRate by polarManager.heartRate.collectAsState()
     val trimp by polarManager.sessionTrimp.collectAsState()
     val currentZone by polarManager.currentHrZone.collectAsState()
     val currentZonePercent by polarManager.currentHrZonePercent.collectAsState()
 
-    if (connectionState != ConnectionState.CONNECTED) return
+    // Visible while connected OR while the strap is silent-but-still-linked (NO_SIGNAL):
+    // in the latter case BPM and the zone chip are replaced by a ⚠️, but TRIMP keeps its
+    // last value so the session total doesn't visually reset on a brief dropout.
+    val noSignal = linkStatus == PolarLinkStatus.NO_SIGNAL
+    if (linkStatus != PolarLinkStatus.CONNECTED && !noSignal) return
 
-    val hr = heartRate ?: return
+    val hr = heartRate
+    if (hr == null && !noSignal) return
 
     Column(
         modifier = modifier
@@ -115,19 +121,28 @@ fun HeartRateBar(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    Icons.Default.Favorite,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                    tint = RedLight,
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "$hr",
-                    style = tightNumberStyle(28.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                if (noSignal) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = "Nessun segnale dal Polar",
+                        modifier = Modifier.size(22.dp),
+                        tint = Color(0xFFFFCA28),
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Favorite,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = RedLight,
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "$hr",
+                        style = tightNumberStyle(28.sp),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
 
             // TRIMP, horizontally centered
@@ -156,8 +171,17 @@ fun HeartRateBar(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                currentZone?.let { zone ->
-                    ZoneChip(zone = zone, percent = currentZonePercent)
+                if (noSignal) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = "Nessun segnale dal Polar",
+                        modifier = Modifier.size(18.dp),
+                        tint = Color(0xFFFFCA28),
+                    )
+                } else {
+                    currentZone?.let { zone ->
+                        ZoneChip(zone = zone, percent = currentZonePercent)
+                    }
                 }
             }
         }

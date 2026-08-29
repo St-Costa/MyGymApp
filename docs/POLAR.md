@@ -33,7 +33,9 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 
 | StateFlow | Type | Updated on | Consumed by |
 |---|---|---|---|
-| `connectionState` | `DISCONNECTED` / `CONNECTING` / `CONNECTED` | SDK callbacks | Heart rate screen badge |
+| `connectionState` | `DISCONNECTED` / `CONNECTING` / `CONNECTED` | SDK callbacks | raw BLE state; prefer `linkStatus` in UI |
+| `receivingData` | `Boolean` | HR sample (`true`) / data watchdog after `DATA_STALE_MS` 5s (`false`) | display hint only — never touches the connection |
+| `linkStatus` | `PolarLinkStatus` = `CONNECTED` / `NO_SIGNAL` / `CONNECTING` / `DISCONNECTED` | `combine(connectionState, receivingData)` | every Polar-aware screen, via shared `PolarLinkStatusIcon`. `NO_SIGNAL` = link up but strap silent (taken off / powered off); Android still owns the real BLE teardown/reconnect |
 | `discoveredDevices` | `List<PolarDeviceInfo>` | During scan | Device picker |
 | `isScanning` | `Boolean` | `startScan` / `stopScan` | Spinner |
 | `heartRate` | `Int?` | Every HR sample | HeartRateBar, status-bar notification |
