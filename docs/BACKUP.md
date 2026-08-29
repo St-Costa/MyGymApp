@@ -290,19 +290,21 @@ Routine  (7/7 allineate)
 Sessioni  (62/62 allineate)
 ```
 
-When something fails, an **ERRORI** section (raw filenames, not the pretty name) is added
-and that section — plus any record type whose count is off — turns red:
+When a file fails, its error row is shown **inside that record type's own section** (raw
+filename, not the pretty name), and the header count turns red and gains `· N errori`:
 
 ```
-Esercizi  (41/42 allineate)      ← red
+Esercizi  (41/42 allineate · 1 errore)      ← whole header red
     Squat  -+
+    squat-ex-11112222.md → HTTP 422: contentHash mismatch
 Routine  (7/7 allineate)
-Sessioni  (61/62 allineate)      ← red
+Sessioni  (61/62 allineate)                  ← red (count off, no error row)
     da inviare: 2026-08-28_rt-71284f58_b38ae530
-ERRORI
-    push-rt-b997ec72.md → HTTP 422: contentHash mismatch
-    leg-rt-97a2091f.md → assente dal manifest dopo il push
 ```
+
+Every error is also written to `gymdata/logs/app.log` (`AppLogger`, tag `BackupVerifier`)
+regardless of where it renders — `adb shell run-as com.mygymapp cat
+files/gymdata/logs/app.log | grep BackupVerifier`.
 
 Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
 toggle — pressing the button is the opt-in, same as "Invia dati in coda".

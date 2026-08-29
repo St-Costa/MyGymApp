@@ -24,6 +24,7 @@ import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.polar.ReadinessResult
 import com.mygymapp.data.sync.BackupDiffEntry
 import com.mygymapp.data.sync.BackupError
+import com.mygymapp.data.sync.BackupErrorCategory
 import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.ui.components.BackupVerifyBox
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
@@ -114,8 +115,8 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                     sessionsLocal = 62, sessionsMatching = 61,
                     sessionsChanged = listOf("2026-08-28_rt-71284f58_b38ae530"),
                     errors = listOf(
-                        BackupError("push-rt-b997ec72.md", "HTTP 422: contentHash mismatch"),
-                        BackupError("leg-rt-97a2091f.md", "assente dal manifest dopo il push"),
+                        BackupError(BackupErrorCategory.ROUTINE, "push-rt-b997ec72.md", "HTTP 422: contentHash mismatch"),
+                        BackupError(BackupErrorCategory.ROUTINE, "leg-rt-97a2091f.md", "assente dal manifest dopo il push"),
                     ),
                 ),
             )

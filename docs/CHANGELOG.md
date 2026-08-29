@@ -1120,9 +1120,12 @@ that gap; this is its phone side.
   difference; a new `GET /v1/file` for the server's previous copy before each `POST`). A
   rep-range edit now correctly shows `-+`, not just `+`. **Sessioni** (`history/**/*.md`)
   added as a count-only section (`N/M allineate`, matched by manifest hash, no per-file
-  read-back). Failures go to an **ERRORI** section (raw filename → reason) *and* are logged
-  to `gymdata/logs/app.log` via `AppLogger`. Manifest line simplified to
-  `Manifest: <server>/<local> coincidono`. New `BackupVerifierDiffStatTest` (7 cases).
+  read-back). Each failure renders **inside its own record-type section** (`BackupError`
+  gained a `category`) as a red row `<raw-filename> → <reason>`, and that section's header
+  count turns red with `· N errori` appended; every error is *also* written to
+  `gymdata/logs/app.log` (`AppLogger`, tag `BackupVerifier`) for `adb`-side debugging. The
+  per-section count `(X/Y allineate)` moved into each header (no bottom Manifest line). New
+  `BackupVerifierDiffStatTest` (7 cases).
 
 **Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
 unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.
