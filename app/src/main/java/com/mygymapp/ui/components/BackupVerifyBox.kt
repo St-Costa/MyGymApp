@@ -3,6 +3,7 @@ package com.mygymapp.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,21 +15,29 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.mygymapp.data.sync.BackupDiffEntry
 import com.mygymapp.data.sync.BackupVerifyReport
 
+private val GREEN = Color(0xFF3FB950)
+private val RED = Color(0xFFF85149)
+
 /**
- * git-diff-style rendering of a full-store backup round-trip (docs/BACKUP.md §3.7): per-
- * category `+` (pushed) / `-` (problem) lines, then a one-line paraphrase of the server's
- * response. Shared by Options ("Verifica backup sul server"), the end-of-session summary,
- * and the debug preview screen.
+ * git-diffstat-style rendering of a full-store backup round-trip (docs/BACKUP.md §3.7).
+ * Sections "Esercizi" / "Routine" list each pushed item as `<name>  -+++` (name in the
+ * normal text colour, only the `+`/`-` coloured). "Sessioni" is a count line. An "ERRORI"
+ * section (raw filenames + reason) appears only when something failed.
  *
- * Pass exactly one of [running] / [error] / [report] as the meaningful state.
+ * Pass exactly one meaningful state: [running] / [error] / [report].
  */
 @Composable
 fun BackupVerifyBox(
@@ -46,49 +55,46 @@ fun BackupVerifyBox(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
-            "Backup schede/esercizi",
+            "Backup sul server",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
 
         when {
-            running -> Row2 {
+            running -> Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Text("  Verifica in corso…", style = mono())
             }
-            error != null -> Text(
-                error,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+            error != null -> Text(error, style = mono(), color = RED)
             report != null -> ReportBody(report)
-            else -> Text(
-                "In attesa…",
-                style = mono(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            else -> Text("In attesa…", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-private fun ReportBody(report: BackupVerifyReport) {
-    val green = Color(0xFF3FB950)
-    val red = Color(0xFFF85149)
-
+private fun ReportBody(r: BackupVerifyReport) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Category("esercizi", report.exercisesPushed, report.exercisesUnchanged, green)
-        Spacer(Modifier.height(4.dp))
-        Category("routine", report.routinesPushed, report.routinesUnchanged, green)
+        Section("Esercizi", r.exercises, r.exercisesUnchanged)
+        Spacer(Modifier.height(6.dp))
+        Section("Routine", r.routines, r.routinesUnchanged)
+        Spacer(Modifier.height(6.dp))
 
-        val problems = report.pushFailed +
-            report.missingAfter.map { "$it (mancante sul server)" } +
-            report.hashMismatch.map { "$it (hash diverso)" } +
-            report.readBackMismatch.map { "$it (rilettura non identica)" }
-        if (problems.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            problems.forEach { Text("- $it", style = mono(), color = red) }
+        Text("Sessioni", style = mono().copy(fontWeight = FontWeight.Bold))
+        Text(
+            "  ${r.sessionsMatching}/${r.sessionsLocal} allineate" +
+                if (r.sessionsChanged.isEmpty()) "" else " · da inviare: ${r.sessionsChanged.joinToString(", ")}",
+            style = mono(),
+            color = if (r.sessionsMatching == r.sessionsLocal) MaterialTheme.colorScheme.onSurfaceVariant else RED,
+        )
+
+        if (r.errors.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text("ERRORI", style = mono().copy(fontWeight = FontWeight.Bold), color = RED)
+            r.errors.forEach { e ->
+                Text("  ${e.fileName} → ${e.detail}", style = mono(), color = RED)
+            }
         }
 
         HorizontalDivider(
@@ -96,35 +102,39 @@ private fun ReportBody(report: BackupVerifyReport) {
             color = MaterialTheme.colorScheme.outlineVariant,
         )
         Text(
-            "Risposta server: ${report.serverSummary}",
-            style = MaterialTheme.typography.bodySmall,
-            color = if (report.allGood) MaterialTheme.colorScheme.onSurfaceVariant
-            else MaterialTheme.colorScheme.error,
+            "Manifest: ${r.manifestServerFiles}/${r.manifestLocalFiles} coincidono",
+            style = mono(),
+            color = if (r.allGood) MaterialTheme.colorScheme.onSurfaceVariant else RED,
         )
     }
 }
 
 @Composable
-private fun Category(title: String, pushed: List<String>, unchanged: Int, plusColor: Color) {
-    Text(
-        "$title  (${pushed.size} inviati, $unchanged invariati)",
-        style = mono().copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    if (pushed.isEmpty()) {
-        Text("  (niente da inviare)", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Section(title: String, entries: List<BackupDiffEntry>, unchanged: Int) {
+    Text(title, style = mono().copy(fontWeight = FontWeight.Bold))
+    if (entries.isEmpty()) {
+        Text("  nessuna modifica", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
-        pushed.forEach { Text("+ $it", style = mono(), color = plusColor) }
+        entries.forEach { e -> DiffLine(e) }
+    }
+    if (unchanged > 0) {
+        Text("  … $unchanged invariat${if (unchanged == 1) "o" else "i"}", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+/** `calf raise  -+++` — name in normal colour, `-` in red then `+` in green (git order). */
 @Composable
-private fun mono() =
-    MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+private fun DiffLine(e: BackupDiffEntry) {
+    val nameColor = MaterialTheme.colorScheme.onSurface
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = nameColor)) { append("  ${e.displayName}  ") }
+            withStyle(SpanStyle(color = RED)) { append("-".repeat(e.removed.coerceAtMost(20))) }
+            withStyle(SpanStyle(color = GREEN)) { append("+".repeat(e.added.coerceAtMost(20))) }
+        },
+        style = mono(),
+    )
+}
 
 @Composable
-private fun Row2(content: @Composable () -> Unit) {
-    androidx.compose.foundation.layout.Row(
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-    ) { content() }
-}
+private fun mono() = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)

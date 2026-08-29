@@ -257,21 +257,47 @@ is run from **two** places with identical behaviour:
 Both render the shared `ui/components/BackupVerifyBox.kt` composable (also exercised with
 sample data in the "Anteprima riepilogo" debug screen).
 
-The result is a **`BackupVerifyReport`** rendered as a git-diff-style block:
+For each **changed** exercise/routine, before the `POST` it also does a `GET /v1/file` for
+the server's *previous* copy and computes a **line diffstat** (`lineDiffStat` — a cheap
+multiset line difference, not an LCS). A rep-range edit is `-` + `+` (one line replaced); a
+brand-new file is all `+`.
+
+**Sessions** (`history/**/*.md`) are included but **count-only**: matched by manifest hash,
+no per-file read-back (they never change after recording, and there are ~60). The report
+shows `N/M allineate` and names any that differ (backfill case).
+
+Errors (a rejected `POST`, a post-push manifest gap, a non-identical read-back) go into an
+**ERRORI** section (raw filename → reason) *and* are written to `gymdata/logs/app.log` via
+`AppLogger` (`adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`, filter
+`BackupVerifier`).
+
+The result is a **`BackupVerifyReport`** rendered as a git-diffstat block. The exercise /
+routine name comes from the file's `name:` frontmatter; only the `-`/`+` runs are coloured:
 
 ```
-esercizi  (2 inviati, 40 invariati)
-+ incline-db-press-ex-0f1e2d3c.md
-+ calf-raise-ex-7ca58254.md
-routine  (1 inviati, 6 invariati)
-+ pull-rt-71284f58.md
+Esercizi
+  Calf Raise  -+
+  Incline DB Press  ++++++++++++
+  … 40 invariati
+Routine
+  Pull  --+++
+  … 6 invariati
+Sessioni
+  62/62 allineate
 ────────────────────────────
-Risposta server: 3 file accettati (stored). Manifest: 49 file schede/routine
-sul server, 49 riletti identici.
+Manifest: 111/111 coincidono
 ```
 
-Any problem file gets a red `- name (motivo)` line (push rifiutato / mancante sul server /
-hash diverso / rilettura non identica), and the server-summary line turns red.
+When something fails, an **ERRORI** section appears above the divider (raw filename here,
+not the pretty name) and the Manifest line turns red:
+
+```
+ERRORI
+  push-rt-b997ec72.md → HTTP 422: contentHash mismatch
+  leg-rt-97a2091f.md → assente dal manifest dopo il push
+────────────────────────────
+Manifest: 109/111 coincidono
+```
 
 Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
 toggle — pressing the button is the opt-in, same as "Invia dati in coda".
