@@ -208,6 +208,24 @@ fun SessionProgressScreen(
                 }
             }
 
+            // Stretch-time trend — only when this session actually had stretch work.
+            if ((uiState.sessionStretchMinutes.lastOrNull() ?: 0.0) > 0.0) {
+                MinutesTrendCard(
+                    title = "Tempo stretch",
+                    minutes = uiState.sessionStretchMinutes,
+                    labels = uiState.sessionLabels,
+                )
+            }
+
+            // Cardio-time trend — only when this session actually had cardio.
+            if ((uiState.sessionCardioMinutes.lastOrNull() ?: 0.0) > 0.0) {
+                MinutesTrendCard(
+                    title = "Tempo cardio",
+                    minutes = uiState.sessionCardioMinutes,
+                    labels = uiState.sessionLabels,
+                )
+            }
+
             if (justCompleted) {
                 androidx.compose.material3.Button(
                     onClick = onDone,
@@ -216,6 +234,41 @@ fun SessionProgressScreen(
                     Text("Fatto")
                 }
             }
+        }
+    }
+}
+
+/**
+ * A minutes-over-time trend card matching the tonnage card's look — a header with the latest
+ * value plus the shared [TonnageLineChart] (single series). Used for the stretch-time and
+ * cardio-time charts; the caller decides whether to show it at all (hidden when this session
+ * had no stretch / no cardio).
+ */
+@Composable
+private fun MinutesTrendCard(
+    title: String,
+    minutes: List<Double>,
+    labels: List<String>,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "$title: ${"%.1f".format(minutes.lastOrNull() ?: 0.0)} min",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            TonnageLineChart(
+                data = minutes,
+                labels = labels,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

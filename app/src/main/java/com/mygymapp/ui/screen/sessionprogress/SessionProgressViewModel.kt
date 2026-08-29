@@ -48,6 +48,12 @@ data class SessionProgressUiState(
     val vo2max: Double = 0.0,
     val sessionTonnage: List<Double> = emptyList(),
     val sessionBestE1RM: List<Double> = emptyList(),
+    // Per-session totals across the same 12-week window / same routine as sessionTonnage,
+    // in minutes: total time held across all STRETCH sets, and total time across all closed
+    // cardio blocks. Their charts render only when THIS session (the last data point) has a
+    // nonzero value — a routine with no stretch/cardio never shows an empty chart.
+    val sessionStretchMinutes: List<Double> = emptyList(),
+    val sessionCardioMinutes: List<Double> = emptyList(),
     val sessionLabels: List<String> = emptyList(),
     // The per-metric cardio trend charts (HRR / VO2max / resting HR / cardiac drift) were
     // dropped from this screen — the deeper ECG-derived analysis already moved server-side
@@ -221,6 +227,33 @@ class SessionProgressViewModel @Inject constructor(
                 .maxOrNull() ?: 0.0
         }
 
+        // Stretch: total seconds held across every Stretch set of every STRETCH exercise.
+        val sessionStretchMinutes = allSessions.map { hist ->
+            val secs = hist.exercises
+                .filter { it.type == ExerciseType.STRETCH }
+                .flatMap { it.sets }
+                .filterIsInstance<ExerciseSet.Stretch>()
+                .sumOf { it.timeSeconds.toLong() }
+            secs / 60.0
+        }
+
+        // Cardio: total seconds across every closed cardio block (blank endedAt = still
+        // running / abandoned — skipped).
+        val sessionCardioMinutes = allSessions.map { hist ->
+            val secs = hist.exercises
+                .flatMap { it.sets }
+                .filterIsInstance<ExerciseSet.Cardio>()
+                .filter { it.startedAt.isNotBlank() && it.endedAt.isNotBlank() }
+                .sumOf { block ->
+                    val start = runCatching { LocalDateTime.parse(block.startedAt) }.getOrNull()
+                    val end = runCatching { LocalDateTime.parse(block.endedAt) }.getOrNull()
+                    if (start != null && end != null) {
+                        java.time.Duration.between(start, end).seconds.coerceAtLeast(0)
+                    } else 0L
+                }
+            secs / 60.0
+        }
+
         val sessionSteps = stepsDuringSession(session)
 
         _uiState.value = SessionProgressUiState(
@@ -231,6 +264,8 @@ class SessionProgressViewModel @Inject constructor(
             vo2max = session.vo2max,
             sessionTonnage = sessionTonnage,
             sessionBestE1RM = sessionBestE1RM,
+            sessionStretchMinutes = sessionStretchMinutes,
+            sessionCardioMinutes = sessionCardioMinutes,
             sessionLabels = sessionLabels,
             sessionSteps = sessionSteps,
             polarDrops = if (justCompleted) polarManager.disconnectStats.value else DisconnectStats(),
