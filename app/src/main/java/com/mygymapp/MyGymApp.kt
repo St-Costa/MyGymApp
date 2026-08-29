@@ -10,6 +10,7 @@ import coil.memory.MemoryCache
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessSyncWorker
+import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncWorker
 import com.mygymapp.ui.screen.main.HomeStateLoader
@@ -53,6 +54,8 @@ class MyGymApp : Application(), ImageLoaderFactory, Configuration.Provider {
         ReadinessSyncWorker.Scheduler.ensurePeriodic(this)
         ScaleWeighInSyncWorker.Scheduler.ensurePeriodic(this)
         EcgSyncWorker.Scheduler.ensurePeriodic(this)
+        // Fifth pipeline: full-store backup of exercises/routines (docs/BACKUP.md).
+        RepoSyncWorker.Scheduler.ensurePeriodic(this)
 
         // Cold-start warm-up. The home screen's first data load pays a one-off tax the rest
         // of the session doesn't: spinning up Dispatchers.IO, class-loading snakeyaml + the

@@ -7,8 +7,14 @@ package com.mygymapp.data.sync
  * pipeline is the only one whose source file is ephemeral, so it's the only one that needs
  * a terminal "gave up" state distinct from `FAILED` (still retryable). The other three
  * pipelines (sessions/readiness/scale) never assign this value.
+ *
+ * [DELETED_PENDING] / [DELETED_SENT] are only ever produced by [RepoLedgerRepository] — the
+ * fifth pipeline (exercises/routines, see `docs/BACKUP.md`) is the only one that syncs
+ * *deletions*, since sessions/readiness/scale/ecg files are never removed on the phone. A
+ * `DELETED_PENDING` entry has no file on disk (it's gone) — the worker POSTs `op: "delete"`
+ * with the last-known content hash and flips it to `DELETED_SENT` on a 2xx.
  */
-enum class SyncStatus { PENDING, SENT, FAILED, EXPIRED }
+enum class SyncStatus { PENDING, SENT, FAILED, EXPIRED, DELETED_PENDING, DELETED_SENT }
 
 /**
  * One row of the local sync ledger — the durable record of "has this exact session
@@ -51,4 +57,26 @@ data class EcgSyncLedgerEntry(
     val lastError: String = "",
     val contentHash: String = "",
     val enqueuedAt: String = "",
+)
+
+/**
+ * [RepoLedgerRepository]'s row shape — the fifth pipeline (exercises + routines, see
+ * `docs/BACKUP.md`). Keyed by **relative path** (`exercises/{slug}-{id}.md`), not an id,
+ * because the slug embedded in the filename changes on rename.
+ *
+ * Differs from [SyncLedgerEntry]:
+ * - [op] — `"upsert"` or `"delete"`. A `"delete"` entry has no file on disk; the worker
+ *   sends `op: "delete"` with [contentHash] = the last-known content, and the entry moves
+ *   to [SyncStatus.DELETED_SENT] on success.
+ * - No `bytesSent`/`durationMs`/`serverStatus` — the repo pipeline has no end-of-session
+ *   summary box to surface them on.
+ */
+data class RepoLedgerEntry(
+    val relPath: String,
+    val op: String = "upsert",
+    val status: SyncStatus = SyncStatus.PENDING,
+    val attempts: Int = 0,
+    val lastAttemptAt: String = "",
+    val lastError: String = "",
+    val contentHash: String = "",
 )

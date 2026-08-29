@@ -1063,3 +1063,94 @@ Docs: [CONVENTIONS.md § Derived-data sidecars](CONVENTIONS.md#derived-data-side
 [§ ExerciseSessionViewModel](CONVENTIONS.md#per-exercise-viewmodels-exercisesessionviewmodel)
 added; STORAGE.md sidecar sections updated for the day-key format and the lookback
 invalidation; CLAUDE.md "Crucial facts" gained both entries.
+
+## Phase 84 — Full-store backup: exercises + routines join the sync pipelines (phone side)
+
+The Phase 82 baseline-profile wipe was recoverable for sessions/readiness/scale/ECG (all
+synced) but **not** for `exercises/*.md` / `routines/*.md` — never synced, and lossily
+rebuilt from session YAML (no image links, notes, `day`/`enabled`/warmup flags).
+`docs/BACKUP.md` designs a fifth pipeline plus a git-commit-per-push server that closes
+that gap; this is its phone side.
+
+**New (`data/sync/`)**
+- `RepoLedgerRepository` (`_sync/repo_state.yml`) — mirrors `SyncLedgerRepository` but keyed
+  by **relative path** (the slug in the filename changes on rename) and is the only ledger
+  that syncs **deletions**: `markDeleted()` writes an `op: delete` tombstone as
+  `DELETED_PENDING`, kept (not dropped) so a later re-scan can't resurrect the file
+  server-side. `requeueIfChanged()` is a no-op when the exact bytes are already `SENT` —
+  that's what makes the push incremental. New `SyncStatus` values `DELETED_PENDING` /
+  `DELETED_SENT`.
+- `RepoSyncApi` — `POST /v1/repo`, `postUpsert` (raw `.md` bytes as a file part) /
+  `postDelete` (envelope only). `stored`/`duplicate`/`deleted`/`already_absent` all count
+  as success.
+- `RepoSyncWorker` (`@HiltWorker`) + `Scheduler` — expedited on enqueue, 4h periodic
+  durability net (added to `MyGymApp.onCreate()`'s batch alongside the other four).
+- `RestoreApi` — `GET /v1/manifest` + `GET /v1/file?relPath=…`, the pull-only restore path.
+
+**Hooks**
+- `ExerciseRepository.save/delete` and `RoutineRepository.save/delete` now queue the file
+  (and, on a rename, tombstone the old `{slug}-{id}.md` path) — non-blocking, after the file
+  write, same discipline as the `completionSaved` / `onCleared()` save patterns. Both repos
+  gained a `RepoLedgerRepository` + `@ApplicationContext` dependency.
+- `ActiveRoutineViewModel.registerRoutine()` fires an expedited `RepoSyncWorker` run so a
+  routine edited mid-session lands with its session.
+- Options: a "Schede/esercizi" pending bullet, a "Ripristina dal server" action
+  (`restoreFromServer()` — confirm dialog, manifest-diff, pull-only, never deletes local
+  files, marks pulled files `SENT` so they don't bounce back), and `resyncAll()` now also
+  walks `exercises/` + `routines/`.
+- **Backup round-trip** check — real round-trip against the user's actual exercises/routines:
+  `GET /v1/manifest` → diff → `POST /v1/repo` **directly** (awaited, one per changed file,
+  so the server's per-file `stored`/failure is captured) → re-fetch the manifest and
+  `GET /v1/file` byte-for-byte. Local ledger set to `SENT` for accepted files
+  (`markRestored`). Logic lives in `data/sync/BackupVerifier.kt` (`@Singleton`), run from
+  **two** call sites: Options → Debug → "Verifica backup sul server", and the
+  **end-of-session summary** (`SessionProgressViewModel`, `justCompleted` + server
+  configured — one run on screen open, no retry). Both render the shared
+  `ui/components/BackupVerifyBox.kt`: a git-diff-style block, green `+ name` per pushed file
+  grouped by category ("N inviati, M invariati" header), red `- name (motivo)` for any
+  push-failed / missing / hash-diverged / read-back-mismatched file, then a one-line
+  paraphrase of the server response. Also wired into the "Anteprima riepilogo" debug
+  screen with sample states (running / clean / with problems / hard-fail). No synthetic
+  file, no delete.
+
+  Report format reworked to read like `git diff --stat`: sections **Esercizi** / **Routine**
+  / **Sessioni** (no counts in parentheses); each changed exercise/routine shown as
+  `<name>  -++` with the name from the file's `name:` frontmatter and only the `-`/`+` runs
+  coloured — the counts are a real per-file **line diffstat** (`lineDiffStat`, multiset line
+  difference; a new `GET /v1/file` for the server's previous copy before each `POST`). A
+  rep-range edit now correctly shows `-+`, not just `+`. **Sessioni** (`history/**/*.md`)
+  added as a count-only section (`N/M allineate`, matched by manifest hash, no per-file
+  read-back). Each failure renders **inside its own record-type section** (`BackupError`
+  gained a `category`) as a red row `<raw-filename> → <reason>`; the section *title* stays
+  normal-coloured and only its `(X/Y allineate - N errori)` suffix goes red. Every error is
+  *also* written to `gymdata/logs/app.log` (`AppLogger`, tag `BackupVerifier`) for
+  `adb`-side debugging. Header renamed "Server backup" + a metrics line under it
+  (`📤 <KB/MB> inviati   ⏱ <s>` — `bytesUploaded` / `elapsedMs` added to the report). The
+  per-section count `(X/Y allineate)` lives in each header (no bottom Manifest line). New
+  `BackupVerifierDiffStatTest` (7 cases).
+
+**Test seam**: `FileManager` gained a test-only `constructor(root: File)` — this project's
+unit suite has no Robolectric/Context, so file-based repos are tested against a temp dir.
+`RepoLedgerRepositoryTest` covers the incremental no-op, rename tombstone, delete/upsert
+ordering, failed-state retryability, and YAML round-trip of a slash-and-dash path key (10
+cases).
+
+**Sync toggle semantics reworked** (`data/sync/SyncGate.kt`, `shouldSyncRun`): the
+"Sincronizzazione attiva" switch previously only gated the *automatic enqueue*; each
+`…SyncWorker.doWork()` then drained regardless, and the 4h periodic net ran whenever the
+server was merely configured. A catalogue edit therefore uploaded within seconds even with
+the toggle off. Now every worker runs iff `isConfigured() && (isEnabled() || force)`, where
+`force` is a WorkManager `inputData` flag set only by explicit actions:
+`registerRoutine()` (end of session — forces *all five* workers, so the session drags its
+trailing readiness/scale/repo/ECG data with it), "Invia dati in coda", "Verifica backup",
+and flipping the toggle on. The periodic net passes `force = false` ⇒ no-op while off.
+Separately, `PolarManager` / `BleScaleManager` were gating the *ledger enqueue itself* on
+`isEnabled()`, silently dropping a readiness measurement / weigh-in taken while off — now
+they enqueue whenever `isConfigured()` and only skip the expedite. New `SyncGateTest` (3
+cases). `registerRoutine()` no longer gates the session/ECG enqueue on `isEnabled()` — a
+finished workout always syncs if a server is configured.
+
+**Not in this phase**: the server side (`MyGymApp_server` — `POST /v1/repo`, restore
+endpoints, `data/raw/` as a git repo) per `docs/backup-server-brief.md`, and the
+end-to-end test that needs it. Until the server exists the phone queues but nothing
+receives — the CLAUDE.md banner still mandates the tar backup before any install/test op.

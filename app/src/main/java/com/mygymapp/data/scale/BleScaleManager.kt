@@ -207,10 +207,11 @@ class BleScaleManager @Inject constructor(
                 bodyFatPercent = composition.bodyFatPercent,
                 leanMassPercent = composition.leanMassPercent,
             )
-            // Sync immediately (docs/SYNC.md) — same isEnabled() scoping rule as
-            // sessions/readiness: only gates the automatic enqueue, never blocks the
-            // save itself, never inline on the network.
-            if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+            // docs/SYNC.md §1.5: always queue in the ledger when a server is configured
+            // (so nothing is lost and end-of-session / "Invia dati in coda" can flush it),
+            // but only kick an immediate upload when the "Sincronizzazione attiva" toggle
+            // is on. Never blocks the save, never inline on the network.
+            if (syncConfigRepository.isConfigured()) {
                 val file = scaleHistoryRepository.fileFor(weighIn.id)
                 if (file.exists()) {
                     scaleWeighInLedgerRepository.enqueue(
@@ -218,7 +219,9 @@ class BleScaleManager @Inject constructor(
                         scaleHistoryRepository.relPathFor(weighIn.id),
                         file,
                     )
-                    ScaleWeighInSyncWorker.Scheduler.runExpedited(context)
+                    if (syncConfigRepository.isEnabled()) {
+                        ScaleWeighInSyncWorker.Scheduler.runExpedited(context)
+                    }
                 }
             }
         }

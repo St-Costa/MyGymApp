@@ -103,6 +103,16 @@ fun SessionProgressScreen(
                     durationMs = uiState.syncDurationMs,
                     serverStatus = uiState.syncServerStatus,
                 )
+                if (uiState.backupVerifyRunning ||
+                    uiState.backupVerifyError != null ||
+                    uiState.backupVerifyReport != null
+                ) {
+                    com.mygymapp.ui.components.BackupVerifyBox(
+                        running = uiState.backupVerifyRunning,
+                        error = uiState.backupVerifyError,
+                        report = uiState.backupVerifyReport,
+                    )
+                }
                 if (uiState.polarDrops.hadDrops) {
                     PolarConnectionBox(uiState.polarDrops)
                 }

@@ -53,15 +53,13 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        // isEnabled() gates whether NEW work gets queued in the first place (see
-        // ActiveRoutineViewModel.registerRoutine() and the periodic durability net) —
-        // it must NOT gate draining a queue that already has entries in it, since those
-        // only exist because of an explicit action (a finalized session while enabled
-        // was on, or the user pressing "Resync all"). Without this distinction, flipping
-        // the switch off after enqueueing silently strands PENDING entries forever, and
-        // "Resync all" (usable even with sync off, so a user can test/backfill before
-        // committing to automatic sync) would appear to do nothing.
-        if (!config.isConfigured()) {
+        // See docs/SYNC.md §1.5 + [shouldSyncRun]. With "Sincronizzazione attiva" OFF, only a
+        // forced run drains the queue: the 4h periodic net is a no-op, and a session that
+        // finished while OFF is delivered only because registerRoutine() forces this run.
+        // "Resync all" / "Verifica backup" also force. Queued entries are never lost — they
+        // wait for the next forced run.
+        val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
+        if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {
             return@withContext Result.success()
         }
         val serverUrl = config.serverUrl()
@@ -132,10 +130,15 @@ class SyncWorker @AssistedInject constructor(
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        /** Tries to send promptly after a session is enqueued — usually lands within seconds. */
-        fun runExpedited(context: Context) {
+        /**
+         * Tries to send promptly. [force] `true` bypasses the "Sincronizzazione attiva"
+         * toggle for this run — pass it only from session finalize / a manual "send all"
+         * button. An edit-triggered nudge passes `false`.
+         */
+        fun runExpedited(context: Context, force: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<SyncWorker>()
                 .setConstraints(constraints)
+                .setInputData(androidx.work.workDataOf(SYNC_FORCE_KEY to force))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context)
