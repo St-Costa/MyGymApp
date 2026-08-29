@@ -1190,3 +1190,17 @@ gaps closed:
 The badge-selection chain (skipped X > T/RM change > stretch seconds > `primo dato` > set
 count) was extracted into one `ExerciseTrailingBadge` composable so `ExerciseRow` and
 `SupersetExerciseEntry` can't drift.
+
+## Phase 87 — Session summary: stretch-time + cardio-time trend charts under the tonnage
+The end-of-session screen (`SessionProgressScreen`) previously showed only the total-tonnage
+trend. Two more trend charts now sit directly below it, reusing the same `TonnageLineChart`
+(single series) and card styling via a new private `MinutesTrendCard` composable:
+- **Tempo stretch** — per-session total of `sum(timeSeconds)` over every `ExerciseSet.Stretch`
+  of every STRETCH exercise, in minutes, across the same ~12-week / same-routine window as the
+  tonnage series.
+- **Tempo cardio** — per-session total of `endedAt − startedAt` over every *closed* cardio
+  block (blank `endedAt` skipped), in minutes, same window.
+Each chart renders only when **this** session (the last data point) has a nonzero value, so a
+routine with no stretch never shows the stretch chart and one with no cardio never shows the
+cardio chart. New `SessionProgressUiState.sessionStretchMinutes` / `sessionCardioMinutes`,
+computed in `SessionProgressViewModel.load()`.
