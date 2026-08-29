@@ -434,58 +434,98 @@ class OptionsViewModel @Inject constructor(
             val serverUrl = syncConfigRepository.serverUrl()
             val token = syncConfigRepository.bearerToken()
             val result = withContext(Dispatchers.IO) {
-                val manifest = restoreApi.fetchManifest(serverUrl, token)
-                if (manifest !is RestoreResult.Manifest) {
-                    return@withContext "Manifest non recuperato: ${(manifest as? RestoreResult.Failure)?.reason ?: "errore"}"
-                }
-                var restoredExercises = 0
-                var restoredRoutines = 0
-                var restoredOther = 0
-                var failed = 0
-                for (entry in manifest.entries) {
-                    // Skip path-traversal attempts defensively even though the server should
-                    // never emit them — this writes to disk under filesDir.
-                    if (entry.relPath.contains("..") || entry.relPath.startsWith("/")) {
-                        failed++
-                        continue
-                    }
-                    val target = java.io.File(fileManager.root, entry.relPath)
-                    val localHash = if (target.exists()) {
-                        "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
-                            .digest(target.readBytes())
-                            .joinToString("") { "%02x".format(it) }
-                    } else null
-                    if (localHash == entry.contentHash) continue // already have this exact content
-
-                    when (val fetched = restoreApi.fetchFile(serverUrl, token, entry.relPath)) {
-                        is RestoreResult.FileBytes -> {
-                            target.parentFile?.mkdirs()
-                            // Raw bytes — the manifest also covers binary `ecg/*.ecg`.
-                            target.writeBytes(fetched.bytes)
-                            when {
-                                entry.relPath.startsWith("exercises/") -> {
-                                    restoredExercises++
-                                    repoLedgerRepository.markRestored(entry.relPath, entry.contentHash)
-                                }
-                                entry.relPath.startsWith("routines/") -> {
-                                    restoredRoutines++
-                                    repoLedgerRepository.markRestored(entry.relPath, entry.contentHash)
-                                }
-                                else -> restoredOther++
-                            }
+                // Fast path: one gzip'd tarball of every live file. `since=null` — an
+                // explicit restore always wants the full set, not the incremental delta.
+                when (val tar = restoreApi.fetchTarball(serverUrl, token, since = null)) {
+                    is RestoreResult.Tarball -> {
+                        val r = applyRestoredFiles(tar.members.map { it.relPath to it.bytes })
+                        if (tar.manifestSha.isNotBlank()) {
+                            syncConfigRepository.setLastTarballManifestSha(tar.manifestSha)
                         }
-                        else -> failed++
+                        r
                     }
-                }
-                buildString {
-                    append("Ripristinati $restoredExercises esercizi, $restoredRoutines routine")
-                    if (restoredOther > 0) append(", $restoredOther altri file")
-                    if (failed > 0) append(" ($failed non riusciti)")
+                    is RestoreResult.Failure -> {
+                        // Fallback: manifest + batched /v1/repo/files (older server, or the
+                        // tarball endpoint unavailable).
+                        restoreViaManifest(serverUrl, token)
+                            ?: "Ripristino non riuscito: ${tar.reason}"
+                    }
+                    else -> "Risposta inattesa dal server (tarball)."
                 }
             }
             refreshSyncStatus()
             _uiState.value = _uiState.value.copy(syncIsRestoring = false, syncRestoreResult = result)
         }
+    }
+
+    /**
+     * Write pulled files to disk, pull-only: never delete a local file the server lacks,
+     * skip one whose bytes already match, and set the repo ledger to SENT for
+     * exercises/routines so the next push doesn't bounce them back. Returns the summary line.
+     */
+    private suspend fun applyRestoredFiles(files: List<Pair<String, ByteArray>>): String {
+        var restoredExercises = 0
+        var restoredRoutines = 0
+        var restoredOther = 0
+        var failed = 0
+        for ((relPath, bytes) in files) {
+            if (relPath.contains("..") || relPath.startsWith("/")) { failed++; continue }
+            val target = java.io.File(fileManager.root, relPath)
+            val hash = "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                .digest(bytes).joinToString("") { "%02x".format(it) }
+            val localHash = if (target.exists()) {
+                "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+            } else null
+            if (localHash == hash) continue
+            val wrote = runCatching {
+                target.parentFile?.mkdirs()
+                target.writeBytes(bytes)
+            }.isSuccess
+            if (!wrote) { failed++; continue }
+            when {
+                relPath.startsWith("exercises/") -> {
+                    restoredExercises++
+                    repoLedgerRepository.markRestored(relPath, hash)
+                }
+                relPath.startsWith("routines/") -> {
+                    restoredRoutines++
+                    repoLedgerRepository.markRestored(relPath, hash)
+                }
+                else -> restoredOther++
+            }
+        }
+        return buildString {
+            append("Ripristinati $restoredExercises esercizi, $restoredRoutines routine")
+            if (restoredOther > 0) append(", $restoredOther altri file")
+            if (failed > 0) append(" ($failed non riusciti)")
+        }
+    }
+
+    /** Fallback restore: `GET /v1/manifest`, then batched `POST /v1/repo/files`. */
+    private suspend fun restoreViaManifest(serverUrl: String, token: String): String? {
+        val manifest = restoreApi.fetchManifest(serverUrl, token)
+        if (manifest !is RestoreResult.Manifest) return null
+        // Only pull what's missing or hash-mismatched.
+        val wanted = manifest.entries.filter { entry ->
+            if (entry.relPath.contains("..") || entry.relPath.startsWith("/")) return@filter false
+            val target = java.io.File(fileManager.root, entry.relPath)
+            val localHash = if (target.exists()) {
+                "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+            } else null
+            localHash != entry.contentHash
+        }.map { it.relPath }
+        if (wanted.isEmpty()) return "Tutto già allineato, niente da ripristinare"
+
+        val pulled = mutableListOf<Pair<String, ByteArray>>()
+        wanted.chunked(500).forEach { chunk ->
+            when (val f = restoreApi.fetchFiles(serverUrl, token, chunk)) {
+                is RestoreResult.Files -> f.files.forEach { bf -> bf.bytes?.let { pulled += bf.relPath to it } }
+                else -> { /* partial — applyRestoredFiles reports the shortfall as failures */ }
+            }
+        }
+        return applyRestoredFiles(pulled)
     }
 
     // ─── Backup round-trip check (docs/BACKUP.md §3.7) ──────────────────────
