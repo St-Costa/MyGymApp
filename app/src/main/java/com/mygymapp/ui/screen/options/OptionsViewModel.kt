@@ -257,7 +257,15 @@ class OptionsViewModel @Inject constructor(
     fun setSyncEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(syncEnabled = enabled)
         persistSyncConfig()
-        if (enabled) SyncWorker.Scheduler.runExpedited(appContext)
+        // Turning it on: flush every queue that built up while it was off. force = true so
+        // this run happens even though the toggle write may not have propagated yet.
+        if (enabled) {
+            SyncWorker.Scheduler.runExpedited(appContext, force = true)
+            ReadinessSyncWorker.Scheduler.runExpedited(appContext, force = true)
+            ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext, force = true)
+            EcgSyncWorker.Scheduler.runExpedited(appContext, force = true)
+            RepoSyncWorker.Scheduler.runExpedited(appContext, force = true)
+        }
     }
 
     private fun persistSyncConfig() {
@@ -393,11 +401,12 @@ class OptionsViewModel @Inject constructor(
             // fixed at start and the numerator (below) is "how many of THIS batch drained."
             val totalQueued = sessions.size + readinessEvents.size + weighIns.size + ecgFiles.size + repoFiles.size
 
-            SyncWorker.Scheduler.runExpedited(appContext)
-            ReadinessSyncWorker.Scheduler.runExpedited(appContext)
-            ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext)
-            EcgSyncWorker.Scheduler.runExpedited(appContext)
-            RepoSyncWorker.Scheduler.runExpedited(appContext)
+            // "Invia dati in coda" is itself the opt-in — force past the toggle.
+            SyncWorker.Scheduler.runExpedited(appContext, force = true)
+            ReadinessSyncWorker.Scheduler.runExpedited(appContext, force = true)
+            ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext, force = true)
+            EcgSyncWorker.Scheduler.runExpedited(appContext, force = true)
+            RepoSyncWorker.Scheduler.runExpedited(appContext, force = true)
 
             if (totalQueued > 0) {
                 trackResyncProgress(totalQueued)
@@ -755,7 +764,8 @@ class OptionsViewModel @Inject constructor(
                 val file = polarManager.ecgFileFor(debugId)
                 ecgSyncLedgerRepository.enqueue(debugId, "ecg/${debugId}.ecg", file.readBytes())
             }
-            EcgSyncWorker.Scheduler.runExpedited(appContext)
+            // Debug send is an explicit action — force past the toggle.
+            EcgSyncWorker.Scheduler.runExpedited(appContext, force = true)
             refreshSyncStatus()
 
             _uiState.value = _uiState.value.copy(

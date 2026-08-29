@@ -5,6 +5,7 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.parser.ExerciseParser
 import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
+import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.util.slugify
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ class ExerciseRepository @Inject constructor(
     private val fileManager: FileManager,
     private val workoutRepository: WorkoutRepository,
     private val repoLedgerRepository: RepoLedgerRepository,
+    private val syncConfigRepository: SyncConfigRepository,
     @ApplicationContext private val appContext: Context,
 ) {
     private val cache = ConcurrentHashMap<String, Exercise>()
@@ -90,12 +92,18 @@ class ExerciseRepository @Inject constructor(
         if (nameChanged) {
             workoutRepository.updateExerciseNameInHistory(saved.id, saved.name)
         }
-        // Full-store backup (docs/BACKUP.md §3.3): queue the new/changed file for upload,
-        // and tombstone the stale path a rename left behind. Never blocking — the actual
-        // POST happens async in RepoSyncWorker.
+        // Full-store backup (docs/BACKUP.md §3.3): queue the new/changed file in the ledger
+        // so it's never lost — this always happens, regardless of the sync toggle, so
+        // "Invia dati in coda" / the periodic net / a restore all see it.
         newBytes?.let { repoLedgerRepository.requeueIfChanged(newRelPath, it) }
         obsoleteRelPath?.let { repoLedgerRepository.markDeleted(it, obsoleteHash) }
-        RepoSyncWorker.Scheduler.runExpedited(appContext)
+        // Only kick an *immediate* upload when the sync toggle is on — same rule as the
+        // per-session enqueue in ActiveRoutineViewModel.registerRoutine(). With the toggle
+        // off, a catalogue edit stays queued locally and rides out on the next end-of-
+        // session sync, the 4h periodic net, or "Invia dati in coda".
+        if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+            RepoSyncWorker.Scheduler.runExpedited(appContext)
+        }
         saved
     }
 
@@ -113,7 +121,9 @@ class ExerciseRepository @Inject constructor(
         }
         deletedRelPath?.let {
             repoLedgerRepository.markDeleted(it, deletedHash)
-            RepoSyncWorker.Scheduler.runExpedited(appContext)
+            if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
+                RepoSyncWorker.Scheduler.runExpedited(appContext)
+            }
         }
     }
 

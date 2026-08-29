@@ -135,17 +135,19 @@ required; the content is identical so `git` may even detect the rename itself).
 
 | Trigger | Hook |
 |---|---|
-| Exercise created/edited | `ExerciseRepository.save()` — after the file write, `repoLedger.requeueIfChanged(relPath, bytes)`. |
-| Exercise deleted | `ExerciseRepository.delete()` — `repoLedger.markDeleted(relPath, lastHash)`. |
+| Exercise created/edited | `ExerciseRepository.save()` — after the file write, `repoLedger.requeueIfChanged(relPath, bytes)`. Expedites `RepoSyncWorker` **only if `syncConfigRepository.isEnabled()`** (toggle on). |
+| Exercise deleted | `ExerciseRepository.delete()` — `repoLedger.markDeleted(relPath, lastHash)`; expedites only if the toggle is on. |
 | Routine created/edited | `RoutineRepository.save()` — same as exercise save. |
 | Routine deleted | `RoutineRepository.delete()` — `repoLedger.markDeleted(...)`. |
 | `rt-fixeddaily` auto-seed on first launch | Its `save()` path already runs → picked up automatically. |
-| End of session | `ActiveRoutineViewModel.registerRoutine()` already triggers an expedited `SyncWorker`; add an expedited `RepoSyncWorker` alongside it, so a routine edited mid-session and its session land together. |
-| 4-hourly periodic net | `MyGymApp.onCreate()` — add `RepoSyncWorker` to the existing `ensurePeriodic()` batch. |
-| "Ripristina / Rinvia tutto" (Options) | `OptionsViewModel.resyncAll()` — also walk `exercises/` and `routines/`, `requeueIfChanged()` every file regardless of prior status. |
+| End of session | `ActiveRoutineViewModel.registerRoutine()` — after the session save, calls `RepoSyncWorker.Scheduler.runExpedited(force = true)` (alongside the session / readiness / scale / ECG workers, all forced). End-of-session flushes the repo queue **whether the toggle is on or off** — see SYNC.md §1.5 / `shouldSyncRun`. |
+| 4-hourly periodic net | `MyGymApp.onCreate()` adds `RepoSyncWorker` to the `ensurePeriodic()` batch. The periodic run passes `force = false`, so with the toggle off it's a no-op. |
+| "Verifica backup sul server" / "Invia tutti i dati in coda" (Options) | `verifyBackupRoundTrip()` POSTs directly; `resyncAll()` walks `exercises/`+`routines/` and forces every worker. Both bypass the toggle. |
 
-The enqueue is **never** inline/blocking — same discipline as `completionSaved` and the
-`onCleared()` save (see CONVENTIONS.md).
+The `requeueIfChanged` / `markDeleted` **ledger write always happens** when a server is
+configured, regardless of the toggle — so a catalogue edit made while sync is off is not
+lost, it just waits for the next forced run. Only the *immediate upload* is toggle-gated.
+Never inline/blocking — same discipline as `completionSaved` and the `onCleared()` save.
 
 ### 3.4 `RepoSyncWorker` logic (per pending entry)
 
