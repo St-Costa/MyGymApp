@@ -1169,3 +1169,24 @@ is now resolved once up front instead of a per-slot `getById` inside the filter.
 `FilterBreakingSupersetLinksTest` (8 cases). (2) `SupersetScreen`'s PR badge was left-
 aligned and formatted `PR 8x80`; now `textAlign = TextAlign.Center` + `PR: 8 x 80`, matching
 `StrengthExerciseScreen`.
+
+## Phase 86 — Active-routine badges: fixed-daily strength gets %, all stretch gets seconds
+The right-hand status badge on a completed exercise in the active-routine list previously
+only ever appeared for **normal** FORZA slots (`+14% T / +3% RM`, or `primo dato`). Two
+gaps closed:
+- **Fixed-daily strength** now gets the same T/RM change badge. Its baseline is read from
+  the exercise-stats sidecar's **`SlotContext.DAILY`** entry (not the previous routine
+  session, which need not even contain the fixed-daily exercise) — the same like-with-like
+  rule `StrengthExerciseViewModel` already uses. `ActiveRoutineViewModel.init` now seeds
+  `previousTonnageByExercise` / `previousBestE1RMByExercise` for daily slots from that
+  context, and adds daily slots to `exercisesWithPriorTonnage` off the DAILY context's
+  `hasPriorRealTonnage`; `markExerciseCompleted`'s gate changed from
+  `!excludeFromTonnage` to `category != WARMUP`.
+- **Stretch** (daily and normal both) now shows the total seconds actually held this
+  session — `sum(timeSeconds)` over the sets toggled `done` — formatted `45s` under a
+  minute, `3:00` at or above one, in JetBrains Mono. New `ActiveExerciseUi.stretchTotalSeconds`,
+  computed in `markExerciseCompleted`. No comparison/colour — just the value, per the
+  request.
+The badge-selection chain (skipped X > T/RM change > stretch seconds > `primo dato` > set
+count) was extracted into one `ExerciseTrailingBadge` composable so `ExerciseRow` and
+`SupersetExerciseEntry` can't drift.

@@ -445,35 +445,58 @@ private fun ExerciseRow(
                 }
             }
             // Right side: sets/duration when not completed; once completed, the badge
-            // (skipped X > tonnage% > "primo dato") takes that spot instead.
-            if (exercise.completedEmpty) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Saltato",
-                    tint = SkippedColor,
-                )
-            } else if (exercise.completed && exercise.tonnageChangePct != null) {
-                TonnageAndRmChange(
-                    tonnageChangePct = exercise.tonnageChangePct,
-                    rmChangePct = exercise.rmChangePct,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            } else if (exercise.completed && exercise.isFirstTimeTonnage) {
-                Text(
-                    text = "primo dato",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                )
-            } else {
-                Text(
-                    text = exercise.setsOrDurationLabel(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                )
-            }
+            // (skipped X > tonnage% / stretch seconds > "primo dato") takes that spot instead.
+            ExerciseTrailingBadge(exercise)
         }
     }
 }
+
+/**
+ * The right-hand status shown for one exercise in the active list. Priority:
+ * skipped X  >  tonnage/1RM change (strength)  >  seconds performed (stretch)  >  "primo dato"
+ * (strength, first time ever)  >  plain set count / block duration (not yet completed).
+ * Extracted so [ExerciseRow] and [SupersetExerciseEntry] can't drift.
+ */
+@Composable
+private fun ExerciseTrailingBadge(exercise: ActiveExerciseUi) {
+    if (exercise.completedEmpty) {
+        Icon(
+            imageVector = Icons.Filled.Close,
+            contentDescription = "Saltato",
+            tint = SkippedColor,
+        )
+    } else if (exercise.completed && exercise.tonnageChangePct != null) {
+        TonnageAndRmChange(
+            tonnageChangePct = exercise.tonnageChangePct,
+            rmChangePct = exercise.rmChangePct,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else if (exercise.completed && exercise.stretchTotalSeconds != null) {
+        Text(
+            text = formatStretchDuration(exercise.stretchTotalSeconds),
+            style = MaterialTheme.typography.titleSmall,
+            fontFamily = JetBrainsMono,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+        )
+    } else if (exercise.completed && exercise.isFirstTimeTonnage) {
+        Text(
+            text = "primo dato",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+        )
+    } else {
+        Text(
+            text = exercise.setsOrDurationLabel(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+        )
+    }
+}
+
+/** "45s" under a minute, "3:00" / "3:30" at or above one. */
+private fun formatStretchDuration(totalSeconds: Int): String =
+    if (totalSeconds < 60) "${totalSeconds}s"
+    else "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 
 @Composable
 private fun SupersetGroupRow(
@@ -548,32 +571,8 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
             }
         }
         // Right side: sets/duration when not completed; once completed, the badge
-        // (skipped X > tonnage% > "primo dato") takes that spot instead.
-        if (exercise.completedEmpty) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "Saltato",
-                tint = SkippedColor,
-            )
-        } else if (exercise.completed && exercise.tonnageChangePct != null) {
-            TonnageAndRmChange(
-                tonnageChangePct = exercise.tonnageChangePct,
-                rmChangePct = exercise.rmChangePct,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        } else if (exercise.completed && exercise.isFirstTimeTonnage) {
-            Text(
-                text = "primo dato",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            )
-        } else {
-            Text(
-                text = exercise.setsOrDurationLabel(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            )
-        }
+        // (skipped X > tonnage% / stretch seconds > "primo dato") takes that spot instead.
+        ExerciseTrailingBadge(exercise)
     }
 }
 
