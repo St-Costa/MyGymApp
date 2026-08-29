@@ -130,6 +130,14 @@ Authorization: Bearer <shared-secret>
 `data/raw/{exercises,routines}/`. This is the one place a malicious/buggy client could write
 arbitrary paths — be strict.
 
+**`_`-prefixed basenames** — as a forward-compatible convention, treat any
+`exercises/_*.md` / `routines/_*.md` as a normal file for storage/commit purposes but
+**exclude it from the parsed SQL view** (§4): don't upsert a `routines`/`exercises` row,
+just log at debug level and skip. The phone doesn't currently send any such file (its
+"Verifica backup sul server" button round-trips *real* exercises/routines, no synthetic
+data), but keeping the rule means a future debug/scratch file can't pollute the query
+tables.
+
 ### 2.2 Handling `op: "upsert"`
 
 1. Bearer check (constant-time) → `401` on mismatch.
@@ -278,6 +286,12 @@ session parser already uses. Factor the parse into a shared function callable fr
 live `/v1/repo` handler and a `reparse.py --all` batch (same pattern as the sessions
 `reparse.py`).
 
+**Skip `_`-prefixed basenames.** Any `exercises/_*.md` / `routines/_*.md` is written and
+committed like any other file but must **not** produce a `routines`/`exercises` row. The
+parse function should early-return on `Path(rel_path).name.startswith("_")`.
+`reparse.py --all` applies the same rule. (The phone sends no such file today — see §2.1 —
+this is forward-compat only.)
+
 ---
 
 ## Task 5 — docs
@@ -307,3 +321,8 @@ Update the server repo's README / sync-ingestion docs:
 6. `GET /v1/manifest` → lists the session and other live files, **not** the deleted exercise.
 7. `GET /v1/file?relPath=<the session>` → exact bytes, `X-Content-SHA256` matches.
 8. Path-traversal: `GET /v1/file?relPath=../../etc/passwd` → `422`, nothing served.
+9. Phone's Options → "Verifica backup sul server": pushes any missing/changed
+   exercise/routine (`POST /v1/repo` upsert, `repo:1` commit each), then `GET /v1/manifest`
+   and `GET /v1/file` for each → button shows `OK — N esercizi + M routine sul server, hash
+   allineati e … riletti identici`. A second press with nothing changed → no new commit,
+   same OK line.

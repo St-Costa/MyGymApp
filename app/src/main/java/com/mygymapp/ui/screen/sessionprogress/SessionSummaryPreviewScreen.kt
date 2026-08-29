@@ -22,6 +22,11 @@ import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.DisconnectStats
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.polar.ReadinessResult
+import com.mygymapp.data.sync.BackupDiffEntry
+import com.mygymapp.data.sync.BackupError
+import com.mygymapp.data.sync.BackupErrorCategory
+import com.mygymapp.data.sync.BackupVerifyReport
+import com.mygymapp.ui.components.BackupVerifyBox
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
 import com.mygymapp.ui.screen.heartrate.ReadinessCard
 import java.time.LocalDate
@@ -77,6 +82,48 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             SyncStatusBox(SessionSyncStatus.PENDING)
             SyncStatusBox(SessionSyncStatus.FAILED)
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
+
+            Text("Box backup sul server (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
+            BackupVerifyBox(running = true)
+            // Clean: a range edit (one line -, one line +) plus a brand-new exercise.
+            BackupVerifyBox(
+                report = BackupVerifyReport(
+                    exercises = listOf(
+                        BackupDiffEntry("Calf Raise", added = 1, removed = 1),
+                        BackupDiffEntry("Incline DB Press", added = 12, removed = 0),
+                    ),
+                    routines = listOf(BackupDiffEntry("Pull", added = 3, removed = 2)),
+                    exercisesLocal = 42, exercisesMatching = 42,
+                    routinesLocal = 7, routinesMatching = 7,
+                    sessionsLocal = 62, sessionsMatching = 62,
+                    elapsedMs = 1_840, bytesUploaded = 1_432,
+                ),
+            )
+            // Nothing to send — everything already aligned.
+            BackupVerifyBox(
+                report = BackupVerifyReport(
+                    exercisesLocal = 42, exercisesMatching = 42,
+                    routinesLocal = 7, routinesMatching = 7,
+                    sessionsLocal = 62, sessionsMatching = 62,
+                    elapsedMs = 640, bytesUploaded = 0,
+                ),
+            )
+            // With problems: an error under Routine + a count-off Sessioni row.
+            BackupVerifyBox(
+                report = BackupVerifyReport(
+                    exercises = listOf(BackupDiffEntry("Squat", added = 1, removed = 1)),
+                    exercisesLocal = 42, exercisesMatching = 41,
+                    routinesLocal = 7, routinesMatching = 6,
+                    sessionsLocal = 62, sessionsMatching = 61,
+                    sessionsChanged = listOf("2026-08-28_rt-71284f58_b38ae530"),
+                    errors = listOf(
+                        BackupError(BackupErrorCategory.ROUTINE, "push-rt-b997ec72.md", "HTTP 422: contentHash mismatch"),
+                        BackupError(BackupErrorCategory.ROUTINE, "leg-rt-97a2091f.md", "assente dal manifest dopo il push"),
+                    ),
+                    elapsedMs = 3_120, bytesUploaded = 2_890_000,
+                ),
+            )
+            BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")
 
             Text("Scheda readiness", style = MaterialTheme.typography.titleSmall)
             ReadinessCard(

@@ -47,10 +47,12 @@ filesDir/gymdata/              ← FileManager.root
 ├── scale/                     ← VitaFit VT701 weigh-ins (one per calendar day)
 │   └── YYYY/MM/
 │       └── YYYY-MM-DD.md
-└── _sync/                     ← Server sync ledgers (see SYNC.md)
+└── _sync/                     ← Server sync ledgers (see SYNC.md, BACKUP.md)
     ├── state.yml               (sessions)
     ├── readiness_state.yml     (readiness events)
-    └── scale_state.yml         (scale weigh-ins)
+    ├── scale_state.yml         (scale weigh-ins)
+    ├── ecg_state.yml           (raw ECG uploads)
+    └── repo_state.yml          (exercises + routines — full-store backup, BACKUP.md)
 ```
 
 The two image caches serve different purposes:
@@ -407,6 +409,45 @@ Owned by [SyncLedgerRepository](../app/src/main/java/com/mygymapp/data/sync/Sync
 read/written with the same hand-rolled snakeyaml `Load` + manual-write approach as
 [MarkdownParser](../app/src/main/java/com/mygymapp/data/parser/MarkdownParser.kt), since
 this is a flat map rather than a frontmatter+body document.
+
+The readiness (`readiness_state.yml`), scale (`scale_state.yml`) and raw-ECG
+(`ecg_state.yml`) ledgers mirror this shape with their own dedicated repositories.
+
+### Repo-file ledger (`_sync/repo_state.yml`)
+
+The fifth pipeline — full-store backup of every human-authored `exercises/*.md` and
+`routines/*.md` (see [BACKUP.md](BACKUP.md)). Owned by
+[RepoLedgerRepository](../app/src/main/java/com/mygymapp/data/sync/RepoLedgerRepository.kt).
+Two structural differences from the four above:
+
+- **Keyed by relative path**, not an id — the slug embedded in the filename changes on
+  rename, so the path is the stable-per-version key.
+- **Syncs deletions.** An exercise/routine removed on the phone (or a stale path a rename
+  left behind) becomes a `DELETED_PENDING` entry with `op: delete`; the worker POSTs a
+  tombstone and it moves to `DELETED_SENT`. The entry is kept, not dropped, so a later
+  full re-scan can't resurrect the file server-side.
+
+```yaml
+files:
+  "exercises/bench-press-ex-a1b2c3d4.md":
+    op: upsert                 # upsert | delete
+    status: SENT               # PENDING | SENT | FAILED | DELETED_PENDING | DELETED_SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T20:11:03"
+    lastError: ""
+    contentHash: "sha256:9f8e7d6c..."
+  "exercises/old-typo-ex-deadbeef.md":
+    op: delete
+    status: DELETED_PENDING
+    attempts: 0
+    lastAttemptAt: ""
+    lastError: ""
+    contentHash: "sha256:..."   # hash of the last-known content, for the tombstone
+```
+
+Since exercises and routines are now backed up incrementally to the server, a wipe of
+`filesDir/gymdata/` is recoverable via **Options → "Ripristina dal server"**
+(`GET /v1/manifest` + `GET /v1/file`, pull-only) — see [BACKUP.md](BACKUP.md) §3.6.
 
 ## Backup / export
 

@@ -262,14 +262,31 @@ than inventing a new one):
   `https://gym-server.<tailnet-name>.ts.net`) — see §4 for why this specific form.
 - **Bearer token** text field (masked, like a password field).
 - **Sync enabled** toggle — off by default until both fields are filled in; lets the
-  feature ship dormant and be turned on deliberately. **Scope of what this gates**: only
-  the *automatic* per-session enqueue in `ActiveRoutineViewModel.registerRoutine()`. It
-  does **not** gate whether `SyncWorker` will drain entries that are already `PENDING` in
-  the ledger — those exist only because of an explicit action (the toggle was on when that
-  session finished, or "Resync all" was pressed), and once queued they get delivered
-  regardless of the toggle's current state. Conflating the two — checked live on-device —
-  makes "Resync all" a silent no-op whenever sync is off, which defeats its own purpose
-  (testing/backfilling *before* committing to automatic sync).
+  feature ship dormant and be turned on deliberately.
+
+  **What it gates (revised — see `data/sync/SyncGate.kt`, `shouldSyncRun`):** every
+  `…SyncWorker.doWork()` runs its ledger-drain iff
+  `isConfigured() && (isEnabled() || force)`, where `force` is a boolean on the one-off
+  work request's `inputData`, set `true` only by an explicit, user-meaningful action.
+
+  | trigger | toggle OFF | toggle ON |
+  |---|---|---|
+  | catalogue edit (`Exercise`/`RoutineRepository.save`), readiness measurement, weigh-in, loose/debug ECG | **queued in the ledger, no upload** | queued + expedited upload |
+  | **end of session** (`ActiveRoutineViewModel.registerRoutine()`) | **forces every worker** — the session *and* whatever else is queued (readiness / scale / repo / ECG) all flush | same |
+  | 4h periodic net (`ensurePeriodic`) | **no-op** (`force` unset) | drains normally |
+  | "Invia tutti i dati in coda", "Verifica backup sul server", flipping the toggle to ON | force, always run | force, always run |
+
+  So the toggle now means: *"while off, the only thing that reaches the server is a
+  finished workout (and its trailing data), plus anything I send by hand."* Nothing is ever
+  lost while off — every producer still writes its ledger entry; it just waits for the next
+  forced run. `isConfigured()` (URL + token) is the hard precondition — `force` can't
+  override a missing server.
+
+  The **enqueue** side (writing the ledger entry) is gated only by `isConfigured()`, never
+  by `isEnabled()` — an earlier version gated the readiness/scale enqueue on `isEnabled()`
+  too, which silently *dropped* measurements taken while the toggle was off (no ledger
+  entry ⇒ nothing for end-of-session or "Invia dati in coda" to find). Fixed: producers
+  always enqueue when a server is configured.
 - **Status line**: "N elementi in attesa (sessioni, misurazioni, pesate), ultimo invio:
   <time>" — sums the pending count across all three ledgers (sessions + readiness +
   scale), read without needing `adb` to check.
@@ -644,11 +661,12 @@ much as it does for sessions: it's what keeps retrying regularly even if the app
 force-killed-and-relaunched (which would otherwise be the only other trigger for a stuck
 expedited work item).
 
-Same `isEnabled()` scoping rule as sessions (§1.5): gates the automatic enqueue in
-`PolarManager` only, not whether `ReadinessSyncWorker` drains what's already queued. No
-"resync all readiness" UI action exists yet (unlike sessions) — add one the same way if
-backfilling old readiness events is ever needed; today only events measured after this
-feature shipped exist to backfill anyway.
+Toggle behaviour is the shared `shouldSyncRun` rule (§1.5): with sync off `PolarManager`
+still writes the readiness ledger entry (gated only by `isConfigured()`) but doesn't
+expedite; `ReadinessSyncWorker` then only drains on a forced run (end of session, "Invia
+dati in coda", toggle→on) — the 4h periodic net is a no-op while off. No "resync all
+readiness" UI action exists yet (unlike sessions) — add one the same way if backfilling old
+readiness events is ever needed.
 
 ### Server-side spec
 
@@ -784,8 +802,12 @@ Two differences from the shared `SyncLedgerEntry`/multipart pattern:
   other three) — a compressed ~130Hz ECG stream is still larger than a session/readiness/
   weigh-in YAML file even after compression.
 
-Same `isEnabled()` scoping rule as the other three (§1.5): gates the automatic enqueue only,
-not whether `EcgSyncWorker` drains what's already queued.
+Toggle behaviour is the shared `shouldSyncRun` rule (§1.5). `registerRoutine()` enqueues
+the raw `.ecg` whenever a server is *configured* (not only when the toggle is on) and
+forces `EcgSyncWorker` — end-of-session is a forced flush. With no server configured at
+all, the `.ecg` is still deleted immediately (nothing local would consume it). The
+age-cap sweep in `EcgSyncWorker.doWork()` runs *outside* the toggle gate — stale `.ecg`
+files are pruned regardless.
 
 "Invia tutti i dati in coda" also resends any `.ecg` file still present in `gymdata/ecg/`
 — but unlike the other three, this is not a true backfill: once a file has been uploaded
@@ -836,6 +858,24 @@ between the ECG stream's nominal vs. actual sample rate over a long recording.
 This is documentation only on the phone side — the actual slicing/tagging logic belongs in
 `MyGymApp_server`'s `ECG_SPEC.md`/analysis code, to be coordinated there, the same way
 readiness/scale/ECG each got a companion spec above.
+
+---
+
+## Fifth record type: repo files (exercises + routines)
+
+Implemented (phone side), same dedicated-classes pattern as the four above. This is the
+**full-store backup** — the fifth pipeline covers every human-authored `exercises/*.md` and
+`routines/*.md`, turning the server's raw store into a git repo so any past state is
+recoverable. Two structural differences: it's keyed by relative path (not an id), and it's
+the only pipeline that syncs *deletions* (as `op: delete` tombstones).
+
+Full design (phone + server): **[docs/BACKUP.md](BACKUP.md)**. Server-side brief for the
+`MyGymApp_server` repo: [docs/backup-server-brief.md](backup-server-brief.md). New classes:
+`RepoLedgerRepository` (`_sync/repo_state.yml`), `RepoSyncApi` (`POST /v1/repo`),
+`RepoSyncWorker`, `RestoreApi` (`GET /v1/manifest`, `GET /v1/file`). Hooked into
+`ExerciseRepository`/`RoutineRepository` `save()`/`delete()`, `MyGymApp.onCreate()`'s
+periodic batch, and `ActiveRoutineViewModel.registerRoutine()`'s expedited nudge. Options
+gains a "Schede/esercizi" pending bullet and a "Ripristina dal server" restore action.
 
 ---
 
