@@ -257,7 +257,10 @@ Extend the existing sync section:
   "N in attesa (sessioni, misurazioni, pesate, **schede/esercizi**)".
 - **"Ripristina dal server"** button → runs §3.6. Confirmation dialog ("Scarica dal server
   ogni file mancante o diverso. Non cancella nulla in locale."). Show a result summary:
-  "Ripristinati 12 esercizi, 3 routine, 0 sessioni".
+  "Ripristinati 12 esercizi, 3 routine, 0 sessioni". Shown whenever a server is
+  **configured**, regardless of the "Sincronizzazione attiva" toggle — it's the post-wipe
+  recovery action, and a fresh install may have sync still ON from restored config. (The
+  pending list + "Invia dati in coda" stay gated on toggle-off, where they're meaningful.)
 - The existing **"Invia tutti i dati in coda"** now also backfills `exercises/` + `routines/`.
 
 #### "Verifica backup sul server" (debug section)
