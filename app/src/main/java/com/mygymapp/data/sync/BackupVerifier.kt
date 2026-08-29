@@ -32,26 +32,29 @@ data class BackupError(
  * Structured result of a full-store backup round-trip (docs/BACKUP.md §3.7).
  *
  * [exercises] / [routines]: files this run actually pushed, each with its line diffstat.
- * Unchanged files are only counted ([exercisesUnchanged] / [routinesUnchanged]).
- * [sessionsLocal] / [sessionsOnServer] / [sessionsMatching]: sessions are count-only (they
- * never change after they're recorded), plus [sessionsChanged] names for the rare backfill.
- * [manifestServerFiles] / [manifestLocalFiles]: totals for the one-line manifest summary.
+ * [exercisesMatching]/[exercisesLocal] etc. drive the `(X/Y allineate)` count in each
+ * section header — Y is how many such files exist on the phone, X how many are byte-for-
+ * byte on the server after this run. Sessions (`history/**/*.md`) are count-only.
+ * [sessionsChanged] names the differing sessions (backfill case).
  * [errors]: non-empty ⇒ an ERRORI section; also written to `gymdata/logs/app.log`.
  */
 data class BackupVerifyReport(
     val exercises: List<BackupDiffEntry> = emptyList(),
     val routines: List<BackupDiffEntry> = emptyList(),
-    val exercisesUnchanged: Int = 0,
-    val routinesUnchanged: Int = 0,
+    val exercisesLocal: Int = 0,
+    val exercisesMatching: Int = 0,
+    val routinesLocal: Int = 0,
+    val routinesMatching: Int = 0,
     val sessionsLocal: Int = 0,
-    val sessionsOnServer: Int = 0,
     val sessionsMatching: Int = 0,
     val sessionsChanged: List<String> = emptyList(),
-    val manifestServerFiles: Int = 0,
-    val manifestLocalFiles: Int = 0,
     val errors: List<BackupError> = emptyList(),
 ) {
-    val allGood: Boolean get() = errors.isEmpty() && sessionsMatching == sessionsLocal
+    val allGood: Boolean
+        get() = errors.isEmpty() &&
+            exercisesMatching == exercisesLocal &&
+            routinesMatching == routinesLocal &&
+            sessionsMatching == sessionsLocal
 }
 
 sealed interface BackupVerifyOutcome {
@@ -172,31 +175,37 @@ class BackupVerifier @Inject constructor(
             is RestoreResult.FileBytes -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
 
+        var exMatching = 0
+        var rtMatching = 0
         for (l in locals) {
             val relPath = rel(l.file)
             val serverHash = manifest1[relPath]
-            when {
-                serverHash == null ->
-                    errors += BackupError(l.file.name, "assente dal manifest dopo il push")
-                serverHash != l.hash ->
-                    errors += BackupError(l.file.name, "hash sul server diverso da quello locale")
+            val ok = when {
+                serverHash == null -> {
+                    errors += BackupError(l.file.name, "assente dal manifest dopo il push"); false
+                }
+                serverHash != l.hash -> {
+                    errors += BackupError(l.file.name, "hash sul server diverso da quello locale"); false
+                }
                 else -> {
                     val got = restoreApi.fetchFile(serverUrl, token, relPath)
-                    if (got !is RestoreResult.FileBytes || !got.bytes.contentEquals(l.bytes)) {
+                    if (got is RestoreResult.FileBytes && got.bytes.contentEquals(l.bytes)) true
+                    else {
                         errors += BackupError(
                             l.file.name,
                             (got as? RestoreResult.Failure)?.reason ?: "rilettura non identica",
                         )
+                        false
                     }
                 }
             }
+            if (ok) { if (cat(l.file) == "exercises") exMatching++ else rtMatching++ }
         }
 
         // Sessions — count-only, matched by manifest hash.
         val sessionLocalByRel = sessionFiles.associate { f ->
             sessionRel(f) to repoLedgerRepository.hashOf(f.readBytes())
         }
-        val sessionsOnServer = manifest1.keys.count { it.matches(SESSION_RELPATH_RE) }
         var sessionsMatching = 0
         val sessionsChanged = mutableListOf<String>()
         for ((relPath, localHash) in sessionLocalByRel) {
@@ -204,17 +213,18 @@ class BackupVerifier @Inject constructor(
             else sessionsChanged += relPath.substringAfterLast('/').removeSuffix(".md")
         }
 
+        val exLocal = locals.count { cat(it.file) == "exercises" }
+        val rtLocal = locals.count { cat(it.file) == "routines" }
         val report = BackupVerifyReport(
             exercises = exEntries.sortedBy { it.displayName.lowercase() },
             routines = rtEntries.sortedBy { it.displayName.lowercase() },
-            exercisesUnchanged = locals.count { cat(it.file) == "exercises" } - exEntries.size,
-            routinesUnchanged = locals.count { cat(it.file) == "routines" } - rtEntries.size,
+            exercisesLocal = exLocal,
+            exercisesMatching = exMatching,
+            routinesLocal = rtLocal,
+            routinesMatching = rtMatching,
             sessionsLocal = sessionFiles.size,
-            sessionsOnServer = sessionsOnServer,
             sessionsMatching = sessionsMatching,
             sessionsChanged = sessionsChanged.sorted(),
-            manifestServerFiles = manifest1.size,
-            manifestLocalFiles = repoFiles.size + sessionFiles.size,
             errors = errors,
         )
         if (errors.isNotEmpty()) {
@@ -228,8 +238,6 @@ class BackupVerifier @Inject constructor(
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
-
-    private val SESSION_RELPATH_RE = Regex("""^\d{4}/\d{2}/.+\.md$""")
 
     private fun collectSessionFiles(): List<File> {
         val history = File(fileManager.root, "history")

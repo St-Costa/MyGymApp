@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,21 +23,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.mygymapp.data.sync.BackupDiffEntry
 import com.mygymapp.data.sync.BackupVerifyReport
+import com.mygymapp.ui.theme.JetBrainsMono
 
 private val GREEN = Color(0xFF3FB950)
 private val RED = Color(0xFFF85149)
 
 /**
  * git-diffstat-style rendering of a full-store backup round-trip (docs/BACKUP.md §3.7).
- * Sections "Esercizi" / "Routine" list each pushed item as `<name>  -+++` (name in the
- * normal text colour, only the `+`/`-` coloured). "Sessioni" is a count line. An "ERRORI"
- * section (raw filenames + reason) appears only when something failed.
+ *
+ * Header "Backup sul server" — centred, `titleMedium`, with a server icon on the left.
+ * Sections **Esercizi** / **Routine** / **Sessioni** (`titleSmall`, bold) each carry a
+ * `(X/Y allineate)` suffix in the header colour, turning red when not all aligned. Each
+ * changed item is `<name>  -++` in JetBrains Mono at `bodyMedium` — name in the normal text
+ * colour, only the `-`/`+` runs coloured. "ERRORI" (raw filenames) shows only on failure.
  *
  * Pass exactly one meaningful state: [running] / [error] / [report].
  */
@@ -49,92 +54,146 @@ fun BackupVerifyBox(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            "Backup sul server",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Dns,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                "Backup sul server",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
 
         when {
             running -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                Text("  Verifica in corso…", style = mono())
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.size(8.dp))
+                Text("Verifica in corso…", style = MaterialTheme.typography.bodyMedium)
             }
-            error != null -> Text(error, style = mono(), color = RED)
+            error != null -> Text(
+                error,
+                style = MaterialTheme.typography.bodyMedium,
+                color = RED,
+                fontFamily = JetBrainsMono,
+            )
             report != null -> ReportBody(report)
-            else -> Text("In attesa…", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> Text(
+                "In attesa…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
 
 @Composable
 private fun ReportBody(r: BackupVerifyReport) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Section("Esercizi", r.exercises, r.exercisesUnchanged)
-        Spacer(Modifier.height(6.dp))
-        Section("Routine", r.routines, r.routinesUnchanged)
-        Spacer(Modifier.height(6.dp))
-
-        Text("Sessioni", style = mono().copy(fontWeight = FontWeight.Bold))
-        Text(
-            "  ${r.sessionsMatching}/${r.sessionsLocal} allineate" +
-                if (r.sessionsChanged.isEmpty()) "" else " · da inviare: ${r.sessionsChanged.joinToString(", ")}",
-            style = mono(),
-            color = if (r.sessionsMatching == r.sessionsLocal) MaterialTheme.colorScheme.onSurfaceVariant else RED,
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        SectionHeader(
+            "Esercizi",
+            countText = "${r.exercisesMatching}/${r.exercisesLocal} allineat${plural(r.exercisesLocal)}",
+            allAligned = r.exercisesMatching == r.exercisesLocal,
         )
+        DiffRows(r.exercises)
 
-        if (r.errors.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            Text("ERRORI", style = mono().copy(fontWeight = FontWeight.Bold), color = RED)
-            r.errors.forEach { e ->
-                Text("  ${e.fileName} → ${e.detail}", style = mono(), color = RED)
-            }
+        Spacer(Modifier.height(8.dp))
+        SectionHeader(
+            "Routine",
+            countText = "${r.routinesMatching}/${r.routinesLocal} allineat${plural(r.routinesLocal)}",
+            allAligned = r.routinesMatching == r.routinesLocal,
+        )
+        DiffRows(r.routines)
+
+        Spacer(Modifier.height(8.dp))
+        SectionHeader(
+            "Sessioni",
+            countText = "${r.sessionsMatching}/${r.sessionsLocal} allineat${plural(r.sessionsLocal)}",
+            allAligned = r.sessionsMatching == r.sessionsLocal,
+        )
+        if (r.sessionsChanged.isNotEmpty()) {
+            FileRow("da inviare: " + r.sessionsChanged.joinToString(", "), RED)
         }
 
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 6.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-        Text(
-            "Manifest: ${r.manifestServerFiles}/${r.manifestLocalFiles} coincidono",
-            style = mono(),
-            color = if (r.allGood) MaterialTheme.colorScheme.onSurfaceVariant else RED,
-        )
+        if (r.errors.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            SectionHeader("ERRORI", countText = null, forceColor = RED)
+            r.errors.forEach { e -> FileRow("${e.fileName} → ${e.detail}", RED) }
+        }
     }
 }
 
+/** "o" for exactly one, "e" otherwise (allineato / allineate). */
+private fun plural(n: Int) = if (n == 1) "o" else "e"
+
 @Composable
-private fun Section(title: String, entries: List<BackupDiffEntry>, unchanged: Int) {
-    Text(title, style = mono().copy(fontWeight = FontWeight.Bold))
+private fun DiffRows(entries: List<BackupDiffEntry>) {
     if (entries.isEmpty()) {
-        Text("  nessuna modifica", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FileRow("nessuna modifica", MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
-        entries.forEach { e -> DiffLine(e) }
-    }
-    if (unchanged > 0) {
-        Text("  … $unchanged invariat${if (unchanged == 1) "o" else "i"}", style = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        entries.forEach { DiffRow(it) }
     }
 }
 
-/** `calf raise  -+++` — name in normal colour, `-` in red then `+` in green (git order). */
+/** Big section header, optionally with a `(X/Y allineate)` suffix in the header colour. */
 @Composable
-private fun DiffLine(e: BackupDiffEntry) {
+private fun SectionHeader(
+    title: String,
+    countText: String?,
+    allAligned: Boolean = true,
+    forceColor: Color? = null,
+) {
+    val base = forceColor ?: MaterialTheme.colorScheme.onSurface
+    Text(
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = base, fontWeight = FontWeight.Bold)) { append(title) }
+            if (countText != null) {
+                withStyle(
+                    SpanStyle(color = if (allAligned) base else RED, fontWeight = FontWeight.Normal),
+                ) { append("  ($countText)") }
+            }
+        },
+        style = MaterialTheme.typography.titleSmall,
+    )
+}
+
+/** One `<name>  -++` diff row in JetBrains Mono — name normal colour, `-` red, `+` green. */
+@Composable
+private fun DiffRow(e: BackupDiffEntry) {
     val nameColor = MaterialTheme.colorScheme.onSurface
     Text(
         buildAnnotatedString {
-            withStyle(SpanStyle(color = nameColor)) { append("  ${e.displayName}  ") }
-            withStyle(SpanStyle(color = RED)) { append("-".repeat(e.removed.coerceAtMost(20))) }
-            withStyle(SpanStyle(color = GREEN)) { append("+".repeat(e.added.coerceAtMost(20))) }
+            withStyle(SpanStyle(color = nameColor)) { append("${e.displayName}  ") }
+            withStyle(SpanStyle(color = RED)) { append("-".repeat(e.removed.coerceAtMost(30))) }
+            withStyle(SpanStyle(color = GREEN)) { append("+".repeat(e.added.coerceAtMost(30))) }
         },
-        style = mono(),
+        style = MaterialTheme.typography.bodyMedium,
+        fontFamily = JetBrainsMono,
+        modifier = Modifier.padding(start = 8.dp),
     )
 }
 
 @Composable
-private fun mono() = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+private fun FileRow(text: String, color: Color) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        fontFamily = JetBrainsMono,
+        color = color,
+        modifier = Modifier.padding(start = 8.dp),
+    )
+}

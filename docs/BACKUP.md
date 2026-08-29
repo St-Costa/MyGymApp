@@ -271,32 +271,37 @@ Errors (a rejected `POST`, a post-push manifest gap, a non-identical read-back) 
 `AppLogger` (`adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`, filter
 `BackupVerifier`).
 
-The result is a **`BackupVerifyReport`** rendered as a git-diffstat block. The exercise /
-routine name comes from the file's `name:` frontmatter; only the `-`/`+` runs are coloured:
+The result is a **`BackupVerifyReport`** rendered by `ui/components/BackupVerifyBox.kt`:
+a centred **"Backup sul server"** header with a server icon, then one section per record
+type (`titleSmall` bold) each carrying its own `(X/Y allineate)` — X = files byte-for-byte
+on the server after the run, Y = files on the phone — in the header colour, **red** if
+X≠Y. Changed exercises/routines are `<name>  -++` in JetBrains Mono (`bodyMedium`): the
+name from the file's `name:` frontmatter in the normal text colour, only the `-`/`+` runs
+coloured (red then green). Unchanged files aren't listed at all.
 
 ```
-Esercizi
-  Calf Raise  -+
-  Incline DB Press  ++++++++++++
-  … 40 invariati
-Routine
-  Pull  --+++
-  … 6 invariati
-Sessioni
-  62/62 allineate
-────────────────────────────
-Manifest: 111/111 coincidono
+          🖳  Backup sul server
+
+Esercizi  (42/42 allineate)
+    Calf Raise  -+
+    Incline DB Press  ++++++++++++
+Routine  (7/7 allineate)
+    Pull  --+++
+Sessioni  (62/62 allineate)
 ```
 
-When something fails, an **ERRORI** section appears above the divider (raw filename here,
-not the pretty name) and the Manifest line turns red:
+When something fails, an **ERRORI** section (raw filenames, not the pretty name) is added
+and that section — plus any record type whose count is off — turns red:
 
 ```
+Esercizi  (41/42 allineate)      ← red
+    Squat  -+
+Routine  (7/7 allineate)
+Sessioni  (61/62 allineate)      ← red
+    da inviare: 2026-08-28_rt-71284f58_b38ae530
 ERRORI
-  push-rt-b997ec72.md → HTTP 422: contentHash mismatch
-  leg-rt-97a2091f.md → assente dal manifest dopo il push
-────────────────────────────
-Manifest: 109/111 coincidono
+    push-rt-b997ec72.md → HTTP 422: contentHash mismatch
+    leg-rt-97a2091f.md → assente dal manifest dopo il push
 ```
 
 Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
