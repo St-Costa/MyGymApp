@@ -368,6 +368,12 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
 
+        composable(Screen.PolarDebug.route) {
+            com.mygymapp.ui.screen.polar.PolarDebugScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+
         composable(Screen.SessionSummaryPreview.route) {
             com.mygymapp.ui.screen.sessionprogress.SessionSummaryPreviewScreen(
                 onBack = { navController.popBackStack() },
@@ -378,6 +384,7 @@ fun AppNavigation(navController: NavHostController) {
             OptionsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToScaleDebug = { navController.navigate(Screen.ScaleDebug.route) },
+                onNavigateToPolarDebug = { navController.navigate(Screen.PolarDebug.route) },
                 onNavigateToSummaryPreview = { navController.navigate(Screen.SessionSummaryPreview.route) },
             )
         }

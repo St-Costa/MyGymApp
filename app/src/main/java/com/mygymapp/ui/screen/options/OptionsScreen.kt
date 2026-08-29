@@ -64,6 +64,7 @@ import java.util.Locale
 fun OptionsScreen(
     onBack: () -> Unit,
     onNavigateToScaleDebug: () -> Unit = {},
+    onNavigateToPolarDebug: () -> Unit = {},
     onNavigateToSummaryPreview: () -> Unit = {},
     viewModel: OptionsViewModel = hiltViewModel(),
 ) {
@@ -114,6 +115,7 @@ fun OptionsScreen(
             DebugSection(
                 uiState = uiState,
                 onScaleDebugClick = onNavigateToScaleDebug,
+                onPolarDebugClick = onNavigateToPolarDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
                 onVerifyBackup = viewModel::verifyBackupRoundTrip,
@@ -385,13 +387,15 @@ private fun PendingItemsList(uiState: OptionsUiState) {
 }
 
 /**
- * All debug tools in one card: bilancia BLE, contapassi (Health Connect), ECG debug send,
- * backup round-trip check. Each is its own short explanation + button, separated by a divider.
+ * All debug tools in one card: bilancia BLE, Polar BLE, contapassi (Health Connect), ECG
+ * debug send, backup round-trip check. Each is its own short explanation + button, separated
+ * by a divider.
  */
 @Composable
 private fun DebugSection(
     uiState: OptionsUiState,
     onScaleDebugClick: () -> Unit,
+    onPolarDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
     onVerifyBackup: () -> Unit,
@@ -416,6 +420,20 @@ private fun DebugSection(
             )
             OutlinedButton(onClick = onScaleDebugClick, modifier = Modifier.fillMaxWidth()) {
                 Text("Scale BLE Debug")
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Polar — same as the bilancia button above: scan for the strap and connect.
+            // The first successful connect re-saves the device ID so future scans auto-connect
+            // to it again — needed after a reinstall/data-wipe clears that pref.
+            Text(
+                "Cerca il Polar e collegalo. La prima connessione lo salva per il collegamento automatico futuro.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onPolarDebugClick, modifier = Modifier.fillMaxWidth()) {
+                Text("Polar BLE Debug")
             }
 
             androidx.compose.material3.HorizontalDivider()
