@@ -30,8 +30,13 @@ data class StrengthSetUi(
     val weightTouched: Boolean = false,
 )
 
-/** Best single set ever recorded for this exercise, by tonnage (reps * weight). */
-data class TonnagePr(val reps: Int, val weight: Double)
+/**
+ * Best single set ever recorded for this exercise, by tonnage (reps * weight).
+ * [bwBaseWeightKg] is the body weight at the time it was logged for a bodyweight exercise
+ * (0.0 otherwise / legacy) — bodyweight screens show `reps x bwBaseWeightKg` instead of
+ * `reps x weight` (which for bodyweight is only bwLoadPercent% of the body weight).
+ */
+data class TonnagePr(val reps: Int, val weight: Double, val bwBaseWeightKg: Double = 0.0)
 
 data class StrengthExerciseUiState(
     val exercise: Exercise? = null,
@@ -139,7 +144,9 @@ class StrengthExerciseViewModel @Inject constructor(
 
             // All-time PR (highest reps*weight set ever, in this slot context) — also from the
             // sidecar, same as "previous" above.
-            val tonnagePr = ctxStats?.pr?.let { TonnagePr(reps = it.reps, weight = it.weight) }
+            val tonnagePr = ctxStats?.pr?.let {
+                TonnagePr(reps = it.reps, weight = it.weight, bwBaseWeightKg = it.bwBaseWeightKg)
+            }
 
             // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
             // never reaches this screen) that hasn't recorded anything yet, matching
