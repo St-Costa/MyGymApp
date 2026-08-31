@@ -23,7 +23,8 @@ object ExerciseStatsCalculator {
     private fun ExerciseSet.Strength.isReal(): Boolean =
         reps > 0 && weight > 0.0
 
-    private fun ExerciseSet.Strength.toPreviousSet() = PreviousSet(reps = reps, weight = weight)
+    private fun ExerciseSet.Strength.toPreviousSet() =
+        PreviousSet(reps = reps, weight = weight, bwBaseWeightKg = bwBaseWeightKg)
 
     private fun ExerciseSet.Strength.tonnage(): Double = reps * weight
     private fun PreviousSet.tonnage(): Double = reps * weight

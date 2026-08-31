@@ -148,10 +148,19 @@ fun StrengthExerciseScreen(
 
                 HorizontalDivider()
 
-                // All-time PR (best single set by tonnage), e.g. "12 x 80"
+                // All-time PR (best single set by tonnage), e.g. "12 x 80". For a bodyweight
+                // exercise the weight shown is the lifter's body weight at the time the set was
+                // logged ("peso corpo in quel momento"), not the materialized bwLoadPercent% of
+                // it; if that body weight is unknown (legacy set, no weigh-in), show reps only.
                 uiState.tonnagePr?.let { pr ->
+                    val prText = if (isBodyweight) {
+                        if (pr.bwBaseWeightKg > 0.0) "PR: ${pr.reps} x ${formatWeight(pr.bwBaseWeightKg)}"
+                        else "PR: ${pr.reps}"
+                    } else {
+                        "PR: ${pr.reps} x ${formatWeight(pr.weight)}"
+                    }
                     Text(
-                        text = "PR: ${pr.reps} x ${formatWeight(pr.weight)}",
+                        text = prText,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,

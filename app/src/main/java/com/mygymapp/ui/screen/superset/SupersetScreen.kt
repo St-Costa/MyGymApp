@@ -205,6 +205,7 @@ fun SupersetScreen(
                                     repRangeMax = member?.repRangeMax ?: 0,
                                     prReps = member?.prReps ?: 0,
                                     prWeight = member?.prWeight ?: 0.0,
+                                    prBwBaseWeightKg = member?.prBwBaseWeightKg ?: 0.0,
                                     isBodyweight = member?.exercise?.isBodyweight == true,
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
@@ -330,6 +331,9 @@ private fun SupersetSetItem(
     repRangeMax: Int,
     prReps: Int = 0,
     prWeight: Double = 0.0,
+    // Body weight at the time the PR set was logged (bodyweight members only) — the PR badge
+    // shows `reps x prBwBaseWeightKg` ("peso corpo in quel momento") for a bodyweight member.
+    prBwBaseWeightKg: Double = 0.0,
     // This side's exercise is bodyweight — hide the Kg column / weight picker (load is
     // estimated from body weight at completion, see SupersetViewModel.buildUpdatedSession).
     isBodyweight: Boolean = false,
@@ -362,10 +366,15 @@ private fun SupersetSetItem(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // PR badge: heaviest set ever logged for this exercise, shown once above its first set
-            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 && prWeight > 0 && !isBodyweight) {
-                val prWeightText = remember(prWeight) {
-                    if (prWeight == prWeight.toLong().toDouble()) prWeight.toLong().toString() else "%.1f".format(prWeight)
+            // PR badge: heaviest set ever logged for this exercise, shown once above its first
+            // set. For a bodyweight member the weight shown is the body weight at the time the
+            // set was logged ("peso corpo in quel momento"), not the materialized
+            // bwLoadPercent% of it — and only when that body weight is known.
+            val prBadgeWeight = if (isBodyweight) prBwBaseWeightKg else prWeight
+            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 && prBadgeWeight > 0) {
+                val prWeightText = remember(prBadgeWeight) {
+                    if (prBadgeWeight == prBadgeWeight.toLong().toDouble()) prBadgeWeight.toLong().toString()
+                    else "%.1f".format(prBadgeWeight)
                 }
                 Text(
                     text = "PR: ${prReps} x ${prWeightText}",
