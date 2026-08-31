@@ -41,8 +41,21 @@ data class ExerciseStats(
          *     `pr` = the single Strength set with the highest reps*weight ever recorded for this
          *     exercise in this slot context (bodyweight-materialized weight included).
          *     `hasPriorRealTonnage` = any such PR-eligible set exists at all.
+         *
+         * v2: `previousSets[].bwBaseWeightKg` / `pr.bwBaseWeightKg` added — the lifter's body
+         *     weight at the time a bodyweight set was recorded (0.0 for non-bodyweight sets, or
+         *     legacy sets logged with no scale weigh-in). Bodyweight exercise screens show the
+         *     PR as `reps x bwBaseWeightKg` ("peso corpo in quel momento") instead of the
+         *     materialized `weight` (= bwLoadPercent% of that). PR selection is unchanged — still
+         *     by materialized reps*weight. Old sidecars can't supply the field ⇒ lazy rebuild.
+         *
+         * v3: `rmPr` added — the single set with the highest estimated 1RM (Epley,
+         *     `weight * (1 + reps/30)`) ever recorded for this exercise+context. Separate from
+         *     `pr` (highest reps*weight): a heavy low-rep set can win one and not the other. The
+         *     exercise screens show both badges, e1RM on top. Old sidecars can't supply it ⇒
+         *     lazy rebuild.
          */
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 3
     }
 }
 
@@ -59,6 +72,12 @@ data class ContextStats(
     /** All-time best tonnage (reps × weight) Strength set for this exercise+context. */
     val pr: PreviousSet? = null,
     /**
+     * All-time best estimated-1RM (Epley: `weight * (1 + reps/30)`) Strength set for this
+     * exercise+context. May be a different set than [pr] — a heavy low-rep single has a high
+     * e1RM but low tonnage. Null when no PR-eligible set exists (same condition as [pr]).
+     */
+    val rmPr: PreviousSet? = null,
+    /**
      * True once any PR-eligible Strength set (reps>0 && weight>0, bodyweight-materialized
      * included) has ever been recorded for this exercise+context. Drives the "primo dato"
      * badge in the active-routine list.
@@ -70,8 +89,14 @@ data class ContextStats(
  * A single recorded strength set, flattened to just what the pre-fill / PR need. Bodyweight
  * sets are stored with their materialized `weight` already applied, so `reps * weight` works
  * with no special-casing — same as everywhere else (see TonnageMath).
+ *
+ * [bwBaseWeightKg] is the lifter's body weight (from the most recent scale weigh-in on or
+ * before the session) when this set was a bodyweight set; 0.0 for non-bodyweight sets and for
+ * bodyweight sets logged before any weigh-in existed. Bodyweight exercise screens display the
+ * PR / previous as `reps x bwBaseWeightKg` rather than the materialized `weight`.
  */
 data class PreviousSet(
     val reps: Int = 0,
     val weight: Double = 0.0,
+    val bwBaseWeightKg: Double = 0.0,
 )

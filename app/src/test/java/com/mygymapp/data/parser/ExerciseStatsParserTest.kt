@@ -38,6 +38,7 @@ class ExerciseStatsParserTest {
                     ),
                     previousSessionDate = "2026-08-25T19:04:11",
                     pr = PreviousSet(6, 90.0),
+                    rmPr = PreviousSet(3, 100.0),
                     hasPriorRealTonnage = true,
                 ),
             ),
@@ -50,7 +51,28 @@ class ExerciseStatsParserTest {
         assertEquals(listOf(PreviousSet(8, 80.0), PreviousSet(8, 80.0), PreviousSet(6, 82.5)), ctx!!.previousSets)
         assertEquals("2026-08-25T19:04:11", ctx.previousSessionDate)
         assertEquals(PreviousSet(6, 90.0), ctx.pr)
+        assertEquals(PreviousSet(3, 100.0), ctx.rmPr)
         assertEquals(true, ctx.hasPriorRealTonnage)
+    }
+
+    @Test
+    fun `rmPr absent round-trips as null`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-3e4195a9",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(8, 80.0)),
+                    previousSessionDate = "2026-08-25",
+                    pr = PreviousSet(6, 90.0),
+                    rmPr = null,
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+
+        val ctx = roundTrip(stats).forContext(SlotContext.NORMAL)!!
+        assertNull(ctx.rmPr)
+        assertEquals(PreviousSet(6, 90.0), ctx.pr)
     }
 
     @Test
@@ -106,6 +128,51 @@ class ExerciseStatsParserTest {
         assertNull(ctx.pr)
         assertEquals(emptyList<PreviousSet>(), ctx.previousSets)
         assertEquals(false, ctx.hasPriorRealTonnage)
+    }
+
+    @Test
+    fun `bodyweight base weight on pr and previous sets round-trips`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-bw000001",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(
+                        PreviousSet(reps = 12, weight = 60.0, bwBaseWeightKg = 80.0),
+                        PreviousSet(reps = 10, weight = 60.0, bwBaseWeightKg = 80.0),
+                    ),
+                    previousSessionDate = "2026-08-25",
+                    pr = PreviousSet(reps = 15, weight = 61.5, bwBaseWeightKg = 82.0),
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+
+        val result = roundTrip(stats)
+        val ctx = result.forContext(SlotContext.NORMAL)!!
+        assertEquals(82.0, ctx.pr!!.bwBaseWeightKg, 0.0)
+        assertEquals(15, ctx.pr!!.reps)
+        assertEquals(80.0, ctx.previousSets[0].bwBaseWeightKg, 0.0)
+        assertEquals(80.0, ctx.previousSets[1].bwBaseWeightKg, 0.0)
+    }
+
+    @Test
+    fun `non-bodyweight sets omit the bwBaseWeightKg key`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-nobw0001",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(8, 80.0)),
+                    previousSessionDate = "2026-08-25",
+                    pr = PreviousSet(6, 90.0),
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+        val yaml = ExerciseStatsParser.toYaml(stats)
+        assertEquals(false, yaml.contains("bwBaseWeightKg"))
+        // And it still reads back with a zero default.
+        val ctx = ExerciseStatsParser.fromYaml(yaml)!!.forContext(SlotContext.NORMAL)!!
+        assertEquals(0.0, ctx.pr!!.bwBaseWeightKg, 0.0)
     }
 
     @Test
