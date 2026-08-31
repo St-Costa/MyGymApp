@@ -31,10 +31,12 @@ import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.HrZoneTraceChart
 
 /**
- * The single action button cycles through the block lifecycle:
- * IDLE ("Inizia cardio") -> RUNNING ("Termina cardio") -> at least one block closed
- * ("Completa esercizio"), which saves and exits. See CardioExerciseViewModel's
- * startBlock()/stopBlock()/completeExercise().
+ * The single action button:
+ * IDLE ("Inizia cardio") -> RUNNING ("Termina cardio"), which closes the block, marks the
+ * exercise completed and exits in one step — no intermediate phase. The DONE state
+ * ("Completa esercizio") only shows on re-entry when a block was left open by a process
+ * kill and closed on load (see CardioExerciseViewModel.init) — normal flow never hits it.
+ * See CardioExerciseViewModel's startBlock()/stopBlock()/completeExercise().
  */
 private enum class CardioButtonState { IDLE, RUNNING, DONE }
 
@@ -117,7 +119,8 @@ fun CardioExerciseScreen(
                     )
                 }
 
-                // Single action button, cycling IDLE -> RUNNING -> DONE (see buttonState()).
+                // Single action button: IDLE -> RUNNING, and "Termina cardio" both ends the
+                // block and completes the exercise (see buttonState() / stopBlock()).
                 val buttonState = uiState.buttonState()
                 Button(
                     onClick = {
