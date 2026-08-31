@@ -95,13 +95,16 @@ class MainViewModel @Inject constructor(
         homeStateLoader.refresh()
         viewModelScope.launch {
             workoutRepository.migrateOldSessionFiles()
-            // Ghost-session cleanup, old-session pruning, and orphan-ECG cleanup, combined into
-            // one pass over history/ and throttled internally (see WorkoutRepository.runMaintenance)
-            // — no need to re-walk and re-parse the whole session history on every single launch.
+            // Unthrottled, every launch: any session left unfinalized (app closed or killed
+            // mid-workout, no "Termina" tap) is deleted now — it must not linger to the next
+            // day. Cheap: only unfinalized sessions are touched.
+            val ghosts = workoutRepository.deleteUnfinalizedSessions()
+            // Throttled (~12h): the expensive re-walk — old-session pruning + orphan-ECG cleanup.
             val result = workoutRepository.runMaintenance(LocalDate.now().minusMonths(3))
             appLogger.i(
                 TAG,
-                "Boot cleanup: ghosts=${result.ghostsDeleted} pruned=${result.prunedDeleted} orphanEcg=${result.orphanEcgDeleted}",
+                "Boot cleanup: ghosts=${ghosts.ghostsDeleted} ghostEcg=${ghosts.ecgDeleted} " +
+                    "pruned=${result.prunedDeleted} orphanEcg=${result.orphanEcgDeleted}",
             )
             // Repair exercises/routines where repRangeMin > repRangeMax was persisted.
             exerciseRepository.fixInvalidRepRanges()

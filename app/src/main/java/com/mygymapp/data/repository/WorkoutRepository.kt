@@ -680,26 +680,75 @@ class WorkoutRepository @Inject constructor(
     data class MaintenanceResult(val ghostsDeleted: Int, val prunedDeleted: Int, val orphanEcgDeleted: Int)
 
     /**
-     * True if a session has no performed work: no completedAt and no exercise the lifter
-     * marked "Complete". Set data alone no longer rescues a session — since the
-     * untouched-exercise guard change an exercise's `sets` may just be the grey pre-fill
-     * persisted on a Complete-without-touching (completed = false), and that isn't work.
-     * Mirrors the on-exit ghost check in ActiveRoutineViewModel.onCleared().
+     * True if a session was never registered: `completedAt` is blank. Nothing else matters —
+     * per an explicit product decision, a session you left without tapping "Termina" is gone
+     * at the next launch no matter how much was logged into it. The app cannot tell a crash
+     * from a deliberate exit at boot time, and the chosen trade-off is "always clean up"
+     * (see [deleteUnfinalizedSessions] and the on-exit check in
+     * ActiveRoutineViewModel.onCleared()).
      */
-    private fun isGhostSession(session: WorkoutSession): Boolean {
-        if (session.completedAt.isNotBlank()) return false
-        return session.exercises.none { it.completed }
+    private fun isGhostSession(session: WorkoutSession): Boolean =
+        session.completedAt.isBlank()
+
+    /** Result of [deleteUnfinalizedSessions]: how many ghost `.md` (and paired `.ecg`) went. */
+    data class GhostSweepResult(val ghostsDeleted: Int, val ecgDeleted: Int)
+
+    /**
+     * Unthrottled boot sweep: delete EVERY session with a blank `completedAt`, plus its
+     * `ecg/{id}.ecg` sidecar. Runs on every single launch (unlike [runMaintenance], which is
+     * throttled) because "I closed the app mid-session" must self-heal by the next start, not
+     * up to 12h later. Cheap: only unfinalized sessions are touched, and there are normally
+     * zero or one. A stats-sidecar rebuild is never needed — a ghost has no completed work
+     * that could have fed one. Mirrors ActiveRoutineViewModel.onCleared()'s on-exit check for
+     * the case where onCleared() never got to run (process kill, crash).
+     */
+    suspend fun deleteUnfinalizedSessions(): GhostSweepResult = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            var ghostsDeleted = 0
+            val deletedSessionIds = mutableSetOf<String>()
+            historyMonthDirs().forEach { monthDir ->
+                val yearName = monthDir.parentFile?.name ?: return@forEach
+                monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                    val session = try {
+                        WorkoutParser.fromMarkdown(file.readText())
+                    } catch (_: Exception) {
+                        return@forEach // malformed — leave it for runMaintenance to reap
+                    }
+                    if (session.completedAt.isNotBlank()) return@forEach
+
+                    val rel = "$yearName/${monthDir.name}/${file.name}"
+                    session.exercises.forEach { removeFromExerciseIndex(it.exerciseId, rel) }
+                    if (file.delete()) {
+                        ghostsDeleted++
+                        deletedSessionIds.add(session.id)
+                    }
+                }
+            }
+
+            var ecgDeleted = 0
+            val ecgDir = fileManager.getDir("ecg")
+            if (ecgDir.exists()) {
+                ecgDir.listFiles()?.filter { it.extension == "ecg" }?.forEach { file ->
+                    if (file.nameWithoutExtension in deletedSessionIds && file.delete()) ecgDeleted++
+                }
+            }
+
+            if (ghostsDeleted > 0) deleteGitgraphCache()
+            GhostSweepResult(ghostsDeleted, ecgDeleted)
+        }
     }
 
     /**
-     * Combined boot maintenance: ghost-session cleanup, old-session pruning, and orphan ECG
-     * file cleanup — done as a SINGLE walk over `history/` that parses each `.md` file only
-     * once (previously these were three separate walks, each re-parsing every session's YAML,
-     * which dominated app-start time as history grew).
+     * Throttled boot maintenance: old-session pruning (>3 months) and orphan-ECG cleanup, in a
+     * SINGLE walk over `history/` that parses each `.md` once. This is the expensive pass —
+     * it re-parses the whole session history and can rebuild stats sidecars — so it is
+     * throttled to at most once every [MIN_INTERVAL_HOURS] hours via an mtime sentinel.
      *
-     * Throttled to run at most once every [MIN_INTERVAL_HOURS] hours (tracked via an mtime
-     * sentinel file), since none of this cleanup needs to happen more than once per sitting —
-     * it exists to scrub state left over between sessions, not to run on every cold start.
+     * Ghost-session cleanup is NOT throttled and does not live here — see
+     * [deleteUnfinalizedSessions], which runs on every launch. This pass still reaps any
+     * unfinalized session it happens to see (via [isGhostSession]) as a cheap backstop, but
+     * the unthrottled sweep is what actually guarantees "closed mid-session ⇒ gone next start".
+     *
      * Pass [force] to bypass the throttle (e.g. a manual "clean up now" action, if ever added).
      */
     suspend fun runMaintenance(

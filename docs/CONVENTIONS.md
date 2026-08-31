@@ -128,7 +128,7 @@ Touch tracking: each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `re
 `completedEmpty` always implies `completed` (the lifter did tap Complete). But a completed-empty exercise carries no performed work, and its `sets` hold only the retained pre-fill — so "empty sets" is not a usable proxy either way. Therefore:
 
 - **`WorkoutExercise.isUntouched()` is `!completed || completedEmpty`.** `computeCommonTonnage()` (`GitgraphHistoryCalculator`) — the session-vs-session comparison behind the gitgraph's day colour and `%` change — excludes `isUntouched()` exercises from the common-exercise-ID intersection in *either* session, alongside `excludeFromTonnage` (warmup/daily). Without this a skipped exercise's pre-fill would count as "0-vs-something" work and drag that day's average around.
-- **Ghost-session detection is `completedAt.isBlank() && exercises.none { it.completed }`** — in both `ActiveRoutineViewModel.onCleared()` and `WorkoutRepository.isGhostSession()`. A completed-empty exercise *does* keep a session alive (the lifter deliberately tapped Complete on it), same as it did before Phase 74. Merely *opening* a pre-filling daily and backing out still doesn't.
+- **Ghost-session detection is `completedAt.isBlank()`, nothing else (Phase 97).** Both `ActiveRoutineViewModel.onCleared()` and `WorkoutRepository.isGhostSession()`. Completed exercises / filled sets no longer rescue an unfinalized session — see [Ghost session prevention](#ghost-session-prevention) for why (crash vs. deliberate exit is indistinguishable at boot). Earlier builds also required `exercises.none { it.completed }`.
 - `hasNoRecordedSets()` / `isSwitchEligible()` are unchanged — still per-set-value checks — and `isSwitchEligible()`'s `!completed` clause correctly locks a completed-empty slot too.
 
 ## `onBack` vs `onComplete`
@@ -267,12 +267,25 @@ Don't name a private property `fooBar` and a function `getFooBar()` — Kotlin g
 
 Entering an active routine creates the `.md` file eagerly (so `StrengthExerciseViewModel` can locate the session by `sessionId`). If the user backs out before filling any data, the empty shell would be persisted — prior to Phase 16 this left 21/76 sessions as ghosts on disk.
 
-`ActiveRoutineViewModel.onCleared()` reloads the session and deletes it if **all** hold:
-- `completedAt.isBlank()`
-- no exercise has `completed == true`
-- every set is empty (`reps == 0 && weight == 0` for strength, `done == false` for stretch, `startedAt.isBlank()` for cardio — a started-but-not-yet-finished cardio block still counts as real data)
+**The rule (Phase 97): a session with a blank `completedAt` is a ghost, full stop.** How
+much was logged into it — completed exercises, filled sets — does not matter. The app cannot
+tell a crash from a deliberate exit at boot time, and the deliberate trade-off is "always
+clean up" rather than "keep a possibly-recoverable session". `WorkoutRepository.isGhostSession()`
+is just `completedAt.isBlank()`; `ActiveRoutineViewModel.onCleared()` reloads the session and
+deletes it on the same condition (after always stopping the Polar stream — see below).
+`sessionFinalized` (set true only in the "Termina"/register path) is what tells `onCleared`
+the user left without registering.
 
-The same ruleset lives server-side in `WorkoutRepository.runMaintenance()`, called at boot from `MainViewModel.init`, so shells created by older builds (or by a process killed before `onCleared`) still get scrubbed. `runMaintenance()` also prunes sessions older than 3 months and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md` — all three checks happen in one walk over `history/` that parses each session file only once (previously three separate walks/parses; merged in Phase 68 for app-start speed), and the whole pass is throttled to at most once per 12h via an mtime sentinel (`history/_idx/.last_maintenance`).
+Two boot-time entry points in `MainViewModel.init`, in order:
+1. **`WorkoutRepository.deleteUnfinalizedSessions()` — unthrottled, every launch.** Walks
+   `history/` for any `.md` with blank `completedAt`, deletes it plus its `ecg/{id}.ecg`.
+   This is what guarantees "closed the app mid-session ⇒ gone at next start" — it must not
+   wait on a throttle. Cheap: only unfinalized sessions are touched (normally zero or one).
+2. **`WorkoutRepository.runMaintenance()` — throttled to once per 12h** via an mtime sentinel
+   (`history/_idx/.last_maintenance`). The expensive pass: prunes sessions older than 3
+   months and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md`,
+   in one walk that parses each session file once (merged from three walks in Phase 68). It
+   still reaps any unfinalized session it sees as a cheap backstop, but step 1 is the guarantee.
 
 **Always stop the Polar stream in `onCleared`**, not only for ghost sessions: if the user finalizes the routine but doesn't tap "Registra", the stream would otherwise keep writing to the `.ecg` file until disconnect.
 
