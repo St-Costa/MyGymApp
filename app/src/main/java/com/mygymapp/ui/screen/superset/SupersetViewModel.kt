@@ -55,6 +55,9 @@ data class SupersetMemberUi(
     // StrengthExerciseUiState.tonnagePr, matched per slot context.
     val prReps: Int = 0,
     val prWeight: Double = 0.0,
+    // Body weight at the time the PR set was logged (bodyweight members only, 0.0 otherwise /
+    // legacy) — shown as `reps x prBwBaseWeightKg` instead of `reps x prWeight`.
+    val prBwBaseWeightKg: Double = 0.0,
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): each member is an independent
     // slot — one can be switched even if another already has recorded sets.
     val switchEligible: Boolean = false,
@@ -140,7 +143,13 @@ class SupersetViewModel @Inject constructor(
                     else emptyList()
                 val prSet: ExerciseSet.Strength? =
                     if (ex.type == ExerciseType.FORZA)
-                        ctxStats?.pr?.let { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                        ctxStats?.pr?.let {
+                            ExerciseSet.Strength(
+                                reps = it.reps,
+                                weight = it.weight,
+                                bwBaseWeightKg = it.bwBaseWeightKg,
+                            )
+                        }
                     else null
 
                 // Fallback for sets beyond what the previous session recorded.
@@ -206,6 +215,7 @@ class SupersetViewModel @Inject constructor(
                         description = ex.notes,
                         prReps = prSet?.reps ?: 0,
                         prWeight = prSet?.weight ?: 0.0,
+                        prBwBaseWeightKg = prSet?.bwBaseWeightKg ?: 0.0,
                         switchEligible = switchEligible,
                     ),
                     sets = memberSets,

@@ -228,6 +228,36 @@ class ExerciseStatsCalculatorTest {
     }
 
     @Test
+    fun `bodyweight base weight is carried into pr and previous sets`() {
+        // bwLoadPercent 75 of an 80 kg body weight → materialized weight 60; the 80 must
+        // survive as bwBaseWeightKg so the screen can show "reps x peso corpo".
+        val session = WorkoutSession(
+            id = "bw2", routineId = "rt-a", routineName = "R", date = "2026-08-01",
+            completedAt = "2026-08-01T10:00:00",
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = EX, exerciseName = "Pull-up", bodypart = "back",
+                    type = ExerciseType.FORZA, completed = true,
+                    sets = listOf(
+                        ExerciseSet.Strength(
+                            reps = 12, weight = 60.0, isBodyweight = true,
+                            bwLoadPercent = 75, bwBaseWeightKg = 80.0,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
+        assertEquals(80.0, ctx.pr!!.bwBaseWeightKg, 0.0)
+        assertEquals(60.0, ctx.pr!!.weight, 0.0)
+        assertEquals(80.0, ctx.previousSets.single().bwBaseWeightKg, 0.0)
+
+        // And the incremental path must agree.
+        val merged = ExerciseStatsCalculator.merge(EX, null, session).forContext(SlotContext.NORMAL)!!
+        assertEquals(80.0, merged.pr!!.bwBaseWeightKg, 0.0)
+    }
+
+    @Test
     fun `stretch-only history yields no context stats`() {
         val session = WorkoutSession(
             id = "s", routineId = "rt-a", routineName = "R", date = "2026-08-01",

@@ -307,7 +307,7 @@ A per-exercise **materialized view** over that exercise's session history, so th
 ```yaml
 ---
 exerciseId: "ex-3e4195a9"
-schemaVersion: 1
+schemaVersion: 2
 contexts:
   - context: "DAILY"                              # NORMAL | WARMUP | DAILY, one block each
     previousSessionDate: "2026-08-28"             # bare YYYY-MM-DD (day key), never a datetime
@@ -324,6 +324,8 @@ contexts:
 ```
 
 Everything is split by [SlotContext] (a fixed-daily execution's history is unrelated to the same exercise's routine history — see [CONVENTIONS.md](CONVENTIONS.md#all-time-tonnage-pr--previous-preview-slot-context-match)). Bodyweight sets are stored with their materialized `weight` already applied, so `reps * weight` works with no special-casing.
+
+**Schema v2** — a set entry (`pr` or a `previousSets` item) may also carry `bwBaseWeightKg`, the lifter's body weight at the time a **bodyweight** set was logged (copied from `ExerciseSet.Strength.bwBaseWeightKg`). It is omitted for non-bodyweight sets and for bodyweight sets logged before any scale weigh-in existed. The bodyweight exercise screens (strength + superset) show the PR as `reps × bwBaseWeightKg` ("peso corpo in quel momento") instead of the materialized `weight` (which for bodyweight is only `bwLoadPercent%` of that). PR *selection* is unchanged — still the highest materialized `reps × weight`.
 
 **Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
 - **`save()` of a completed session**: each of its exercises' sidecars is updated by an *incremental merge* (`ExerciseStatsCalculator.merge`) — PR compare-and-set, `previousSets` replaced only if the new session has real data. No history scan; cheap on the save path. An in-progress save (autosave / back-out, blank `completedAt`) touches nothing.

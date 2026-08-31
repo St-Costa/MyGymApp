@@ -1294,3 +1294,29 @@ older server still works.
   single entry), `UstarReaderTest` (9 — short names, unpadded data, GNU long-name, PAX
   path, directory skip, `./` strip, empty archive/file). Branch
   `feature/backup-batch-endpoints`.
+
+## Phase 91 — Bodyweight PR badge shows body weight, not the materialized load
+
+For a bodyweight exercise the "PR: reps × weight" badge on the strength and superset
+exercise screens was showing the **materialized** weight — `bwLoadPercent%` of the
+lifter's body weight (e.g. `75% × 80 = 60`). It now shows `reps × bwBaseWeightKg` — the
+body weight *at the time the set was logged* ("peso corpo in quel momento"), which is what
+actually progresses for a bodyweight movement.
+
+- **`PreviousSet.bwBaseWeightKg`** (new field) + **stats sidecar schema v2**
+  (`ExerciseStats.SCHEMA_VERSION` 1→2). `ExerciseStatsCalculator.toPreviousSet()` copies
+  `ExerciseSet.Strength.bwBaseWeightKg` through into both `pr` and `previousSets`;
+  `ExerciseStatsParser` writes the key only for bodyweight sets (non-bodyweight sidecars
+  keep their two-key `reps`/`weight` shape) and reads it back with a `0.0` default. No
+  migration — the version bump forces every sidecar to lazily rebuild from the `.md` files,
+  which already carry `bwBaseWeightKg` per set.
+- **PR *selection* is unchanged** — still the highest materialized `reps × weight`; only
+  the rendered number changed. `TonnagePr` / `SupersetMemberUi` gained a
+  `bwBaseWeightKg` / `prBwBaseWeightKg` field carried to the screen.
+- **Strength screen**: bodyweight PR now renders `PR: reps × bwBaseWeightKg`, or
+  `PR: reps` alone when the body weight is unknown (legacy set logged with no weigh-in on
+  file). **Superset screen**: the PR badge, previously suppressed entirely for bodyweight
+  members, now shows for them too when a body weight is on record.
+- Tests: `ExerciseStatsParserTest` (+2 — bodyweight base-weight round-trip, non-bodyweight
+  key omission), `ExerciseStatsCalculatorTest` (+1 — base weight carried into `pr` /
+  `previousSets` on both the rebuild and merge paths).
