@@ -176,6 +176,61 @@ class ExerciseStatsParserTest {
     }
 
     @Test
+    fun `bodyweight previous slot and isBodyweight marker round-trip`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-bwslot01",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(11, 1.0)),
+                    previousSessionDate = "2026-08-08",
+                    previousSetsBodyweight = listOf(
+                        PreviousSet(12, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+                        PreviousSet(11, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+                    ),
+                    previousSessionDateBodyweight = "2026-08-15",
+                    pr = PreviousSet(12, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+
+        val ctx = roundTrip(stats).forContext(SlotContext.NORMAL)!!
+        assertEquals(listOf(PreviousSet(11, 1.0)), ctx.previousSets)
+        assertEquals("2026-08-08", ctx.previousSessionDate)
+        assertEquals(
+            listOf(
+                PreviousSet(12, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+                PreviousSet(11, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+            ),
+            ctx.previousSetsBodyweight,
+        )
+        assertEquals("2026-08-15", ctx.previousSessionDateBodyweight)
+        assertEquals(true, ctx.pr!!.isBodyweight)
+    }
+
+    @Test
+    fun `empty bodyweight previous slot omits its keys`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-nobwslot",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(8, 80.0)),
+                    previousSessionDate = "2026-08-25",
+                    pr = PreviousSet(6, 90.0),
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+        val yaml = ExerciseStatsParser.toYaml(stats)
+        assertEquals(false, yaml.contains("previousSetsBodyweight"))
+        assertEquals(false, yaml.contains("previousSessionDateBodyweight"))
+        assertEquals(false, yaml.contains("isBodyweight"))
+        val ctx = ExerciseStatsParser.fromYaml(yaml)!!.forContext(SlotContext.NORMAL)!!
+        assertEquals(emptyList<PreviousSet>(), ctx.previousSetsBodyweight)
+        assertEquals("", ctx.previousSessionDateBodyweight)
+    }
+
+    @Test
     fun `garbage content returns null`() {
         assertNull(ExerciseStatsParser.fromYaml(""))
         assertNull(ExerciseStatsParser.fromYaml("not yaml at all"))

@@ -1420,3 +1420,27 @@ for the recovery path where a block was left open by a process kill and closed o
 in `init` (normal flow never reaches it). Multi-block cardio sessions are no longer
 reachable from the UI, matching how the screen is actually used.
 
+## Phase 96 — "Previous" is split by weighting approach (fixes +5005% change badge)
+
+Copenhagen adduction, reconfigured from a manual `weight: 1.0` placeholder to a bodyweight
+exercise (`bwLoadPercent 75` of ~78 kg body weight), showed a **+5005% T / +5945% RM**
+change badge in the active-routine list — the app was comparing today's ~1947 kg
+materialized tonnage against the last session's ~32 kg placeholder tonnage. The math was
+correct; the comparison was not like-with-like. A 4-digit percentage also line-wrapped the
+fixed-width badge column into an unreadable smear ("500" / "5" on two lines).
+
+`ExerciseStats` sidecar schema **v4**: `ContextStats.previousSets` / `previousSessionDate`
+now hold the most recent real **manual-load** session; new `previousSetsBodyweight` /
+`previousSessionDateBodyweight` hold the most recent real **bodyweight** session;
+`PreviousSet.isBodyweight` marks each set. `ExerciseStatsCalculator.rebuild` / `merge` route
+each session into exactly one slot. All consumers that compare today's work against history
+— `StrengthExerciseViewModel` / `SupersetViewModel` grey pre-fill and
+`ActiveRoutineViewModel`'s change badge / `exercisesWithPriorTonnage` / `applyExerciseSwitch`
+baseline — pick the slot via the new `ContextStats.previousSetsFor(exercise.isBodyweight)`.
+When the matching-approach slot is empty the exercise reads as "primo dato" instead of
+showing a bogus change. `pr` / `rmPr` / `hasPriorRealTonnage` stay all-time across both
+approaches. As a backstop, `TonnageAndRmChange` clamps any `|pct| ≥ 1000` to `>999%` and
+widened its number column. Old sidecars regenerate lazily on the schema bump. New JUnit
+coverage in `ExerciseStatsCalculatorTest` / `ExerciseStatsParserTest` for the split, the
+merge/rebuild agreement across a manual→bodyweight switch, and the YAML round-trip.
+

@@ -25,7 +25,21 @@ object ExerciseStatsCalculator {
         reps > 0 && weight > 0.0
 
     private fun ExerciseSet.Strength.toPreviousSet() =
-        PreviousSet(reps = reps, weight = weight, bwBaseWeightKg = bwBaseWeightKg)
+        PreviousSet(
+            reps = reps,
+            weight = weight,
+            bwBaseWeightKg = bwBaseWeightKg,
+            isBodyweight = isBodyweight,
+        )
+
+    /**
+     * The weighting approach a session used for this exercise+context: `true` if any of its
+     * real sets was bodyweight. A session that mixes both (rare) counts as bodyweight — the
+     * active-routine badge only reads this to pick a like-with-like previous, and a mixed
+     * session is closer to the bodyweight case than the manual-load one.
+     */
+    private fun List<ExerciseSet.Strength>.isBodyweightSession(): Boolean =
+        any { it.isBodyweight }
 
     private fun ExerciseSet.Strength.tonnage(): Double = reps * weight
     private fun PreviousSet.tonnage(): Double = reps * weight
@@ -107,17 +121,34 @@ object ExerciseStatsCalculator {
             ).maxByOrNull { it.e1rm() }
 
             val hasReal = realSets.isNotEmpty()
-            // `>=` (not `>`): a session re-saved on the same day it was first saved must still
-            // replace "previous" with its latest set data. Compared day-vs-day via dayKey().
+            // This session's sets go into exactly one of the two previous slots (bodyweight or
+            // manual load) — see ExerciseStats.SCHEMA_VERSION v4. `>=` (not `>`): a session
+            // re-saved on the same day it was first saved must still replace its slot's
+            // "previous". Compared day-vs-day via dayKey().
+            val isBwSession = realSets.isBodyweightSession()
+            val relevantOldDate =
+                if (isBwSession) old?.previousSessionDateBodyweight else old?.previousSessionDate
             val takeThisAsPrevious = hasReal &&
-                (old == null || old.previousSessionDate.isBlank() ||
-                    sessionDate.take(10) >= old.previousSessionDate.take(10))
+                (old == null || relevantOldDate.isNullOrBlank() ||
+                    sessionDate.take(10) >= relevantOldDate.take(10))
 
             updated[ctx] = ContextStats(
-                previousSets = if (takeThisAsPrevious) realSets.map { it.toPreviousSet() }
-                    else old?.previousSets ?: emptyList(),
-                previousSessionDate = if (takeThisAsPrevious) sessionDate
-                    else old?.previousSessionDate ?: "",
+                previousSets = when {
+                    takeThisAsPrevious && !isBwSession -> realSets.map { it.toPreviousSet() }
+                    else -> old?.previousSets ?: emptyList()
+                },
+                previousSessionDate = when {
+                    takeThisAsPrevious && !isBwSession -> sessionDate
+                    else -> old?.previousSessionDate ?: ""
+                },
+                previousSetsBodyweight = when {
+                    takeThisAsPrevious && isBwSession -> realSets.map { it.toPreviousSet() }
+                    else -> old?.previousSetsBodyweight ?: emptyList()
+                },
+                previousSessionDateBodyweight = when {
+                    takeThisAsPrevious && isBwSession -> sessionDate
+                    else -> old?.previousSessionDateBodyweight ?: ""
+                },
                 pr = mergedPr,
                 rmPr = mergedRmPr,
                 hasPriorRealTonnage = (old?.hasPriorRealTonnage ?: false) || hasReal,
@@ -139,11 +170,16 @@ object ExerciseStatsCalculator {
         var rmPr: ExerciseSet.Strength? = null
         var rmPrE1rm = 0.0
         var hasReal = false
-        // "previous" = first session in newest-first order that has real data. Once set, the
-        // rest of the loop only updates the PR.
+        // "previous" = first session in newest-first order that has real data, tracked
+        // separately per weighting approach (bodyweight vs manual load) so a manual↔bodyweight
+        // switch never compares across approaches — see ExerciseStats.SCHEMA_VERSION v4. Once a
+        // slot is set, the rest of the loop only updates the PR.
         var prevDate = ""
         var prevSets: List<PreviousSet> = emptyList()
         var prevFound = false
+        var prevDateBw = ""
+        var prevSetsBw: List<PreviousSet> = emptyList()
+        var prevFoundBw = false
 
         for (session in completedSessions) {
             val realSets = strengthSetsFor(exerciseId, ctx, session).filter { it.isReal() }
@@ -162,10 +198,18 @@ object ExerciseStatsCalculator {
                 rmPrE1rm = bestE1rmThisSession.e1rm()
             }
 
-            if (!prevFound) {
-                prevFound = true
-                prevDate = session.dayKey()
-                prevSets = realSets.map { it.toPreviousSet() }
+            if (realSets.isBodyweightSession()) {
+                if (!prevFoundBw) {
+                    prevFoundBw = true
+                    prevDateBw = session.dayKey()
+                    prevSetsBw = realSets.map { it.toPreviousSet() }
+                }
+            } else {
+                if (!prevFound) {
+                    prevFound = true
+                    prevDate = session.dayKey()
+                    prevSets = realSets.map { it.toPreviousSet() }
+                }
             }
         }
 
@@ -173,6 +217,8 @@ object ExerciseStatsCalculator {
         return ContextStats(
             previousSets = prevSets,
             previousSessionDate = prevDate,
+            previousSetsBodyweight = prevSetsBw,
+            previousSessionDateBodyweight = prevDateBw,
             pr = pr?.toPreviousSet(),
             rmPr = rmPr?.toPreviousSet(),
             hasPriorRealTonnage = hasReal,

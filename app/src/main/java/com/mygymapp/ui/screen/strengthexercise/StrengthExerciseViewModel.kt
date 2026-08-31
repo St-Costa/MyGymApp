@@ -119,11 +119,12 @@ class StrengthExerciseViewModel @Inject constructor(
 
             // Previous workout data + all-time PR for this exercise come from the per-exercise
             // stats sidecar (history/_stats/{id}.yaml) — a single small read instead of parsing
-            // every session file that contains the exercise. Both are already matched
-            // like-with-like on slot context (daily / warmup / normal) inside the sidecar, and
-            // "previous" is already the most recent session with real (non-zero) set data.
+            // every session file that contains the exercise. Matched like-with-like on slot
+            // context (daily / warmup / normal) AND on weighting approach (bodyweight vs manual
+            // load, schema v4) inside the sidecar, and "previous" is already the most recent
+            // such session with real (non-zero) set data.
             val ctxStats = workoutRepository.getExerciseStats(exerciseId).forContext(slotContext)
-            val previousSets = ctxStats?.previousSets.orEmpty()
+            val previousSets = ctxStats?.previousSetsFor(exercise.isBodyweight).orEmpty()
                 .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
 
             // Rep range from the routine lookup above (routineExercise).
