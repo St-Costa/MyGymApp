@@ -289,8 +289,15 @@ than inventing a new one):
   always enqueue when a server is configured.
 - **Status line**: "N elementi in attesa (sessioni, misurazioni, pesate), ultimo invio:
   <time>" — sums the pending count across all three ledgers (sessions + readiness +
-  scale), read without needing `adb` to check.
-- **"Invia tutti i dati in coda" button**: re-enqueues every session, readiness event, and
+  scale), read without needing `adb` to check. **Shown in both toggle states** (an earlier
+  version hid it while sync was ON, on the theory the workers drain it anyway — but that's
+  exactly when you want to *confirm* delivery, e.g. right after turning sync on with a
+  just-finished session in the queue): with sync ON and nothing pending it collapses to a
+  green "Tutto sincronizzato" line with the last-send time; with anything pending it shows
+  the same per-type breakdown as while OFF.
+- **"Invia tutti i dati in coda" button**: also shown in both toggle states (it's the
+  escape hatch when you're unsure the background workers delivered everything). Re-enqueues
+  every session, readiness event, and
   scale weigh-in found on disk, across all three independent sync pipelines (§ below),
   regardless of prior SENT status. This is the backfill mechanism (§3.3) and covers three
   cases at once: "the server's parser just learned to handle a new field, re-send
