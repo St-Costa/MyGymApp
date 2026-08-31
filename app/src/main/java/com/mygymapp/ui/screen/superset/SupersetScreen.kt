@@ -47,6 +47,7 @@ import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
+import com.mygymapp.ui.components.PrBadge
 import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.service.StopwatchService
 import com.mygymapp.ui.theme.ForzaColor
@@ -206,6 +207,9 @@ fun SupersetScreen(
                                     prReps = member?.prReps ?: 0,
                                     prWeight = member?.prWeight ?: 0.0,
                                     prBwBaseWeightKg = member?.prBwBaseWeightKg ?: 0.0,
+                                    prE1rmReps = member?.prE1rmReps ?: 0,
+                                    prE1rmWeight = member?.prE1rmWeight ?: 0.0,
+                                    prE1rmBwBaseWeightKg = member?.prE1rmBwBaseWeightKg ?: 0.0,
                                     isBodyweight = member?.exercise?.isBodyweight == true,
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
@@ -334,6 +338,14 @@ private fun SupersetSetItem(
     // Body weight at the time the PR set was logged (bodyweight members only) — the PR badge
     // shows `reps x prBwBaseWeightKg` ("peso corpo in quel momento") for a bodyweight member.
     prBwBaseWeightKg: Double = 0.0,
+    // The set with the highest estimated 1RM (Epley) ever logged for this exercise — shown as
+    // an "RM" badge (as `reps x weight`, the set itself) stacked above the tonnage one. reps
+    // == 0 ⇒ badge hidden (no eligible set). For a bodyweight member it is also hidden unless
+    // [prE1rmBwBaseWeightKg] (body weight at logging time) is known — the stored weight is
+    // materialized load otherwise.
+    prE1rmReps: Int = 0,
+    prE1rmWeight: Double = 0.0,
+    prE1rmBwBaseWeightKg: Double = 0.0,
     // This side's exercise is bodyweight — hide the Kg column / weight picker (load is
     // estimated from body weight at completion, see SupersetViewModel.buildUpdatedSession).
     isBodyweight: Boolean = false,
@@ -366,23 +378,40 @@ private fun SupersetSetItem(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // PR badge: heaviest set ever logged for this exercise, shown once above its first
-            // set. For a bodyweight member the weight shown is the body weight at the time the
-            // set was logged ("peso corpo in quel momento"), not the materialized
+            // PR badges: shown once above the first set of a FORZA member — the best-estimated-
+            // 1RM set ("RM") stacked 2dp above the best-tonnage set ("T"), each rendered as
+            // `reps x weight` (the set, not the computed 1RM), with a small subscript "PR",
+            // both centered. For a bodyweight member the weight shown is the body weight at the
+            // time the set was logged ("peso corpo in quel momento"), not the materialized
             // bwLoadPercent% of it — and only when that body weight is known.
+            // A real barbell weight keeps its fraction ("82.5"); a body weight is rounded to
+            // the nearest whole kg — a weigh-in of 79.45 shows as "79", not two decimals.
+            fun fmtWeight(w: Double) =
+                if (w == w.toLong().toDouble()) w.toLong().toString() else "%.1f".format(w)
+            fun fmtSetWeight(w: Double) = if (isBodyweight) Math.round(w).toString() else fmtWeight(w)
             val prBadgeWeight = if (isBodyweight) prBwBaseWeightKg else prWeight
-            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 && prBadgeWeight > 0) {
-                val prWeightText = remember(prBadgeWeight) {
-                    if (prBadgeWeight == prBadgeWeight.toLong().toDouble()) prBadgeWeight.toLong().toString()
-                    else "%.1f".format(prBadgeWeight)
-                }
-                Text(
-                    text = "PR: ${prReps} x ${prWeightText}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center,
+            val rmBadgeWeight = if (isBodyweight) prE1rmBwBaseWeightKg else prE1rmWeight
+            val showRmBadge = prE1rmReps > 0 && rmBadgeWeight > 0
+            if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 &&
+                (prBadgeWeight > 0 || showRmBadge)
+            ) {
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                )
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    if (showRmBadge) {
+                        PrBadge(
+                            "RM", "$prE1rmReps x ${fmtSetWeight(rmBadgeWeight)}", Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                    if (prBadgeWeight > 0) {
+                        PrBadge(
+                            "T", "$prReps x ${fmtSetWeight(prBadgeWeight)}", Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
             }
 
             when (setUi.exerciseType) {

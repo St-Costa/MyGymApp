@@ -6,6 +6,7 @@ import com.mygymapp.data.model.ExerciseStats
 import com.mygymapp.data.model.PreviousSet
 import com.mygymapp.data.model.SlotContext
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.estimate1RM
 
 /**
  * Pure derivation of [ExerciseStats] from session history. No I/O — the repository hands it
@@ -28,6 +29,9 @@ object ExerciseStatsCalculator {
 
     private fun ExerciseSet.Strength.tonnage(): Double = reps * weight
     private fun PreviousSet.tonnage(): Double = reps * weight
+
+    private fun ExerciseSet.Strength.e1rm(): Double = estimate1RM(weight, reps)
+    private fun PreviousSet.e1rm(): Double = estimate1RM(weight, reps)
 
     /**
      * The day a session belongs to, as a bare `YYYY-MM-DD` string. `completedAt` is an ISO
@@ -96,6 +100,12 @@ object ExerciseStatsCalculator {
                 newBestThisSession?.toPreviousSet(),
             ).maxByOrNull { it.tonnage() }
 
+            val newBestE1rmThisSession = realSets.maxByOrNull { it.e1rm() }
+            val mergedRmPr = listOfNotNull(
+                old?.rmPr,
+                newBestE1rmThisSession?.toPreviousSet(),
+            ).maxByOrNull { it.e1rm() }
+
             val hasReal = realSets.isNotEmpty()
             // `>=` (not `>`): a session re-saved on the same day it was first saved must still
             // replace "previous" with its latest set data. Compared day-vs-day via dayKey().
@@ -109,6 +119,7 @@ object ExerciseStatsCalculator {
                 previousSessionDate = if (takeThisAsPrevious) sessionDate
                     else old?.previousSessionDate ?: "",
                 pr = mergedPr,
+                rmPr = mergedRmPr,
                 hasPriorRealTonnage = (old?.hasPriorRealTonnage ?: false) || hasReal,
             )
         }
@@ -125,6 +136,8 @@ object ExerciseStatsCalculator {
     ): ContextStats? {
         var pr: ExerciseSet.Strength? = null
         var prTonnage = 0.0
+        var rmPr: ExerciseSet.Strength? = null
+        var rmPrE1rm = 0.0
         var hasReal = false
         // "previous" = first session in newest-first order that has real data. Once set, the
         // rest of the loop only updates the PR.
@@ -143,6 +156,12 @@ object ExerciseStatsCalculator {
                 prTonnage = bestThisSession.tonnage()
             }
 
+            val bestE1rmThisSession = realSets.maxByOrNull { it.e1rm() }
+            if (bestE1rmThisSession != null && bestE1rmThisSession.e1rm() > rmPrE1rm) {
+                rmPr = bestE1rmThisSession
+                rmPrE1rm = bestE1rmThisSession.e1rm()
+            }
+
             if (!prevFound) {
                 prevFound = true
                 prevDate = session.dayKey()
@@ -155,6 +174,7 @@ object ExerciseStatsCalculator {
             previousSets = prevSets,
             previousSessionDate = prevDate,
             pr = pr?.toPreviousSet(),
+            rmPr = rmPr?.toPreviousSet(),
             hasPriorRealTonnage = hasReal,
         )
     }

@@ -48,8 +48,14 @@ data class ExerciseStats(
          *     PR as `reps x bwBaseWeightKg` ("peso corpo in quel momento") instead of the
          *     materialized `weight` (= bwLoadPercent% of that). PR selection is unchanged — still
          *     by materialized reps*weight. Old sidecars can't supply the field ⇒ lazy rebuild.
+         *
+         * v3: `rmPr` added — the single set with the highest estimated 1RM (Epley,
+         *     `weight * (1 + reps/30)`) ever recorded for this exercise+context. Separate from
+         *     `pr` (highest reps*weight): a heavy low-rep set can win one and not the other. The
+         *     exercise screens show both badges, e1RM on top. Old sidecars can't supply it ⇒
+         *     lazy rebuild.
          */
-        const val SCHEMA_VERSION = 2
+        const val SCHEMA_VERSION = 3
     }
 }
 
@@ -65,6 +71,12 @@ data class ContextStats(
     val previousSessionDate: String = "",
     /** All-time best tonnage (reps × weight) Strength set for this exercise+context. */
     val pr: PreviousSet? = null,
+    /**
+     * All-time best estimated-1RM (Epley: `weight * (1 + reps/30)`) Strength set for this
+     * exercise+context. May be a different set than [pr] — a heavy low-rep single has a high
+     * e1RM but low tonnage. Null when no PR-eligible set exists (same condition as [pr]).
+     */
+    val rmPr: PreviousSet? = null,
     /**
      * True once any PR-eligible Strength set (reps>0 && weight>0, bodyweight-materialized
      * included) has ever been recorded for this exercise+context. Drives the "primo dato"
