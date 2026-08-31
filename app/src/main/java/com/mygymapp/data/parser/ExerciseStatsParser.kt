@@ -29,9 +29,12 @@ import com.mygymapp.data.model.SlotContext
  *         weight: 82.5
  * ---
  * ```
- * `pr` is modelled as a 0-or-1 element list (not a bare nested map): it reuses the exact same
- * `setMap` shape as `previousSets`, so both go through one well-tested serializer path and the
- * reader is a single `parseSetList(...).firstOrNull()`.
+ * `bwBaseWeightKg` is added to a set entry only for bodyweight sets (body weight at the time
+ * the set was logged); non-bodyweight sidecars keep the two-key `reps`/`weight` shape.
+ * `pr` (best tonnage) and `rmPr` (best estimated 1RM) are each modelled as a 0-or-1 element
+ * list (not a bare nested map): they reuse the exact same `setMap` shape as `previousSets`, so
+ * all go through one well-tested serializer path and the reader is a single
+ * `parseSetList(...).firstOrNull()`.
  */
 object ExerciseStatsParser {
 
@@ -45,6 +48,7 @@ object ExerciseStatsParser {
                     "hasPriorRealTonnage" to cs.hasPriorRealTonnage,
                 )
                 cs.pr?.let { m["pr"] = listOf(setMap(it)) }
+                cs.rmPr?.let { m["rmPr"] = listOf(setMap(it)) }
                 if (cs.previousSets.isNotEmpty()) {
                     m["previousSets"] = cs.previousSets.map { setMap(it) }
                 }
@@ -81,6 +85,7 @@ object ExerciseStatsParser {
                 previousSets = parseSetList(map["previousSets"]),
                 previousSessionDate = map["previousSessionDate"]?.toString() ?: "",
                 pr = parseSetList(map["pr"]).firstOrNull(),
+                rmPr = parseSetList(map["rmPr"]).firstOrNull(),
                 hasPriorRealTonnage = map["hasPriorRealTonnage"] as? Boolean ?: false,
             )
             ctx to cs
@@ -94,7 +99,11 @@ object ExerciseStatsParser {
     }
 
     private fun setMap(s: PreviousSet): Map<String, Any?> =
-        linkedMapOf("reps" to s.reps, "weight" to s.weight)
+        linkedMapOf<String, Any?>("reps" to s.reps, "weight" to s.weight).apply {
+            // Only bodyweight sets carry a base body weight — omit the key otherwise so
+            // non-bodyweight sidecars keep their existing two-key shape.
+            if (s.bwBaseWeightKg > 0.0) put("bwBaseWeightKg", s.bwBaseWeightKg)
+        }
 
     @Suppress("UNCHECKED_CAST")
     private fun parseSetList(raw: Any?): List<PreviousSet> {
@@ -104,6 +113,7 @@ object ExerciseStatsParser {
             PreviousSet(
                 reps = (m["reps"] as? Number)?.toInt() ?: 0,
                 weight = (m["weight"] as? Number)?.toDouble() ?: 0.0,
+                bwBaseWeightKg = (m["bwBaseWeightKg"] as? Number)?.toDouble() ?: 0.0,
             )
         }
     }
