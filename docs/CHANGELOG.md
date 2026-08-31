@@ -1444,3 +1444,28 @@ widened its number column. Old sidecars regenerate lazily on the schema bump. Ne
 coverage in `ExerciseStatsCalculatorTest` / `ExerciseStatsParserTest` for the split, the
 merge/rebuild agreement across a manual→bodyweight switch, and the YAML round-trip.
 
+## Phase 97 — Cardio chart height cap + unthrottled ghost-session sweep
+
+Two unrelated fixes from testing the cardio screen.
+
+**Cardio zone-trace chart.** It was `weight(1f).fillMaxHeight()`, so on a tall phone it ate
+every spare pixel — bleeding into the HR bar above and the countdown below with no visual
+margin. Now `HrZoneTraceChart` sizes to 50% of available height, clamped to `[220dp, 400dp]`,
+centred between the HR bar and the timer via `Spacer(weight)` on both sides. The `Column`
+also gained `navigationBarsPadding()` + 8dp so the "Inizia/Termina cardio" button clears the
+3-button system nav bar instead of touching it.
+
+**Ghost sessions surviving between launches.** `WorkoutRepository.runMaintenance` did ghost
+cleanup, old-session pruning and orphan-ECG cleanup in one walk, throttled to once per 12h.
+The throttle meant a session left unfinalized (app closed/killed mid-workout, no "Termina"
+tap) lingered until the *next* 12h window — a debug session from the morning was still on
+disk at noon. Ghost cleanup is now split into `deleteUnfinalizedSessions()`, called on
+**every** launch from `MainViewModel` before the throttled `runMaintenance` (which keeps the
+expensive pruning/ECG pass on its 12h throttle). Per an explicit product decision, *any*
+session with a blank `completedAt` is deleted regardless of how many exercises were marked
+complete — the app can't tell a crash from a deliberate exit at boot, and the chosen
+trade-off is "always clean up". `isGhostSession` collapses to `completedAt.isBlank()`;
+`ActiveRoutineViewModel.onCleared()`'s on-exit check drops its old `!hasCompleted` guard to
+match. (`WorkoutRepository` is `Context`/file-I/O coupled — no test-harness coverage, same
+as the rest of that class.)
+
