@@ -128,12 +128,6 @@ class PolarManager @Inject constructor(
     // ViewModels (see CONVENTIONS.md), there is no "cleared" moment to race against.
     private val readinessScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    init {
-        // Hydrate the battery-life indicator from disk so the connection screen can show
-        // "N active hours / N days" before the strap has pushed its first reading this run.
-        readinessScope.launch { _batteryLife.value = batteryLifeRepository.peek() }
-    }
-
     companion object {
         private const val TAG = "PolarManager"
         private const val RR_BUFFER_SIZE = 30
@@ -343,6 +337,17 @@ class PolarManager @Inject constructor(
 
     private val _vo2max = MutableStateFlow<Double?>(null)
     val vo2max: StateFlow<Double?> = _vo2max
+
+    init {
+        // Hydrate the battery-life indicator from disk so the connection screen can show
+        // "N active hours / N days" before the strap has pushed its first reading this run.
+        // MUST stay below every `_stateFlow` declaration it touches: Kotlin runs property
+        // initializers and init blocks in source order, and `readinessScope.launch` can be
+        // picked up by an idle Dispatchers.IO thread before the constructor finishes — an
+        // init block placed above `_batteryLife` saw it still null and crashed with an NPE
+        // on some cold starts (intermittent, timing-dependent).
+        readinessScope.launch { _batteryLife.value = batteryLifeRepository.peek() }
+    }
 
     var connectedDeviceId: String? = null
         private set
