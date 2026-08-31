@@ -91,6 +91,32 @@ class ExerciseStatsCalculatorTest {
     }
 
     @Test
+    fun `rmPr is the highest estimated-1RM set, which can differ from the tonnage PR`() {
+        val sessions = listOf(
+            // tonnage 480 (best by tonnage), e1RM = 60*(1+8/30) = 76
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0)),
+            // tonnage 400 (lower), e1RM = 100*(1+2/30) ≈ 106.7 (best by e1RM)
+            strengthSession("2026-08-10T10:00:00", listOf(2 to 100.0)),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(8, 60.0), ctx.pr)
+        assertEquals(PreviousSet(2, 100.0), ctx.rmPr)
+    }
+
+    @Test
+    fun `merge tracks rmPr independently of the tonnage PR`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-01T10:00:00", listOf(10 to 80.0))), // tonnage 800, e1RM ≈ 106.7
+        )
+        // tonnage 500 < 800 so pr is unchanged, but e1RM 130*(1+1/30) ≈ 134.3 > 106.7 → new rmPr
+        val newSession = strengthSession("2026-08-05T10:00:00", listOf(1 to 130.0))
+        val ctx = ExerciseStatsCalculator.merge(EX, base, newSession).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(10, 80.0), ctx.pr)
+        assertEquals(PreviousSet(1, 130.0), ctx.rmPr)
+    }
+
+    @Test
     fun `contexts are kept separate`() {
         val sessions = listOf(
             strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0), ctx = SlotContext.NORMAL),
@@ -225,6 +251,36 @@ class ExerciseStatsCalculatorTest {
         val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
         assertEquals(PreviousSet(10, 75.0), ctx.pr)
         assertEquals(listOf(PreviousSet(10, 75.0)), ctx.previousSets)
+    }
+
+    @Test
+    fun `bodyweight base weight is carried into pr and previous sets`() {
+        // bwLoadPercent 75 of an 80 kg body weight → materialized weight 60; the 80 must
+        // survive as bwBaseWeightKg so the screen can show "reps x peso corpo".
+        val session = WorkoutSession(
+            id = "bw2", routineId = "rt-a", routineName = "R", date = "2026-08-01",
+            completedAt = "2026-08-01T10:00:00",
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = EX, exerciseName = "Pull-up", bodypart = "back",
+                    type = ExerciseType.FORZA, completed = true,
+                    sets = listOf(
+                        ExerciseSet.Strength(
+                            reps = 12, weight = 60.0, isBodyweight = true,
+                            bwLoadPercent = 75, bwBaseWeightKg = 80.0,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
+        assertEquals(80.0, ctx.pr!!.bwBaseWeightKg, 0.0)
+        assertEquals(60.0, ctx.pr!!.weight, 0.0)
+        assertEquals(80.0, ctx.previousSets.single().bwBaseWeightKg, 0.0)
+
+        // And the incremental path must agree.
+        val merged = ExerciseStatsCalculator.merge(EX, null, session).forContext(SlotContext.NORMAL)!!
+        assertEquals(80.0, merged.pr!!.bwBaseWeightKg, 0.0)
     }
 
     @Test

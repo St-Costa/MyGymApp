@@ -55,6 +55,17 @@ data class SupersetMemberUi(
     // StrengthExerciseUiState.tonnagePr, matched per slot context.
     val prReps: Int = 0,
     val prWeight: Double = 0.0,
+    // Body weight at the time the PR set was logged (bodyweight members only, 0.0 otherwise /
+    // legacy) — shown as `reps x prBwBaseWeightKg` instead of `reps x prWeight`.
+    val prBwBaseWeightKg: Double = 0.0,
+    // The set with the highest estimated 1RM (Epley) ever logged for this exercise (FORZA
+    // only), shown as a second "RM" badge above the tonnage one as `reps x weight` — the set,
+    // not the computed 1RM. Can be a different set than the tonnage PR. reps == 0 ⇒ badge
+    // hidden (no eligible set). For a bodyweight member the badge is also hidden unless
+    // [prE1rmBwBaseWeightKg] is known.
+    val prE1rmReps: Int = 0,
+    val prE1rmWeight: Double = 0.0,
+    val prE1rmBwBaseWeightKg: Double = 0.0,
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): each member is an independent
     // slot — one can be switched even if another already has recorded sets.
     val switchEligible: Boolean = false,
@@ -140,7 +151,23 @@ class SupersetViewModel @Inject constructor(
                     else emptyList()
                 val prSet: ExerciseSet.Strength? =
                     if (ex.type == ExerciseType.FORZA)
-                        ctxStats?.pr?.let { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                        ctxStats?.pr?.let {
+                            ExerciseSet.Strength(
+                                reps = it.reps,
+                                weight = it.weight,
+                                bwBaseWeightKg = it.bwBaseWeightKg,
+                            )
+                        }
+                    else null
+                val rmPrSet: ExerciseSet.Strength? =
+                    if (ex.type == ExerciseType.FORZA)
+                        ctxStats?.rmPr?.let {
+                            ExerciseSet.Strength(
+                                reps = it.reps,
+                                weight = it.weight,
+                                bwBaseWeightKg = it.bwBaseWeightKg,
+                            )
+                        }
                     else null
 
                 // Fallback for sets beyond what the previous session recorded.
@@ -206,6 +233,10 @@ class SupersetViewModel @Inject constructor(
                         description = ex.notes,
                         prReps = prSet?.reps ?: 0,
                         prWeight = prSet?.weight ?: 0.0,
+                        prBwBaseWeightKg = prSet?.bwBaseWeightKg ?: 0.0,
+                        prE1rmReps = rmPrSet?.reps ?: 0,
+                        prE1rmWeight = rmPrSet?.weight ?: 0.0,
+                        prE1rmBwBaseWeightKg = rmPrSet?.bwBaseWeightKg ?: 0.0,
                         switchEligible = switchEligible,
                     ),
                     sets = memberSets,

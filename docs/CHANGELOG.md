@@ -1294,3 +1294,63 @@ older server still works.
   single entry), `UstarReaderTest` (9 — short names, unpadded data, GNU long-name, PAX
   path, directory skip, `./` strip, empty archive/file). Branch
   `feature/backup-batch-endpoints`.
+
+## Phase 91 — Bodyweight PR badge shows body weight, not the materialized load
+
+For a bodyweight exercise the "PR: reps × weight" badge on the strength and superset
+exercise screens was showing the **materialized** weight — `bwLoadPercent%` of the
+lifter's body weight (e.g. `75% × 80 = 60`). It now shows `reps × bwBaseWeightKg` — the
+body weight *at the time the set was logged* ("peso corpo in quel momento"), which is what
+actually progresses for a bodyweight movement.
+
+- **`PreviousSet.bwBaseWeightKg`** (new field) + **stats sidecar schema v2**
+  (`ExerciseStats.SCHEMA_VERSION` 1→2). `ExerciseStatsCalculator.toPreviousSet()` copies
+  `ExerciseSet.Strength.bwBaseWeightKg` through into both `pr` and `previousSets`;
+  `ExerciseStatsParser` writes the key only for bodyweight sets (non-bodyweight sidecars
+  keep their two-key `reps`/`weight` shape) and reads it back with a `0.0` default. No
+  migration — the version bump forces every sidecar to lazily rebuild from the `.md` files,
+  which already carry `bwBaseWeightKg` per set.
+- **PR *selection* is unchanged** — still the highest materialized `reps × weight`; only
+  the rendered number changed. `TonnagePr` / `SupersetMemberUi` gained a
+  `bwBaseWeightKg` / `prBwBaseWeightKg` field carried to the screen.
+- **Strength screen**: bodyweight PR now renders `PR: reps × bwBaseWeightKg`, or
+  `PR: reps` alone when the body weight is unknown (legacy set logged with no weigh-in on
+  file). **Superset screen**: the PR badge, previously suppressed entirely for bodyweight
+  members, now shows for them too when a body weight is on record.
+- Tests: `ExerciseStatsParserTest` (+2 — bodyweight base-weight round-trip, non-bodyweight
+  key omission), `ExerciseStatsCalculatorTest` (+1 — base weight carried into `pr` /
+  `previousSets` on both the rebuild and merge paths).
+
+## Phase 92 — Second PR badge: the set behind the best estimated 1RM
+
+The exercise screens (strength + superset) showed a single PR line above the sets — the
+all-time best set by tonnage (`reps × weight`). They now show **two** centered badges,
+`RM`ᴾᴿ`: reps × weight` stacked 2dp on top of `T`ᴾᴿ`: reps × weight`, `PR` a small subscript.
+
+- **`ContextStats.rmPr`** (new) + **stats sidecar schema v3** (`ExerciseStats.SCHEMA_VERSION`
+  2→3): the single set with the highest Epley estimate (`weight × (1 + reps/30)`) ever
+  recorded for this exercise + slot context. It is a *separate* record from `pr` — a heavy
+  low-rep single can hold the e1RM PR without holding the tonnage PR. `ExerciseStatsCalculator`
+  tracks it alongside `pr` on both the `rebuild` and incremental `merge` paths, by its own
+  metric (`estimate1RM` from `TonnageMath.kt`); `ExerciseStatsParser` round-trips it as a
+  0-or-1 element list reusing the shared `setMap` shape. No migration — the version bump
+  forces a lazy rebuild from the `.md` files.
+- **The badge shows the set, not the number.** `RM`ᴾᴿ renders `rmPr`'s own `reps × weight`
+  (the set that produced the record) — the computed 1RM is only used internally to *pick*
+  that set. The ViewModels pass the raw set through: `RmPr(reps, weight, bwBaseWeightKg)` /
+  `SupersetMemberUi.prE1rm{Reps,Weight,BwBaseWeightKg}`. Nothing on the screen calls
+  `estimate1RM` any more.
+- **Rendering**: a shared `PrBadge` composable (`CommonComposables.kt`) renders each line as
+  the metric letter with a small subscript `PR` (`RM` / `T`), then `: reps × weight`. Both
+  screens stack them in a `Column(spacedBy(2.dp))`, `RM` on top of `T`, centered. Strength
+  screen uses `titleMedium`, the superset card `labelMedium`. For a bodyweight exercise the
+  `RM` badge is hidden unless `rmPr.bwBaseWeightKg` is known (the stored `weight` is
+  materialized load otherwise) — the tonnage badge's existing bodyweight handling is
+  unchanged.
+- **Body weight is rounded** on both bodyweight PR badges (strength + superset): a weigh-in
+  reading like `79.45` shows as `79`, not two decimals. Only the body weight is rounded — a
+  real barbell weight still keeps its `.5`.
+- Tests: `ExerciseStatsParserTest` (+2 — `rmPr` round-trip, `rmPr` absent ⇒ null),
+  `ExerciseStatsCalculatorTest` (+2 — `rmPr` diverges from `pr` on rebuild, and merge tracks
+  it independently).
+- Docs: STORAGE.md, CONVENTIONS.md.

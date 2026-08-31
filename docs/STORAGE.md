@@ -307,7 +307,7 @@ A per-exercise **materialized view** over that exercise's session history, so th
 ```yaml
 ---
 exerciseId: "ex-3e4195a9"
-schemaVersion: 1
+schemaVersion: 3
 contexts:
   - context: "DAILY"                              # NORMAL | WARMUP | DAILY, one block each
     previousSessionDate: "2026-08-28"             # bare YYYY-MM-DD (day key), never a datetime
@@ -315,6 +315,9 @@ contexts:
     pr:                                           # all-time best reps*weight set (0-or-1 element)
       - reps: 10
         weight: 3.0
+    rmPr:                                         # all-time best estimated-1RM set (Epley), 0-or-1
+      - reps: 3
+        weight: 6.0
     previousSets:                                 # sets of the most recent session with real data
       - reps: 10
         weight: 3.0
@@ -325,8 +328,12 @@ contexts:
 
 Everything is split by [SlotContext] (a fixed-daily execution's history is unrelated to the same exercise's routine history — see [CONVENTIONS.md](CONVENTIONS.md#all-time-tonnage-pr--previous-preview-slot-context-match)). Bodyweight sets are stored with their materialized `weight` already applied, so `reps * weight` works with no special-casing.
 
+**Schema v2** — a set entry (`pr`, `rmPr`, or a `previousSets` item) may also carry `bwBaseWeightKg`, the lifter's body weight at the time a **bodyweight** set was logged (copied from `ExerciseSet.Strength.bwBaseWeightKg`). It is omitted for non-bodyweight sets and for bodyweight sets logged before any scale weigh-in existed. The bodyweight exercise screens (strength + superset) show the PR as `reps × bwBaseWeightKg` ("peso corpo in quel momento") instead of the materialized `weight` (which for bodyweight is only `bwLoadPercent%` of that). PR *selection* is unchanged — still the highest materialized `reps × weight`.
+
+**Schema v3** — `rmPr` added: the single set with the highest **estimated 1RM** (Epley, `weight × (1 + reps/30)`) ever recorded for this exercise+context. It can be a different set than `pr` — a heavy low-rep single wins the e1RM record but not the tonnage one. The screens display `rmPr` as `reps × weight` (the set that produced the best e1RM), *not* the computed 1RM number — both exercise screens show two centered badges above the sets, `RM`ᴾᴿ`: reps × weight` stacked 2dp on top of `T`ᴾᴿ`: reps × weight` (shared `PrBadge` composable). For a bodyweight exercise the `RM` badge is hidden unless `rmPr.bwBaseWeightKg` is known (the stored `weight` is materialized load otherwise). Old sidecars can't supply the field ⇒ lazy rebuild.
+
 **Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
-- **`save()` of a completed session**: each of its exercises' sidecars is updated by an *incremental merge* (`ExerciseStatsCalculator.merge`) — PR compare-and-set, `previousSets` replaced only if the new session has real data. No history scan; cheap on the save path. An in-progress save (autosave / back-out, blank `completedAt`) touches nothing.
+- **`save()` of a completed session**: each of its exercises' sidecars is updated by an *incremental merge* (`ExerciseStatsCalculator.merge`) — `pr` / `rmPr` compare-and-set (each by its own metric), `previousSets` replaced only if the new session has real data. No history scan; cheap on the save path. An in-progress save (autosave / back-out, blank `completedAt`) touches nothing.
 - **`delete()` / `runMaintenance()` prune**: the incremental view can't "un-merge" a removed session, so each affected sidecar is *rebuilt* from a full scan of that one exercise's history (bounded by its `.idx`, not the whole tree). Deletes are rare.
 - **Missing / wrong-schema / wrong-exercise sidecar**: `getExerciseStats` only serves a parsed sidecar whose `schemaVersion == ExerciseStats.SCHEMA_VERSION` **and** whose `exerciseId` matches the one asked for; anything else is discarded and rebuilt on first read, then persisted so the next read is fast. Bumping the constant is the whole "migration" — every sidecar regenerates lazily.
 - The one-time index migration also wipes `_stats/` (lazy regen afterwards).

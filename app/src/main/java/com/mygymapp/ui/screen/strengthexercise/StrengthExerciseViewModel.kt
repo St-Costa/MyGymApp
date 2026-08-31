@@ -30,8 +30,23 @@ data class StrengthSetUi(
     val weightTouched: Boolean = false,
 )
 
-/** Best single set ever recorded for this exercise, by tonnage (reps * weight). */
-data class TonnagePr(val reps: Int, val weight: Double)
+/**
+ * Best single set ever recorded for this exercise, by tonnage (reps * weight).
+ * [bwBaseWeightKg] is the body weight at the time it was logged for a bodyweight exercise
+ * (0.0 otherwise / legacy) — bodyweight screens show `reps x bwBaseWeightKg` instead of
+ * `reps x weight` (which for bodyweight is only bwLoadPercent% of the body weight).
+ */
+data class TonnagePr(val reps: Int, val weight: Double, val bwBaseWeightKg: Double = 0.0)
+
+/**
+ * The single set ever recorded for this exercise with the highest estimated 1RM (Epley:
+ * `weight * (1 + reps/30)`). Same fields as [TonnagePr] — the badge shows this set's
+ * `reps x weight`, not the computed 1RM — but it is a *different* set: a heavy low-rep set
+ * can hold this record without holding the tonnage one. [bwBaseWeightKg] is the body weight
+ * at logging time for a bodyweight exercise (0.0 otherwise / legacy); the badge is hidden
+ * for a bodyweight exercise when it's unknown, since the stored `weight` is materialized load.
+ */
+data class RmPr(val reps: Int, val weight: Double, val bwBaseWeightKg: Double = 0.0)
 
 data class StrengthExerciseUiState(
     val exercise: Exercise? = null,
@@ -42,6 +57,7 @@ data class StrengthExerciseUiState(
     val isLoading: Boolean = true,
     val allSetsFilled: Boolean = false,
     val tonnagePr: TonnagePr? = null,
+    val rmPr: RmPr? = null,
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): true only for a plain NORMAL
     // slot with zero recorded sets so far — warmup/daily/completed/already-switched slots
     // never show the button. excludeIds is every exerciseId already occupying a slot in this
@@ -137,9 +153,15 @@ class StrengthExerciseViewModel @Inject constructor(
                 )
             }
 
-            // All-time PR (highest reps*weight set ever, in this slot context) — also from the
-            // sidecar, same as "previous" above.
-            val tonnagePr = ctxStats?.pr?.let { TonnagePr(reps = it.reps, weight = it.weight) }
+            // All-time PRs (highest reps*weight set, and highest estimated-1RM set, in this
+            // slot context) — also from the sidecar, same as "previous" above. The two can be
+            // different sets; both badges show that set's reps x weight, RM on top.
+            val tonnagePr = ctxStats?.pr?.let {
+                TonnagePr(reps = it.reps, weight = it.weight, bwBaseWeightKg = it.bwBaseWeightKg)
+            }
+            val rmPr = ctxStats?.rmPr?.let {
+                RmPr(reps = it.reps, weight = it.weight, bwBaseWeightKg = it.bwBaseWeightKg)
+            }
 
             // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
             // never reaches this screen) that hasn't recorded anything yet, matching
@@ -154,6 +176,7 @@ class StrengthExerciseViewModel @Inject constructor(
                 description = exercise.notes,
                 isLoading = false,
                 tonnagePr = tonnagePr,
+                rmPr = rmPr,
                 switchEligible = switchEligible,
                 excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
