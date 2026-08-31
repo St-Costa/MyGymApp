@@ -1354,3 +1354,24 @@ all-time best set by tonnage (`reps × weight`). They now show **two** centered 
   `ExerciseStatsCalculatorTest` (+2 — `rmPr` diverges from `pr` on rebuild, and merge tracks
   it independently).
 - Docs: STORAGE.md, CONVENTIONS.md.
+
+## Phase 93 — Sync status visible while sync is ON
+
+The Options sync section only showed the pending-queue breakdown and the "Invia dati in
+coda" button **while the toggle was OFF** — on the theory that with sync ON the background
+workers drain everything anyway. But that's exactly the moment you want confirmation:
+finish a session with sync OFF, turn sync ON, and there was no way to tell whether the
+expedited workers actually delivered it.
+
+- **`SyncServerCard` (`OptionsScreen.kt`)**: the status block now renders in both toggle
+  states. With sync ON and `syncPendingCount == 0` it collapses to a green
+  `CheckCircle` + "Tutto sincronizzato" line with the last-send time; with anything
+  pending it shows the same per-type `PendingItemsList` ("Sessioni / Pesate / ECG /
+  Schede·esercizi") used while OFF. The "Invia dati in coda" backfill button + its
+  progress bar also moved out of the `if (!syncEnabled)` guard — it's the manual escape
+  hatch regardless of toggle state.
+- No ViewModel change: `refreshSyncStatus()` already populated every field, and
+  `pollSyncStatusWhileScreenOpen()` already refreshes it while the screen is open, so the
+  green line flips to a breakdown (and back) on its own as the workers run.
+- Docs: SYNC.md §1.5.
+
