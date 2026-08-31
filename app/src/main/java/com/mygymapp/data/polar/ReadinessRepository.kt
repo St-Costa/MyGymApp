@@ -86,6 +86,22 @@ class ReadinessRepository @Inject constructor(
         }
 
     /**
+     * Chronological LnRMSSD history (oldest first), one value per persisted measurement,
+     * used by [HrvBaselineCalculator] to derive the rolling z-score baseline. This replaces
+     * the old `SharedPreferences("hrv_baseline")` mirror: the `.md` files are the single
+     * source of truth, already in the backup tar and already synced. Invalid/zero values
+     * are kept here and filtered by the calculator, matching the old behaviour.
+     */
+    suspend fun getLnRmssdHistory(): List<Double> = getAll().map { it.lnRmssd }
+
+    /**
+     * Chronological resting-HR history (oldest first), one value per persisted measurement.
+     * Companion to [getLnRmssdHistory]; [HrvBaselineCalculator.hrRestBaseline] trims it to
+     * the trailing window and VO2max takes its min.
+     */
+    suspend fun getRestingHrHistory(): List<Int> = getAll().map { it.restingHr }
+
+    /**
      * Trailing 7-day average resting HR, used by [HrZoneCalculator] as a backup when
      * today's own reading is missing (readiness skipped, app not opened yet). Resting HR
      * moves only a few bpm day to day in a stable, regularly-training person, so a
