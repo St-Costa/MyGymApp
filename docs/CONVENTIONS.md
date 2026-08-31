@@ -519,6 +519,24 @@ Two pre-computed caches now live under `history/` — the exercise-stats sidecar
 
 Traversing `history/` for these: use `WorkoutRepository.historyMonthDirs()` / `historySessionFiles()`, not an ad-hoc `listFiles()` walk — they're the one place the `_idx`/`_stats` reserved-name skip lives.
 
+## HRV baseline is derived from the `.md` files, never stored on the side
+
+The rolling HRV-readiness baseline (14 LnRMSSD samples for the z-score, 7 resting-HR
+samples for the VO2max window) is **recomputed on every measurement from the persisted
+`readiness/*.md` files** (`ReadinessRepository.getLnRmssdHistory()` /
+`getRestingHrHistory()` → `HrvBaselineCalculator`). It used to be mirrored into
+`SharedPreferences("hrv_baseline")` as CSV — that store was the *only* real user data
+outside `gymdata/`, so it wasn't in the backup tar or the sync pipeline, and a partial
+restore / `pm clear` / differently-signed reinstall wiped it. The next measurement then
+re-seeded from one sample and reported `NO_BASELINE` ("1/7 days") despite a full history on
+disk (this happened on 2026-08-31 — Phase 94).
+
+Rule: **anything that behaves like accumulated user state must be a file under
+`gymdata/`**, not `SharedPreferences`. SharedPreferences is for config that a fresh install
+is expected to re-ask for (server URL, profile) — and even those are flagged as
+"wipeable, not a backup" in the docs. If you add another running aggregate, derive it from
+its source records the way `HrvBaselineCalculator` does; don't cache it in prefs.
+
 ## Per-exercise ViewModels: `ExerciseSessionViewModel`
 
 `StrengthExerciseViewModel`, `StretchExerciseViewModel` and `SupersetViewModel` extend `ui/screen/exercise/ExerciseSessionViewModel`, which owns the shared completion plumbing that was previously copy-pasted (and drifting) across all three: the `clearScope` `SupervisorJob`, `markCompletionAndSave { … }` (runs the completion write on `clearScope`, flips `completionSaved` after), `markSwitched()` (mark done without a write, for "Switch exercise"), and the `onCleared()` template (join the completion job then cancel the scope if finished; otherwise call the subclass's `saveProgressOnExit()`). Subclasses that also run a timer override `onCleared()` to cancel it, then call `super.onCleared()`. `CardioExerciseViewModel` does **not** extend it — its completion runs on `viewModelScope` and its exit path resumes a running block rather than saving-as-incomplete.

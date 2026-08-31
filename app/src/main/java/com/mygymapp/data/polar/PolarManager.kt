@@ -1427,73 +1427,44 @@ class PolarManager @Inject constructor(
         restingHr = measuredRestingHr
         lowestObservedHr = measuredRestingHr
 
-        // Persist today's resting HR and derive the 7-day baseline.
-        // VO2max uses the min of the last 7 valid readings to reduce day-to-day
-        // noise (caffeine, sleep, stress). Falls back to today's value if fewer.
-        saveHrRestToBaseline(measuredRestingHr)
-        val hrRestBaseline = loadHrRestBaseline()
-        val hrRestForVo2 = hrRestBaseline.minOrNull() ?: measuredRestingHr
+        val bpmTrace = readinessBpmTrace.toList()
 
-        // Calculate VO2max (Uth formula)
-        val hrMax = userProfile.hrMax
-        val vo2 = if (hrRestForVo2 > 0) 15.3 * (hrMax.toDouble() / hrRestForVo2) else null
-        _vo2max.value = vo2
-
-        // Load baseline from SharedPreferences (last 7 LnRMSSD values)
-        val baseline = loadLnRmssdBaseline()
-        saveLnRmssdToBaseline(lnRmssd)
-
-        val readiness: Readiness
-        val recommendation: String
-
-        if (baseline.size < 7) {
-            readiness = Readiness.NO_BASELINE
-            recommendation = "Collecting baseline data (${baseline.size + 1}/7 days). LnRMSSD: %.1f".format(lnRmssd)
-        } else {
-            val mean = baseline.average()
-            val sd = sqrt(baseline.map { (it - mean).pow(2) }.average())
-            val zScore = if (sd > 0) (lnRmssd - mean) / sd else 0.0
-
-            readiness = when {
-                zScore < -1.5 -> Readiness.DELOAD_RECOMMENDED
-                zScore < -1.0 -> Readiness.LIGHT_DAY
-                zScore < 1.0 -> Readiness.NORMAL
-                zScore > 1.5 -> Readiness.PEAK
-                else -> Readiness.GOOD
-            }
-            recommendation = when (readiness) {
-                Readiness.DELOAD_RECOMMENDED ->
-                    "HRV significantly below baseline. Consider rest or light session."
-                Readiness.LIGHT_DAY ->
-                    "HRV moderately suppressed. Reduce volume or intensity by 20%."
-                Readiness.NORMAL ->
-                    "HRV within normal range. Proceed with planned workout."
-                Readiness.GOOD ->
-                    "HRV above baseline. Good day to push intensity."
-                Readiness.PEAK ->
-                    "HRV unusually high. Consider testing a PR."
-                else -> ""
-            }
-        }
-
-        _readinessResult.value = ReadinessResult(
-            readiness = readiness,
-            lnRmssd = lnRmssd,
-            restingHr = measuredRestingHr,
-            secondsRemaining = 0,
-            recommendation = recommendation,
-            bpmTrace = readinessBpmTrace.toList(),
-        )
-
-        Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
-        appLogger.i(TAG, "Readiness: $readiness lnRMSSD=${"%.2f".format(lnRmssd)} restingHr=$measuredRestingHr vo2max=${vo2?.let { "%.1f".format(it) } ?: "n/a"} rrSamples=${cleanRR.size}")
-
-        // Persist + sync immediately (docs/SYNC.md) — independent of whether the user
-        // goes on to complete a workout session today. Fire-and-forget on readinessScope:
-        // must never block/delay the UI update above, and a save/sync failure here must
-        // never crash a BLE callback thread.
+        // Everything below — the rolling baseline, the VO2max window, the z-score
+        // classification, the persist + sync — is derived from the `readiness/*.md`
+        // history (Phase 94: no more `SharedPreferences("hrv_baseline")` mirror, which was
+        // outside the backup and got wiped). Reading those files is suspending, so it moves
+        // into the fire-and-forget readinessScope block that already handled persistence.
+        // The last MEASURING frame stays on screen for the few ms until this publishes the
+        // final result. A save/sync failure here must never crash the BLE callback thread.
         readinessScope.launch {
             try {
+                // Rolling baseline from prior measurements (today's `.md` isn't written yet,
+                // so history == "prior" — same ordering as the old load-before-save).
+                val priorLnRmssd = runCatching { readinessRepository.getLnRmssdHistory() }.getOrDefault(emptyList())
+                val recentRestingHr = runCatching { readinessRepository.getRestingHrHistory() }.getOrDefault(emptyList())
+
+                val baseline = HrvBaselineCalculator.lnRmssdBaseline(priorLnRmssd)
+                val hrRestBaseline = HrvBaselineCalculator.hrRestBaseline(recentRestingHr + measuredRestingHr)
+                val hrRestForVo2 = hrRestBaseline.minOrNull() ?: measuredRestingHr
+
+                // Calculate VO2max (Uth formula)
+                val hrMax = userProfile.hrMax
+                val vo2 = if (hrRestForVo2 > 0) 15.3 * (hrMax.toDouble() / hrRestForVo2) else null
+                _vo2max.value = vo2
+
+                val (readiness, recommendation) = HrvBaselineCalculator.classify(lnRmssd, baseline)
+
+                _readinessResult.value = ReadinessResult(
+                    readiness = readiness,
+                    lnRmssd = lnRmssd,
+                    restingHr = measuredRestingHr,
+                    secondsRemaining = 0,
+                    recommendation = recommendation,
+                    bpmTrace = bpmTrace,
+                )
+
+                Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
+                appLogger.i(TAG, "Readiness: $readiness lnRMSSD=${"%.2f".format(lnRmssd)} restingHr=$measuredRestingHr vo2max=${vo2?.let { "%.1f".format(it) } ?: "n/a"} rrSamples=${cleanRR.size} baselineN=${baseline.size}")
                 // Best-effort: Health Connect unavailable/not permitted, or no previous
                 // checkpoint to diff against, all surface as null, never as a thrown
                 // exception or a bogus 0 — steps are a bonus riding along on the readiness
@@ -1579,37 +1550,13 @@ class PolarManager @Inject constructor(
         return filtered.filter { abs(it - median) < median * 0.20 }
     }
 
-    private fun loadLnRmssdBaseline(): List<Double> {
-        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
-        val csv = prefs.getString("lnrmssd_values", "") ?: ""
-        if (csv.isBlank()) return emptyList()
-        return csv.split(",").mapNotNull { it.toDoubleOrNull() }
-    }
-
-    private fun saveLnRmssdToBaseline(lnRmssd: Double) {
-        val existing = loadLnRmssdBaseline().toMutableList()
-        existing.add(lnRmssd)
-        // Keep last 14 days
-        while (existing.size > 14) existing.removeFirst()
-        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
-        prefs.edit().putString("lnrmssd_values", existing.joinToString(",")).apply()
-    }
-
-    private fun loadHrRestBaseline(): List<Int> {
-        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
-        val csv = prefs.getString("hrrest_values", "") ?: ""
-        if (csv.isBlank()) return emptyList()
-        return csv.split(",").mapNotNull { it.toIntOrNull() }
-    }
-
-    private fun saveHrRestToBaseline(hrRest: Int) {
-        val existing = loadHrRestBaseline().toMutableList()
-        existing.add(hrRest)
-        // Keep last 7 readings (rolling window used for VO2max)
-        while (existing.size > 7) existing.removeFirst()
-        val prefs = context.getSharedPreferences("hrv_baseline", Context.MODE_PRIVATE)
-        prefs.edit().putString("hrrest_values", existing.joinToString(",")).apply()
-    }
+    // Phase 94: the LnRMSSD / resting-HR baseline is no longer mirrored into
+    // `SharedPreferences("hrv_baseline")` — it's derived on demand from the persisted
+    // `readiness/*.md` files (see [HrvBaselineCalculator] and
+    // [ReadinessRepository.getLnRmssdHistory]). That store was the one bit of real user
+    // data outside `gymdata/` and thus outside the backup tar; a partial restore on
+    // 2026-08-31 wiped it and reset readiness to "collecting (1/7)" despite 15 historic
+    // measurements. The old `hrv_baseline.xml`, if present, is now simply ignored.
 
     private fun calculateRMSSD(rrIntervals: List<Int>): Double {
         if (rrIntervals.size < 2) return 0.0

@@ -1375,3 +1375,36 @@ expedited workers actually delivered it.
   green line flips to a breakdown (and back) on its own as the workers run.
 - Docs: SYNC.md §1.5.
 
+## Phase 94 — HRV baseline derived from readiness files, not SharedPreferences
+
+**Trigger**: a measurement on 2026-08-31 beeped, showed the "measurement done" box, but
+readiness stayed at `BASELINE (collecting) — 1/7 days` and no z-score was computed —
+despite 15 historic `readiness/*.md` files on disk. Cause: the rolling HRV baseline lived
+**only** in `SharedPreferences("hrv_baseline")` (`lnrmssd_values` / `hrrest_values` CSVs),
+the one piece of real user data outside `gymdata/` and thus outside the backup tar and the
+sync pipeline. A partial restore that brought back only `gymdata/` (or any `pm clear` /
+differently-signed reinstall) wiped it, and the next measurement re-seeded it from one
+sample ⇒ `NO_BASELINE`.
+
+- **New `HrvBaselineCalculator`** (pure, unit-tested — `HrvBaselineCalculatorTest`): holds
+  the window sizes (`LN_RMSSD_WINDOW = 14`, `HR_REST_WINDOW = 7`,
+  `MIN_BASELINE_SAMPLES = 7`) and the z-score → `Readiness` classification +
+  recommendation strings, lifted verbatim from the old inline `PolarManager` logic
+  (thresholds unchanged: `< -1.5` DELOAD, `< -1.0` LIGHT_DAY, `< 1.0` NORMAL, `> 1.5`
+  PEAK, else GOOD).
+- **`ReadinessRepository.getLnRmssdHistory()` / `getRestingHrHistory()`**: chronological
+  value lists over `getAll()` (one entry per persisted measurement — same as the old
+  per-measurement CSV append, including multiple same-day measurements).
+- **`PolarManager.finishReadinessMeasurement()`**: the baseline load + VO2max window +
+  classification + result publish moved into the existing fire-and-forget
+  `readinessScope.launch {}` block (reading the `.md` history is suspending). The last
+  `MEASURING` frame stays on screen for the few ms until the final result publishes. The
+  four `load/saveLnRmssdToBaseline` / `load/saveHrRestToBaseline` helpers and the
+  `hrv_baseline` SharedPreferences store are **deleted** — a stale `hrv_baseline.xml` on
+  an existing install is simply ignored.
+- **No migration**: the `.md` files already are the history. On-device, the 2026-08-31
+  `2ecfc86e.md` was rewritten from `NO_BASELINE` to its correct `LIGHT_DAY`
+  (LnRMSSD 3.74 vs 14-sample baseline mean 4.03 / sd 0.28 ⇒ z ≈ -1.03) and re-enqueued in
+  the readiness sync ledger.
+- Docs: CONVENTIONS.md ("HRV baseline is derived, not stored"), POLAR.md readiness section.
+

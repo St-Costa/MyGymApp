@@ -92,11 +92,22 @@ mid-session reconnect never re-measures regardless of time (see `hrSeriesActive`
 3. At 60s:
    - Artifacts (Δ > 20% from median) are filtered out.
    - LnRMSSD is computed over the remaining RR intervals.
-   - Today's LnRMSSD is appended to the rolling 14-day baseline stored in `SharedPreferences("hrv_baseline")`.
-   - Z-score vs baseline → one of `DELOAD_RECOMMENDED` / `LIGHT_DAY` / `NORMAL` / `GOOD` / `PEAK`.
-   - First 7 days show `NO_BASELINE` until enough data exists.
-4. Today's HRrest is appended to a rolling 7-reading baseline in `SharedPreferences("hrv_baseline")` under key `hrrest_values`.
+   - The rolling **14-sample LnRMSSD baseline is read back from the persisted
+     `readiness/*.md` files** (`ReadinessRepository.getLnRmssdHistory()`, trimmed by
+     `HrvBaselineCalculator.lnRmssdBaseline()`) — *not* a `SharedPreferences` mirror.
+     Since today's `.md` isn't written until step 6, the history == "prior measurements",
+     matching the old load-before-save ordering.
+   - Z-score vs baseline → one of `DELOAD_RECOMMENDED` / `LIGHT_DAY` / `NORMAL` / `GOOD` /
+     `PEAK` (`HrvBaselineCalculator.classify()`, thresholds `< -1.5 / < -1.0 / < 1.0 / > 1.5`).
+   - Fewer than 7 prior measurements ⇒ `NO_BASELINE` ("Collecting baseline data (n/7 days)").
+4. The rolling 7-reading HRrest baseline is likewise derived from the `.md` history
+   (`getRestingHrHistory()` + today's value, trimmed by `HrvBaselineCalculator.hrRestBaseline()`).
 5. VO2max is estimated via the Uth-Sørensen-Overgaard formula using `HRmax` (Tanaka) and `min(HRrest)` over the last 7 readings (falls back to today's value when the baseline is shorter). Using the 7-reading minimum reduces day-to-day noise (caffeine, sleep, stress) vs. picking a single session's value.
+6. The `ReadinessEvent` is persisted as `readiness/{id}.md` and enqueued for sync. This
+   file **is** the baseline for the next measurement — there is no separate store to keep
+   in sync, and it rides along in the backup tar and the sync pipeline like every other
+   record (Phase 94; before that the baseline lived only in a wipeable
+   `SharedPreferences("hrv_baseline")` and was lost on any partial restore / reinstall).
 
 Formula details and references in [polar/implementation-guide.md](polar/implementation-guide.md).
 
@@ -290,7 +301,10 @@ Both reset to 0 at session start (`startHrSeriesCapture()`) — not on connect, 
 ## Configuration & persistence
 
 - **User profile** (`SharedPreferences("user_profile")`): `birthYear` (Int, absent if unset — the sole source of age via `UserProfile.effectiveAge`, no separate age field), `weightKg` (Float), `isMale` (Boolean), `heightCm` (Int). Set `birthYear` before Keytel / TRIMP / VO2max / BIA body-fat % give sensible numbers — until then `effectiveAge` falls back to a fixed default (30) so formulas never crash, they just use a placeholder. See [UserProfile.kt](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt). `weightKg` is written only by the VitaFit scale integration (`BleScaleManager.maybeSaveWeighIn()`) — no manual entry exists. `PolarManager.userProfile` reads `UserProfileRepository.get()` fresh on every access (cheap — SharedPreferences is already in-memory-cached after the first read) rather than keeping a manually-synced cached copy, so Keytel calories always reflect the most recent scale weigh-in regardless of which screen is open when it happens.
-- **HRV baseline** (`SharedPreferences("hrv_baseline")`): CSV of ≤14 daily LnRMSSD values; oldest trimmed first.
+- **HRV baseline**: *no dedicated store* (Phase 94). Derived on demand from the persisted
+  `readiness/*.md` files — last 14 `lnRmssd` values for the z-score, last 7 `restingHr` for
+  the VO2max window. See `HrvBaselineCalculator`. A leftover `hrv_baseline.xml` from an old
+  install is ignored.
 - **ECG files** are ephemeral — see [STORAGE.md](STORAGE.md#raw-ecg-ecgsessionidecg).
 
 ## Permissions & services
