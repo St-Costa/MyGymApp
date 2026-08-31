@@ -295,28 +295,62 @@ private fun ServerSettingsSection(
                 }
             }
 
-            // The pending list + "Invia dati in coda" only make sense while sync is OFF
-            // (with it ON everything drains on its own).
-            if (!uiState.syncEnabled) {
-                PendingItemsList(uiState)
-
-                Button(
-                    onClick = onResyncAll,
-                    enabled = !uiState.syncIsResyncing && configured,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (uiState.syncIsResyncing) {
-                        Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
-                    } else {
-                        Text("Invia dati in coda")
+            // Sync status is shown in both toggle states. With sync OFF nothing drains on
+            // its own, so the queue can only grow — the summed count plus a manual "send
+            // now". With sync ON the workers drain it in the background, but there's a
+            // window (e.g. sync was just turned on after a session finished) where you
+            // want to *confirm* everything landed: show a green "all synced" line, or the
+            // per-type breakdown while anything is still pending.
+            if (uiState.syncEnabled) {
+                if (uiState.syncPendingCount == 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Column {
+                            Text(
+                                "Tutto sincronizzato",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (uiState.syncLastSuccessAt != null) {
+                                Text(
+                                    "Ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
+                } else {
+                    PendingItemsList(uiState)
                 }
+            } else {
+                PendingItemsList(uiState)
+            }
+
+            // "Invia dati in coda": a full backfill re-enqueue. Always available (not just
+            // while sync is OFF) — it's the escape hatch when you're not sure the
+            // background workers delivered everything.
+            Button(
+                onClick = onResyncAll,
+                enabled = !uiState.syncIsResyncing && configured,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 if (uiState.syncIsResyncing) {
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { uiState.syncResyncProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
+                } else {
+                    Text("Invia dati in coda")
                 }
+            }
+            if (uiState.syncIsResyncing) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { uiState.syncResyncProgress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             // Full-store restore (docs/BACKUP.md §3.6): pull-only, never deletes local
