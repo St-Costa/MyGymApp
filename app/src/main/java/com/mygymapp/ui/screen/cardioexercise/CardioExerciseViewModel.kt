@@ -49,9 +49,10 @@ data class CardioExerciseUiState(
 )
 
 /**
- * Drives one cardio exercise screen: "Inizia cardio" / "Termina cardio" for one or more
- * continuous blocks (see docs/STORAGE.md — ExerciseSet.Cardio), each with on-device HR
- * avg/max computed from PolarManager.heartRate while the block runs. Mirrors
+ * Drives one cardio exercise screen: "Inizia cardio" starts a continuous block (see
+ * docs/STORAGE.md — ExerciseSet.Cardio) with on-device HR avg/max computed from
+ * PolarManager.heartRate; "Termina cardio" closes the block and completes the exercise in
+ * one step (no separate "Completa esercizio" tap). Mirrors
  * StretchExerciseViewModel's session read/save + completionSaved pattern; see
  * docs/CONVENTIONS.md#completionsaved-pattern.
  */
@@ -195,8 +196,14 @@ class CardioExerciseViewModel @Inject constructor(
         }
     }
 
+    /**
+     * "Termina cardio": closes the running block AND completes the exercise in one step — there
+     * is no intermediate "Completa esercizio" phase. Force-closes the block, marks the exercise
+     * completed and saves, then flips completionSaved so the screen navigates away.
+     */
     fun stopBlock() {
         if (!_uiState.value.isBlockRunning) return
+        exerciseCompleted = true
         val block = closeCurrentBlock()
         timerJob?.cancel()
         timerJob = null
@@ -212,11 +219,16 @@ class CardioExerciseViewModel @Inject constructor(
         )
 
         viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            val exercises = session.exercises.map { ex ->
-                if (ex.exerciseId == exerciseId) ex.copy(sets = updatedBlocks) else ex
+            val session = currentSession
+            if (session != null) {
+                val exercises = session.exercises.map { ex ->
+                    if (ex.exerciseId == exerciseId) {
+                        ex.copy(completed = true, completedEmpty = false, sets = updatedBlocks)
+                    } else ex
+                }
+                workoutRepository.save(session.copy(exercises = exercises))
             }
-            workoutRepository.save(session.copy(exercises = exercises))
+            _completionSaved.value = true
         }
     }
 
