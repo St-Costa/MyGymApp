@@ -587,12 +587,18 @@ private fun TonnageAndRmChange(
     // into a fixed-width number column (right-aligned) and a fixed-width label column
     // (left-aligned), both in JetBrainsMono, so "T"/"RM" line up regardless of digit count
     // (e.g. "11% T" / " 2% RM" — the "T" and "RM" start at the same x).
-    val numberWidth = 26.dp
+    val numberWidth = 34.dp
     val labelWidth = 18.dp
+    // A change this large is almost always a config/data artefact (e.g. an exercise switched
+    // manual↔bodyweight against a legacy 1 kg placeholder), not a real jump. The like-with-like
+    // seeding in ActiveRoutineViewModel should already suppress those, but clamp the display so
+    // a stray 4-digit value can never wrap the fixed-width column into an unreadable smear.
+    fun pctText(pct: Double): String =
+        if (kotlin.math.abs(pct) >= 1000.0) ">999% " else "%.0f%% ".format(kotlin.math.abs(pct))
     Column(horizontalAlignment = Alignment.End) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "%.0f%% ".format(kotlin.math.abs(tonnageChangePct)),
+                text = pctText(tonnageChangePct),
                 style = style,
                 fontFamily = JetBrainsMono,
                 textAlign = TextAlign.End,
@@ -611,7 +617,7 @@ private fun TonnageAndRmChange(
         if (rmChangePct != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "%.0f%% ".format(kotlin.math.abs(rmChangePct)),
+                    text = pctText(rmChangePct),
                     style = style,
                     fontFamily = JetBrainsMono,
                     textAlign = TextAlign.End,
