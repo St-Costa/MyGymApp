@@ -142,12 +142,14 @@ class SupersetViewModel @Inject constructor(
                 // Previous FORZA sets + all-time PR come from the per-exercise stats sidecar
                 // (history/_stats/{id}.yaml) — one small read per member instead of parsing
                 // every session file that contains it (×N members made superset load slow).
-                // The sidecar already matches on slot context and already stores the most
-                // recent session with real (non-zero) data as "previous".
+                // The sidecar already matches on slot context AND on weighting approach
+                // (bodyweight vs manual load, schema v4) and already stores the most recent
+                // such session with real (non-zero) data as "previous".
                 val ctxStats = workoutRepository.getExerciseStats(exId).forContext(slotContext)
                 val prevStrengthSets: List<ExerciseSet.Strength> =
                     if (ex.type == ExerciseType.FORZA)
-                        ctxStats?.previousSets.orEmpty().map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                        ctxStats?.previousSetsFor(ex.isBodyweight).orEmpty()
+                            .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
                     else emptyList()
                 val prSet: ExerciseSet.Strength? =
                     if (ex.type == ExerciseType.FORZA)

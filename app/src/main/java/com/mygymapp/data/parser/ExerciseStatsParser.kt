@@ -29,8 +29,10 @@ import com.mygymapp.data.model.SlotContext
  *         weight: 82.5
  * ---
  * ```
- * `bwBaseWeightKg` is added to a set entry only for bodyweight sets (body weight at the time
- * the set was logged); non-bodyweight sidecars keep the two-key `reps`/`weight` shape.
+ * `bwBaseWeightKg` and `isBodyweight: true` are added to a set entry only for bodyweight sets
+ * (body weight at the time the set was logged, and the marker itself); non-bodyweight sidecars
+ * keep the two-key `reps`/`weight` shape. `previousSetsBodyweight` / `previousSessionDateBw`
+ * mirror `previousSets` / `previousSessionDate` for the bodyweight approach (schema v4).
  * `pr` (best tonnage) and `rmPr` (best estimated 1RM) are each modelled as a 0-or-1 element
  * list (not a bare nested map): they reuse the exact same `setMap` shape as `previousSets`, so
  * all go through one well-tested serializer path and the reader is a single
@@ -51,6 +53,10 @@ object ExerciseStatsParser {
                 cs.rmPr?.let { m["rmPr"] = listOf(setMap(it)) }
                 if (cs.previousSets.isNotEmpty()) {
                     m["previousSets"] = cs.previousSets.map { setMap(it) }
+                }
+                if (cs.previousSetsBodyweight.isNotEmpty()) {
+                    m["previousSessionDateBodyweight"] = cs.previousSessionDateBodyweight
+                    m["previousSetsBodyweight"] = cs.previousSetsBodyweight.map { setMap(it) }
                 }
                 m
             }
@@ -84,6 +90,8 @@ object ExerciseStatsParser {
             val cs = ContextStats(
                 previousSets = parseSetList(map["previousSets"]),
                 previousSessionDate = map["previousSessionDate"]?.toString() ?: "",
+                previousSetsBodyweight = parseSetList(map["previousSetsBodyweight"]),
+                previousSessionDateBodyweight = map["previousSessionDateBodyweight"]?.toString() ?: "",
                 pr = parseSetList(map["pr"]).firstOrNull(),
                 rmPr = parseSetList(map["rmPr"]).firstOrNull(),
                 hasPriorRealTonnage = map["hasPriorRealTonnage"] as? Boolean ?: false,
@@ -100,9 +108,10 @@ object ExerciseStatsParser {
 
     private fun setMap(s: PreviousSet): Map<String, Any?> =
         linkedMapOf<String, Any?>("reps" to s.reps, "weight" to s.weight).apply {
-            // Only bodyweight sets carry a base body weight — omit the key otherwise so
-            // non-bodyweight sidecars keep their existing two-key shape.
+            // Only bodyweight sets carry a base body weight / marker — omit the keys otherwise
+            // so non-bodyweight sidecars keep their existing two-key shape.
             if (s.bwBaseWeightKg > 0.0) put("bwBaseWeightKg", s.bwBaseWeightKg)
+            if (s.isBodyweight) put("isBodyweight", true)
         }
 
     @Suppress("UNCHECKED_CAST")
@@ -114,6 +123,7 @@ object ExerciseStatsParser {
                 reps = (m["reps"] as? Number)?.toInt() ?: 0,
                 weight = (m["weight"] as? Number)?.toDouble() ?: 0.0,
                 bwBaseWeightKg = (m["bwBaseWeightKg"] as? Number)?.toDouble() ?: 0.0,
+                isBodyweight = m["isBodyweight"] as? Boolean ?: false,
             )
         }
     }

@@ -249,8 +249,10 @@ class ExerciseStatsCalculatorTest {
             ),
         )
         val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
-        assertEquals(PreviousSet(10, 75.0), ctx.pr)
-        assertEquals(listOf(PreviousSet(10, 75.0)), ctx.previousSets)
+        assertEquals(PreviousSet(10, 75.0, isBodyweight = true), ctx.pr)
+        // Bodyweight session → lands in the bodyweight previous slot, not the manual-load one.
+        assertEquals(emptyList<PreviousSet>(), ctx.previousSets)
+        assertEquals(listOf(PreviousSet(10, 75.0, isBodyweight = true)), ctx.previousSetsBodyweight)
     }
 
     @Test
@@ -276,11 +278,114 @@ class ExerciseStatsCalculatorTest {
         val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
         assertEquals(80.0, ctx.pr!!.bwBaseWeightKg, 0.0)
         assertEquals(60.0, ctx.pr!!.weight, 0.0)
-        assertEquals(80.0, ctx.previousSets.single().bwBaseWeightKg, 0.0)
+        assertEquals(80.0, ctx.previousSetsBodyweight.single().bwBaseWeightKg, 0.0)
+        assertTrue(ctx.previousSets.isEmpty())
 
         // And the incremental path must agree.
         val merged = ExerciseStatsCalculator.merge(EX, null, session).forContext(SlotContext.NORMAL)!!
         assertEquals(80.0, merged.pr!!.bwBaseWeightKg, 0.0)
+        assertEquals(80.0, merged.previousSetsBodyweight.single().bwBaseWeightKg, 0.0)
+    }
+
+    // ── weighting-approach split (schema v4) ─────────────────────────────────
+
+    private fun bwSession(
+        completedAt: String,
+        sets: List<Triple<Int, Double, Double>>, // reps, materialized weight, bwBaseWeightKg
+        ctx: SlotContext = SlotContext.NORMAL,
+    ) = WorkoutSession(
+        id = completedAt, routineId = "rt-a", routineName = "R",
+        date = completedAt.take(10), completedAt = completedAt,
+        exercises = listOf(
+            WorkoutExercise(
+                exerciseId = EX, exerciseName = "Copenhagen", bodypart = "adductors",
+                type = ExerciseType.FORZA, completed = true,
+                excludeFromTonnage = ctx != SlotContext.NORMAL,
+                isDaily = ctx == SlotContext.DAILY,
+                sets = sets.map { (r, w, bw) ->
+                    ExerciseSet.Strength(
+                        reps = r, weight = w, isBodyweight = true,
+                        bwLoadPercent = 75, bwBaseWeightKg = bw,
+                    )
+                },
+            ),
+        ),
+    )
+
+    @Test
+    fun `manual-load and bodyweight previous are tracked in separate slots`() {
+        // Legacy manual-load placeholder sessions, then the exercise is reconfigured as
+        // bodyweight and logged for real. The bodyweight badge must NOT compare against the
+        // 1 kg placeholders (that produced +5000%).
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(11 to 1.0, 10 to 1.0)),
+            strengthSession("2026-08-08T10:00:00", listOf(11 to 1.0, 10 to 1.0)),
+            bwSession("2026-08-15T10:00:00", listOf(Triple(12, 59.0, 78.45), Triple(11, 59.0, 78.45))),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+
+        assertEquals("2026-08-08", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(11, 1.0), PreviousSet(10, 1.0)), ctx.previousSets)
+
+        assertEquals("2026-08-15", ctx.previousSessionDateBodyweight)
+        assertEquals(
+            listOf(
+                PreviousSet(12, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+                PreviousSet(11, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true),
+            ),
+            ctx.previousSetsBodyweight,
+        )
+        // PR / hasPriorRealTonnage stay all-time across both approaches.
+        assertTrue(ctx.hasPriorRealTonnage)
+        assertEquals(59.0, ctx.pr!!.weight, 0.0)
+    }
+
+    @Test
+    fun `first bodyweight session after manual history leaves bodyweight previous empty`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(11 to 1.0)),
+            strengthSession("2026-08-08T10:00:00", listOf(11 to 1.0)),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertTrue(ctx.previousSetsBodyweight.isEmpty())
+        assertEquals("", ctx.previousSessionDateBodyweight)
+        // Manual-load previous is present as before.
+        assertEquals(listOf(PreviousSet(11, 1.0)), ctx.previousSets)
+    }
+
+    @Test
+    fun `merge routes a bodyweight session into the bodyweight slot only`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-01T10:00:00", listOf(11 to 1.0))),
+        )
+        val bw = bwSession("2026-08-10T10:00:00", listOf(Triple(12, 59.0, 78.45)))
+        val ctx = ExerciseStatsCalculator.merge(EX, base, bw).forContext(SlotContext.NORMAL)!!
+
+        assertEquals("2026-08-01", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(11, 1.0)), ctx.previousSets)
+        assertEquals("2026-08-10", ctx.previousSessionDateBodyweight)
+        assertEquals(
+            listOf(PreviousSet(12, 59.0, bwBaseWeightKg = 78.45, isBodyweight = true)),
+            ctx.previousSetsBodyweight,
+        )
+    }
+
+    @Test
+    fun `incremental merge chain agrees with full rebuild across a manual to bodyweight switch`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(11 to 1.0, 10 to 1.0)),
+            strengthSession("2026-08-08T10:00:00", listOf(11 to 1.0)),
+            bwSession("2026-08-15T10:00:00", listOf(Triple(12, 59.0, 78.45))),
+            bwSession("2026-08-22T10:00:00", listOf(Triple(12, 60.0, 78.45), Triple(11, 60.0, 78.45))),
+        )
+        var incremental: ExerciseStats? = null
+        for (s in sessions) incremental = ExerciseStatsCalculator.merge(EX, incremental, s)
+        val full = ExerciseStatsCalculator.rebuild(EX, sessions)
+        assertEquals(
+            full.forContext(SlotContext.NORMAL),
+            incremental!!.forContext(SlotContext.NORMAL),
+        )
     }
 
     @Test

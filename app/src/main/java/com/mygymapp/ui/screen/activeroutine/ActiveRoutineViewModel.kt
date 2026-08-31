@@ -89,6 +89,10 @@ data class ActiveExerciseUi(
     val exerciseName: String,
     val type: ExerciseType,
     val bodypart: String,
+    // Current config: bodyweight exercise (materialized `weight`) vs manual-load. The
+    // change badge only compares against previous sessions with the same approach — see
+    // ExerciseStats.SCHEMA_VERSION v4.
+    val isBodyweight: Boolean = false,
     val completed: Boolean = false,
     val setCount: Int = 0,
     // Configured block duration for CARDIO exercises (RoutineExercise.timePerSetSeconds).
@@ -221,6 +225,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     exerciseName = exercise.name,
                     type = exercise.type,
                     bodypart = exercise.bodypart,
+                    isBodyweight = exercise.isBodyweight,
                     setCount = re.sets,
                     timePerSetSeconds = re.timePerSetSeconds,
                     supersetWithNext = re.supersetWithNext,
@@ -229,24 +234,16 @@ class ActiveRoutineViewModel @Inject constructor(
                 )
             }
 
-            // Load previous session BEFORE saving the current one, so we don't find ourselves
+            // Load previous session BEFORE saving the current one, so we don't find ourselves.
+            // Used only for `commonPreviousTonnage` (the chart-consistency number) below — the
+            // per-exercise change badges are seeded from the stats sidecar instead, further
+            // down, so they can compare like-with-like (same slot context AND same weighting
+            // approach) rather than blindly against whatever the last routine session held.
             val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
 
-            // Pre-compute per-exercise tonnage from previous session (excluded ones don't count)
-            previousTonnageByExercise = previousSession?.exercises
-                ?.filterNot { it.excludeFromTonnage }
-                ?.associate { ex ->
-                    ex.exerciseId to ex.sets
-                        .filterIsInstance<ExerciseSet.Strength>()
-                        .sumOf { it.reps * it.weight }
-                } ?: emptyMap()
-
-            previousBestE1RMByExercise = previousSession?.exercises
-                ?.filterNot { it.excludeFromTonnage }
-                ?.mapNotNull { ex ->
-                    ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM()
-                        ?.let { ex.exerciseId to it }
-                }?.toMap() ?: emptyMap()
+            // Seeded from the stats sidecar once `statsByExercise` is built (below).
+            previousTonnageByExercise = emptyMap()
+            previousBestE1RMByExercise = emptyMap()
 
             // For every strength exercise in this routine, warm its stats sidecar now — in
             // parallel. Two reasons: (1) `exercisesWithPriorTonnage` below needs the NORMAL
@@ -276,6 +273,9 @@ class ActiveRoutineViewModel @Inject constructor(
             // For a DAILY strength slot, "previous" and "first time" are read from the sidecar's
             // DAILY context (not the previous routine session, which may not even contain the
             // fixed-daily exercise) — same like-with-like rule the strength screen itself uses.
+            // "First time" here means "first time with this weighting approach": an exercise
+            // just switched manual↔bodyweight has no like-with-like previous, so it reads as
+            // "primo dato" rather than showing a bogus change (schema v4).
             exercisesWithPriorTonnage = exercises
                 .filter { it.type == ExerciseType.FORZA }
                 .filter { ex ->
@@ -286,30 +286,42 @@ class ActiveRoutineViewModel @Inject constructor(
                     } else {
                         com.mygymapp.data.model.SlotContext.NORMAL
                     }
-                    statsByExercise[ex.exerciseId]?.forContext(ctx)?.hasPriorRealTonnage == true
+                    val cs = statsByExercise[ex.exerciseId]?.forContext(ctx) ?: return@filter false
+                    val prevForApproach =
+                        if (ex.isBodyweight) cs.previousSetsBodyweight else cs.previousSets
+                    prevForApproach.isNotEmpty()
                 }
                 .map { it.exerciseId }
                 .toSet()
 
-            // Seed the previous-tonnage / previous-1RM maps for DAILY strength slots from their
-            // DAILY-context sidecar entry (the NORMAL slots were seeded from previousSession
-            // above). Only fills keys not already present, so a genuine NORMAL entry always wins.
+            // Seed the previous-tonnage / previous-1RM maps (they drive the change badge shown
+            // next to each completed exercise) from the stats sidecar. Each strength slot reads
+            // its own slot context (DAILY slots → DAILY context, everything else that gets a
+            // badge → NORMAL) AND its own weighting approach: a bodyweight-configured exercise
+            // compares only against previous bodyweight sessions, a manual-load one only against
+            // manual-load sessions. When there's no like-with-like history the exercise gets no
+            // seed here and renders as "primo dato" — this is what stops a manual↔bodyweight
+            // switch from producing +5000% badges (see ExerciseStats.SCHEMA_VERSION v4).
             exercises
-                .filter { it.type == ExerciseType.FORZA && it.category == SessionExerciseCategory.DAILY }
+                .filter { it.type == ExerciseType.FORZA }
+                .filter { it.category == SessionExerciseCategory.DAILY || !it.excludeFromTonnage }
                 .forEach { ex ->
-                    val dailyPrev = statsByExercise[ex.exerciseId]
-                        ?.forContext(com.mygymapp.data.model.SlotContext.DAILY)
-                        ?.previousSets.orEmpty()
-                        .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
-                    if (dailyPrev.isNotEmpty()) {
-                        if (ex.exerciseId !in previousTonnageByExercise) {
-                            previousTonnageByExercise = previousTonnageByExercise +
-                                (ex.exerciseId to dailyPrev.sumOf { it.reps * it.weight })
-                        }
-                        if (ex.exerciseId !in previousBestE1RMByExercise) {
-                            dailyPrev.bestEstimated1RM()?.let {
-                                previousBestE1RMByExercise = previousBestE1RMByExercise + (ex.exerciseId to it)
-                            }
+                    val ctx = if (ex.category == SessionExerciseCategory.DAILY) {
+                        com.mygymapp.data.model.SlotContext.DAILY
+                    } else {
+                        com.mygymapp.data.model.SlotContext.NORMAL
+                    }
+                    val cs = statsByExercise[ex.exerciseId]?.forContext(ctx)
+                    val prevSets = (if (ex.isBodyweight) {
+                        cs?.previousSetsBodyweight
+                    } else {
+                        cs?.previousSets
+                    }).orEmpty().map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                    if (prevSets.isNotEmpty()) {
+                        previousTonnageByExercise = previousTonnageByExercise +
+                            (ex.exerciseId to prevSets.sumOf { it.reps * it.weight })
+                        prevSets.bestEstimated1RM()?.let {
+                            previousBestE1RMByExercise = previousBestE1RMByExercise + (ex.exerciseId to it)
                         }
                     }
                 }
@@ -480,23 +492,26 @@ class ActiveRoutineViewModel @Inject constructor(
             currentSession = reloaded
 
             val newSlot = reloaded.exercises.find { it.exerciseId == newExerciseId } ?: return@launch
+            val newExerciseIsBodyweight =
+                exerciseRepository.getById(newExerciseId)?.isBodyweight ?: false
 
             // Populate an on-demand progression baseline for the new exerciseId, mirroring how
             // exercisesWithPriorTonnage is computed in init — the precomputed
             // previousTonnageByExercise/previousBestE1RMByExercise maps only cover this
             // routine's ORIGINAL exercises, so the switched-in id would otherwise have no
             // baseline at all when markExerciseCompleted looks it up later.
-            // Only a slot with REAL tonnage seeds a baseline / the "not first time" flag — a
-            // completed-empty (skipped) slot in history contributes nothing, exactly as
-            // `exercisesWithPriorTonnage` in init keys off `hasPriorRealTonnage` (which
-            // completed-empty never sets). Walking history newest-first, take the first slot
-            // that actually carries load.
+            // Only a slot with REAL tonnage AND the same weighting approach (bodyweight vs
+            // manual load) as the exercise's current config seeds a baseline / the "not first
+            // time" flag — a completed-empty (skipped) slot contributes nothing, and a
+            // cross-approach slot would produce a bogus change (schema v4). Walking history
+            // newest-first, take the first slot that qualifies.
             val lastWithTonnage = workoutRepository.getSessionsForExercise(newExerciseId)
                 .firstNotNullOfOrNull { hist ->
                     hist.exercises.firstOrNull { ex ->
+                        val strengthSets = ex.sets.filterIsInstance<ExerciseSet.Strength>()
                         ex.exerciseId == newExerciseId && !ex.excludeFromTonnage &&
-                            ex.sets.filterIsInstance<ExerciseSet.Strength>()
-                                .sumOf { it.reps * it.weight } > 0.0
+                            strengthSets.sumOf { it.reps * it.weight } > 0.0 &&
+                            strengthSets.any { it.isBodyweight } == newExerciseIsBodyweight
                     }
                 }
             if (lastWithTonnage != null) {
@@ -515,6 +530,7 @@ class ActiveRoutineViewModel @Inject constructor(
                         exerciseName = newSlot.exerciseName,
                         type = newSlot.type,
                         bodypart = newSlot.bodypart,
+                        isBodyweight = newExerciseIsBodyweight,
                         setCount = newSlot.sets.size,
                         supersetWithNext = ex.supersetWithNext,
                         excludeFromTonnage = newSlot.excludeFromTonnage,
