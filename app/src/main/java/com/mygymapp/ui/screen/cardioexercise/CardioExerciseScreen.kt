@@ -1,10 +1,13 @@
 package com.mygymapp.ui.screen.cardioexercise
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -78,15 +81,25 @@ fun CardioExerciseScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(horizontal = 16.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 // Heart rate (live, sourced from PolarManager same as every other exercise
-                // screen), plus the zone-trace chart taking up the rest of the screen —
-                // cardio is where zone-holding matters.
+                // screen), plus the zone-trace chart. The chart is big — cardio is where
+                // zone-holding matters — but not "eat every spare pixel" big: it takes ~50%
+                // of the available height, clamped to [220dp, 400dp], so tall screens keep a
+                // fixed breathing margin above the timer instead of the chart bleeding into
+                // the HR bar and the countdown.
                 HeartRateBar()
 
-                HrZoneTraceChart(modifier = Modifier.weight(1f).fillMaxHeight())
+                Spacer(Modifier.weight(1f))
+                BoxWithConstraints {
+                    val chartHeight = (maxHeight * 0.5f).coerceIn(220.dp, 400.dp)
+                    HrZoneTraceChart(modifier = Modifier.fillMaxWidth().height(chartHeight))
+                }
+                Spacer(Modifier.weight(1f))
 
                 // Countdown from the configured block duration (RoutineEditScreen) — keeps
                 // going negative (overtime) rather than auto-stopping at zero; the user must
