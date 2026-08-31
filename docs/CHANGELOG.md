@@ -1408,3 +1408,15 @@ sample ⇒ `NO_BASELINE`.
   the readiness sync ledger.
 - Docs: CONVENTIONS.md ("HRV baseline is derived, not stored"), POLAR.md readiness section.
 
+## Phase 95 — "Termina cardio" ends and completes in one tap
+
+The cardio exercise button had two phases after starting a block: "Termina cardio" (which
+only closed the block, returning to a `DONE` state) then "Completa esercizio" (which saved
+and exited). `CardioExerciseViewModel.stopBlock()` now force-closes the running block,
+marks the exercise `completed = true` / `completedEmpty = false` with the closed block, and
+flips `_completionSaved` — so a single "Termina cardio" tap both ends the timer and
+completes the exercise. The `DONE` button state / "Completa esercizio" label survives only
+for the recovery path where a block was left open by a process kill and closed on re-entry
+in `init` (normal flow never reaches it). Multi-block cardio sessions are no longer
+reachable from the UI, matching how the screen is actually used.
+
