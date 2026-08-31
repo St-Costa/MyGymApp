@@ -31,9 +31,10 @@ import com.mygymapp.data.model.SlotContext
  * ```
  * `bwBaseWeightKg` is added to a set entry only for bodyweight sets (body weight at the time
  * the set was logged); non-bodyweight sidecars keep the two-key `reps`/`weight` shape.
- * `pr` is modelled as a 0-or-1 element list (not a bare nested map): it reuses the exact same
- * `setMap` shape as `previousSets`, so both go through one well-tested serializer path and the
- * reader is a single `parseSetList(...).firstOrNull()`.
+ * `pr` (best tonnage) and `rmPr` (best estimated 1RM) are each modelled as a 0-or-1 element
+ * list (not a bare nested map): they reuse the exact same `setMap` shape as `previousSets`, so
+ * all go through one well-tested serializer path and the reader is a single
+ * `parseSetList(...).firstOrNull()`.
  */
 object ExerciseStatsParser {
 
@@ -47,6 +48,7 @@ object ExerciseStatsParser {
                     "hasPriorRealTonnage" to cs.hasPriorRealTonnage,
                 )
                 cs.pr?.let { m["pr"] = listOf(setMap(it)) }
+                cs.rmPr?.let { m["rmPr"] = listOf(setMap(it)) }
                 if (cs.previousSets.isNotEmpty()) {
                     m["previousSets"] = cs.previousSets.map { setMap(it) }
                 }
@@ -83,6 +85,7 @@ object ExerciseStatsParser {
                 previousSets = parseSetList(map["previousSets"]),
                 previousSessionDate = map["previousSessionDate"]?.toString() ?: "",
                 pr = parseSetList(map["pr"]).firstOrNull(),
+                rmPr = parseSetList(map["rmPr"]).firstOrNull(),
                 hasPriorRealTonnage = map["hasPriorRealTonnage"] as? Boolean ?: false,
             )
             ctx to cs

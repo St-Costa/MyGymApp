@@ -38,6 +38,7 @@ class ExerciseStatsParserTest {
                     ),
                     previousSessionDate = "2026-08-25T19:04:11",
                     pr = PreviousSet(6, 90.0),
+                    rmPr = PreviousSet(3, 100.0),
                     hasPriorRealTonnage = true,
                 ),
             ),
@@ -50,7 +51,28 @@ class ExerciseStatsParserTest {
         assertEquals(listOf(PreviousSet(8, 80.0), PreviousSet(8, 80.0), PreviousSet(6, 82.5)), ctx!!.previousSets)
         assertEquals("2026-08-25T19:04:11", ctx.previousSessionDate)
         assertEquals(PreviousSet(6, 90.0), ctx.pr)
+        assertEquals(PreviousSet(3, 100.0), ctx.rmPr)
         assertEquals(true, ctx.hasPriorRealTonnage)
+    }
+
+    @Test
+    fun `rmPr absent round-trips as null`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-3e4195a9",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(8, 80.0)),
+                    previousSessionDate = "2026-08-25",
+                    pr = PreviousSet(6, 90.0),
+                    rmPr = null,
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+
+        val ctx = roundTrip(stats).forContext(SlotContext.NORMAL)!!
+        assertNull(ctx.rmPr)
+        assertEquals(PreviousSet(6, 90.0), ctx.pr)
     }
 
     @Test

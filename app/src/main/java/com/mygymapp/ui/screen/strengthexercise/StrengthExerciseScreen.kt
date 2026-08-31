@@ -37,6 +37,7 @@ import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
+import com.mygymapp.ui.components.PrBadge
 import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.theme.SkippedColor
 
@@ -148,24 +149,36 @@ fun StrengthExerciseScreen(
 
                 HorizontalDivider()
 
-                // All-time PR (best single set by tonnage), e.g. "12 x 80". For a bodyweight
+                // All-time PRs, centered: the best-estimated-1RM set ("RM") stacked 2dp above
+                // the best-tonnage set ("T"), each with a small subscript "PR". Each badge
+                // shows that set's `reps x weight` (not the computed 1RM). For a bodyweight
                 // exercise the weight shown is the lifter's body weight at the time the set was
                 // logged ("peso corpo in quel momento"), not the materialized bwLoadPercent% of
-                // it; if that body weight is unknown (legacy set, no weigh-in), show reps only.
-                uiState.tonnagePr?.let { pr ->
-                    val prText = if (isBodyweight) {
-                        if (pr.bwBaseWeightKg > 0.0) "PR: ${pr.reps} x ${formatWeight(pr.bwBaseWeightKg)}"
-                        else "PR: ${pr.reps}"
-                    } else {
-                        "PR: ${pr.reps} x ${formatWeight(pr.weight)}"
-                    }
-                    Text(
-                        text = prText,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                // it; if that body weight is unknown (legacy set, no weigh-in) the T badge
+                // shows reps only and the RM badge is hidden.
+                if (uiState.rmPr != null || uiState.tonnagePr != null) {
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        uiState.rmPr?.let { rm ->
+                            if (!isBodyweight || rm.bwBaseWeightKg > 0.0) {
+                                val value = if (isBodyweight) "${rm.reps} x ${formatBodyWeight(rm.bwBaseWeightKg)}"
+                                    else "${rm.reps} x ${formatWeight(rm.weight)}"
+                                PrBadge("RM", value, Modifier.fillMaxWidth())
+                            }
+                        }
+                        uiState.tonnagePr?.let { pr ->
+                            val value = if (isBodyweight) {
+                                if (pr.bwBaseWeightKg > 0.0) "${pr.reps} x ${formatBodyWeight(pr.bwBaseWeightKg)}"
+                                else "${pr.reps}"
+                            } else {
+                                "${pr.reps} x ${formatWeight(pr.weight)}"
+                            }
+                            PrBadge("T", value, Modifier.fillMaxWidth())
+                        }
+                    }
                 }
 
                 // Set rows
@@ -241,3 +254,9 @@ fun StrengthExerciseScreen(
 /** "80" for whole kilos, "82.5" for fractional — avoids a redundant ".0". */
 private fun formatWeight(weight: Double): String =
     if (weight == weight.toLong().toDouble()) weight.toLong().toString() else weight.toString()
+
+/**
+ * Body weight for a bodyweight-exercise PR badge, rounded to the nearest whole kg — a
+ * weigh-in reading like 79.45 shows as "79", not a spurious two-decimal number.
+ */
+private fun formatBodyWeight(kg: Double): String = Math.round(kg).toString()
