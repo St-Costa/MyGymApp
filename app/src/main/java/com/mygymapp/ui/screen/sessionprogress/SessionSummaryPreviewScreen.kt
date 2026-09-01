@@ -84,7 +84,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
 
             Text("Box backup sul server (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
-            BackupVerifyBox(running = true)
+            BackupVerifyBox(running = true, progressText = "Invio 3 file al server…")
             // Clean: a range edit (one line -, one line +) plus a brand-new exercise.
             BackupVerifyBox(
                 report = BackupVerifyReport(

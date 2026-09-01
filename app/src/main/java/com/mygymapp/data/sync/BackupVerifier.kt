@@ -105,8 +105,9 @@ class BackupVerifier @Inject constructor(
         const val TAG = "BackupVerifier"
     }
 
-    suspend fun run(): BackupVerifyOutcome = withContext(Dispatchers.IO) {
+    suspend fun run(onProgress: (String) -> Unit = {}): BackupVerifyOutcome = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
+        onProgress("Controllo i file locali…")
         if (!config.isConfigured()) {
             return@withContext BackupVerifyOutcome.HardFail("Server sync non configurato")
         }
@@ -128,6 +129,7 @@ class BackupVerifier @Inject constructor(
             if (cat(f) == "exercises") BackupErrorCategory.EXERCISE else BackupErrorCategory.ROUTINE
 
         // 1. Diff against the current manifest.
+        onProgress("Controllo cosa è già presente sul server…")
         val manifest0 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
             is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail("Manifest non recuperato: ${m.reason}")
@@ -149,6 +151,7 @@ class BackupVerifier @Inject constructor(
         val pushedRel = mutableSetOf<String>()
         var bytesUploaded = 0L
 
+        onProgress(if (toPush.isEmpty()) "Nessun file nuovo da inviare…" else "Preparo ${toPush.size} file da inviare…")
         val changedOnServer = toPush.map { rel(it.file) }.filter { manifest0.containsKey(it) }
         val prevBytes: Map<String, ByteArray> = if (changedOnServer.isEmpty()) emptyMap() else
             when (val f = restoreApi.fetchFiles(serverUrl, token, changedOnServer)) {
@@ -157,6 +160,7 @@ class BackupVerifier @Inject constructor(
             }
 
         if (toPush.isNotEmpty()) {
+            onProgress("Invio ${toPush.size} file al server…")
             val tmpDir = File(appContext.cacheDir, "repo-verify-${System.nanoTime()}").apply { mkdirs() }
             try {
                 val bulkEntries = toPush.map { l ->
@@ -197,6 +201,7 @@ class BackupVerifier @Inject constructor(
         }
 
         // 3. Re-fetch the manifest, verify exercise/routine bytes, count sessions.
+        onProgress("Rileggo e verifico i file inviati…")
         val manifest1 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
             is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail(
@@ -243,6 +248,7 @@ class BackupVerifier @Inject constructor(
         }
 
         // Sessions — count-only, matched by manifest hash.
+        onProgress("Controllo le sessioni…")
         val sessionLocalByRel = sessionFiles.associate { f ->
             sessionRel(f) to repoLedgerRepository.hashOf(f.readBytes())
         }

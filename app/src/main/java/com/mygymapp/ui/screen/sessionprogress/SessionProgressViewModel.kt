@@ -85,9 +85,9 @@ data class SessionProgressUiState(
     val polarDrops: DisconnectStats = DisconnectStats(),
     // Full-store backup round-trip (docs/BACKUP.md §3.7), run once when this screen opens
     // right after a session (justCompleted) and a sync server is configured. Same
-    // BackupVerifier the Options "Verifica backup sul server" button uses. All three null/
-    // false ⇒ box hidden.
+    // BackupVerifier the Options "Verifica backup sul server" button uses.
     val backupVerifyRunning: Boolean = false,
+    val backupVerifyProgress: String? = null,
     val backupVerifyError: String? = null,
     val backupVerifyReport: BackupVerifyReport? = null,
 )
@@ -108,7 +108,13 @@ class SessionProgressViewModel @Inject constructor(
     private val date: String = checkNotNull(savedStateHandle["date"])
     private val justCompleted: Boolean = savedStateHandle["justCompleted"] ?: false
 
-    private val _uiState = MutableStateFlow(SessionProgressUiState())
+    private val _uiState = MutableStateFlow(
+        SessionProgressUiState(
+            // Reserve the box immediately when arriving from a completed session.
+            backupVerifyRunning = justCompleted,
+            backupVerifyProgress = if (justCompleted) "Avvio verifica backup…" else null,
+        )
+    )
     val uiState: StateFlow<SessionProgressUiState> = _uiState
 
     init {
@@ -128,13 +134,27 @@ class SessionProgressViewModel @Inject constructor(
      * [SessionProgressUiState.backupVerifyError] in the box.
      */
     private suspend fun runBackupVerify() {
-        if (!syncConfigRepository.isConfigured()) return
-        _uiState.value = _uiState.value.copy(backupVerifyRunning = true, backupVerifyError = null, backupVerifyReport = null)
-        _uiState.value = when (val outcome = backupVerifier.run()) {
+        if (!syncConfigRepository.isConfigured()) {
+            _uiState.value = _uiState.value.copy(
+                backupVerifyRunning = false,
+                backupVerifyProgress = null,
+                backupVerifyError = "Server sync non configurato",
+            )
+            return
+        }
+        _uiState.value = _uiState.value.copy(
+            backupVerifyRunning = true,
+            backupVerifyProgress = "Avvio verifica backup…",
+            backupVerifyError = null,
+            backupVerifyReport = null,
+        )
+        _uiState.value = when (val outcome = backupVerifier.run { progress ->
+            _uiState.value = _uiState.value.copy(backupVerifyProgress = progress)
+        }) {
             is BackupVerifyOutcome.HardFail ->
-                _uiState.value.copy(backupVerifyRunning = false, backupVerifyError = outcome.reason)
+                _uiState.value.copy(backupVerifyRunning = false, backupVerifyProgress = null, backupVerifyError = outcome.reason)
             is BackupVerifyOutcome.Done ->
-                _uiState.value.copy(backupVerifyRunning = false, backupVerifyReport = outcome.report)
+                _uiState.value.copy(backupVerifyRunning = false, backupVerifyProgress = null, backupVerifyReport = outcome.report)
         }
     }
 
@@ -256,7 +276,7 @@ class SessionProgressViewModel @Inject constructor(
 
         val sessionSteps = stepsDuringSession(session)
 
-        _uiState.value = SessionProgressUiState(
+        _uiState.value = _uiState.value.copy(
             isLoading = false,
             routineName = session.routineName,
             sessionCalories = session.sessionCalories,

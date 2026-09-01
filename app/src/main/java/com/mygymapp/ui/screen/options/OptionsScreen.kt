@@ -576,6 +576,7 @@ private fun DebugSection(
             if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
                 com.mygymapp.ui.components.BackupVerifyBox(
                     running = uiState.backupVerifyRunning,
+                    progressText = uiState.backupVerifyProgress,
                     error = uiState.backupVerifyError,
                     report = uiState.backupVerifyReport,
                 )
