@@ -17,3 +17,4 @@ local.properties
 # project source; contains personal data.
 /gym-recovery
 gymdata-backup-*.tar
+/backups/
