@@ -103,12 +103,10 @@ fun SessionProgressScreen(
                     durationMs = uiState.syncDurationMs,
                     serverStatus = uiState.syncServerStatus,
                 )
-                if (uiState.backupVerifyRunning ||
-                    uiState.backupVerifyError != null ||
-                    uiState.backupVerifyReport != null
-                ) {
+                if (justCompleted) {
                     com.mygymapp.ui.components.BackupVerifyBox(
                         running = uiState.backupVerifyRunning,
+                        progressText = uiState.backupVerifyProgress,
                         error = uiState.backupVerifyError,
                         report = uiState.backupVerifyReport,
                     )

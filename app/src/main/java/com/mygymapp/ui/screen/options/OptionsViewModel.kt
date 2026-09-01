@@ -72,6 +72,7 @@ data class OptionsUiState(
     val syncRestoreResult: String? = null,
     // Backup round-trip check (docs/BACKUP.md §3.7) — "Verifica backup sul server".
     val backupVerifyRunning: Boolean = false,
+    val backupVerifyProgress: String? = null,
     val backupVerifyError: String? = null,          // set instead of report on a hard failure
     val backupVerifyReport: BackupVerifyReport? = null,
     // ECG debug send (docs/SYNC.md "Fourth record type: raw ECG")
@@ -540,20 +541,25 @@ class OptionsViewModel @Inject constructor(
         if (_uiState.value.backupVerifyRunning) return
         _uiState.value = _uiState.value.copy(
             backupVerifyRunning = true,
+            backupVerifyProgress = "Avvio verifica backup…",
             backupVerifyError = null,
             backupVerifyReport = null,
         )
         viewModelScope.launch {
-            val outcome = backupVerifier.run()
+            val outcome = backupVerifier.run { progress ->
+                _uiState.value = _uiState.value.copy(backupVerifyProgress = progress)
+            }
             refreshSyncStatus()
             _uiState.value = when (outcome) {
                 is BackupVerifyOutcome.HardFail -> _uiState.value.copy(
                     backupVerifyRunning = false,
+                    backupVerifyProgress = null,
                     backupVerifyError = outcome.reason,
                     backupVerifyReport = null,
                 )
                 is BackupVerifyOutcome.Done -> _uiState.value.copy(
                     backupVerifyRunning = false,
+                    backupVerifyProgress = null,
                     backupVerifyError = null,
                     backupVerifyReport = outcome.report,
                 )
