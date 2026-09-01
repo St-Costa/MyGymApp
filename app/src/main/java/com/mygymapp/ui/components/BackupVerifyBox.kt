@@ -49,6 +49,7 @@ private val RED = Color(0xFFF85149)
 @Composable
 fun BackupVerifyBox(
     running: Boolean = false,
+    progressText: String? = null,
     error: String? = null,
     report: BackupVerifyReport? = null,
     modifier: Modifier = Modifier,
@@ -90,7 +91,7 @@ fun BackupVerifyBox(
             running -> Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.size(8.dp))
-                Text("Verifica in corso…", style = MaterialTheme.typography.bodyMedium)
+                Text(progressText ?: "Verifica in corso…", style = MaterialTheme.typography.bodyMedium)
             }
             error != null -> Text(
                 error,
