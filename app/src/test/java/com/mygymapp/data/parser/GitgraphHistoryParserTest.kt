@@ -50,6 +50,8 @@ class GitgraphHistoryParserTest {
                     routineName = "PULL", sessionId = "def67890")
                 17 -> GitgraphDay(d, DayCellStatus.IMPROVED, cardioMinutes = 42,
                     routineName = "CARDIO", sessionId = "caf3f00d")
+                20 -> GitgraphDay(d, DayCellStatus.IMPROVED, stretchMinutes = 7,
+                    routineName = "MOBILITY", sessionId = "stretch01")
                 24 -> GitgraphDay(d, DayCellStatus.IMPROVED, // first session, no %
                     routineName = "LEGS", sessionId = "1a2b3c4d")
                 else -> GitgraphDay(d)
@@ -67,6 +69,9 @@ class GitgraphHistoryParserTest {
 
         assertEquals(42, r.days[17].cardioMinutes)
         assertNull(r.days[17].tonnageChangePct)
+
+        assertEquals(7, r.days[20].stretchMinutes)
+        assertNull(r.days[20].cardioMinutes)
 
         assertEquals(DayCellStatus.IMPROVED, r.days[24].status)
         assertNull(r.days[24].tonnageChangePct)

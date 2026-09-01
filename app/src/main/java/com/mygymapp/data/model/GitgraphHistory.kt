@@ -40,6 +40,8 @@ data class GitgraphHistory(
          * Bump when the meaning of a stored field changes (how status/% is derived, added
          * fields). A cache whose `schemaVersion` differs is ignored and rebuilt.
          *
+         * v2: adds `stretchMinutes` and uses display fallback priority tonnage-% → stretching →
+         *     cardio.
          * v1: `status` = IMPROVED when the day's common-exercise tonnage ≥ the same routine's
          *     previous session's (or it's the first session of that routine), else REGRESSED;
          *     NONE when the day has no session. `tonnageChangePct` = signed % vs that previous
@@ -47,7 +49,7 @@ data class GitgraphHistory(
          *     `cardioMinutes` = closed cardio-block minutes, only when `tonnageChangePct` is null.
          *     Matches MainViewModel.computeDayCell at the time of writing.
          */
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 2
     }
 }
 
@@ -56,6 +58,7 @@ data class GitgraphDay(
     val date: String,                       // ISO date, always set
     val status: DayCellStatus = DayCellStatus.NONE,
     val tonnageChangePct: Double? = null,
+    val stretchMinutes: Int? = null,
     val cardioMinutes: Int? = null,
     val routineName: String? = null,
     val sessionId: String? = null,

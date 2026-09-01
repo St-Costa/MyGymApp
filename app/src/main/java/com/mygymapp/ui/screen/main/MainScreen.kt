@@ -76,6 +76,7 @@ fun MainScreen(
             GitgraphView(
                 days = uiState.gitgraphDays,
                 tonnageChanges = uiState.gitgraphTonnageChanges,
+                stretchMinutes = uiState.gitgraphStretchMinutes,
                 cardioMinutes = uiState.gitgraphCardioMinutes,
                 routineNames = uiState.routineNames,
                 sessionIds = uiState.sessionIds,
@@ -86,6 +87,7 @@ fun MainScreen(
                 todayDowIndex = uiState.todayDowIndex,
                 todayStatus = uiState.todayStatus,
                 todayTonnageChange = uiState.todayTonnageChange,
+                todayStretchMinutes = uiState.todayStretchMinutes,
                 todayCardioMinutes = uiState.todayCardioMinutes,
                 todayRoutineName = uiState.todayRoutineName,
                 todaySessionId = uiState.todaySessionId,

@@ -33,6 +33,7 @@ object GitgraphHistoryParser {
                 "status" to d.status.name,
             )
             d.tonnageChangePct?.let { m["tonnageChangePct"] = it }
+            d.stretchMinutes?.let { m["stretchMinutes"] = it }
             d.cardioMinutes?.let { m["cardioMinutes"] = it }
             d.routineName?.let { m["routineName"] = it }
             d.sessionId?.let { m["sessionId"] = it }
@@ -64,6 +65,7 @@ object GitgraphHistoryParser {
                     ?.let { name -> DayCellStatus.entries.firstOrNull { it.name == name } }
                     ?: DayCellStatus.NONE,
                 tonnageChangePct = (map["tonnageChangePct"] as? Number)?.toDouble(),
+                stretchMinutes = (map["stretchMinutes"] as? Number)?.toInt(),
                 cardioMinutes = (map["cardioMinutes"] as? Number)?.toInt(),
                 routineName = (map["routineName"] as? String)?.takeIf { it.isNotBlank() },
                 sessionId = (map["sessionId"] as? String)?.takeIf { it.isNotBlank() },
