@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,7 +40,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
@@ -606,7 +604,7 @@ private fun RoutineExerciseItem(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Header row: drag handle | name | delete
+            // Header row: drag handle | name | superset link | delete
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -637,12 +635,26 @@ private fun RoutineExerciseItem(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onRemove) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Remove",
-                        tint = MaterialTheme.colorScheme.error,
-                    )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (showSupersetButton) {
+                        IconButton(onClick = onToggleSuperset) {
+                            Icon(
+                                imageVector = Icons.Default.Link,
+                                contentDescription = "Add to superset",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    IconButton(onClick = onRemove) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
 
@@ -723,28 +735,6 @@ private fun RoutineExerciseItem(
                 }
             }
 
-            // Superset link button (shown for Single segments that have a next Single)
-            if (showSupersetButton) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(onClick = onToggleSuperset) {
-                        Icon(
-                            imageVector = Icons.Default.Link,
-                            contentDescription = "Add to superset",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Superset",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -763,14 +753,15 @@ private fun NumberRow(
     step: Int = 1,
 ) {
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.Center,
     ) {
         Text(
-            label,
+            text = "$label:",
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
         )
+        Spacer(modifier = Modifier.width(8.dp))
         RoundStepButton("-") { onValueChange(value - step) }
         Text(
             text = value.toString(),
