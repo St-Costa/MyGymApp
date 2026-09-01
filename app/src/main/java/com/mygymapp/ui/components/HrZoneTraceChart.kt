@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -86,8 +85,8 @@ fun HrZoneTraceChart(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(192.dp)
             .then(modifier)
+            .fillMaxSize()
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF1B1B1B))
             .padding(vertical = 2.dp),
