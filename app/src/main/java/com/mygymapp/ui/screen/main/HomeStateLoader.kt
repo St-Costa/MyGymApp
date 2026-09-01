@@ -94,7 +94,14 @@ class HomeStateLoader @Inject constructor(
         val currentWeekDeferred = async {
             val cw = workoutRepository.getSessionsInRange(currentWeekMonday, today)
             val lastHist = cw.map { it.routineId }.distinct()
-                .map { rid -> async { rid to workoutRepository.getLastSessionForRoutine(rid) } }
+                .map { rid ->
+                    async {
+                        rid to workoutRepository.getLastSessionForRoutine(
+                            rid,
+                            beforeDate = currentWeekMonday,
+                        )
+                    }
+                }
                 .awaitAll()
                 .toMap()
             cw to lastHist
@@ -110,6 +117,7 @@ class HomeStateLoader @Inject constructor(
 
         val days = history.days.map { it.status.toUiStatus() }
         val gitgraphTonnageChanges = history.days.map { it.tonnageChangePct }
+        val gitgraphStretchMinutes = history.days.map { it.stretchMinutes }
         val gitgraphCardioMinutes = history.days.map { it.cardioMinutes }
         val routineNames = history.days.map { it.routineName }
         val sessionIds = history.days.map { it.sessionId }
@@ -129,6 +137,7 @@ class HomeStateLoader @Inject constructor(
         val phase1 = MainUiState(
             gitgraphDays = days,
             gitgraphTonnageChanges = gitgraphTonnageChanges,
+            gitgraphStretchMinutes = gitgraphStretchMinutes,
             gitgraphCardioMinutes = gitgraphCardioMinutes,
             routineNames = routineNames,
             sessionIds = sessionIds,
@@ -166,11 +175,13 @@ class HomeStateLoader @Inject constructor(
 
         var todayStatus = DayStatus.NONE
         var todayTonnageChange: Double? = null
+        var todayStretchMinutes: Int? = null
         var todayCardioMinutes: Int? = null
         todaySession?.let {
             val cell = GitgraphHistoryCalculator.dayCell(it, currentWeekSessionsByRoutine)
             todayStatus = cell.status.toUiStatus()
             todayTonnageChange = cell.tonnageChangePct
+            todayStretchMinutes = cell.stretchMinutes
             todayCardioMinutes = cell.cardioMinutes
         }
 
@@ -187,6 +198,7 @@ class HomeStateLoader @Inject constructor(
                 openRoutineId = toOpen?.id,
                 sessionStatus = sessionCell?.status?.toUiStatus() ?: DayStatus.NONE,
                 sessionTonnageChange = sessionCell?.tonnageChangePct,
+                sessionStretchMinutes = sessionCell?.stretchMinutes,
                 sessionCardioMinutes = sessionCell?.cardioMinutes,
                 sessionRoutineName = session?.routineName,
                 sessionId = session?.id,
@@ -198,6 +210,7 @@ class HomeStateLoader @Inject constructor(
             scheduleCells = scheduleCells,
             todayStatus = todayStatus,
             todayTonnageChange = todayTonnageChange,
+            todayStretchMinutes = todayStretchMinutes,
             todayCardioMinutes = todayCardioMinutes,
             todayRoutineName = todaySession?.routineName,
             todaySessionId = todaySession?.id,
