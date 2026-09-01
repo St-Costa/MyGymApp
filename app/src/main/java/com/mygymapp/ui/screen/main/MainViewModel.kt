@@ -33,6 +33,7 @@ data class MainUiState(
     val gitgraphDays: List<DayStatus> = List(28) { DayStatus.NONE },
     // One value per square (28 total): % change vs previous session, null if no comparison
     val gitgraphTonnageChanges: List<Double?> = List(28) { null },
+    val gitgraphStretchMinutes: List<Int?> = List(28) { null },
     // Fallback shown when there's no tonnage % to display (e.g. an all-cardio/warmup routine,
     // where tonnage is structurally always 0): total cardio minutes for that day's session,
     // null if the day has no session or no cardio blocks.
@@ -56,6 +57,7 @@ data class MainUiState(
     // no session yet.
     val todayStatus: DayStatus = DayStatus.NONE,
     val todayTonnageChange: Double? = null,
+    val todayStretchMinutes: Int? = null,
     val todayCardioMinutes: Int? = null,
     val todayRoutineName: String? = null,
     val todaySessionId: String? = null,

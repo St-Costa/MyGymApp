@@ -68,6 +68,7 @@ data class ScheduleCell(
     val openRoutineId: String? = null,
     val sessionStatus: DayStatus = DayStatus.NONE,
     val sessionTonnageChange: Double? = null,
+    val sessionStretchMinutes: Int? = null,
     val sessionCardioMinutes: Int? = null,
     val sessionRoutineName: String? = null,
     val sessionId: String? = null,
@@ -79,6 +80,7 @@ fun GitgraphView(
     // 4 history rows (28 squares) covering the 4 weeks BEFORE the current one.
     days: List<DayStatus>,
     tonnageChanges: List<Double?> = emptyList(), // 28 values, one per square
+    stretchMinutes: List<Int?> = emptyList(),    // fallback before cardio, one per square
     // Fallback shown when tonnageChanges is null for a square (all-cardio/warmup routine, or
     // no prior session to compare against): total cardio minutes for that day, e.g. "54m".
     cardioMinutes: List<Int?> = emptyList(),     // 28 values, one per square
@@ -100,6 +102,7 @@ fun GitgraphView(
     // has no session yet, so the cell renders as a schedule cell instead.
     todayStatus: DayStatus = DayStatus.NONE,
     todayTonnageChange: Double? = null,
+    todayStretchMinutes: Int? = null,
     todayCardioMinutes: Int? = null,
     todayRoutineName: String? = null,
     todaySessionId: String? = null,
@@ -179,6 +182,7 @@ fun GitgraphView(
                             status = days.getOrElse(index) { DayStatus.NONE },
                             isToday = false,
                             change = tonnageChanges.getOrNull(index),
+                            stretch = stretchMinutes.getOrNull(index),
                             minutes = cardioMinutes.getOrNull(index),
                             routineName = routineNames.getOrNull(index),
                             onClick = if (sessionId != null && sessionDate != null && onCellClick != null) {
@@ -218,6 +222,7 @@ fun GitgraphView(
                                 status = todayStatus,
                                 isToday = true,
                                 change = todayTonnageChange,
+                                stretch = todayStretchMinutes,
                                 minutes = todayCardioMinutes,
                                 routineName = todayRoutineName,
                                 onClick = if (todaySessionId != null && todaySessionDate != null && onCellClick != null) {
@@ -233,6 +238,7 @@ fun GitgraphView(
                                 status = cell.sessionStatus,
                                 isToday = false,
                                 change = cell.sessionTonnageChange,
+                                stretch = cell.sessionStretchMinutes,
                                 minutes = cell.sessionCardioMinutes,
                                 routineName = cell.sessionRoutineName,
                                 onClick = if (cell.sessionId != null && cell.sessionDate != null && onCellClick != null) {
@@ -268,6 +274,7 @@ private fun HistoryCell(
     status: DayStatus,
     isToday: Boolean,
     change: Double?,
+    stretch: Int?,
     minutes: Int?,
     routineName: String?,
     onClick: (() -> Unit)?,
@@ -291,10 +298,23 @@ private fun HistoryCell(
         // day (routine done on the "wrong" day) still be identified at a glance — is pinned
         // to the bottom edge instead, so it never pushes the % off-center. When there's no
         // tonnage % (all-cardio/warmup routine, or no prior session to compare against), fall
-        // back to total cardio minutes.
+        // back first to stretching minutes, then to total cardio minutes.
         if (change != null) {
             AutoShrinkText(
                 text = "${abs(change).roundToInt()}%",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(cellSize * 0.75f)
+                    .offset(y = -cellSize * 0.05f),
+                maxFontSizeSp = squareMaxFontSp,
+                minFontSizeSp = 6f,
+                fontWeight = FontWeight.Bold,
+                fontFamily = JetBrainsMono,
+                color = Color.Black,
+            )
+        } else if (stretch != null) {
+            AutoShrinkText(
+                text = "${stretch}m",
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(cellSize * 0.75f)

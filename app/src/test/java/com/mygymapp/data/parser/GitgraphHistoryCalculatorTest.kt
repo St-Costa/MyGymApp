@@ -20,6 +20,7 @@ class GitgraphHistoryCalculatorTest {
         routineName: String = "R",
         strength: List<Triple<String, Int, Double>> = emptyList(), // exId, reps, weight (one set each)
         totalTonnage: Double = strength.sumOf { it.second * it.third },
+        stretchSeconds: List<Int> = emptyList(),
         cardioBlocks: List<Pair<String, String>> = emptyList(),    // startedAt, endedAt
     ) = WorkoutSession(
         id = id, routineId = routineId, routineName = routineName,
@@ -40,6 +41,15 @@ class GitgraphHistoryCalculatorTest {
                         exerciseId = "cardio", exerciseName = "cardio", bodypart = "b",
                         type = ExerciseType.CARDIO, completed = true, excludeFromTonnage = true,
                         sets = cardioBlocks.map { ExerciseSet.Cardio(startedAt = it.first, endedAt = it.second) },
+                    )
+                )
+            }
+            if (stretchSeconds.isNotEmpty()) {
+                add(
+                    WorkoutExercise(
+                        exerciseId = "stretch", exerciseName = "stretch", bodypart = "b",
+                        type = ExerciseType.STRETCH, completed = true,
+                        sets = stretchSeconds.map { ExerciseSet.Stretch(timeSeconds = it, done = true) },
                     )
                 )
             }
@@ -157,6 +167,34 @@ class GitgraphHistoryCalculatorTest {
         assertNull(d.tonnageChangePct)
         assertEquals(25, d.cardioMinutes)
         assertEquals(DayCellStatus.IMPROVED, d.status) // first session
+    }
+
+    @Test
+    fun `stretch minutes take priority over cardio when tonnage percent is unavailable`() {
+        val s = session(
+            "c", "rt-mixed", MON.plusDays(3).toString(),
+            stretchSeconds = listOf(60, 75),
+            cardioBlocks = listOf("2026-07-30T09:00:00" to "2026-07-30T09:10:00"),
+        )
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-mixed" to listOf(s)))
+        assertNull(cell.tonnageChangePct)
+        assertEquals(2, cell.stretchMinutes)
+        assertNull(cell.cardioMinutes)
+    }
+
+    @Test
+    fun `strength tonnage percent takes priority over stretch and cardio`() {
+        val prev = session("p", "rt-mixed", MON.plusDays(1).toString(), strength = listOf(Triple("ex1", 10, 50.0)))
+        val curr = session(
+            "c", "rt-mixed", MON.plusDays(8).toString(),
+            strength = listOf(Triple("ex1", 10, 55.0)),
+            stretchSeconds = listOf(120),
+            cardioBlocks = listOf("2026-08-04T09:00:00" to "2026-08-04T09:10:00"),
+        )
+        val cell = GitgraphHistoryCalculator.dayCell(curr, mapOf("rt-mixed" to listOf(prev, curr)))
+        assertEquals(10.0, cell.tonnageChangePct!!, 1e-9)
+        assertNull(cell.stretchMinutes)
+        assertNull(cell.cardioMinutes)
     }
 
     @Test

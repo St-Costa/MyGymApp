@@ -2,6 +2,7 @@ package com.mygymapp.data.parser
 
 import com.mygymapp.data.model.DayCellStatus
 import com.mygymapp.data.model.ExerciseSet
+import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.GitgraphDay
 import com.mygymapp.data.model.GitgraphHistory
 import com.mygymapp.data.model.WorkoutSession
@@ -12,12 +13,13 @@ import java.time.LocalDateTime
 /**
  * Pure derivation of the home gitgraph's day squares from session history. No I/O — the
  * repository supplies parsed [WorkoutSession]s and persists the result. This is the *single*
- * implementation of the per-day status / tonnage-% / cardio-minutes rule; `MainViewModel`
+ * implementation of the per-day status / tonnage-% / stretching-minutes / cardio-minutes rule;
+ * `MainViewModel`
  * calls the same [dayCell] for the current-week row so the history rows and the live row can
  * never diverge.
  *
  * Must match what `MainViewModel.computeDayCell` / `computeCommonTonnage` / `cardioMinutesFor`
- * did inline before this cache existed — see [GitgraphHistory.SCHEMA_VERSION] for v1.
+ * did inline before this cache existed — see [GitgraphHistory.SCHEMA_VERSION] for the cache schema.
  */
 object GitgraphHistoryCalculator {
 
@@ -25,6 +27,7 @@ object GitgraphHistoryCalculator {
     data class DayCell(
         val status: DayCellStatus,
         val tonnageChangePct: Double?,
+        val stretchMinutes: Int?,
         val cardioMinutes: Int?,
     )
 
@@ -63,6 +66,7 @@ object GitgraphHistoryCalculator {
                     date = dateStr,
                     status = cell.status,
                     tonnageChangePct = cell.tonnageChangePct,
+                    stretchMinutes = cell.stretchMinutes,
                     cardioMinutes = cell.cardioMinutes,
                     routineName = lastSession.routineName,
                     sessionId = lastSession.id,
@@ -96,8 +100,10 @@ object GitgraphHistoryCalculator {
         val tonnageChangePct = if (previous != null && prevTonnage > 0)
             (currTonnage - prevTonnage) / prevTonnage * 100.0
         else null
-        val cardioMinutes = if (tonnageChangePct == null) cardioMinutesFor(session) else null
-        return DayCell(status, tonnageChangePct, cardioMinutes)
+        // Display priority: strength tonnage %, then stretching duration, then cardio duration.
+        val stretchMinutes = if (tonnageChangePct == null) stretchMinutesFor(session) else null
+        val cardioMinutes = if (tonnageChangePct == null && stretchMinutes == null) cardioMinutesFor(session) else null
+        return DayCell(status, tonnageChangePct, stretchMinutes, cardioMinutes)
     }
 
     /**
@@ -133,6 +139,17 @@ object GitgraphHistoryCalculator {
                     Duration.between(start, end).seconds.coerceAtLeast(0)
                 else 0
             }
+        return if (totalSeconds > 0) (totalSeconds / 60).toInt() else null
+    }
+
+    /** Minutes across completed STRETCH sets; null if none. */
+    private fun stretchMinutesFor(session: WorkoutSession): Int? {
+        val totalSeconds = session.exercises
+            .filter { it.type == ExerciseType.STRETCH }
+            .flatMap { it.sets }
+            .filterIsInstance<ExerciseSet.Stretch>()
+            .filter { it.done }
+            .sumOf { it.timeSeconds.coerceAtLeast(0) }
         return if (totalSeconds > 0) (totalSeconds / 60).toInt() else null
     }
 }

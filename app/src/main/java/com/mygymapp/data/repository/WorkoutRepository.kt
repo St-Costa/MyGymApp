@@ -577,7 +577,7 @@ class WorkoutRepository @Inject constructor(
     }
 
     /**
-     * Returns the most recent completed session for [routineId].
+     * Returns the most recent completed session for [routineId], optionally before [beforeDate].
      *
      * The filename is `YYYY-MM-DD_{routineId}_{sessionId}.md`, so its date prefix sorts in the
      * same order as the day the session belongs to. We only parse from the newest filenames
@@ -585,7 +585,10 @@ class WorkoutRepository @Inject constructor(
      * session that routine ever had. A handful of extra candidates covers the rare case of two
      * sessions of the same routine on one day (their `completedAt` breaks the tie once parsed).
      */
-    suspend fun getLastSessionForRoutine(routineId: String): WorkoutSession? =
+    suspend fun getLastSessionForRoutine(
+        routineId: String,
+        beforeDate: LocalDate? = null,
+    ): WorkoutSession? =
         withContext(Dispatchers.IO) {
             // Newest filename first (date prefix sorts chronologically).
             val files = getRoutineSessionFiles(routineId).sortedByDescending { it.name }
@@ -594,7 +597,10 @@ class WorkoutRepository @Inject constructor(
                 val session = try {
                     WorkoutParser.fromMarkdown(file.readText()).takeIf { it.completedAt.isNotBlank() }
                 } catch (_: Exception) { null }
-                if (session != null && (best == null || session.completedAt > best!!.completedAt)) {
+                if (session != null &&
+                    (beforeDate == null || LocalDate.parse(session.date).isBefore(beforeDate)) &&
+                    (best == null || session.completedAt > best!!.completedAt)
+                ) {
                     best = session
                 }
                 // Once a completed session is found, only a file with the same date prefix
