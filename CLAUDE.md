@@ -17,24 +17,32 @@ This file is the entry point for AI tooling. The details of the project live in 
 > `uninstall_after_test: true`), a factory-reset-ish `cmd package` call, or a wipe by the OS
 > **destroys it permanently**. This has already happened once and cost the user real data.
 >
+> **Standard way to build+install the debug build: run [`scripts/install-debug.sh`](scripts/install-debug.sh).**
+> This is the prescribed procedure for "build/install the latest version" requests — it checks
+> the device, backs up `gymdata/`, verifies the tar is non-empty, prunes old backups (keeps last
+> 5, stored under `backups/gymdata/`), runs `assembleDebug`, then `adb install -r`. It aborts
+> without installing if the backup fails or comes back empty. Do not hand-roll the steps below
+> for a routine debug install — use the script.
+>
 > **Before ANY of the following — no exceptions, even "just a quick test":**
 > building/installing a non-debug variant, running anything under `:baseline-profile` or
 > `connected…AndroidTest`, uninstalling/reinstalling the app, changing its signing, or
-> anything else that could touch the app's install or its `filesDir`:
+> anything else that could touch the app's install or its `filesDir` that the script above
+> doesn't cover — do the backup manually:
 >
 > ```bash
 > # 1. Pull the data off the device (works only while a *debuggable* build is installed):
 > adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -cf - gymdata \
->   > gymdata-backup-$(date +%Y%m%d-%H%M%S).tar
+>   > backups/gymdata/gymdata-backup-$(date +%Y%m%d-%H%M%S).tar
 > # If the installed build is NOT debuggable, install the debug build first
 > # (adb install -r app/build/outputs/apk/debug/app-debug.apk) — install -r keeps data —
 > # THEN run the line above.
 >
 > # 2. Verify the tar is non-empty and lists real files before proceeding:
-> tar -tvf gymdata-backup-*.tar | head
+> tar -tvf backups/gymdata/gymdata-backup-*.tar | head
 >
 > # 3. To restore afterwards:
-> adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -xf - < gymdata-backup-*.tar
+> adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -xf - < backups/gymdata/gymdata-backup-*.tar
 > ```
 >
 > Keep the backup tar until the user has confirmed their data is intact in the app.
@@ -51,6 +59,9 @@ Build:
 ```bash
 ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 ```
+
+Build **and install on the connected device**: use `scripts/install-debug.sh` (see the backup banner
+above) rather than chaining `gradlew`/`adb install` by hand.
 
 ## Where to look
 
