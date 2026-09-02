@@ -170,6 +170,24 @@ class GitgraphHistoryCalculatorTest {
     }
 
     @Test
+    fun `cardio duration accepts offset timestamps`() {
+        val s = session(
+            "c", "rt-cardio", MON.plusDays(3).toString(),
+            cardioBlocks = listOf("2026-07-30T09:00:00+02:00" to "2026-07-30T10:00:00+02:00"),
+        )
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-cardio" to listOf(s)))
+        assertEquals(60, cell.cardioMinutes)
+    }
+
+    @Test
+    fun `cardio duration falls back to ECG duration when block timestamps are invalid`() {
+        val s = session("c", "rt-cardio", MON.plusDays(3).toString(), cardioBlocks = listOf("bad" to "timestamps"))
+            .copy(ecgDurationSec = 3600.0)
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-cardio" to listOf(s)))
+        assertEquals(60, cell.cardioMinutes)
+    }
+
+    @Test
     fun `stretch minutes take priority over cardio when tonnage percent is unavailable`() {
         val s = session(
             "c", "rt-mixed", MON.plusDays(3).toString(),
