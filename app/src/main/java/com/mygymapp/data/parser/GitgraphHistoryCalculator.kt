@@ -7,8 +7,10 @@ import com.mygymapp.data.model.GitgraphDay
 import com.mygymapp.data.model.GitgraphHistory
 import com.mygymapp.data.model.WorkoutSession
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 /**
  * Pure derivation of the home gitgraph's day squares from session history. No I/O — the
@@ -128,18 +130,48 @@ object GitgraphHistoryCalculator {
 
     /** Minutes across every closed `ExerciseSet.Cardio` block; null if none. */
     private fun cardioMinutesFor(session: WorkoutSession): Int? {
-        val totalSeconds = session.exercises
+        val cardioExercises = session.exercises.filter { it.type == ExerciseType.CARDIO }
+        if (cardioExercises.isEmpty()) return null
+
+        val blockSeconds = cardioExercises
             .flatMap { it.sets }
             .filterIsInstance<ExerciseSet.Cardio>()
             .filter { it.startedAt.isNotBlank() && it.endedAt.isNotBlank() }
             .sumOf { block ->
-                val start = runCatching { LocalDateTime.parse(block.startedAt) }.getOrNull()
-                val end = runCatching { LocalDateTime.parse(block.endedAt) }.getOrNull()
-                if (start != null && end != null)
-                    Duration.between(start, end).seconds.coerceAtLeast(0)
-                else 0
+                durationSeconds(block.startedAt, block.endedAt)
             }
+
+        // Older/imported sessions may have no parseable cardio block timestamps, while the
+        // Polar analysis or the session envelope still has the actual recording duration.
+        // This is deliberately limited to cardio sessions: ECG duration is session-global and
+        // must not turn a strength workout into a cardio entry in the GitGraph.
+        val totalSeconds = when {
+            blockSeconds > 0 -> blockSeconds
+            session.ecgDurationSec > 0.0 -> session.ecgDurationSec.toLong()
+            else -> durationSeconds(session.startedAt, session.completedAt)
+        }
         return if (totalSeconds > 0) (totalSeconds / 60).toInt() else null
+    }
+
+    /** Parses the ISO timestamp variants that can be produced by the app and phone sync. */
+    private fun durationSeconds(startText: String, endText: String): Long {
+        val localStart = runCatching { LocalDateTime.parse(startText) }.getOrNull()
+        val localEnd = runCatching { LocalDateTime.parse(endText) }.getOrNull()
+        if (localStart != null && localEnd != null) {
+            return Duration.between(localStart, localEnd).seconds.coerceAtLeast(0)
+        }
+
+        val offsetStart = runCatching { OffsetDateTime.parse(startText) }.getOrNull()
+        val offsetEnd = runCatching { OffsetDateTime.parse(endText) }.getOrNull()
+        if (offsetStart != null && offsetEnd != null) {
+            return Duration.between(offsetStart, offsetEnd).seconds.coerceAtLeast(0)
+        }
+
+        val instantStart = runCatching { Instant.parse(startText) }.getOrNull()
+        val instantEnd = runCatching { Instant.parse(endText) }.getOrNull()
+        return if (instantStart != null && instantEnd != null) {
+            Duration.between(instantStart, instantEnd).seconds.coerceAtLeast(0)
+        } else 0
     }
 
     /** Minutes across completed STRETCH sets; null if none. */
@@ -150,6 +182,9 @@ object GitgraphHistoryCalculator {
             .filterIsInstance<ExerciseSet.Stretch>()
             .filter { it.done }
             .sumOf { it.timeSeconds.coerceAtLeast(0) }
-        return if (totalSeconds > 0) (totalSeconds / 60).toInt() else null
+        // Do not let a sub-minute stretch block win the display priority and render as `0m`;
+        // in that case the GitGraph must continue to the cardio fallback.
+        val minutes = (totalSeconds / 60).toInt()
+        return minutes.takeIf { it > 0 }
     }
 }
