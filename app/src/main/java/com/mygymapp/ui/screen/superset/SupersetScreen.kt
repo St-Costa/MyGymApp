@@ -440,6 +440,7 @@ private fun SupersetSetItem(
                                 buttonStep = 1.0,
                                 isModified = setUi.repsModified,
                                 enableScroll = false,
+                                longPressRepeatStep = 5.0,
                                 onConfirm = onConfirmReps,
                                 modifier = Modifier.fillMaxWidth(),
                             )
