@@ -187,13 +187,14 @@ fun StrengthExerciseScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Reps picker (tap only, no scroll)
+                        // Reps picker — tap by 1, long-press by 5 (same repeat behavior as weight).
                         ScrollPickerInput(
                             value = set.reps,
                             onValueChange = { viewModel.updateReps(index, it.toInt()) },
                             buttonStep = 1.0,
                             isModified = set.repsModified,
                             enableScroll = false,
+                            longPressRepeatStep = 5.0,
                             onConfirm = { viewModel.confirmReps(index) },
                             modifier = Modifier.weight(1f),
                         )
