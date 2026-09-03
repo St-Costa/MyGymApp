@@ -394,13 +394,14 @@ private fun PowerliftingWeekOverlay(onDismiss: () -> Unit) {
     }
 }
 
-// Cardio exercises are timed, not set-based — show the configured block duration instead
-// of a set count.
+// Timed exercises are not represented by a set count in the active list. For stretching,
+// show the total configured duration (all repetitions × duration per repetition).
 private fun ActiveExerciseUi.setsOrDurationLabel(): String =
-    if (type == ExerciseType.CARDIO) {
-        "%d:%02d".format(timePerSetSeconds / 60, timePerSetSeconds % 60)
-    } else {
-        "$setCount sets"
+    when (type) {
+        ExerciseType.CARDIO ->
+            "%d:%02d".format(timePerSetSeconds / 60, timePerSetSeconds % 60)
+        ExerciseType.STRETCH -> formatStretchDuration(setCount * timePerSetSeconds)
+        else -> "$setCount sets"
     }
 
 @Composable
