@@ -7,7 +7,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,11 +24,7 @@ import javax.inject.Singleton
 @Singleton
 class EcgSyncApi @Inject constructor() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(90, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    private val client = SyncHttpClients.ecg
 
     /**
      * Posts [compressedBytes] (gzip-compressed raw `.ecg` file) to [serverUrl]`/v1/ecg`.
