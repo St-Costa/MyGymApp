@@ -1,0 +1,36 @@
+events:
+  "2ecfc86e":
+    relPath: "readiness/2ecfc86e.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T11:38:04.198467"
+    lastError: ""
+    contentHash: "sha256:3afa03cdfbcbb93f71aa75cf6e1000ea5d320243690b8b7761293da828687562"
+  "a85aca2b":
+    relPath: "readiness/a85aca2b.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-01T06:50:01.011915"
+    lastError: ""
+    contentHash: "sha256:161ca4e8fcf0d179be009cd0892ca22d1adb11d0679759824929eee64c1c87e2"
+  "cfd2ec20":
+    relPath: "readiness/cfd2ec20.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-02T06:56:32.896183"
+    lastError: ""
+    contentHash: "sha256:14af1a9502806c995f9700c2f4f9ab27aa4ac0ada5b3f255300300ae38c973f0"
+  "0e667321":
+    relPath: "readiness/0e667321.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T07:08:56.034274"
+    lastError: ""
+    contentHash: "sha256:d0e704f2dc05eb528b07414bcb7bd57089cd237a6a712cbce2dc098695c93df6"
+  "a6eea1de":
+    relPath: "readiness/a6eea1de.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-04T06:45:35.744214"
+    lastError: ""
+    contentHash: "sha256:ea8315f31b14ca5fbc0688759309ac8bb17df11c16a38c7262b5ee32daae3505"

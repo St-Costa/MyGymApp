@@ -1,0 +1,459 @@
+2026-08-28 14:18:57 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 14:19:11 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 14:55:12 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 14:55:33 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 15:00:14 I MainViewModel: Boot cleanup: ghosts=0 pruned=10 orphanEcg=1
+2026-08-28 15:03:32 I MainViewModel: Boot cleanup: ghosts=0 pruned=10 orphanEcg=0
+2026-08-28 15:06:15 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 15:35:02 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 15:45:58 I ActiveRoutineVM: Session created: id=2a7194dc routine='PUSH' exercises=14
+2026-08-28 15:45:58 I ActiveRoutineVM: ECG + HR series capture started for session=2a7194dc polar=not connected
+2026-08-28 15:46:03 W ActiveRoutineVM: Session abandoned by user: id=2a7194dc
+2026-08-28 15:46:03 W ActiveRoutineVM: onCleared without registration: id=2a7194dc — stopping streams, checking ghost cleanup
+2026-08-28 15:46:03 W ActiveRoutineVM: Ghost session deleted on exit: id=2a7194dc
+2026-08-28 17:09:55 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 17:11:55 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 17:14:48 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 17:27:39 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 17:28:22 I RepoSyncWorker: Synced upsert exercises/v-grip-horizzontal-cable-row-ex-c63b1322.md: stored
+2026-08-28 17:28:22 I RepoSyncWorker: Synced upsert exercises/pike-good-morning-ex-29d54473.md: stored
+2026-08-28 17:28:22 I RepoSyncWorker: Synced upsert exercises/calf-raise-ex-7ca58254.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/copenhagen-adduction-ex-53bd86e2.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/b-stance-pike-ex-30e9e379.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/serratus-punch-ex-cac9085c.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/p-dmb-ext-rotation-ex-701aa392.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/prone-cobra-hold-ex-42b662a2.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/single-hand-tricep-pressdown-ex-9686cd74.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/good-morning-ex-1a568131.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/pancake-good-morning-ex-237547bb.md: stored
+2026-08-28 17:28:23 I RepoSyncWorker: Synced upsert exercises/machine-ab-crunch-ex-5628f70f.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/p-dmb-powell-raise-ex-066698e6.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/rolling-feet-on-ball-ex-c15c1f6a.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/single-leg-hip-thrust-bench-ex-b3681da4.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/sl-calf-stretch-ex-5a31e8b2.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/overhead-cable-curl-ex-02acef09.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/lying-pigeon-ex-93836831.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/scapular-chinup-neutral-grip-ex-ef5bb9fe.md: stored
+2026-08-28 17:28:24 I RepoSyncWorker: Synced upsert exercises/preacher-curl-ex-ac8e919c.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/wrist-flexion-cable-ex-3234d09e.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/russian-twist-ex-ef0268f0.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/forearm-wall-slide-ex-ccc6fcae.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/lying-dmb-ext-rot-ex-55949227.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/adduction-ex-17bcb876.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/pancake-stretch-ex-0908fae4.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/horizontal-leg-press-ex-f52c891f.md: stored
+2026-08-28 17:28:25 I RepoSyncWorker: Synced upsert exercises/hip-internal-rotation-ex-3e4195a9.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/seated-prone-fixed-elbow-high-row-ex-383d4ec1.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/minor-pec-stretch-ex-f4a86759.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/reverse-grip-tricep-pushdown-ex-d2559fef.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/reverse-situp-ex-d2d4c112.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/band-pull-apart-ex-f3404a5b.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/cable-rotatiom-ex-3159c66a.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/squat-rack-leg-raise-ex-d304ca73.md: stored
+2026-08-28 17:28:26 I RepoSyncWorker: Synced upsert exercises/frontal-cable-y-raise-ex-69e370e9.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/rdl-ex-734cd15c.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/sit-up-ex-3cfca15c.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/bulgarian-split-squat-ex-167022b4.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/nerve-floss-ex-89873a91.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/face-pull-er-ex-94b9dcc5.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/backward-tapis-roulant-ex-183ddef8.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/stick-chest-stretch-ex-48946bac.md: stored
+2026-08-28 17:28:27 I RepoSyncWorker: Synced upsert exercises/bicicletta-ex-ad4d52a0.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/chest-press-ex-bd6df37f.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/lowhigh-cable-fly-ex-f2ebe40e.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/h-dmb-lower-trap-raise-ex-bd3377c7.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/hanging-ex-9584331a.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/cable-er-ex-63ab0f83.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/b-stretch-external-rotation-ex-9c46cec5.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/leg-extension-ex-2b8133ed.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/bulgarian-glute-ex-cc43b817.md: stored
+2026-08-28 17:28:28 I RepoSyncWorker: Synced upsert exercises/tibialis-raise-ex-90323d25.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert exercises/lying-y-raise-ex-44d81bbb.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert exercises/pillar-lat-stretch-ex-9422442f.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert exercises/pri-9090-hip-lift-ex-a377364a.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert exercises/cable-sjoulder-ext-rot-ex-8ab2ebb9.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert routines/pull-rt-71284f58.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert routines/-rt-db22e554.md: stored
+2026-08-28 17:28:29 I RepoSyncWorker: Synced upsert routines/leg-rt-97a2091f.md: stored
+2026-08-28 17:28:30 I RepoSyncWorker: Synced upsert routines/fsh-rt-8e98657f.md: stored
+2026-08-28 17:28:30 I RepoSyncWorker: Synced upsert routines/pike-rt-46b2cb01.md: stored
+2026-08-28 17:28:30 I RepoSyncWorker: Synced upsert routines/push-rt-b997ec72.md: stored
+2026-08-28 17:55:38 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 17:56:19 I RepoSyncWorker: Synced upsert exercises/adduction-ex-17bcb876.md: stored
+2026-08-28 17:58:36 I RepoSyncWorker: Synced upsert exercises/adduction-ex-17bcb876.md: stored
+2026-08-28 18:09:15 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-28 18:09:25 I RepoSyncWorker: Synced upsert routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-08-28 18:09:45 I RepoSyncWorker: Synced upsert routines/pull-rt-71284f58.md: stored
+2026-08-28 18:09:47 I RepoSyncWorker: Synced upsert routines/push-rt-b997ec72.md: stored
+2026-08-29 06:00:01 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-29 06:45:37 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 06:47:47 I ScaleWeighInSyncWorker: Synced weigh-in 2026-08-29: stored
+2026-08-29 07:28:40 I ActiveRoutineVM: Session created: id=c7b3f1c5 routine='PUSH' exercises=14
+2026-08-29 07:28:40 I ActiveRoutineVM: ECG + HR series capture started for session=c7b3f1c5 polar=not connected
+2026-08-29 08:23:21 I RepoSyncWorker: Synced upsert exercises/reverse-situp-ex-d2d4c112.md: stored
+2026-08-29 09:15:47 I RepoSyncWorker: Synced upsert exercises/wrist-flexion-cable-ex-3234d09e.md: stored
+2026-08-29 09:15:48 I RepoSyncWorker: Synced upsert exercises/wrist-flexion-cable-ex-3234d09e.md: stored
+2026-08-29 09:15:55 I RepoSyncWorker: Synced upsert exercises/wrist-flexion-cable-ex-3234d09e.md: stored
+2026-08-29 09:31:00 I RepoSyncWorker: Synced upsert exercises/wrist-flexion-cable-ex-3234d09e.md: stored
+2026-08-29 09:31:03 I RepoSyncWorker: Synced upsert exercises/wrist-flexion-cable-ex-3234d09e.md: stored
+2026-08-29 09:31:41 I ActiveRoutineVM: ECG file size for c7b3f1c5: 0 bytes
+2026-08-29 09:31:41 I ActiveRoutineVM: HRR60s for c7b3f1c5: discarded 0 delta(s) (HR rebounded before +60s sample)
+2026-08-29 09:31:41 I ActiveRoutineVM: Session registered: id=c7b3f1c5 tonnage=3037.0 kcal=0.0 trimp=0.0
+2026-08-29 09:31:42 I SyncWorker: Synced session c7b3f1c5: stored
+2026-08-29 10:33:13 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 10:33:30 I RepoSyncWorker: Synced upsert exercises/adduction-ex-17bcb876.md: stored
+2026-08-29 10:39:40 I RepoSyncWorker: Synced upsert exercises/adduction-ex-17bcb876.md: stored
+2026-08-29 10:52:34 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:02:28 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:14:53 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:23:23 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:29:38 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:37:15 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:40:03 I BackupVerifier: verify OK: 0 esercizi + 0 routine inviati, 54/54 sessioni allineate
+2026-08-29 11:46:45 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 11:58:49 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:09:37 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:10:05 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:10:06 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:10:06 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:10:06 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:10:40 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-44 hrGap=562ms
+2026-08-29 12:10:41 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:10:44 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:10:45 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:10:45 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:10:45 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:11:32 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:11:32 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-40 hrGap=2044ms
+2026-08-29 12:11:37 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:11:38 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:11:38 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:11:38 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:11:46 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:11:46 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-45 hrGap=5174ms
+2026-08-29 12:27:00 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:27:23 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:27:24 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:27:24 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:27:24 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:28:08 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:28:08 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-45 hrGap=1064ms
+2026-08-29 12:30:27 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:30:53 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:30:53 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:30:54 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:30:54 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:31:41 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:31:42 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-45 hrGap=1552ms
+2026-08-29 12:31:50 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:31:51 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:31:51 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:31:51 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:32:39 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:32:39 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-46 hrGap=1564ms
+2026-08-29 12:36:08 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:39:37 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:39:38 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:39:38 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:39:38 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:40:33 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-56 hrGap=989ms
+2026-08-29 12:40:53 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:40:53 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:40:53 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:40:53 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:41:29 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:41:29 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-46 hrGap=1039ms
+2026-08-29 12:42:43 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 12:51:44 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:51:45 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:51:45 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:51:45 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:52:22 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:52:22 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-44 hrGap=1065ms
+2026-08-29 12:52:28 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-29 12:52:29 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:52:29 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-29 12:52:30 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-29 12:52:37 E PolarManager: HR streaming error: com.polar.androidcommunications.api.ble.exceptions.BleDisconnected
+2026-08-29 12:52:37 W PolarManager: Disconnected: 13E2DF31 involuntary=true midSession=false rssi=-46 hrGap=5129ms
+2026-08-29 12:58:00 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 14:36:39 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 14:37:08 I RepoSyncWorker: Synced exercises/adduction-ex-17bcb876.md: stored
+2026-08-29 14:37:32 I BackupVerifier: verify OK: 0 esercizi + 0 routine inviati, 54/54 sessioni allineate
+2026-08-29 14:50:08 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-29 19:28:12 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-30 00:00:39 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-30 04:01:40 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-30 07:23:03 I MainViewModel: Boot cleanup: ghosts=0 pruned=1 orphanEcg=1
+2026-08-30 07:23:03 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-30 08:50:21 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 06:00:01 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 06:37:31 I MainViewModel: Boot cleanup: ghosts=0 pruned=1 orphanEcg=0
+2026-08-31 06:47:44 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-08-31 06:47:44 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-31 06:47:44 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-08-31 06:47:44 I PolarManager: Battery level on 13E2DF31: 100%
+2026-08-31 06:48:44 I PolarManager: Readiness: NO_BASELINE lnRMSSD=3.74 restingHr=58 vo2max=49.9 rrSamples=51
+2026-08-31 06:48:45 I PolarManager: Readiness event persisted: id=2ecfc86e
+2026-08-31 07:18:25 I ActiveRoutineVM: Session created: id=e9370bb0 routine='LEG' exercises=11
+2026-08-31 07:18:25 I PolarManager: ECG start requested: session=e9370bb0 device=13E2DF31
+2026-08-31 07:18:25 I ActiveRoutineVM: ECG + HR series capture started for session=e9370bb0 polar=13E2DF31
+2026-08-31 07:18:26 I PolarManager: ECG streaming started: session=e9370bb0 settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-08-31 07:18:54 W ActiveRoutineVM: Session abandoned by user: id=e9370bb0
+2026-08-31 07:18:55 W ActiveRoutineVM: onCleared without registration: id=e9370bb0 — stopping streams, checking ghost cleanup
+2026-08-31 07:18:55 W ActiveRoutineVM: Ghost session deleted on exit: id=e9370bb0
+2026-08-31 07:19:04 I ActiveRoutineVM: Session created: id=0e421aa2 routine='LEG' exercises=11
+2026-08-31 07:19:04 I PolarManager: ECG start requested: session=0e421aa2 device=13E2DF31
+2026-08-31 07:19:04 I ActiveRoutineVM: ECG + HR series capture started for session=0e421aa2 polar=13E2DF31
+2026-08-31 07:19:04 I PolarManager: ECG streaming started: session=0e421aa2 settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-08-31 09:12:42 I ActiveRoutineVM: ECG file size for 0e421aa2: 1767496 bytes
+2026-08-31 09:12:42 I ActiveRoutineVM: HRR60s for 0e421aa2: discarded 28 delta(s) (HR rebounded before +60s sample)
+2026-08-31 09:12:42 I ActiveRoutineVM: Session registered: id=0e421aa2 tonnage=3603.0 kcal=1001.3 trimp=72.3
+2026-08-31 09:12:42 I SyncWorker: Synced session 0e421aa2: stored
+2026-08-31 09:12:42 I ReadinessSyncWorker: Synced readiness 2ecfc86e: stored
+2026-08-31 09:12:43 I ScaleWeighInSyncWorker: Synced weigh-in 2026-08-30: stored
+2026-08-31 09:12:43 I RepoSyncWorker: Synced exercises/single-leg-hip-thrust-bench-ex-b3681da4.md: stored
+2026-08-31 09:12:43 I RepoSyncWorker: Synced exercises/leg-extension-ex-2b8133ed.md: stored
+2026-08-31 09:12:43 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-08-31 09:12:43 I RepoSyncWorker: Synced routines/leg-rt-97a2091f.md: stored
+2026-08-31 09:12:43 I RepoSyncWorker: Synced exercises/chest-stretch-sbarre-ex-830b2056.md: stored
+2026-08-31 09:12:43 I ScaleWeighInSyncWorker: Synced weigh-in 2026-08-31: stored
+2026-08-31 09:12:51 I BackupVerifier: verify OK: 1 esercizi + 0 routine inviati, 53/53 sessioni allineate
+2026-08-31 09:12:51 I EcgSyncWorker: Synced ECG 0e421aa2: duplicate, raw file deleted
+2026-08-31 09:13:28 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-48 hrGap=259ms
+2026-08-31 11:09:47 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:09:53 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:09:55 I ActiveRoutineVM: Session created: id=fa38806c routine='FSh' exercises=14
+2026-08-31 11:09:55 I ActiveRoutineVM: ECG + HR series capture started for session=fa38806c polar=not connected
+2026-08-31 11:13:31 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:13:33 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:13:34 I ActiveRoutineVM: Session created: id=d0cc940a routine='FSh' exercises=14
+2026-08-31 11:13:34 I ActiveRoutineVM: ECG + HR series capture started for session=d0cc940a polar=not connected
+2026-08-31 11:17:42 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:17:54 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:17:54 I ActiveRoutineVM: Session created: id=e303c340 routine='FSh' exercises=14
+2026-08-31 11:17:54 I ActiveRoutineVM: ECG + HR series capture started for session=e303c340 polar=not connected
+2026-08-31 11:20:04 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:20:08 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:20:08 I ActiveRoutineVM: Session created: id=6409be4c routine='FSh' exercises=14
+2026-08-31 11:20:08 I ActiveRoutineVM: ECG + HR series capture started for session=6409be4c polar=not connected
+2026-08-31 11:25:15 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:25:17 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:38:03 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:38:04 I ReadinessSyncWorker: Synced readiness 2ecfc86e: updated
+2026-08-31 11:55:45 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:55:51 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:55:53 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:55:55 I ActiveRoutineVM: Session created: id=7d5ea032 routine='FSh' exercises=14
+2026-08-31 11:55:55 I ActiveRoutineVM: ECG + HR series capture started for session=7d5ea032 polar=not connected
+2026-08-31 11:57:57 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 11:57:58 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:58:13 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:58:16 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:58:19 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:58:22 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 11:58:26 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 12:06:40 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 12:06:42 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 12:06:42 I ActiveRoutineVM: Session created: id=5181cf6f routine='❤️' exercises=10
+2026-08-31 12:06:42 I ActiveRoutineVM: ECG + HR series capture started for session=5181cf6f polar=not connected
+2026-08-31 12:07:54 I MainViewModel: Boot cleanup: ghosts=0 pruned=0 orphanEcg=0
+2026-08-31 12:07:56 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 12:07:56 I ActiveRoutineVM: Session created: id=c7bb8378 routine='❤️' exercises=10
+2026-08-31 12:07:56 I ActiveRoutineVM: ECG + HR series capture started for session=c7bb8378 polar=not connected
+2026-08-31 12:13:32 I MainViewModel: Boot cleanup: ghosts=7 ghostEcg=0 pruned=0 orphanEcg=0
+2026-08-31 12:14:00 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-08-31 12:31:26 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-08-31 12:31:38 I RepoSyncWorker: Synced exercises/chest-stretch-sbarre-ex-830b2056.md: stored
+2026-08-31 12:31:52 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-08-31 12:32:15 I RepoSyncWorker: Synced exercises/single-leg-hip-thrust-bench-ex-b3681da4.md: stored
+2026-08-31 12:36:02 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-08-31 12:36:14 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-08-31 12:36:39 I RepoSyncWorker: Synced exercises/reverse-situp-oblique-ex-81ece766.md: stored
+2026-08-31 12:37:01 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-09-01 06:00:01 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 06:42:28 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 06:42:41 I ScaleWeighInSyncWorker: Synced weigh-in 2026-09-01: stored
+2026-09-01 06:49:00 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-09-01 06:49:00 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-01 06:49:00 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-01 06:49:00 I PolarManager: Battery level on 13E2DF31: 100%
+2026-09-01 06:50:00 I PolarManager: Readiness: NORMAL lnRMSSD=3.76 restingHr=60 vo2max=50.7 rrSamples=57 baselineN=14
+2026-09-01 06:50:00 I PolarManager: Readiness event persisted: id=a85aca2b
+2026-09-01 06:50:01 I ReadinessSyncWorker: Synced readiness a85aca2b: stored
+2026-09-01 07:20:32 I ActiveRoutineVM: Session created: id=8c883ef6 routine='FSh' exercises=14
+2026-09-01 07:20:32 I PolarManager: ECG start requested: session=8c883ef6 device=13E2DF31
+2026-09-01 07:20:32 I ActiveRoutineVM: ECG + HR series capture started for session=8c883ef6 polar=13E2DF31
+2026-09-01 07:20:33 I PolarManager: ECG streaming started: session=8c883ef6 settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-09-01 08:27:48 I RepoSyncWorker: Synced exercises/seated-prone-fixed-elbow-high-row-ex-383d4ec1.md: stored
+2026-09-01 08:27:50 I RepoSyncWorker: Synced exercises/seated-prone-fixed-elbow-high-row-ex-383d4ec1.md: stored
+2026-09-01 08:27:50 I RepoSyncWorker: Synced exercises/seated-prone-fixed-elbow-high-row-ex-383d4ec1.md: stored
+2026-09-01 09:03:04 I ActiveRoutineVM: ECG file size for 8c883ef6: 1592880 bytes
+2026-09-01 09:03:04 I ActiveRoutineVM: HRR60s for 8c883ef6: discarded 14 delta(s) (HR rebounded before +60s sample)
+2026-09-01 09:03:04 I ActiveRoutineVM: Session registered: id=8c883ef6 tonnage=529.0 kcal=698.8 trimp=39.6
+2026-09-01 09:03:05 I SyncWorker: Synced session 8c883ef6: stored
+2026-09-01 09:03:06 I BackupVerifier: verify OK: 0 esercizi + 0 routine inviati, 54/54 sessioni allineate
+2026-09-01 09:03:12 I EcgSyncWorker: Synced ECG 8c883ef6: stored, raw file deleted
+2026-09-01 09:04:09 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-56 hrGap=135ms
+2026-09-01 09:30:40 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 11:38:15 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 11:42:45 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 11:42:46 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 11:53:19 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 14:04:39 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:05:22 I RepoSyncWorker: Synced routines/fsh-rt-8e98657f.md: stored
+2026-09-01 14:12:10 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:12:13 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 14:12:13 I ActiveRoutineVM: Session created: id=2e8d2d1c routine='❤️' exercises=10
+2026-09-01 14:12:13 I ActiveRoutineVM: ECG + HR series capture started for session=2e8d2d1c polar=not connected
+2026-09-01 14:12:19 W ActiveRoutineVM: Session abandoned by user: id=2e8d2d1c
+2026-09-01 14:12:20 W ActiveRoutineVM: onCleared without registration: id=2e8d2d1c — stopping streams, checking ghost cleanup
+2026-09-01 14:12:20 W ActiveRoutineVM: Unfinalized session deleted on exit: id=2e8d2d1c
+2026-09-01 14:22:44 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:22:44 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 14:25:39 I RepoSyncWorker: Synced routines/pike-rt-46b2cb01.md: stored
+2026-09-01 14:38:03 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:40:58 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:44:44 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:46:54 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 14:51:02 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 15:54:15 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 17:10:38 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 17:11:01 I RepoSyncWorker: Synced exercises/prone-external-rotation-cable-ex-2dfc777c.md: stored
+2026-09-01 17:11:20 I RepoSyncWorker: Synced routines/fsh-rt-8e98657f.md: stored
+2026-09-01 17:21:01 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-01 17:21:02 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 17:21:19 I RepoSyncWorker: Synced exercises/45-oblique-raise-ex-caca528b.md: stored
+2026-09-01 17:21:55 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-09-01 17:26:11 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-09-01 17:26:18 I RepoSyncWorker: Synced routines/leg-rt-97a2091f.md: stored
+2026-09-01 17:27:33 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 17:27:41 I RepoSyncWorker: Synced routines/leg-rt-97a2091f.md: stored
+2026-09-01 17:28:52 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 17:31:11 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-01 17:40:51 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-02 06:00:01 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-02 06:44:35 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=1 orphanEcg=0
+2026-09-02 06:44:51 I ScaleWeighInSyncWorker: Synced weigh-in 2026-09-02: stored
+2026-09-02 06:55:31 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-09-02 06:55:32 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-02 06:55:32 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-02 06:55:32 I PolarManager: Battery level on 13E2DF31: 100%
+2026-09-02 06:56:32 I PolarManager: Readiness: NORMAL lnRMSSD=4.16 restingHr=57 vo2max=50.7 rrSamples=57 baselineN=14
+2026-09-02 06:56:32 I PolarManager: Readiness event persisted: id=cfd2ec20
+2026-09-02 06:56:32 I ReadinessSyncWorker: Synced readiness cfd2ec20: stored
+2026-09-02 07:35:32 I ActiveRoutineVM: Session created: id=df19ad7d routine='❤️' exercises=10
+2026-09-02 07:35:32 I PolarManager: ECG start requested: session=df19ad7d device=13E2DF31
+2026-09-02 07:35:32 I ActiveRoutineVM: ECG + HR series capture started for session=df19ad7d polar=13E2DF31
+2026-09-02 07:35:32 I PolarManager: ECG streaming started: session=df19ad7d settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-09-02 09:04:14 I ActiveRoutineVM: ECG file size for df19ad7d: 1378260 bytes
+2026-09-02 09:04:14 I ActiveRoutineVM: HRR60s for df19ad7d: discarded 8 delta(s) (HR rebounded before +60s sample)
+2026-09-02 09:04:14 I ActiveRoutineVM: Session registered: id=df19ad7d tonnage=0.0 kcal=961.9 trimp=93.1
+2026-09-02 09:04:14 I SyncWorker: Synced session df19ad7d: stored
+2026-09-02 09:04:16 I BackupVerifier: verify OK: 0 esercizi + 0 routine inviati, 54/54 sessioni allineate
+2026-09-02 09:04:22 I EcgSyncWorker: Synced ECG df19ad7d: stored, raw file deleted
+2026-09-02 09:04:41 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-51 hrGap=584ms
+2026-09-02 11:39:12 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-02 16:44:19 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-02 16:47:36 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-02 16:47:38 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-02 16:58:36 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-02 17:00:09 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-03 06:00:02 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-03 07:00:56 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=1 orphanEcg=0
+2026-09-03 07:01:18 I ScaleWeighInSyncWorker: Synced weigh-in 2026-09-03: stored
+2026-09-03 07:07:54 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-09-03 07:07:55 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-03 07:07:55 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-03 07:07:55 I PolarManager: Battery level on 13E2DF31: 100%
+2026-09-03 07:08:55 I PolarManager: Readiness: DELOAD_RECOMMENDED lnRMSSD=3.66 restingHr=61 vo2max=50.7 rrSamples=52 baselineN=14
+2026-09-03 07:08:55 I PolarManager: Readiness event persisted: id=0e667321
+2026-09-03 07:08:56 I ReadinessSyncWorker: Synced readiness 0e667321: stored
+2026-09-03 07:37:08 I ActiveRoutineVM: Session created: id=27235e04 routine='Pike' exercises=15
+2026-09-03 07:37:08 I PolarManager: ECG start requested: session=27235e04 device=13E2DF31
+2026-09-03 07:37:08 I ActiveRoutineVM: ECG + HR series capture started for session=27235e04 polar=13E2DF31
+2026-09-03 07:37:08 I PolarManager: ECG streaming started: session=27235e04 settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-09-03 07:56:54 I RepoSyncWorker: Synced exercises/45-oblique-raise-ex-caca528b.md: stored
+2026-09-03 07:56:55 I RepoSyncWorker: Synced exercises/45-oblique-raise-ex-caca528b.md: stored
+2026-09-03 07:56:56 I RepoSyncWorker: Synced exercises/45-oblique-raise-ex-caca528b.md: stored
+2026-09-03 09:05:24 I ActiveRoutineVM: ECG file size for 27235e04: 1371252 bytes
+2026-09-03 09:05:24 I ActiveRoutineVM: HRR60s for 27235e04: discarded 8 delta(s) (HR rebounded before +60s sample)
+2026-09-03 09:05:24 I ActiveRoutineVM: Session registered: id=27235e04 tonnage=0.0 kcal=463.0 trimp=21.3
+2026-09-03 09:05:25 I SyncWorker: Synced session 27235e04: stored
+2026-09-03 09:05:27 I BackupVerifier: verify OK: 0 esercizi + 0 routine inviati, 54/54 sessioni allineate
+2026-09-03 09:05:33 I EcgSyncWorker: Synced ECG 27235e04: stored, raw file deleted
+2026-09-03 09:05:37 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-51 hrGap=804ms
+2026-09-03 09:33:08 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-03 10:09:03 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-03 10:09:08 I RepoSyncWorker: Synced routines/fixed-daily-exercise-rt-fixeddaily.md: stored
+2026-09-03 10:09:13 I RepoSyncWorker: Synced routines/fsh-rt-8e98657f.md: stored
+2026-09-03 10:10:17 I RepoSyncWorker: Synced routines/pike-rt-46b2cb01.md: stored
+2026-09-03 10:10:50 I ActiveRoutineVM: Session created: id=0773039e routine='PULL' exercises=13
+2026-09-03 10:10:50 I ActiveRoutineVM: ECG + HR series capture started for session=0773039e polar=not connected
+2026-09-03 10:10:52 W ActiveRoutineVM: Session abandoned by user: id=0773039e
+2026-09-03 10:10:52 W ActiveRoutineVM: onCleared without registration: id=0773039e — stopping streams, checking ghost cleanup
+2026-09-03 10:10:52 W ActiveRoutineVM: Unfinalized session deleted on exit: id=0773039e
+2026-09-03 10:23:16 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-03 10:23:16 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-03 10:23:16 I ActiveRoutineVM: Session created: id=2e6355ae routine='PULL' exercises=13
+2026-09-03 10:23:16 I ActiveRoutineVM: ECG + HR series capture started for session=2e6355ae polar=not connected
+2026-09-03 10:23:23 W ActiveRoutineVM: Session abandoned by user: id=2e6355ae
+2026-09-03 10:23:23 W ActiveRoutineVM: onCleared without registration: id=2e6355ae — stopping streams, checking ghost cleanup
+2026-09-03 10:23:23 W ActiveRoutineVM: Unfinalized session deleted on exit: id=2e6355ae
+2026-09-03 10:30:52 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-03 10:31:05 I RepoSyncWorker: Synced routines/pull-rt-71284f58.md: stored
+2026-09-03 10:31:06 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-03 10:31:06 I ActiveRoutineVM: Session created: id=fd3f1877 routine='PULL' exercises=13
+2026-09-03 10:31:06 I ActiveRoutineVM: ECG + HR series capture started for session=fd3f1877 polar=not connected
+2026-09-03 10:31:21 W ActiveRoutineVM: Session abandoned by user: id=fd3f1877
+2026-09-03 10:31:21 W ActiveRoutineVM: onCleared without registration: id=fd3f1877 — stopping streams, checking ghost cleanup
+2026-09-03 10:31:21 W ActiveRoutineVM: Unfinalized session deleted on exit: id=fd3f1877
+2026-09-03 10:31:45 I RepoSyncWorker: Synced routines/pike-rt-46b2cb01.md: stored
+2026-09-03 13:09:15 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-03 20:00:13 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-04 03:37:36 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-04 06:38:57 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-04 06:38:57 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-04 06:39:16 I ScaleWeighInSyncWorker: Synced weigh-in 2026-09-04: stored
+2026-09-04 06:44:35 I PolarManager: Connected: 13E2DF31 (Polar H10 13E2DF31) midSession=false
+2026-09-04 06:44:35 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-04 06:44:35 I PolarManager: ONLINE_STREAMING feature ready on 13E2DF31 pendingEcg=null
+2026-09-04 06:44:35 I PolarManager: Battery level on 13E2DF31: 100%
+2026-09-04 06:45:35 I PolarManager: Readiness: NORMAL lnRMSSD=4.06 restingHr=61 vo2max=50.7 rrSamples=55 baselineN=14
+2026-09-04 06:45:35 I PolarManager: Readiness event persisted: id=a6eea1de
+2026-09-04 06:45:35 I ReadinessSyncWorker: Synced readiness a6eea1de: stored
+2026-09-04 07:16:31 I ActiveRoutineVM: Session created: id=5be60e03 routine='PULL' exercises=13
+2026-09-04 07:16:31 I PolarManager: ECG start requested: session=5be60e03 device=13E2DF31
+2026-09-04 07:16:31 I ActiveRoutineVM: ECG + HR series capture started for session=5be60e03 polar=13E2DF31
+2026-09-04 07:16:32 I PolarManager: ECG streaming started: session=5be60e03 settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-09-04 07:51:32 W ActiveRoutineVM: Session abandoned by user: id=5be60e03
+2026-09-04 07:51:32 W ActiveRoutineVM: onCleared without registration: id=5be60e03 — stopping streams, checking ghost cleanup
+2026-09-04 07:51:32 W ActiveRoutineVM: Unfinalized session deleted on exit: id=5be60e03
+2026-09-04 07:51:33 I ActiveRoutineVM: Session created: id=65b585dd routine='PUSH' exercises=15
+2026-09-04 07:51:33 I PolarManager: ECG start requested: session=65b585dd device=13E2DF31
+2026-09-04 07:51:33 I ActiveRoutineVM: ECG + HR series capture started for session=65b585dd polar=13E2DF31
+2026-09-04 07:51:33 I PolarManager: ECG streaming started: session=65b585dd settings={SAMPLE_RATE=[130], RESOLUTION=[14]}
+2026-09-04 07:52:37 I RepoSyncWorker: Synced exercises/chest-press-ex-bd6df37f.md: stored
+2026-09-04 08:36:02 I ActiveRoutineVM: ECG file size for 65b585dd: 691622 bytes
+2026-09-04 08:36:02 I ActiveRoutineVM: HRR60s for 65b585dd: discarded 14 delta(s) (HR rebounded before +60s sample)
+2026-09-04 08:36:02 I ActiveRoutineVM: Session registered: id=65b585dd tonnage=2970.0 kcal=326.5 trimp=19.4
+2026-09-04 08:36:02 I SyncWorker: Synced session 65b585dd: stored
+2026-09-04 08:36:07 I EcgSyncWorker: Synced ECG 65b585dd: stored, raw file deleted
+2026-09-04 08:36:07 I BackupVerifier: verify OK: 0 esercizi + 0 routine inviati, 55/55 sessioni allineate
+2026-09-04 08:36:39 W PolarManager: Disconnected: 13E2DF31 involuntary=false midSession=false rssi=-48 hrGap=696ms
+2026-09-04 09:43:32 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-04 09:43:34 I MainViewModel: Boot cleanup: ghosts=0 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-04 09:43:45 I ActiveRoutineVM: Session created: id=7b966319 routine='PUSH' exercises=15
+2026-09-04 09:43:45 I ActiveRoutineVM: ECG + HR series capture started for session=7b966319 polar=not connected
+2026-09-04 09:45:51 I MainViewModel: Boot cleanup: ghosts=1 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-04 09:45:52 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-04 09:45:52 I ActiveRoutineVM: Session created: id=edd64630 routine='PUSH' exercises=15
+2026-09-04 09:45:52 I ActiveRoutineVM: ECG + HR series capture started for session=edd64630 polar=not connected
+2026-09-04 09:47:29 I MainViewModel: Boot cleanup: ghosts=1 ghostEcg=0 pruned=0 orphanEcg=0
+2026-09-04 09:47:31 W PolarManager: BLE powered off — tearing down foreground service and reconnect loop
+2026-09-04 09:47:31 I ActiveRoutineVM: Session created: id=5bb54d13 routine='PUSH' exercises=15
+2026-09-04 09:47:31 I ActiveRoutineVM: ECG + HR series capture started for session=5bb54d13 polar=not connected
+2026-09-04 09:47:33 W ActiveRoutineVM: Session abandoned by user: id=5bb54d13
+2026-09-04 09:47:33 W ActiveRoutineVM: onCleared without registration: id=5bb54d13 — stopping streams, checking ghost cleanup
+2026-09-04 09:47:33 W ActiveRoutineVM: Unfinalized session deleted on exit: id=5bb54d13

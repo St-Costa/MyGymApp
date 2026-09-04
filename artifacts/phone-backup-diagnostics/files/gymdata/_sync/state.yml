@@ -1,0 +1,61 @@
+sessions:
+  "c7b3f1c5":
+    relPath: "2026/08/2026-08-29_rt-b997ec72_c7b3f1c5.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-29T09:31:42.212278"
+    lastError: ""
+    contentHash: "sha256:df094f17fbee9f0f01e879227020889bd5de94b8c6d1a40c82e4133269688eac"
+    bytesSent: 4641
+    durationMs: 252
+    serverStatus: "stored"
+  "0e421aa2":
+    relPath: "2026/08/2026-08-31_rt-97a2091f_0e421aa2.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T09:12:42.960622"
+    lastError: ""
+    contentHash: "sha256:a20816ca858c307275615e3d099421eb2efc00f6c94d5666b26cd5172c356cbb"
+    bytesSent: 4122
+    durationMs: 413
+    serverStatus: "stored"
+  "8c883ef6":
+    relPath: "2026/09/2026-09-01_rt-8e98657f_8c883ef6.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-01T09:03:05.202327"
+    lastError: ""
+    contentHash: "sha256:ed6a5f1db26794a31fc6a3650cbfcf60d16eb58c0e92093cb3cdbea641ea9885"
+    bytesSent: 4644
+    durationMs: 339
+    serverStatus: "stored"
+  "df19ad7d":
+    relPath: "2026/09/2026-09-02_rt-db22e554_df19ad7d.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-02T09:04:14.915815"
+    lastError: ""
+    contentHash: "sha256:f2b79998cfa4a13d7abcf99c49b9c5044b51c0233f48c726751adbc0078a8eb5"
+    bytesSent: 3573
+    durationMs: 359
+    serverStatus: "stored"
+  "27235e04":
+    relPath: "2026/09/2026-09-03_rt-46b2cb01_27235e04.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T09:05:25.501831"
+    lastError: ""
+    contentHash: "sha256:0f09ec253fe83de5e33c5bd9142e2cce23e89ef12172826651a1b2cebfb062bf"
+    bytesSent: 4761
+    durationMs: 271
+    serverStatus: "stored"
+  "65b585dd":
+    relPath: "2026/09/2026-09-04_rt-b997ec72_65b585dd.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-04T08:36:02.657551"
+    lastError: ""
+    contentHash: "sha256:78d6eb699ac1e4e5d525a5253f3ceff34aa519e257babb06fca3166b6eef86e3"
+    bytesSent: 4791
+    durationMs: 244
+    serverStatus: "stored"

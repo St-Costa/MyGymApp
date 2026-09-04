@@ -1,0 +1,477 @@
+files:
+  "exercises/v-grip-horizzontal-cable-row-ex-c63b1322.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:22.713625"
+    lastError: ""
+    contentHash: "sha256:5e56e62fd638e67d4286c6f386044a50ad608531363253f32e1d903ca302168b"
+  "exercises/pike-good-morning-ex-29d54473.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:22.833690"
+    lastError: ""
+    contentHash: "sha256:f6ee69cc8ec980a56e485c8f1ca9d0be3d07bd2c4c6d64aac0bcc219923fb54d"
+  "exercises/calf-raise-ex-7ca58254.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:22.949071"
+    lastError: ""
+    contentHash: "sha256:1a995da42ccc532fdd268340e641175dd0c3a0c69c382165a5e4fb617fa27191"
+  "exercises/copenhagen-adduction-ex-53bd86e2.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.080491"
+    lastError: ""
+    contentHash: "sha256:30ba9aa1b1176e943f9537673a0f98f3935eeb4f7241cc3c97dc3d694388132b"
+  "exercises/b-stance-pike-ex-30e9e379.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.191250"
+    lastError: ""
+    contentHash: "sha256:9f57232d1dcaccfb52b8cbd74a31f33cd8e322d7ad655a2b758b36d228557001"
+  "exercises/serratus-punch-ex-cac9085c.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.296466"
+    lastError: ""
+    contentHash: "sha256:c34cedb01c5ea980e1f1b644f836549c06013d9a15daf939f9713acfcabf1000"
+  "exercises/p-dmb-ext-rotation-ex-701aa392.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.375997"
+    lastError: ""
+    contentHash: "sha256:3b62b93d0a586dc44995c7ce8d6bf568bc5d52e7d66792d5db7a870af3fac35f"
+  "exercises/prone-cobra-hold-ex-42b662a2.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.475331"
+    lastError: ""
+    contentHash: "sha256:06d450af5ea7c4cc3cc705b660b951ff12adf3384fb566f25cae8ca6432c14b3"
+  "exercises/single-hand-tricep-pressdown-ex-9686cd74.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.599046"
+    lastError: ""
+    contentHash: "sha256:1fddfb7695021cb1f57ee8f663d5a4961d7c439d2c37b9a773927d3734094e53"
+  "exercises/good-morning-ex-1a568131.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.728267"
+    lastError: ""
+    contentHash: "sha256:e0a0548ff04efa82b486d69032b60295d1cdb89dbb082a1504e5ee04b427e6a4"
+  "exercises/pancake-good-morning-ex-237547bb.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.855850"
+    lastError: ""
+    contentHash: "sha256:5bd70728f1c566266e99ecd7645caa4debc35c5951fbd491e0bf9a167be30467"
+  "exercises/machine-ab-crunch-ex-5628f70f.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:23.980045"
+    lastError: ""
+    contentHash: "sha256:084e41060c7e70c8a4dd068797809ed5b36671cebe7cfc9ab719a32f59bd8fbc"
+  "exercises/p-dmb-powell-raise-ex-066698e6.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.114003"
+    lastError: ""
+    contentHash: "sha256:8e3cdf1c623f7f6d1130acc0e0dde2b35047ee4b71b3ca4e93faa33b751ddc68"
+  "exercises/rolling-feet-on-ball-ex-c15c1f6a.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.207382"
+    lastError: ""
+    contentHash: "sha256:895ab79cf7cd0b83c4c5aaa862943971def5c0aa7477723d91b5c19ad4982aef"
+  "exercises/single-leg-hip-thrust-bench-ex-b3681da4.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T12:32:15.366770"
+    lastError: ""
+    contentHash: "sha256:7ca2433831c96bcfe9ce07c009ae21863541701bae49838c5336b14f307ed2f9"
+  "exercises/sl-calf-stretch-ex-5a31e8b2.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.470738"
+    lastError: ""
+    contentHash: "sha256:38a96d83d340a986edd081f4136524d55719272ec1fcb8039812564a9dd531f3"
+  "exercises/overhead-cable-curl-ex-02acef09.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.595603"
+    lastError: ""
+    contentHash: "sha256:0b10cf67d79db497a596666a6eae9ebc6934db070151ebcd6c84ab4fc40f84aa"
+  "exercises/lying-pigeon-ex-93836831.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.721622"
+    lastError: ""
+    contentHash: "sha256:7d1cc69af7f24ea280e328432aae27a4f711036a5e881c721a3f1f6d248cbfff"
+  "exercises/scapular-chinup-neutral-grip-ex-ef5bb9fe.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.849412"
+    lastError: ""
+    contentHash: "sha256:badb9db3a0f2ea047677f5a7d364f0f795f8983858b6fdf7dc5921e3a5c1d460"
+  "exercises/preacher-curl-ex-ac8e919c.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:24.983607"
+    lastError: ""
+    contentHash: "sha256:52699633a7da7042a148a2f86120ce3a1fd87bcca885b976702b5aaed09e3395"
+  "exercises/wrist-flexion-cable-ex-3234d09e.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-29T09:31:03.960778"
+    lastError: ""
+    contentHash: "sha256:188f6a40f015d5cbd0e6db7df6d67493b1580fc18a0af976a95bb9a2cb2a8762"
+  "exercises/russian-twist-ex-ef0268f0.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:25.215680"
+    lastError: ""
+    contentHash: "sha256:9d331c917fac140ae05080fbceac832460861b6b589aa9f5b8dae4f7d20ad69d"
+  "exercises/forearm-wall-slide-ex-ccc6fcae.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:25.349520"
+    lastError: ""
+    contentHash: "sha256:26e760e90c85f4546264b8244d7313ae90557754b5faf26e0d47ee2b0cbf2058"
+  "exercises/lying-dmb-ext-rot-ex-55949227.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:25.475637"
+    lastError: ""
+    contentHash: "sha256:fd6ce7fb65d1951cfeceb2bf11b0e0445a8de97a7477f8896d10d1f29ef6ed7e"
+  "exercises/adduction-ex-17bcb876.md":
+    op: upsert
+    status: SENT
+    attempts: 0
+    lastAttemptAt: "2026-08-29T14:40:26.247081"
+    lastError: ""
+    contentHash: "sha256:b863a17327c485d55b1e1be30b9ff7abb233ca23c57443d0a6746d431ef67c68"
+  "exercises/pancake-stretch-ex-0908fae4.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:25.701434"
+    lastError: ""
+    contentHash: "sha256:cf96adb2be7275d9a9feec5a8d75d8131b8304a30d934fc2bba5de215c25ddd4"
+  "exercises/horizontal-leg-press-ex-f52c891f.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:25.816234"
+    lastError: ""
+    contentHash: "sha256:214c5f7495829cda57c3f9ccc784f967ef15210d99383818b2c458824e3f4006"
+  "exercises/hip-internal-rotation-ex-3e4195a9.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:25.949661"
+    lastError: ""
+    contentHash: "sha256:ca04a17f1c49bba9fa8a8128286d58bbeecf2b5639ba94d7c9d201264f6d98b7"
+  "exercises/seated-prone-fixed-elbow-high-row-ex-383d4ec1.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-01T08:27:50.920032"
+    lastError: ""
+    contentHash: "sha256:1fab4ff3ec572fdb0aaf849f3a62a4f2d10e170cc8a6b981069e638131bd2e61"
+  "exercises/minor-pec-stretch-ex-f4a86759.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:26.204275"
+    lastError: ""
+    contentHash: "sha256:40dd6d865cce3bd67079db8f7cdbb92bd3c59726734a7b2bca71228e53d8cf98"
+  "exercises/reverse-grip-tricep-pushdown-ex-d2559fef.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:26.340741"
+    lastError: ""
+    contentHash: "sha256:1b854bb1e9cc49f3ed3eb991658dc9680776cf32f29551b0b9889ab16784591b"
+  "exercises/reverse-situp-ex-d2d4c112.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-29T08:23:21.937831"
+    lastError: ""
+    contentHash: "sha256:bc30cbda771532628dc243c7ae4c3b6e494e8ff20f1fd5fac934c3d645ae5e82"
+  "exercises/band-pull-apart-ex-f3404a5b.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:26.569867"
+    lastError: ""
+    contentHash: "sha256:32da15a1852b22342e65971589a6189386b4b829776e0aa6073f26a51cdd9b46"
+  "exercises/cable-rotatiom-ex-3159c66a.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:26.668783"
+    lastError: ""
+    contentHash: "sha256:641c0716b26acb07eb804dd85e2932e782354ebfc68b08de78d4dc5bb6c334c3"
+  "exercises/squat-rack-leg-raise-ex-d304ca73.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:26.804785"
+    lastError: ""
+    contentHash: "sha256:40305ef69abf51af00df3cad3a9cb1f71bd86802781bb29e96f1df786d92753c"
+  "exercises/frontal-cable-y-raise-ex-69e370e9.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:26.944580"
+    lastError: ""
+    contentHash: "sha256:115384305b8d1148639486b55cb8dbf4517c4d422f3a5b9a3f4333eaf09066ad"
+  "exercises/rdl-ex-734cd15c.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.036168"
+    lastError: ""
+    contentHash: "sha256:6245c6edce20e0100ca0d1d8d54e1bab42fd2eaa41fb7a24685eb0e3ee953b05"
+  "exercises/sit-up-ex-3cfca15c.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.170360"
+    lastError: ""
+    contentHash: "sha256:109d6e5fb8401e8fbfcf6f36593fa6928aa82e4c85611d3a6f928a8de8575453"
+  "exercises/bulgarian-split-squat-ex-167022b4.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.262554"
+    lastError: ""
+    contentHash: "sha256:43e80aa0c093ce0021fe7ff73252315870c7b85300144a7914a426fa79e0858e"
+  "exercises/nerve-floss-ex-89873a91.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.407648"
+    lastError: ""
+    contentHash: "sha256:983dd4c0fba6ecd91e015777078072cd0eabd3e54d9859822b9cf35559c06e50"
+  "exercises/face-pull-er-ex-94b9dcc5.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.542506"
+    lastError: ""
+    contentHash: "sha256:dd778845d9e3c31854d94f69f7416b1576627a75a984d41002fbfba29394c061"
+  "exercises/backward-tapis-roulant-ex-183ddef8.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.684442"
+    lastError: ""
+    contentHash: "sha256:761b42ede14471d4904b866a198f70c41c983659cafec8bcedf06e8f86fa1849"
+  "exercises/stick-chest-stretch-ex-48946bac.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.828084"
+    lastError: ""
+    contentHash: "sha256:138a17ec6b2e26a28eb31241bcc671bef4fceab38a8a2cc5bd5bcd0c319f2a71"
+  "exercises/bicicletta-ex-ad4d52a0.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:27.968237"
+    lastError: ""
+    contentHash: "sha256:48b37a9740a8fef6e98d484985349db622b2101b1e2e61478429f7e66d567c24"
+  "exercises/chest-press-ex-bd6df37f.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-04T07:52:37.672543"
+    lastError: ""
+    contentHash: "sha256:986545c4a0799c4915495c658040fbadf663086708ebe29827dc1bc5e9e322c9"
+  "exercises/lowhigh-cable-fly-ex-f2ebe40e.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.198782"
+    lastError: ""
+    contentHash: "sha256:f828c0fbe5d0dde6f13f0a5c1508ccf4e59d76a6a249ae7273235928d449b909"
+  "exercises/h-dmb-lower-trap-raise-ex-bd3377c7.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.286121"
+    lastError: ""
+    contentHash: "sha256:9c57281fe72f41975b5001c164f02990237d91825d6a686e13489991d606d745"
+  "exercises/hanging-ex-9584331a.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.374362"
+    lastError: ""
+    contentHash: "sha256:bea759d20a7a6417f5f9d9413449c0b52f6c45633849708e16bf5d66e1a27097"
+  "exercises/cable-er-ex-63ab0f83.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.462131"
+    lastError: ""
+    contentHash: "sha256:69c092d2aa47db25d3f4fc12df8b8af565cefbaaaa1f042f7142caf2101159a9"
+  "exercises/b-stretch-external-rotation-ex-9c46cec5.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.562118"
+    lastError: ""
+    contentHash: "sha256:0b6e3d21ba17fb950637587461889a4480287e2f72b7636ccd0454bedcfb2075"
+  "exercises/leg-extension-ex-2b8133ed.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T09:12:43.195745"
+    lastError: ""
+    contentHash: "sha256:1ee508067ec4ef36939031043de0b692897fbfe4dc8ba3a795b024cb6f5448d5"
+  "exercises/bulgarian-glute-ex-cc43b817.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.782020"
+    lastError: ""
+    contentHash: "sha256:9d7e5c35c89b0415c3e68e6f102b48112985e38db0bb936948ef974fb4d7b376"
+  "exercises/tibialis-raise-ex-90323d25.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:28.915731"
+    lastError: ""
+    contentHash: "sha256:01f8d56a8c6f56e1e4f2b929ba92d69bcf3d67d04c363583f5d408581e4ea33b"
+  "exercises/lying-y-raise-ex-44d81bbb.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:29.049988"
+    lastError: ""
+    contentHash: "sha256:bbb88e12e20dc8ddf8fac6ead1bb40b2d5e2972db9f1636e8c8966852d554efc"
+  "exercises/pillar-lat-stretch-ex-9422442f.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:29.177477"
+    lastError: ""
+    contentHash: "sha256:6f39dc39789d19528d3ef25be59ed074714bfca9ed7e1a5466c5e46660a631e8"
+  "exercises/pri-9090-hip-lift-ex-a377364a.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:29.259936"
+    lastError: ""
+    contentHash: "sha256:7e20368394269bf1f38308c988289d416d2f50f328bab8d8582cd5d49ed6de21"
+  "exercises/cable-sjoulder-ext-rot-ex-8ab2ebb9.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:29.376937"
+    lastError: ""
+    contentHash: "sha256:9a0aad576542822095c745dd241c9b9684e48c275ce99565cb9106dd70f70b85"
+  "routines/fixed-daily-exercise-rt-fixeddaily.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T10:09:08.576463"
+    lastError: ""
+    contentHash: "sha256:304869246230f236a4f015a5290000d1aaee0ee0877e08598cc2970d36f9a0e6"
+  "routines/pull-rt-71284f58.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T10:31:05.245765"
+    lastError: ""
+    contentHash: "sha256:a138708db35523da747997bf76c955f58ee6bc013327e2d367e9993ed6cddd8d"
+  "routines/-rt-db22e554.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T17:28:29.771520"
+    lastError: ""
+    contentHash: "sha256:da0a89e3c6fc4c36f8694be604f670ca7d68c00221f649f214f0a4862f930a9a"
+  "routines/leg-rt-97a2091f.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-01T17:27:41.779698"
+    lastError: ""
+    contentHash: "sha256:5284b9f66c6515a62d03477de4ac8163bce4d2c435419879acccf9433ba9591a"
+  "routines/fsh-rt-8e98657f.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T10:09:13.475897"
+    lastError: ""
+    contentHash: "sha256:0d9ebb1bbe3b0e078f9cedf484c6f540c2c1832a4a626cd05025d15baee0db8f"
+  "routines/pike-rt-46b2cb01.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T10:31:45.083145"
+    lastError: ""
+    contentHash: "sha256:18a9774f4b3dded91f4105f67b5f957904b2da72be8aa349dfd2296a3a2ec9ba"
+  "routines/push-rt-b997ec72.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-28T18:09:47.818599"
+    lastError: ""
+    contentHash: "sha256:dd5d7f6c978bfdcc3cd64991b6f455db5ae1d96124facd2e38f4fb72f42e5e54"
+  "exercises/chest-stretch-sbarre-ex-830b2056.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T12:31:38.264452"
+    lastError: ""
+    contentHash: "sha256:37b69b1b515ea4f1a2acc1496bb0b3aec67de163200cc839aa04b49384158f5d"
+  "exercises/reverse-situp-oblique-ex-81ece766.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T12:36:39.069870"
+    lastError: ""
+    contentHash: "sha256:fc2d8c1f63b1f3838602d712dcf327d8a1b32a95c1ab1866535d5c6f9856c7c9"
+  "exercises/prone-external-rotation-cable-ex-2dfc777c.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-01T17:11:01.331693"
+    lastError: ""
+    contentHash: "sha256:b41a08ff6cc09ec33bbbc5cafc9c19d9a27f1d9d8fcbe374bd771f1356f56343"
+  "exercises/45-oblique-raise-ex-caca528b.md":
+    op: upsert
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T07:56:56.698183"
+    lastError: ""
+    contentHash: "sha256:350274af273b9f5750d2114f8eddee530f969089bad67d308624eb859de9a696"

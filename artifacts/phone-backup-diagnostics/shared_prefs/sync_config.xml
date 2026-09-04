@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="bearerToken">[REDACTED]</string>
+    <string name="tarballManifestSha">sha256:0867df464ac1bdf328f6ed6f68f113e11dfff69818d55830ec016e2cf9172bdc</string>
+    <string name="serverUrl">https://stefano-server.tail5af155.ts.net:8420</string>
+    <boolean name="enabled" value="true" />
+</map>

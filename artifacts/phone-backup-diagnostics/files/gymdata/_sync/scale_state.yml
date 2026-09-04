@@ -1,0 +1,50 @@
+weighIns:
+  "2026-08-29":
+    relPath: "2026/08/2026-08-29.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-29T06:47:47.135927"
+    lastError: ""
+    contentHash: "sha256:61e193b6d14b837bc16909ef731de6d3fbf0e4489e3d2a6c479bc4929d6a6b41"
+  "2026-08-30":
+    relPath: "2026/08/2026-08-30.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T09:12:43.158365"
+    lastError: ""
+    contentHash: "sha256:d8bf24f24ea2586430f3b8ee1bf5d4d3c456a35036fb2c5fc71b654fe4721b07"
+  "2026-08-31":
+    relPath: "2026/08/2026-08-31.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-08-31T09:12:43.558293"
+    lastError: ""
+    contentHash: "sha256:f995553b54a919612f7a1bd3b4d4c0f8729de81dba2e81e4b04b439f027d7f9c"
+  "2026-09-01":
+    relPath: "2026/09/2026-09-01.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-01T06:42:41.502618"
+    lastError: ""
+    contentHash: "sha256:a79233f91c28225529d9dc77fa9dc15f6e3d65cd9f48af38715e84b8e1a7ad53"
+  "2026-09-02":
+    relPath: "2026/09/2026-09-02.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-02T06:44:51.733888"
+    lastError: ""
+    contentHash: "sha256:8865ca4fc304db88c569e0b95ee66349f059abcb6e609886854b5c310c90fce9"
+  "2026-09-03":
+    relPath: "2026/09/2026-09-03.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-03T07:01:18.435690"
+    lastError: ""
+    contentHash: "sha256:0ac3ef2acbf50a469ccff677efd792ab255cecfc88b78823781019782190b36b"
+  "2026-09-04":
+    relPath: "2026/09/2026-09-04.md"
+    status: SENT
+    attempts: 1
+    lastAttemptAt: "2026-09-04T06:39:16.556269"
+    lastError: ""
+    contentHash: "sha256:24590ef9ba5d71aad9b88f931a3b05f7ed7d23c78168a8979d36eeb64410ff52"

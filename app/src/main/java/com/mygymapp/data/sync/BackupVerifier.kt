@@ -106,10 +106,11 @@ class BackupVerifier @Inject constructor(
     }
 
     suspend fun run(onProgress: (String) -> Unit = {}): BackupVerifyOutcome = withContext(Dispatchers.IO) {
+        RepoSyncCoordinator.withLock {
         val startedAt = System.currentTimeMillis()
         onProgress("Controllo i file locali…")
         if (!config.isConfigured()) {
-            return@withContext BackupVerifyOutcome.HardFail("Server sync non configurato")
+            return@withLock BackupVerifyOutcome.HardFail("Server sync non configurato")
         }
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
@@ -120,7 +121,7 @@ class BackupVerifier @Inject constructor(
         val sessionFiles = collectSessionFiles()
         val repoFiles = (exerciseFiles + routineFiles).filter { it.isFile }
         if (repoFiles.isEmpty() && sessionFiles.isEmpty()) {
-            return@withContext BackupVerifyOutcome.HardFail("Niente da verificare.")
+            return@withLock BackupVerifyOutcome.HardFail("Niente da verificare.")
         }
 
         fun cat(f: File) = f.parentFile?.name ?: ""
@@ -132,8 +133,8 @@ class BackupVerifier @Inject constructor(
         onProgress("Controllo cosa è già presente sul server…")
         val manifest0 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
-            is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail("Manifest non recuperato: ${m.reason}")
-            else -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+            is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail("Manifest non recuperato: ${m.reason}")
+            else -> return@withLock BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
 
         data class Local(val file: File, val bytes: ByteArray, val hash: String)
@@ -204,20 +205,20 @@ class BackupVerifier @Inject constructor(
         onProgress("Rileggo e verifico i file inviati…")
         val manifest1 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
-            is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail(
+            is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail(
                 "Push completato ma manifest di verifica non recuperato: ${m.reason}"
             )
-            else -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+            else -> return@withLock BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
         }
 
         // Read every exercise/routine back in ONE batch request and compare bytes.
         val readBack: Map<String, ByteArray> =
             when (val f = restoreApi.fetchFiles(serverUrl, token, locals.map { rel(it.file) })) {
                 is RestoreResult.Files -> f.files.mapNotNull { bf -> bf.bytes?.let { bf.relPath to it } }.toMap()
-                is RestoreResult.Failure -> return@withContext BackupVerifyOutcome.HardFail(
+                is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail(
                     "Push completato ma rilettura non riuscita: ${f.reason}"
                 )
-                else -> return@withContext BackupVerifyOutcome.HardFail("Risposta inattesa dal server (rilettura).")
+                else -> return@withLock BackupVerifyOutcome.HardFail("Risposta inattesa dal server (rilettura).")
             }
 
         var exMatching = 0
@@ -283,6 +284,7 @@ class BackupVerifier @Inject constructor(
                 "$sessionsMatching/${sessionFiles.size} sessioni allineate")
         }
         BackupVerifyOutcome.Done(report)
+        }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

@@ -9,7 +9,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,11 +21,7 @@ import javax.inject.Singleton
 @Singleton
 class ReadinessSyncApi @Inject constructor() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = SyncHttpClients.standard
 
     fun postReadiness(
         serverUrl: String,
