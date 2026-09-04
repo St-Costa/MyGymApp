@@ -59,6 +59,7 @@ class RepoSyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        RepoSyncCoordinator.withLock {
         // See docs/SYNC.md §1.5 + [shouldSyncRun]. With the "Sincronizzazione attiva" toggle
         // OFF, only a forced run drains the queue — the periodic net is a no-op, and a
         // catalogue edit no longer kicks an upload (RepoLedgerRepository still queues it, so
@@ -66,14 +67,14 @@ class RepoSyncWorker @AssistedInject constructor(
         // run is set by registerRoutine() (finalize) and the manual send buttons.
         val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
         if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {
-            return@withContext Result.success()
+            return@withLock Result.success()
         }
 
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
 
         val pending = ledger.getPending()
-        if (pending.isEmpty()) return@withContext Result.success()
+        if (pending.isEmpty()) return@withLock Result.success()
 
         // Build the bulk request. An `upsert` whose file vanished between enqueue and now
         // has a `delete` tombstone queued separately — retire the stale upsert here, don't
@@ -92,7 +93,12 @@ class RepoSyncWorker @AssistedInject constructor(
                 bulkEntries += RepoBulkEntry(entry.relPath, "upsert", ledger.hashOf(file), file)
             }
         }
-        if (bulkEntries.isEmpty()) return@withContext Result.success()
+        if (bulkEntries.isEmpty()) return@withLock Result.success()
+
+        val runId = System.nanoTime().toString(16)
+        val bytes = bulkEntries.sumOf { it.file?.length() ?: 0L }
+        val startedAt = System.currentTimeMillis()
+        appLogger.i(TAG, "run=$runId start entries=${bulkEntries.size} bytes=$bytes")
 
         var anyFailure = false
         when (val outcome = api.postBulk(serverUrl, token, BuildConfig.VERSION_NAME, bulkEntries)) {
@@ -123,7 +129,10 @@ class RepoSyncWorker @AssistedInject constructor(
             }
         }
 
+        val durationMs = System.currentTimeMillis() - startedAt
+        appLogger.i(TAG, "run=$runId finish entries=${bulkEntries.size} bytes=$bytes durationMs=$durationMs failed=$anyFailure")
         if (anyFailure) Result.retry() else Result.success()
+        }
     }
 
     object Scheduler {
@@ -144,7 +153,11 @@ class RepoSyncWorker @AssistedInject constructor(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(UNIQUE_EXPEDITED_NAME, ExistingWorkPolicy.REPLACE, request)
+                .enqueueUniqueWork(
+                    UNIQUE_EXPEDITED_NAME,
+                    if (force) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,
+                    request,
+                )
         }
 
         /** Durability net — see [SyncWorker.Scheduler.ensurePeriodic] for the reasoning. */

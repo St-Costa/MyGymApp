@@ -9,7 +9,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,11 +39,7 @@ sealed class SyncResult {
 @Singleton
 class SyncApi @Inject constructor() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = SyncHttpClients.standard
 
     /**
      * Posts [file] (the raw session `.md` bytes, unchanged) to [serverUrl]`/v1/sessions`.

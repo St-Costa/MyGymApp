@@ -10,7 +10,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -62,18 +61,10 @@ sealed class RepoBulkOutcome {
 @Singleton
 class RepoSyncApi @Inject constructor() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = SyncHttpClients.standard
 
     /** Longer write budget — a bulk request aggregates up to 50 MB of file bytes. */
-    private val bulkClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(90, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+    private val bulkClient = SyncHttpClients.bulk
 
     companion object {
         /** Server's hard cap per `POST /v1/repo/bulk` request (`docs/backup/README.md`). */
