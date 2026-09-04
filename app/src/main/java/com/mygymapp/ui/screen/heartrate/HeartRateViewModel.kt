@@ -18,6 +18,7 @@ import com.mygymapp.data.scale.ScaleConnectionState
 import com.mygymapp.data.scale.ScaleReading
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
@@ -63,6 +64,11 @@ class HeartRateViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(HeartRateUiState())
     val uiState: StateFlow<HeartRateUiState> = _uiState
+    val readinessStarted: SharedFlow<Unit> = polarManager.readinessStarted
+
+    fun playReadinessSignal() {
+        polarManager.signalReadiness()
+    }
 
     init {
         // Every write below goes through update {} rather than
