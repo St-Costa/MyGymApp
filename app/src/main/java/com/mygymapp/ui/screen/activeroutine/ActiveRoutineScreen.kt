@@ -145,7 +145,7 @@ fun ActiveRoutineScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.routineName.ifBlank { "Workout" }) },
+                title = {},
                 navigationIcon = {
                     IconButton(onClick = {
                         viewModel.abandonSession()
@@ -167,6 +167,21 @@ fun ActiveRoutineScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Routine title belongs to the session content so it can be shown
+                // prominently above the editable notes.
+                item(key = "routine-title") {
+                    Text(
+                        text = uiState.routineName.ifBlank { "Workout" },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = MaterialTheme.typography.headlineLarge.fontSize * 1.2f,
+                        ),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
                 // Notes
                 item(key = "notes") {
                     AutoSaveTextField(

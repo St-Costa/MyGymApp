@@ -35,6 +35,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -334,6 +336,12 @@ class PolarManager @Inject constructor(
 
     private val _readinessResult = MutableStateFlow(ReadinessResult())
     val readinessResult: StateFlow<ReadinessResult> = _readinessResult
+
+    // One-shot event: consumers decide whether the start signal is relevant to the
+    // currently visible screen. In particular, HeartRateScreen collects it so a
+    // readiness started by a background connection does not beep globally.
+    private val _readinessStarted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val readinessStarted: SharedFlow<Unit> = _readinessStarted
 
     private val _vo2max = MutableStateFlow<Double?>(null)
     val vo2max: StateFlow<Double?> = _vo2max
@@ -1397,6 +1405,7 @@ class PolarManager @Inject constructor(
         readinessRR.clear()
         readinessMinHr = 200
         readinessBpmTrace.clear()
+        _readinessStarted.tryEmit(Unit)
         _readinessResult.value = ReadinessResult(
             readiness = Readiness.MEASURING,
             secondsRemaining = 60,
@@ -1407,7 +1416,7 @@ class PolarManager @Inject constructor(
 
     private fun finishReadinessMeasurement() {
         readinessMeasuring = false
-        signalReadinessComplete()
+        signalReadiness()
 
         // Filter artifacts from collected RR
         val cleanRR = filterArtifacts(readinessRR)
@@ -1523,8 +1532,8 @@ class PolarManager @Inject constructor(
         }
     }
 
-    /** Short vibration + beep, fired when the 60s post-connection readiness window ends. */
-    private fun signalReadinessComplete() {
+    /** Short vibration + beep used at both ends of the readiness window. */
+    fun signalReadiness() {
         try {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 context.getSystemService(VibratorManager::class.java)?.defaultVibrator
