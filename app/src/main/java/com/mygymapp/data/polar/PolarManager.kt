@@ -319,6 +319,8 @@ class PolarManager @Inject constructor(
     val currentHrZone: StateFlow<HrZone?> = _currentHrZone
     private val _currentHrZonePercent = MutableStateFlow(0)
     val currentHrZonePercent: StateFlow<Int> = _currentHrZonePercent
+    private val _currentHrZoneProgress = MutableStateFlow(0)
+    val currentHrZoneProgress: StateFlow<Int> = _currentHrZoneProgress
     private val _hrZoneMinutes = MutableStateFlow(HrZoneMinutes())
     val hrZoneMinutes: StateFlow<HrZoneMinutes> = _hrZoneMinutes
     // BPM cutoffs between zones (5 values for 6 zones), for HrZoneTraceChart's y-axis labels.
@@ -794,6 +796,7 @@ class PolarManager @Inject constructor(
                                 hrZoneTracker.onTick(zone)
                                 _currentHrZone.value = zone
                                 _currentHrZonePercent.value = percent
+                                _currentHrZoneProgress.value = calc.percentInZone(sample.hr, zone)
                                 _hrZoneMinutes.value = hrZoneTracker.current
 
                                 // Rolling %HRR trace for the live zone chart
@@ -1044,6 +1047,7 @@ class PolarManager @Inject constructor(
         hrZoneTracker.reset()
         _currentHrZone.value = null
         _currentHrZonePercent.value = 0
+        _currentHrZoneProgress.value = 0
         _hrZoneMinutes.value = HrZoneMinutes()
         hrZoneTrace.clear()
         _hrZoneTracePercents.value = emptyList()
