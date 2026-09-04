@@ -97,7 +97,7 @@ fun HeartRateBar(
     val heartRate by polarManager.heartRate.collectAsState()
     val trimp by polarManager.sessionTrimp.collectAsState()
     val currentZone by polarManager.currentHrZone.collectAsState()
-    val currentZonePercent by polarManager.currentHrZonePercent.collectAsState()
+    val currentZoneProgress by polarManager.currentHrZoneProgress.collectAsState()
 
     // Visible while connected OR while the strap is silent-but-still-linked (NO_SIGNAL):
     // in the latter case BPM and the zone chip are replaced by a ⚠️, but TRIMP keeps its
@@ -180,7 +180,7 @@ fun HeartRateBar(
                     )
                 } else {
                     currentZone?.let { zone ->
-                        ZoneChip(zone = zone, percent = currentZonePercent)
+                        ZoneChip(zone = zone, percent = currentZoneProgress)
                     }
                 }
             }
