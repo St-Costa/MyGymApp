@@ -1,5 +1,6 @@
 package com.mygymapp.data.polar
 
+import kotlin.math.roundToInt
 
 /** Z1-Z5 training zones, plus "below Z1" for rest-between-sets / pre-warmup HR. */
 enum class HrZone { BELOW_Z1, Z1, Z2, Z3, Z4, Z5 }
@@ -50,6 +51,29 @@ class HrZoneCalculator(
         (((bpm - restingHr).toDouble() / hrr) * 100).toInt().coerceIn(0, 999)
     } else {
         ((bpm.toDouble() / maxHr) * 100).toInt().coerceIn(0, 999)
+    }
+
+    /** Position of [bpm] inside its current zone, rounded to 10% steps. */
+    fun percentInZone(bpm: Int, zone: HrZone = classify(bpm)): Int {
+        val lower = when (zone) {
+            HrZone.BELOW_Z1 -> restingHr ?: 0
+            HrZone.Z1 -> boundaries[0]
+            HrZone.Z2 -> boundaries[1]
+            HrZone.Z3 -> boundaries[2]
+            HrZone.Z4 -> boundaries[3]
+            HrZone.Z5 -> boundaries[4]
+        }
+        val upper = when (zone) {
+            HrZone.BELOW_Z1 -> boundaries[0]
+            HrZone.Z1 -> boundaries[1]
+            HrZone.Z2 -> boundaries[2]
+            HrZone.Z3 -> boundaries[3]
+            HrZone.Z4 -> boundaries[4]
+            HrZone.Z5 -> maxHr
+        }
+        val fraction = ((bpm - lower).toDouble() / (upper - lower).coerceAtLeast(1))
+            .coerceIn(0.0, 1.0)
+        return (fraction * 10).roundToInt() * 10
     }
 
     companion object {

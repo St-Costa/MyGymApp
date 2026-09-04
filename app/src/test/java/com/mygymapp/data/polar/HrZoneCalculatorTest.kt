@@ -45,6 +45,17 @@ class HrZoneCalculatorTest {
     }
 
     @Test
+    fun `percent in zone is relative to zone and rounded to tens`() {
+        val calculator = HrZoneCalculator(maxHr = 190, restingHr = 60)
+
+        // Z1 spans 125..138 BPM: 131 is about halfway through the zone.
+        assertEquals(HrZone.Z1, calculator.classify(131))
+        assertEquals(50, calculator.percentInZone(131))
+        assertEquals(0, calculator.percentInZone(125))
+        assertEquals(100, calculator.percentInZone(138, HrZone.Z1))
+    }
+
+    @Test
     fun `boundaries list has exactly 5 cutoffs for 6 zones`() {
         val calculator = HrZoneCalculator(maxHr = 190, restingHr = 60)
 
