@@ -47,6 +47,7 @@ class RepoSyncWorker @AssistedInject constructor(
     private val api: RepoSyncApi,
     private val fileManager: FileManager,
     private val appLogger: AppLogger,
+    private val healthProbe: SyncHealthProbe,
 ) : CoroutineWorker(context, params) {
 
     companion object {
@@ -76,6 +77,9 @@ class RepoSyncWorker @AssistedInject constructor(
         val pending = ledger.getPending()
         if (pending.isEmpty()) return@withLock Result.success()
 
+        val preflight = healthProbe.check(serverUrl, token)
+        if (!preflight.available) return@withLock Result.retry()
+
         // Build the bulk request. An `upsert` whose file vanished between enqueue and now
         // has a `delete` tombstone queued separately — retire the stale upsert here, don't
         // send it.
@@ -101,7 +105,9 @@ class RepoSyncWorker @AssistedInject constructor(
         appLogger.i(TAG, "run=$runId start entries=${bulkEntries.size} bytes=$bytes")
 
         var anyFailure = false
-        when (val outcome = api.postBulk(serverUrl, token, BuildConfig.VERSION_NAME, bulkEntries)) {
+        when (val outcome = SyncRequestContext.with(preflight) {
+            api.postBulk(serverUrl, token, BuildConfig.VERSION_NAME, bulkEntries)
+        }) {
             is RepoBulkOutcome.Applied -> {
                 for (r in outcome.results) {
                     if (r.isSuccess) {
