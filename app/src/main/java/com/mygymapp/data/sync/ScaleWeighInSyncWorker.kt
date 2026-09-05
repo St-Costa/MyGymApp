@@ -35,6 +35,7 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
     private val api: ScaleWeighInSyncApi,
     private val scaleHistoryRepository: ScaleHistoryRepository,
     private val appLogger: AppLogger,
+    private val healthProbe: SyncHealthProbe,
 ) : CoroutineWorker(context, params) {
 
     companion object {
@@ -60,6 +61,9 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
         val pending = ledger.getPending()
         if (pending.isEmpty()) return@withContext Result.success()
 
+        val preflight = healthProbe.check(serverUrl, token)
+        if (!preflight.available) return@withContext Result.retry()
+
         var anyFailure = false
         for (entry in pending) {
             val weighIn = scaleHistoryRepository.getById(entry.sessionId)
@@ -75,7 +79,7 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
             // enqueue time — same reasoning as SyncWorker.doWork().
             val currentHash = ledger.hashOf(file)
 
-            when (val result = api.postWeighIn(
+            when (val result = SyncRequestContext.with(preflight) { api.postWeighIn(
                 serverUrl = serverUrl,
                 bearerToken = token,
                 weighInId = entry.sessionId,
@@ -83,7 +87,7 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
                 contentHash = currentHash,
                 appVersion = BuildConfig.VERSION_NAME,
                 file = file,
-            )) {
+            ) }) {
                 is SyncResult.Success -> {
                     ledger.markSent(entry.sessionId)
                     appLogger.i(TAG, "Synced weigh-in ${entry.sessionId}: ${result.status}")

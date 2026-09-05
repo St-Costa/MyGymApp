@@ -46,6 +46,7 @@ class EcgSyncWorker @AssistedInject constructor(
     private val api: EcgSyncApi,
     private val polarManager: PolarManager,
     private val appLogger: AppLogger,
+    private val healthProbe: SyncHealthProbe,
 ) : CoroutineWorker(context, params) {
 
     companion object {
@@ -88,6 +89,9 @@ class EcgSyncWorker @AssistedInject constructor(
         val pending = ledger.getPending()
         if (pending.isEmpty()) return@withContext Result.success()
 
+        val preflight = healthProbe.check(serverUrl, token)
+        if (!preflight.available) return@withContext Result.retry()
+
         var anyFailure = false
         for (entry in pending) {
             val file = polarManager.ecgFileFor(entry.sessionId)
@@ -108,7 +112,7 @@ class EcgSyncWorker @AssistedInject constructor(
             }
             val currentHash = ledger.hashOf(compressed)
 
-            when (val result = api.postEcg(
+            when (val result = SyncRequestContext.with(preflight) { api.postEcg(
                 serverUrl = serverUrl,
                 bearerToken = token,
                 sessionId = entry.sessionId,
@@ -117,7 +121,7 @@ class EcgSyncWorker @AssistedInject constructor(
                 appVersion = BuildConfig.VERSION_NAME,
                 fileName = file.name,
                 compressedBytes = compressed,
-            )) {
+            ) }) {
                 is SyncResult.Success -> {
                     ledger.markSent(entry.sessionId)
                     // Deletion moved here from ActiveRoutineViewModel — only after a

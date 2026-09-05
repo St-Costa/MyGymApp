@@ -37,6 +37,7 @@ class ReadinessSyncWorker @AssistedInject constructor(
     private val api: ReadinessSyncApi,
     private val readinessRepository: ReadinessRepository,
     private val appLogger: AppLogger,
+    private val healthProbe: SyncHealthProbe,
 ) : CoroutineWorker(context, params) {
 
     companion object {
@@ -63,6 +64,9 @@ class ReadinessSyncWorker @AssistedInject constructor(
         val pending = ledger.getPending()
         if (pending.isEmpty()) return@withContext Result.success()
 
+        val preflight = healthProbe.check(serverUrl, token)
+        if (!preflight.available) return@withContext Result.retry()
+
         var anyFailure = false
         for (entry in pending) {
             val event = readinessRepository.getById(entry.sessionId)
@@ -78,7 +82,7 @@ class ReadinessSyncWorker @AssistedInject constructor(
             // enqueue time — same reasoning as SyncWorker.doWork().
             val currentHash = ledger.hashOf(file)
 
-            when (val result = api.postReadiness(
+            when (val result = SyncRequestContext.with(preflight) { api.postReadiness(
                 serverUrl = serverUrl,
                 bearerToken = token,
                 eventId = entry.sessionId,
@@ -89,7 +93,7 @@ class ReadinessSyncWorker @AssistedInject constructor(
                 stepsAvgPerDay = event.stepsAvgPerDay,
                 stepsDaysSpanned = event.stepsDaysSpanned,
                 stepsPreviousDay = event.stepsPreviousDay,
-            )) {
+            ) }) {
                 is SyncResult.Success -> {
                     ledger.markSent(entry.sessionId)
                     appLogger.i(TAG, "Synced readiness ${entry.sessionId}: ${result.status}")

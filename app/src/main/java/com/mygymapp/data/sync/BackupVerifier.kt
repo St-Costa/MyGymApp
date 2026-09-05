@@ -99,6 +99,7 @@ class BackupVerifier @Inject constructor(
     private val restoreApi: RestoreApi,
     private val config: SyncConfigRepository,
     private val appLogger: AppLogger,
+    private val healthProbe: SyncHealthProbe,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) {
     private companion object {
@@ -115,6 +116,10 @@ class BackupVerifier @Inject constructor(
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
         val appVersion = BuildConfig.VERSION_NAME
+        val preflight = healthProbe.check(serverUrl, token)
+        if (!preflight.available) {
+            return@withLock BackupVerifyOutcome.HardFail("Server non raggiungibile: ${preflight.reason}")
+        }
 
         val exerciseFiles = fileManager.getDir("exercises").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
         val routineFiles = fileManager.getDir("routines").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
@@ -168,7 +173,9 @@ class BackupVerifier @Inject constructor(
                     val t = File(tmpDir, l.file.name).apply { writeBytes(l.bytes) }
                     RepoBulkEntry(rel(l.file), "upsert", l.hash, t)
                 }
-                when (val outcome = repoSyncApi.postBulk(serverUrl, token, appVersion, bulkEntries)) {
+                when (val outcome = SyncRequestContext.with(preflight) {
+                    repoSyncApi.postBulk(serverUrl, token, appVersion, bulkEntries)
+                }) {
                     is RepoBulkOutcome.Applied -> {
                         val byRel = toPush.associateBy { rel(it.file) }
                         for (r in outcome.results) {
