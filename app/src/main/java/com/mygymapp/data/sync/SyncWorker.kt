@@ -44,6 +44,7 @@ class SyncWorker @AssistedInject constructor(
     private val api: SyncApi,
     private val workoutRepository: WorkoutRepository,
     private val appLogger: AppLogger,
+    private val healthProbe: SyncHealthProbe,
 ) : CoroutineWorker(context, params) {
 
     companion object {
@@ -68,6 +69,9 @@ class SyncWorker @AssistedInject constructor(
         val pending = ledger.getPending()
         if (pending.isEmpty()) return@withContext Result.success()
 
+        val preflight = healthProbe.check(serverUrl, token)
+        if (!preflight.available) return@withContext Result.retry()
+
         var anyFailure = false
         for (entry in pending) {
             val session = runCatching {
@@ -90,7 +94,7 @@ class SyncWorker @AssistedInject constructor(
             // step 2). The server must be told the hash of what's actually in the request.
             val currentHash = ledger.hashOf(file)
 
-            when (val result = api.postSession(
+            when (val result = SyncRequestContext.with(preflight) { api.postSession(
                 serverUrl = serverUrl,
                 bearerToken = token,
                 sessionId = entry.sessionId,
@@ -98,7 +102,7 @@ class SyncWorker @AssistedInject constructor(
                 contentHash = currentHash,
                 appVersion = BuildConfig.VERSION_NAME,
                 file = file,
-            )) {
+            ) }) {
                 is SyncResult.Success -> {
                     ledger.markSent(
                         entry.sessionId,
