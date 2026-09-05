@@ -102,6 +102,7 @@ fun OptionsScreen(
                 onBearerTokenChange = viewModel::setSyncBearerToken,
                 onEnabledChange = viewModel::setSyncEnabled,
                 onTestConnection = viewModel::testConnection,
+                onVerifyBackup = viewModel::verifyBackupRoundTrip,
                 onResyncAll = viewModel::resyncAll,
                 onRestoreFromServer = viewModel::restoreFromServer,
             )
@@ -118,7 +119,6 @@ fun OptionsScreen(
                 onPolarDebugClick = onNavigateToPolarDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
-                onVerifyBackup = viewModel::verifyBackupRoundTrip,
                 onSummaryPreviewClick = onNavigateToSummaryPreview,
             )
         }
@@ -207,8 +207,8 @@ private fun ProfileSection(
 }
 
 /** Just the server connection settings: URL, token, sync on/off, "test connection". Every
- * other sync-related control (debug ECG, pending queue, resync, diagnostics) lives in
- * grouped with the other debug tools. Also shows the pending-sync queue and a manual "send
+ * other sync-related control (debug ECG, pending queue, resync, diagnostics) lives grouped
+ * with the other debug tools. Also shows the pending-sync queue and a manual "send
  * now" action — but only while sync is OFF, since with it on the periodic workers already
  * drain the queue on their own (every few hours) and the button would be redundant. */
 @Composable
@@ -218,6 +218,7 @@ private fun ServerSettingsSection(
     onBearerTokenChange: (String) -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onTestConnection: () -> Unit,
+    onVerifyBackup: () -> Unit,
     onResyncAll: () -> Unit,
     onRestoreFromServer: () -> Unit,
 ) {
@@ -293,6 +294,32 @@ private fun ServerSettingsSection(
                     )
                     null -> {}
                 }
+            }
+
+            // Full-store backup round-trip: keep this with the server connection controls.
+            Text(
+                "Invia gli esercizi/routine non ancora sul server, poi li riscarica e verifica che siano identici.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onVerifyBackup,
+                enabled = configured && !uiState.backupVerifyRunning,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.backupVerifyRunning) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Verifica backup sul server")
+                }
+            }
+            if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
+                com.mygymapp.ui.components.BackupVerifyBox(
+                    running = uiState.backupVerifyRunning,
+                    progressText = uiState.backupVerifyProgress,
+                    error = uiState.backupVerifyError,
+                    report = uiState.backupVerifyReport,
+                )
             }
 
             // Sync status is shown in both toggle states. With sync OFF nothing drains on
@@ -438,7 +465,6 @@ private fun DebugSection(
     onPolarDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
-    onVerifyBackup: () -> Unit,
     onSummaryPreviewClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
@@ -551,36 +577,6 @@ private fun DebugSection(
                 )
             }
 
-            androidx.compose.material3.HorizontalDivider()
-
-            // Backup round-trip — pushes every real exercise/routine that isn't already on
-            // the server, then reads them all back (GET /v1/manifest + GET /v1/file) and
-            // compares byte-for-byte. No synthetic file, no delete — the user's real data
-            // stays on the server, which is the point (docs/BACKUP.md §3.7).
-            Text(
-                "Invia gli esercizi/routine non ancora sul server, poi li riscarica e verifica che siano identici.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(
-                onClick = onVerifyBackup,
-                enabled = configured && !uiState.backupVerifyRunning,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (uiState.backupVerifyRunning) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Verifica backup sul server")
-                }
-            }
-            if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
-                com.mygymapp.ui.components.BackupVerifyBox(
-                    running = uiState.backupVerifyRunning,
-                    progressText = uiState.backupVerifyProgress,
-                    error = uiState.backupVerifyError,
-                    report = uiState.backupVerifyReport,
-                )
-            }
         }
     }
 }
