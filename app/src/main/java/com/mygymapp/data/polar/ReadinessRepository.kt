@@ -39,6 +39,7 @@ class ReadinessRepository @Inject constructor(
         stepsAvgPerDay: Double? = null,
         stepsDaysSpanned: Int? = null,
         stepsPreviousDay: Long? = null,
+        sleepQuality: Int? = null,
     ): ReadinessEvent = withContext(Dispatchers.IO) {
         mutex.withLock {
             val event = ReadinessEvent(
@@ -52,11 +53,33 @@ class ReadinessRepository @Inject constructor(
                 stepsAvgPerDay = stepsAvgPerDay,
                 stepsDaysSpanned = stepsDaysSpanned,
                 stepsPreviousDay = stepsPreviousDay,
+                sleepQuality = sleepQuality,
             )
             fileFor(event.id).writeText(toMarkdown(event))
             event
         }
     }
+
+    /**
+     * Patches the `sleepQuality` field of an already-persisted measurement, leaving every
+     * other field untouched, and returns the updated event (or `null` if the file is gone
+     * or unparseable). Used when the user rates their sleep *after* the 60s measurement has
+     * already been saved — e.g. an afternoon strap reconnect that reuses the morning's
+     * result, or simply tapping the box a beat after the countdown ends. The caller is
+     * responsible for re-queueing the file with the sync ledger afterwards.
+     */
+    suspend fun updateSleepQuality(id: String, sleepQuality: Int): ReadinessEvent? =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val file = fileFor(id)
+                if (!file.exists()) return@withContext null
+                val current = runCatching { fromMarkdown(file.readText(), id) }.getOrNull()
+                    ?: return@withContext null
+                val updated = current.copy(sleepQuality = sleepQuality)
+                file.writeText(toMarkdown(updated))
+                updated
+            }
+        }
 
     /** Absolute file for an already-known event, e.g. for the sync worker to read+hash. */
     fun fileFor(event: ReadinessEvent): File = fileFor(event.id)
@@ -130,6 +153,7 @@ class ReadinessRepository @Inject constructor(
             "stepsAvgPerDay" to e.stepsAvgPerDay,
             "stepsDaysSpanned" to e.stepsDaysSpanned,
             "stepsPreviousDay" to e.stepsPreviousDay,
+            "sleepQuality" to e.sleepQuality,
         ),
         body = "",
     )
@@ -148,6 +172,7 @@ class ReadinessRepository @Inject constructor(
             stepsAvgPerDay = (fm["stepsAvgPerDay"] as? Number)?.toDouble(),
             stepsDaysSpanned = (fm["stepsDaysSpanned"] as? Number)?.toInt(),
             stepsPreviousDay = (fm["stepsPreviousDay"] as? Number)?.toLong(),
+            sleepQuality = (fm["sleepQuality"] as? Number)?.toInt(),
         )
     }
 }

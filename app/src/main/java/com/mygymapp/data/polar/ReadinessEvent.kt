@@ -26,4 +26,13 @@ data class ReadinessEvent(
     val stepsDaysSpanned: Int? = null,
     /** Yesterday's full calendar-day step total — see `StepReading.previousDayTotal`. */
     val stepsPreviousDay: Long? = null,
+    /**
+     * Self-reported sleep quality for the night before, 1..5 (1 = "couldn't have gone
+     * worse", 5 = "couldn't have gone better"). `null` when the user hasn't filled it in
+     * for this measurement — distinct from any numeric value, same present-but-null
+     * convention as the steps fields above. Collected from the box shown right above the
+     * readiness card and folded in either at save time or, if today's measurement is
+     * already on disk, by [ReadinessRepository.updateSleepQuality].
+     */
+    val sleepQuality: Int? = null,
 )

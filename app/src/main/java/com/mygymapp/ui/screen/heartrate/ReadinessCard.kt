@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Air
@@ -28,6 +31,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -51,6 +56,123 @@ private fun groupThousands(n: Long): String {
         sb.append(c)
     }
     return sb.toString()
+}
+
+/**
+ * "How well did you sleep?" box — five hand-drawn faces on one row, from
+ * "couldn't have gone worse" (1) to "couldn't have gone better" (5). No words, just the
+ * mouth curvature. Shown directly above [ReadinessCard] so it's the first thing seen and
+ * hard to forget to fill in. Colour only shows on the *selected* face — red (1) → amber
+ * (2) → theme primary (3) → light green (4) → teal-green (5), ringed; the other four stay
+ * muted grey outlines. Tapping one calls [onSelect] with its 1..5 value.
+ *
+ * [selected] is the value already recorded for today's measurement (from
+ * `ReadinessResult.sleepQuality`), or `null` if untouched.
+ */
+@Composable
+fun SleepQualitySelector(
+    selected: Int?,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val idleColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+            // Selected-face colours, worst→best: red, amber, the theme primary for the
+            // neutral middle, light green, then a distinct teal-green for the top so it
+            // doesn't read as "just a darker #4".
+            val selectedColors = listOf(
+                Color(0xFFEF5350),                  // 1 — couldn't have gone worse
+                Color(0xFFFFCA28),                  // 2 — bad, but could've been worse
+                MaterialTheme.colorScheme.primary,  // 3 — neutral
+                Color(0xFF66BB6A),                  // 4 — good, but could've been better
+                Color(0xFF00BFA5),                  // 5 — couldn't have gone better
+            )
+            for (value in 1..5) {
+                val isSelected = selected == value
+                // -1f (fully sad) .. +1f (fully happy), linear across the five steps.
+                val curvature = (value - 3) / 2f
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .selectable(
+                            selected = isSelected,
+                            enabled = enabled,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(value) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(modifier = Modifier.size(if (isSelected) 40.dp else 32.dp)) {
+                        drawSleepFace(
+                            curvature = curvature,
+                            color = if (isSelected) selectedColors[value - 1] else idleColor,
+                            ring = isSelected,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Draws one smiley: an open circle for the head, two dot eyes, and a quadratic-curve
+ * mouth whose control point is pulled down ([curvature] = -1) or up ([curvature] = +1).
+ * At curvature 0 the mouth is a flat line. [ring] adds a second, thicker outer circle to
+ * mark the selected face.
+ */
+private fun DrawScope.drawSleepFace(curvature: Float, color: Color, ring: Boolean) {
+    val w = size.width
+    val h = size.height
+    val stroke = Stroke(width = (w * 0.07f).coerceAtLeast(2f))
+    val headRadius = w * 0.42f
+    val center = Offset(w / 2f, h / 2f)
+
+    if (ring) {
+        drawCircle(
+            color = color,
+            radius = w * 0.5f - stroke.width,
+            center = center,
+            style = Stroke(width = stroke.width * 0.8f),
+        )
+    }
+    drawCircle(color = color, radius = headRadius, center = center, style = stroke)
+
+    // Eyes
+    val eyeY = center.y - headRadius * 0.25f
+    val eyeDx = headRadius * 0.42f
+    val eyeR = w * 0.05f
+    drawCircle(color = color, radius = eyeR, center = Offset(center.x - eyeDx, eyeY))
+    drawCircle(color = color, radius = eyeR, center = Offset(center.x + eyeDx, eyeY))
+
+    // Mouth: quadratic Bézier from left corner to right corner, control point offset
+    // vertically by curvature. Positive curvature => control point below the corners on
+    // screen (y grows downward) => smile.
+    val mouthY = center.y + headRadius * 0.30f
+    val mouthHalfWidth = headRadius * 0.55f
+    val ctrlOffset = headRadius * 0.75f * curvature
+    val path = Path().apply {
+        moveTo(center.x - mouthHalfWidth, mouthY)
+        quadraticTo(
+            center.x, mouthY + ctrlOffset,
+            center.x + mouthHalfWidth, mouthY,
+        )
+    }
+    drawPath(path = path, color = color, style = stroke)
 }
 
 /**

@@ -243,10 +243,14 @@ lnRmssd: 4.30
 restingHr: 65
 vo2max: 45.2
 recommendation: "HRV above baseline. Good day to push intensity."
+stepsAvgPerDay: 8214.5      # nullable — checkpoint-diff step average, see SYNC.md
+stepsDaysSpanned: 1         # nullable — always paired with stepsAvgPerDay
+stepsPreviousDay: 9037      # nullable — yesterday's full calendar-day step total
+sleepQuality: 4             # nullable — self-reported 1..5 (1 worst .. 5 best)
 ---
 ```
 
-Written by [ReadinessRepository](../app/src/main/java/com/mygymapp/data/polar/ReadinessRepository.kt) at the end of [PolarManager.finishReadinessMeasurement()](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) — the 60s HRV measurement that already ran on every HR connect, but was previously only held in an in-memory StateFlow for the UI and never persisted. Only successful measurements are saved (`cleanRR.size >= 20`); a failed "not enough clean data" attempt is discarded, not written. See [POLAR.md](POLAR.md) for the readiness algorithm and [SYNC.md](SYNC.md) for how these get synced to the server immediately, independent of session sync.
+Written by [ReadinessRepository](../app/src/main/java/com/mygymapp/data/polar/ReadinessRepository.kt) at the end of [PolarManager.finishReadinessMeasurement()](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) — the 60s HRV measurement that already ran on every HR connect, but was previously only held in an in-memory StateFlow for the UI and never persisted. Only successful measurements are saved (`cleanRR.size >= 20`); a failed "not enough clean data" attempt is discarded, not written. `sleepQuality` is a self-report from a five-face box on the Heart Rate screen (above the readiness card); it can be written either at save time or patched into an already-saved file via `ReadinessRepository.updateSleepQuality()` — `null` means the user hasn't rated that day. See [POLAR.md](POLAR.md) for the readiness algorithm and [SYNC.md](SYNC.md#second-record-type-readiness-events) for how these get synced to the server immediately, independent of session sync.
 
 ### Scale weigh-in (`scale/YYYY/MM/{date}.md`)
 

@@ -103,6 +103,10 @@ data class ReadinessResult(
     val stepsAvgPerDay: Double? = null,
     val stepsDaysSpanned: Int? = null,
     val stepsPreviousDay: Long? = null,
+    // Self-reported sleep quality for last night, 1..5, or null when the user hasn't
+    // picked one for today's measurement yet. Mirrors ReadinessEvent.sleepQuality; drives
+    // the highlighted state of the selector box shown right above the readiness card.
+    val sleepQuality: Int? = null,
     // BPM trace captured during the 60s measurement window (one point per HR sample, ~1 Hz),
     // for a simple sparkline showing how much HR actually moved while lying still. Empty
     // until MEASURING has collected at least one sample; kept as-is once the result is final.
@@ -382,6 +386,12 @@ class PolarManager @Inject constructor(
     private var readinessMinHr = 200
     // BPM trace for the readiness measurement's sparkline — see ReadinessResult.bpmTrace.
     private val readinessBpmTrace = mutableListOf<Int>()
+    // Sleep-quality rating (1..5) the user tapped before/during the countdown, waiting to
+    // be folded into finishReadinessMeasurement()'s save(). Once today's measurement is on
+    // disk this is no longer consulted — setSleepQuality() patches the file directly and
+    // resets this to null. @Volatile: written from the UI thread, read on readinessScope.
+    @Volatile
+    private var pendingSleepQuality: Int? = null
 
     // Recovery tracking
     private var peakHrAfterSet: Int = 0
@@ -1389,6 +1399,7 @@ class PolarManager @Inject constructor(
                 _vo2max.value = today.vo2max.takeIf { it > 0 }
                 restingHr = today.restingHr.takeIf { it > 0 } ?: restingHr
                 lowestObservedHr = today.restingHr.takeIf { it > 0 } ?: lowestObservedHr
+                _readinessResult.value = _readinessResult.value.copy(sleepQuality = today.sleepQuality)
                 return@launch
             }
             if (LocalTime.now().isAfter(autoReadinessCutoff)) {
@@ -1472,12 +1483,17 @@ class PolarManager @Inject constructor(
 
                 val (readiness, recommendation) = HrvBaselineCalculator.classify(lnRmssd, baseline)
 
+                // Snapshot the pending rating once so the save() and the published result
+                // agree even if the user taps again mid-block.
+                val sleepQuality = pendingSleepQuality
+
                 _readinessResult.value = ReadinessResult(
                     readiness = readiness,
                     lnRmssd = lnRmssd,
                     restingHr = measuredRestingHr,
                     secondsRemaining = 0,
                     recommendation = recommendation,
+                    sleepQuality = sleepQuality,
                     bpmTrace = bpmTrace,
                 )
 
@@ -1515,7 +1531,11 @@ class PolarManager @Inject constructor(
                     stepsAvgPerDay = stepReading?.avgStepsPerDay,
                     stepsDaysSpanned = stepReading?.daysSpanned,
                     stepsPreviousDay = stepReading?.previousDayTotal,
+                    sleepQuality = sleepQuality,
                 )
+                // The measurement is now on disk; further sleep-quality taps go through
+                // setSleepQuality()'s update-and-requeue path, not this stale field.
+                pendingSleepQuality = null
                 appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
                 // docs/SYNC.md §1.5: always queue in the ledger when a server is configured
                 // (so a measurement taken while the toggle is off isn't lost — it flushes
@@ -1532,6 +1552,43 @@ class PolarManager @Inject constructor(
                 }
             } catch (e: Throwable) {
                 appLogger.e(TAG, "Failed to persist/queue readiness event", e)
+            }
+        }
+    }
+
+    /**
+     * Records the user's self-reported sleep quality (1..5) for today's readiness
+     * measurement. Two cases:
+     *  - measurement not saved yet (countdown running or just finished): stash it in
+     *    [pendingSleepQuality] so [finishReadinessMeasurement]'s `save()` picks it up.
+     *  - today's measurement already on disk: patch the file in place via
+     *    [ReadinessRepository.updateSleepQuality] and re-queue it for sync.
+     * Either way the value is echoed into [readinessResult] immediately so the selector
+     * box reflects the tap without waiting for disk I/O. Out-of-range values are ignored.
+     */
+    fun setSleepQuality(value: Int) {
+        if (value !in 1..5) return
+        pendingSleepQuality = value
+        _readinessResult.value = _readinessResult.value.copy(sleepQuality = value)
+        readinessScope.launch {
+            try {
+                val today = readinessRepository.getLatestForDate(LocalDate.now()) ?: return@launch
+                val updated = readinessRepository.updateSleepQuality(today.id, value) ?: return@launch
+                // Already persisted — the pending field would otherwise get stapled onto
+                // the *next* measurement by mistake.
+                pendingSleepQuality = null
+                appLogger.i(TAG, "Sleep quality updated on readiness event id=${updated.id}: $value")
+                if (syncConfigRepository.isConfigured()) {
+                    val file = readinessRepository.fileFor(updated)
+                    if (file.exists()) {
+                        readinessLedgerRepository.enqueue(updated.id, "readiness/${updated.id}.md", file)
+                        if (syncConfigRepository.isEnabled()) {
+                            ReadinessSyncWorker.Scheduler.runExpedited(context)
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                appLogger.e(TAG, "Failed to record sleep quality", e)
             }
         }
     }

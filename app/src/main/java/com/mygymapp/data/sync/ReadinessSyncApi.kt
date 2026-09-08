@@ -34,6 +34,7 @@ class ReadinessSyncApi @Inject constructor() {
         stepsAvgPerDay: Double? = null,
         stepsDaysSpanned: Int? = null,
         stepsPreviousDay: Long? = null,
+        sleepQuality: Int? = null,
     ): SyncResult {
         val envelope = JSONObject().apply {
             put("eventId", eventId)
@@ -50,6 +51,11 @@ class ReadinessSyncApi @Inject constructor() {
             put("stepsAvgPerDay", stepsAvgPerDay ?: JSONObject.NULL)
             put("stepsDaysSpanned", stepsDaysSpanned ?: JSONObject.NULL)
             put("stepsPreviousDay", stepsPreviousDay ?: JSONObject.NULL)
+            // Self-reported sleep quality 1..5, or JSON null when the user didn't rate it.
+            // Same present-but-null contract as the steps fields — the server must not
+            // coerce a null to 0. The same eventId may be re-sent with a new contentHash
+            // when the user rates their sleep after the measurement was first uploaded.
+            put("sleepQuality", sleepQuality ?: JSONObject.NULL)
         }.toString()
 
         val body = MultipartBody.Builder()

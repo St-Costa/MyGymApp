@@ -576,6 +576,7 @@ recommendation: "HRV above baseline. Good day to push intensity."
 stepsAvgPerDay: 8214.5         # nullable — see "Daily step average" below
 stepsDaysSpanned: 1            # nullable — always present together with stepsAvgPerDay
 stepsPreviousDay: 9037         # nullable — yesterday's full calendar-day total (what the UI shows)
+sleepQuality: 4               # nullable — self-reported 1..5, see "Sleep quality" below
 ---
 ```
 
@@ -642,6 +643,28 @@ last read (an `Instant`), not a counter value:
   failing. A `null` here means "no data", not "zero steps" — the server must not coerce it
   to `0`.
 
+#### Sleep quality
+
+A self-reported number, `1`..`5`, for how well the user slept the night before (`1` =
+"couldn't have gone worse", `5` = "couldn't have gone better" — the UI shows five
+hand-drawn faces on one row, no words). Collected from a box on the Heart Rate screen
+placed directly **above** the readiness card, so it's the first thing seen and hard to
+forget. `null` until the user taps a face for that day's measurement — distinct from any
+numeric value, same present-but-null convention as the steps fields.
+
+Two write paths on the phone, both landing in the same `readiness/{id}.md`:
+
+- **Tapped before the 60s measurement finishes** — folded into the initial
+  `ReadinessRepository.save()`.
+- **Tapped after today's measurement is already on disk** (afternoon strap reconnect
+  reusing the morning's result, or just a beat late) —
+  `ReadinessRepository.updateSleepQuality()` rewrites only that field, then the event is
+  **re-enqueued** with the sync ledger. This means the server can receive the **same
+  `eventId` again with a different `contentHash`**; its existing "different hash for a
+  known ID = update, not duplicate" rule (§2.2 step 5) must apply here too — the
+  re-send updates `sleep_quality` (and the stored `.md`), it is not a parse failure or a
+  rejected duplicate.
+
 ### Sync path
 
 Mirrors the session sync design (§1.1–§1.4) with dedicated classes rather than shared
@@ -686,16 +709,25 @@ error). A companion spec for the server repo (`MyGymApp_server`, mirroring
 YAML fields above.
 
 The multipart `envelope` JSON part additionally carries `stepsAvgPerDay` (number or
-JSON `null`), `stepsDaysSpanned` (integer or JSON `null`) and `stepsPreviousDay`
-(integer or JSON `null`) — duplicated from the
-attached file's frontmatter so the server can validate/store them without parsing
-Markdown first, same reasoning as every other envelope field. Both keys are always
-*present*, holding JSON `null` rather than being omitted, when there was nothing to
-diff against on the phone (see "Daily step average" above) — the server-side column(s)
-must be nullable and a `null` must be stored/treated as "no data for this event", never
-coerced to `0`. `readiness_events` needs three new nullable columns for this:
-`steps_avg_per_day` (float/numeric), `steps_days_spanned` (integer) and
-`steps_previous_day` (integer).
+JSON `null`), `stepsDaysSpanned` (integer or JSON `null`), `stepsPreviousDay`
+(integer or JSON `null`) and `sleepQuality` (integer `1`..`5` or JSON `null`) —
+duplicated from the attached file's frontmatter so the server can validate/store them
+without parsing Markdown first, same reasoning as every other envelope field. These keys
+are always *present*, holding JSON `null` rather than being omitted, when there was
+nothing on the phone (no step checkpoint to diff against — see "Daily step average"
+above; or the user hasn't rated their sleep — see "Sleep quality" above). The
+server-side column(s) must be nullable and a `null` must be stored/treated as "no data
+for this event", never coerced to `0`. `readiness_events` needs four new nullable
+columns for this: `steps_avg_per_day` (float/numeric), `steps_days_spanned` (integer),
+`steps_previous_day` (integer) and `sleep_quality` (small integer, values `1`..`5`).
+
+Because `sleepQuality` can arrive on a **re-send of an already-ingested `eventId`** (a
+new `contentHash` for the same event — see "Sleep quality" above), the `/v1/readiness`
+handler's idempotency must be an **upsert keyed on `eventId`**: a known `eventId` with a
+changed `contentHash` updates the row (and the archived `.md`), it is not rejected as a
+duplicate. This is the same rule `/v1/sessions` already applies (§2.2 step 5); confirm
+the readiness handler inherits it rather than a stricter "eventId already seen → 200
+duplicate, drop" shortcut.
 
 ## Third record type: scale weigh-ins
 
