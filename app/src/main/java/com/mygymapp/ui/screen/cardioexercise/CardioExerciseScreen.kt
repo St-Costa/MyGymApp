@@ -23,12 +23,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.HrZoneTraceChart
+import com.mygymapp.ui.theme.SkippedColor
 
 /**
  * The single action button:
@@ -37,6 +39,10 @@ import com.mygymapp.ui.components.HrZoneTraceChart
  * ("Completa esercizio") only shows on re-entry when a block was left open by a process
  * kill and closed on load (see CardioExerciseViewModel.init) — normal flow never hits it.
  * See CardioExerciseViewModel's startBlock()/stopBlock()/completeExercise().
+ *
+ * In IDLE a second, grey "Segna come non eseguito" button sits below the main one — the
+ * cardio equivalent of the strength/stretch skip path (completeExercise() with no blocks
+ * closes the exercise as completedEmpty). It disappears once a block is running/done.
  */
 private enum class CardioButtonState { IDLE, RUNNING, DONE }
 
@@ -152,6 +158,23 @@ fun CardioExerciseScreen(
                             CardioButtonState.DONE -> "Completa esercizio"
                         }
                     )
+                }
+
+                // Skip path, mirroring the strength/stretch grey "Segna come non eseguito"
+                // button: completeExercise() with no blocks closes the exercise as
+                // completedEmpty (grey border + X in the active list, excluded from stats).
+                // Only meaningful before a block is started — hidden once running/done.
+                if (buttonState == CardioButtonState.IDLE) {
+                    Button(
+                        onClick = { viewModel.completeExercise() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SkippedColor,
+                            contentColor = Color(0xFF1E1E1E),
+                        ),
+                    ) {
+                        Text("Segna come non eseguito")
+                    }
                 }
             }
         }
