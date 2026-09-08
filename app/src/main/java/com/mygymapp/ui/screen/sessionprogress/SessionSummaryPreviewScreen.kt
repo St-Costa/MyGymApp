@@ -16,6 +16,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mygymapp.data.polar.BatteryLifeState
@@ -29,6 +33,7 @@ import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.ui.components.BackupVerifyBox
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
 import com.mygymapp.ui.screen.heartrate.ReadinessCard
+import com.mygymapp.ui.screen.heartrate.SleepQualitySelector
 import java.time.LocalDate
 
 /**
@@ -124,6 +129,13 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                 ),
             )
             BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")
+
+            Text("Box qualità del sonno", style = MaterialTheme.typography.titleSmall)
+            var sleepQuality by remember { mutableStateOf<Int?>(3) }
+            SleepQualitySelector(
+                selected = sleepQuality,
+                onSelect = { sleepQuality = it },
+            )
 
             Text("Scheda readiness", style = MaterialTheme.typography.titleSmall)
             ReadinessCard(
