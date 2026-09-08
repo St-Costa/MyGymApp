@@ -245,9 +245,12 @@ class CardioExerciseViewModel @Inject constructor(
     }
 
     /**
-     * Called when the user taps "Complete Exercise". A block left running (user didn't tap
-     * "Termina cardio" first) is force-closed here — an ExerciseSet.Cardio with a blank endedAt
-     * is never persisted for an exercise marked completed.
+     * Reached two ways: the "Completa esercizio" button in the DONE state (a block was
+     * force-closed on load after a process kill), or the grey "Segna come non eseguito"
+     * button shown in IDLE — the cardio skip path, mirroring strength/stretch. A block left
+     * running (user didn't tap "Termina cardio" first) is force-closed here — an
+     * ExerciseSet.Cardio with a blank endedAt is never persisted for an exercise marked
+     * completed. With no blocks at all the exercise closes as completedEmpty.
      */
     fun completeExercise() {
         exerciseCompleted = true
