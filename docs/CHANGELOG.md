@@ -1469,3 +1469,25 @@ trade-off is "always clean up". `isGhostSession` collapses to `completedAt.isBla
 match. (`WorkoutRepository` is `Context`/file-I/O coupled — no test-harness coverage, same
 as the rest of that class.)
 
+## Phase 98 — Self-reported sleep-quality box on the readiness screen
+
+A box above the HRV-readiness card on the Heart Rate screen — one row of five hand-drawn
+faces (`Canvas`, mouth curvature from a full frown to a full smile), no words, from "couldn't
+have gone worse" (1) to "couldn't have gone better" (5). Placed *above* the readiness card by
+request so it's the first thing seen on connect and easy to remember to fill in. Also added
+to the debug `SessionSummaryPreviewScreen` so the look can be checked without a real Polar
+session.
+
+Tapping a face folds a `sleepQuality: Int?` (1..5, `null` = unrated, same present-but-null
+rule as the steps fields) into that day's `readiness/{id}.md`. `PolarManager.setSleepQuality()`
+handles both cases: before the 60s measurement is saved it stashes the value for
+`ReadinessRepository.save()`; once today's file exists it patches it in place via the new
+`ReadinessRepository.updateSleepQuality()` and re-enqueues the event with the readiness sync
+ledger. That re-enqueue means the server can see the same `eventId` again with a new
+`contentHash` — its existing "changed hash for a known ID = update" rule must apply (see
+SYNC.md). `ReadinessSyncApi` carries `sleepQuality` in the multipart envelope alongside the
+steps fields. Round-trip + patch coverage in `ReadinessRepositoryTest` (new).
+
+Server side (`MyGymApp_server`): one new nullable `sleep_quality` column on `readiness_events`
+(small int, 1..5), read from the envelope or the `.md` frontmatter, upsert-keyed on `eventId`.
+

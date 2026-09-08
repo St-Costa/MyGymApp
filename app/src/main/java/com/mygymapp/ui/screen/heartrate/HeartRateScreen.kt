@@ -237,6 +237,7 @@ fun HeartRateScreen(
                 ConnectedContent(
                     uiState = uiState,
                     onDisconnect = { viewModel.disconnect() },
+                    onSelectSleepQuality = { viewModel.setSleepQuality(it) },
                 )
             }
 
@@ -380,6 +381,7 @@ private fun ScaleStatusIcon(
 private fun ColumnScope.ConnectedContent(
     uiState: HeartRateUiState,
     onDisconnect: () -> Unit,
+    onSelectSleepQuality: (Int) -> Unit,
 ) {
     // HR display
     Icon(
@@ -400,6 +402,15 @@ private fun ColumnScope.ConnectedContent(
     // No kcal/TRIMP row here: on this screen the strap is connected but no workout is
     // running, so both are permanently ~1 kcal / 0 TRIMP. They still appear where they
     // mean something — the active-routine and session-progress screens.
+
+    // Sleep-quality self-report — kept right above the readiness card so it's not
+    // forgotten. Written straight through to today's readiness event.
+    SleepQualitySelector(
+        selected = uiState.readiness.sleepQuality,
+        onSelect = onSelectSleepQuality,
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
 
     // HRV Readiness
     ReadinessCard(
