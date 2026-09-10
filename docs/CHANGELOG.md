@@ -1491,3 +1491,22 @@ steps fields. Round-trip + patch coverage in `ReadinessRepositoryTest` (new).
 Server side (`MyGymApp_server`): one new nullable `sleep_quality` column on `readiness_events`
 (small int, 1..5), read from the envelope or the `.md` frontmatter, upsert-keyed on `eventId`.
 
+## Phase 99 — Cardio zone chart: active-band highlight + per-zone timers
+
+`HrZoneTraceChart` now calls out where the live HR is and how long it's spent in each zone.
+The band the current HR falls in is drawn brighter (fill alpha 0.30 → 0.55) with a thin
+colour edge; the white %HRR trace is stroked last, over a dark halo, so it stays legible
+across the brightened band. Each zone name (Z1..Z5) sits at a fixed x, vertically centred in
+its own band, with a rounded badge to its right showing the running `M:SS` in that zone this
+session (from the already-existing `PolarManager.hrZoneMinutes` / `HrZoneTracker` — no new
+plumbing). A zone not yet visited shows its name only, no badge; the boundary lines lost
+their `· <bpm>` suffix.
+
+The drawing half was split out as `HrZoneTraceChartContent(trace, currentZone, boundaries,
+zoneMinutes, modifier)` — no ViewModel, no connection gate — so the debug
+`SessionSummaryPreviewScreen` can render it with a hand-made trace parked mid-Z3 and mixed
+visited/unvisited zones. The old trailing `.fillMaxSize()` on the chart's `Box` was dropped
+(it collapsed the chart inside the preview's scrolling column); height now comes from the
+caller (`.weight(1f)` on the cardio screen, `.height(...)` in the preview). Pure-Compose
+drawing change, no test harness for it — same as the rest of the file.
+
