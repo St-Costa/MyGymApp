@@ -364,6 +364,9 @@ class PolarManager @Inject constructor(
     }
 
     var connectedDeviceId: String? = null
+    // Last connected strap's advertised name, kept for the foreground-service notification
+    // text when a session (re)starts the service after the initial deviceConnected callback.
+    private var connectedDeviceName: String? = null
         private set
 
     // User profile for calorie/TRIMP calculations. Always read fresh from SharedPreferences
@@ -476,6 +479,7 @@ class PolarManager @Inject constructor(
                 Log.d(TAG, "Connected: ${polarDeviceInfo.deviceId}")
                 appLogger.i(TAG, "Connected: ${polarDeviceInfo.deviceId} (${polarDeviceInfo.name}) midSession=$hrSeriesActive")
                 connectedDeviceId = polarDeviceInfo.deviceId
+                connectedDeviceName = polarDeviceInfo.name
                 lastConnectedDeviceId = polarDeviceInfo.deviceId
                 knownPolarDeviceRepository.setKnownDeviceId(polarDeviceInfo.deviceId)
                 userInitiatedDisconnect = false
@@ -1044,6 +1048,20 @@ class PolarManager @Inject constructor(
         hrSeries.clear()
         hrSeriesStart = System.currentTimeMillis()
         hrSeriesActive = true
+        userInitiatedDisconnect = false
+        // A previous session's stopHrSeriesCapture() turns the SDK auto-reconnect off and
+        // tears down the foreground service. If the strap is still connected as this new
+        // session starts (the normal case — connection is established from the HR screen,
+        // not here), bring both back so a mid-workout drop auto-recovers and the OS keeps
+        // the process alive for the duration.
+        if (connectedDeviceId != null) {
+            try {
+                api.setAutomaticReconnection(true)
+            } catch (t: Throwable) {
+                Log.w(TAG, "setAutomaticReconnection(true) on session start failed: $t")
+            }
+            PolarStreamingService.start(context, connectedDeviceName)
+        }
         sessionDrops.clear()
         _disconnectStats.value = DisconnectStats()
         lastDriftComputeMs = 0L
@@ -1096,13 +1114,33 @@ class PolarManager @Inject constructor(
 
     fun stopHrSeriesCapture() {
         hrSeriesActive = false
-        // Session over: stop chasing a reconnection and clear any disconnect alert. If we were
-        // still mid-reconnect (no device), tear down the now-pointless foreground service.
+        // Session over: stop chasing a reconnection and clear any disconnect alert.
         reconnectHandler.removeCallbacksAndMessages(null)
+        reconnectStartAtMs = 0L
         PolarStreamingService.clearDisconnectAlert(context)
+
+        // The foreground service exists to keep the OS from killing us *during a session*.
+        // With the session finished there is nothing left to justify a "connectedDevice"
+        // foreground notification, so it always goes away now — whether or not the strap is
+        // still connected for the HR screen. forceStop() cancels the notification directly
+        // rather than routing an ACTION_STOP intent (which throws when the app is in the
+        // background — the case that used to leave "XX BPM" stuck on screen after the strap
+        // was powered off).
+        PolarStreamingService.forceStop(context)
+
+        // Drop the SDK's own auto-reconnection (turned on by connectToDevice()). Left on, a
+        // later strap power-off keeps the link in CONNECTING and the deviceDisconnected
+        // callback that tears everything down may never arrive — or the SDK silently
+        // reconnects to the still-powered strap and deviceConnected() resurrects the
+        // notification after the user believes the workout is over.
+        try {
+            api.setAutomaticReconnection(false)
+        } catch (t: Throwable) {
+            Log.w(TAG, "setAutomaticReconnection(false) on session end failed: $t")
+        }
+
         if (connectedDeviceId == null) {
             _connectionState.value = ConnectionState.DISCONNECTED
-            PolarStreamingService.stop(context)
         }
     }
 
