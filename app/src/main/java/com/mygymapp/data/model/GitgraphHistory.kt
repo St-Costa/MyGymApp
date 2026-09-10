@@ -40,6 +40,14 @@ data class GitgraphHistory(
          * Bump when the meaning of a stored field changes (how status/% is derived, added
          * fields). A cache whose `schemaVersion` differs is ignored and rebuilt.
          *
+         * v4: identical rule to v3 — bump only to discard caches an interim broken build wrote
+         *     (it filtered the cardio figure to `SlotContext.NORMAL`, which no real cardio slot
+         *     ever is, blanking every historical cardio square).
+         * v3: display fallback priority is tonnage-% → cardio → stretching (was → stretching →
+         *     cardio in v2). Cardio counts every closed cardio block (unchanged); the stretch
+         *     figure now excludes `isDaily` slots — the fixed daily-mobility stretch is a warmup,
+         *     not the day's work. So a cardio day with a 60s fixed-daily "Chest stretch sbarre"
+         *     stops rendering as `1m` and shows the bike minutes instead.
          * v2: adds `stretchMinutes` and uses display fallback priority tonnage-% → stretching →
          *     cardio.
          * v1: `status` = IMPROVED when the day's common-exercise tonnage ≥ the same routine's
@@ -49,7 +57,7 @@ data class GitgraphHistory(
          *     `cardioMinutes` = closed cardio-block minutes, only when `tonnageChangePct` is null.
          *     Matches MainViewModel.computeDayCell at the time of writing.
          */
-        const val SCHEMA_VERSION = 2
+        const val SCHEMA_VERSION = 4
     }
 }
 

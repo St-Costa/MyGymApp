@@ -356,7 +356,9 @@ The `.md` files remain the source of truth; the sidecar is a cache. The derivati
 
 ### Home gitgraph cache (`history/_gitgraph.yaml`)
 
-The home screen's 4 history rows (28 day squares for the 4 weeks **before** the current week) were computed on every home open by parsing ~3 months of session files (`getSessionsInRange` over the visible window + a 2-month lookback for the oldest days' comparison). Now a single file holds them pre-computed: front-matter-only YAML with `windowStartMonday`, `schemaVersion`, and 28 `days`, each `{date, status, tonnageChangePct?, cardioMinutes?, routineName?, sessionId?}`.
+The home screen's 4 history rows (28 day squares for the 4 weeks **before** the current week) were computed on every home open by parsing ~3 months of session files (`getSessionsInRange` over the visible window + a 2-month lookback for the oldest days' comparison). Now a single file holds them pre-computed: front-matter-only YAML with `windowStartMonday`, `schemaVersion`, and 28 `days`, each `{date, status, tonnageChangePct?, stretchMinutes?, cardioMinutes?, routineName?, sessionId?}`.
+
+The centred figure on a square follows a fixed fallback priority: **strength tonnage %** → **cardio minutes** → **stretch minutes**. Cardio minutes sum every closed cardio block. Stretch minutes exclude **`isDaily`** slots — the fixed daily-mobility stretch ("Chest stretch sbarre", in every routine) is a warmup, not the day's work; counting its ~60 s would render a cardio day as a `1m` stretch entry. (Cardio blocks carry no analogous "warmup" flag, so they are all summed.) See `GitgraphHistory.SCHEMA_VERSION` history for the version this landed in — the constant reached `4` here, one bump of which existed only to discard a cache a broken interim build had written.
 
 A day square is derived from that day's registered session and the previous session of the same routine — both immutable once registered — so a square for a day *before the current week* never changes. The **current week's** row (the schedule row + "today" cell) is *not* cached; `HomeStateLoader` builds it from a small current-week query each time.
 
