@@ -1510,3 +1510,30 @@ visited/unvisited zones. The old trailing `.fillMaxSize()` on the chart's `Box` 
 caller (`.weight(1f)` on the cardio screen, `.height(...)` in the preview). Pure-Compose
 drawing change, no test harness for it — same as the rest of the file.
 
+## Phase 100 — GitGraph cardio days: cardio minutes over a daily-mobility stretch (fixes 60-min cardio day shown as `1m`)
+
+The home GitGraph's day square shows one centred figure with a fixed fallback priority:
+strength tonnage % → cardio minutes → stretch minutes. Two bugs in `GitgraphHistoryCalculator.dayCell`:
+
+1. **Priority was tonnage-% → stretch → cardio.** A ❤️ cardio day whose routine also carries a
+   fixed-daily "Chest stretch sbarre" (2×30 s, `isDaily: true`) had its 56-minute bike block
+   masked by the stretch fallback and rendered as `1m`. Cardio now comes before stretch.
+2. **The fixed daily-mobility stretch counted as the day's stretch work.** `stretchMinutesFor`
+   now excludes `isDaily` slots — that stretch is in every routine and is a warmup, never the
+   point of the day. Cardio is unchanged: every closed cardio block is still summed (a cardio
+   warmup and the main ride are both plain `excludeFromTonnage` cardio slots with no flag to
+   tell them apart, and summing them was never a complaint).
+
+An earlier cut of this fix filtered *both* figures to `SlotContext.NORMAL`; that blanked every
+cardio square, because real cardio slots are `excludeFromTonnage` (→ `WARMUP`), never `NORMAL`.
+Reverted to the `isDaily`-only filter on stretch. That broken build had already rewritten
+`history/_gitgraph.yaml` at the (then-current) schema 3 with `cardioMinutes` null on every
+historical ❤️ day, and the corrected build served it unchanged — so the current week's cardio
+day read right while the four history rows stayed blank.
+
+`GitgraphHistory.SCHEMA_VERSION` walked 2 → 3 → **4** (v4 is the same rule as v3, bumped only
+to discard that poisoned cache). `history/_gitgraph.yaml` rebuilds lazily on next read, no
+migration code. Calculator tests updated + added: the exact ❤️-day repro, a daily-stretch-only
+day yielding no figure, and cardio-beats-a-real-stretch-block. This is the fifth pass at this
+display rule.
+

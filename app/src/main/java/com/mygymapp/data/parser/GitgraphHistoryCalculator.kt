@@ -102,9 +102,18 @@ object GitgraphHistoryCalculator {
         val tonnageChangePct = if (previous != null && prevTonnage > 0)
             (currTonnage - prevTonnage) / prevTonnage * 100.0
         else null
-        // Display priority: strength tonnage %, then stretching duration, then cardio duration.
-        val stretchMinutes = if (tonnageChangePct == null) stretchMinutesFor(session) else null
-        val cardioMinutes = if (tonnageChangePct == null && stretchMinutes == null) cardioMinutesFor(session) else null
+        // Display priority: strength tonnage %, then — when there's no comparable strength work —
+        // CARDIO duration, then stretching duration.
+        //
+        // Cardio comes before stretch: a session with a real cardio block is a cardio day, and a
+        // fixed-daily mobility stretch that also lives in that routine (e.g. a 60s "Chest stretch
+        // sbarre", `isDaily: true`) must not mask a 55-minute bike block and render the day as
+        // `1m`. The stretch figure therefore also ignores `isDaily` slots — those are the fixed
+        // daily-mobility warmup, never the day's point. (Cardio blocks carry no analogous
+        // "warmup" flag — a cardio warmup and the main ride are both plain `excludeFromTonnage`
+        // cardio slots — so cardioMinutesFor keeps summing every closed block, as it always has.)
+        val cardioMinutes = if (tonnageChangePct == null) cardioMinutesFor(session) else null
+        val stretchMinutes = if (tonnageChangePct == null && cardioMinutes == null) stretchMinutesFor(session) else null
         return DayCell(status, tonnageChangePct, stretchMinutes, cardioMinutes)
     }
 
@@ -174,10 +183,15 @@ object GitgraphHistoryCalculator {
         } else 0
     }
 
-    /** Minutes across completed STRETCH sets; null if none. */
+    /**
+     * Minutes across completed STRETCH sets, excluding fixed-daily (`isDaily`) slots; null if
+     * none. The fixed daily-mobility stretch (e.g. "Chest stretch sbarre", present in every
+     * routine) is a warmup, never the day's point — counting its ~60s would render a cardio day
+     * as a `1m` stretch entry.
+     */
     private fun stretchMinutesFor(session: WorkoutSession): Int? {
         val totalSeconds = session.exercises
-            .filter { it.type == ExerciseType.STRETCH }
+            .filter { it.type == ExerciseType.STRETCH && !it.isDaily }
             .flatMap { it.sets }
             .filterIsInstance<ExerciseSet.Stretch>()
             .filter { it.done }

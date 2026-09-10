@@ -20,8 +20,9 @@ class GitgraphHistoryCalculatorTest {
         routineName: String = "R",
         strength: List<Triple<String, Int, Double>> = emptyList(), // exId, reps, weight (one set each)
         totalTonnage: Double = strength.sumOf { it.second * it.third },
-        stretchSeconds: List<Int> = emptyList(),
-        cardioBlocks: List<Pair<String, String>> = emptyList(),    // startedAt, endedAt
+        stretchSeconds: List<Int> = emptyList(),                   // plain stretch slot (counted)
+        cardioBlocks: List<Pair<String, String>> = emptyList(),    // cardio slot: startedAt, endedAt (always counted)
+        dailyStretchSeconds: List<Int> = emptyList(),              // isDaily stretch — fixed daily-mobility warmup (ignored)
     ) = WorkoutSession(
         id = id, routineId = routineId, routineName = routineName,
         date = date, completedAt = completedAt, totalTonnage = totalTonnage,
@@ -39,6 +40,8 @@ class GitgraphHistoryCalculatorTest {
                 add(
                     WorkoutExercise(
                         exerciseId = "cardio", exerciseName = "cardio", bodypart = "b",
+                        // Real cardio slots always carry excludeFromTonnage (cardio does no
+                        // tonnage) and never isDaily — same shape as on-device sessions.
                         type = ExerciseType.CARDIO, completed = true, excludeFromTonnage = true,
                         sets = cardioBlocks.map { ExerciseSet.Cardio(startedAt = it.first, endedAt = it.second) },
                     )
@@ -50,6 +53,15 @@ class GitgraphHistoryCalculatorTest {
                         exerciseId = "stretch", exerciseName = "stretch", bodypart = "b",
                         type = ExerciseType.STRETCH, completed = true,
                         sets = stretchSeconds.map { ExerciseSet.Stretch(timeSeconds = it, done = true) },
+                    )
+                )
+            }
+            if (dailyStretchSeconds.isNotEmpty()) {
+                add(
+                    WorkoutExercise(
+                        exerciseId = "stretch-daily", exerciseName = "stretch-daily", bodypart = "b",
+                        type = ExerciseType.STRETCH, completed = true, isDaily = true,
+                        sets = dailyStretchSeconds.map { ExerciseSet.Stretch(timeSeconds = it, done = true) },
                     )
                 )
             }
@@ -188,13 +200,55 @@ class GitgraphHistoryCalculatorTest {
     }
 
     @Test
-    fun `stretch minutes take priority over cardio when tonnage percent is unavailable`() {
+    fun `cardio day ignores a fixed-daily stretch warmup and shows the bike minutes`() {
+        // The real bug: a ❤️ cardio day whose routine carries a 60s fixed-daily "Chest stretch
+        // sbarre" (isDaily). That stretch is a warmup, not the day's work — it must be ignored,
+        // and the 55-min bike block shown. (Previously the day rendered as `1m`.)
+        val s = session(
+            "c", "rt-cardio", MON.plusDays(3).toString(),
+            dailyStretchSeconds = listOf(30, 30), // fixed-daily "chest stretch sbarre" — ignored
+            cardioBlocks = listOf("2026-07-30T07:57:27" to "2026-07-30T08:53:22"), // ~55 min bike
+        )
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-cardio" to listOf(s)))
+        assertNull(cell.tonnageChangePct)
+        assertEquals(55, cell.cardioMinutes)
+        assertNull(cell.stretchMinutes)
+    }
+
+    @Test
+    fun `a fixed-daily stretch alone yields no figure (not even 1m)`() {
+        // A non-cardio, non-strength day that only did the fixed-daily mobility stretch: the
+        // square stays a bare colour, no `1m`.
+        val s = session(
+            "c", "rt-x", MON.plusDays(3).toString(),
+            dailyStretchSeconds = listOf(30, 30),
+        )
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-x" to listOf(s)))
+        assertNull(cell.tonnageChangePct)
+        assertNull(cell.cardioMinutes)
+        assertNull(cell.stretchMinutes)
+    }
+
+    @Test
+    fun `cardio minutes take priority over a real (non-daily) stretch block`() {
         val s = session(
             "c", "rt-mixed", MON.plusDays(3).toString(),
-            stretchSeconds = listOf(60, 75),
-            cardioBlocks = listOf("2026-07-30T09:00:00" to "2026-07-30T09:10:00"),
+            stretchSeconds = listOf(120), // 2 min real (non-daily) stretch
+            cardioBlocks = listOf("2026-07-30T09:00:00" to "2026-07-30T09:10:00"), // 10 min cardio
         )
         val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-mixed" to listOf(s)))
+        assertNull(cell.tonnageChangePct)
+        assertEquals(10, cell.cardioMinutes)
+        assertNull(cell.stretchMinutes)
+    }
+
+    @Test
+    fun `a real (non-daily) stretch day still shows its minutes`() {
+        val s = session(
+            "c", "rt-stretch", MON.plusDays(3).toString(),
+            stretchSeconds = listOf(60, 75), // 135s -> 2m
+        )
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-stretch" to listOf(s)))
         assertNull(cell.tonnageChangePct)
         assertEquals(2, cell.stretchMinutes)
         assertNull(cell.cardioMinutes)
