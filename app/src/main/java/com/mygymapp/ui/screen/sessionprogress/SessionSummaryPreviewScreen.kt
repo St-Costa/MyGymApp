@@ -22,8 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.height
 import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.DisconnectStats
+import com.mygymapp.data.polar.HrZone
+import com.mygymapp.data.polar.HrZoneMinutes
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.polar.ReadinessResult
 import com.mygymapp.data.sync.BackupDiffEntry
@@ -31,6 +34,7 @@ import com.mygymapp.data.sync.BackupError
 import com.mygymapp.data.sync.BackupErrorCategory
 import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.ui.components.BackupVerifyBox
+import com.mygymapp.ui.components.HrZoneTraceChartContent
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
 import com.mygymapp.ui.screen.heartrate.ReadinessCard
 import com.mygymapp.ui.screen.heartrate.SleepQualitySelector
@@ -39,8 +43,10 @@ import java.time.LocalDate
 /**
  * Debug-only screen (reachable from Options → Debug) that renders the end-of-routine
  * status panels — server-sync box, readiness card, Polar-connection box, and
- * Polar-disconnection box — with hand-made sample data, so their look can be checked
- * without a real flaky Polar session. Not part of any real user flow.
+ * Polar-disconnection box — plus the live cardio HR-zone chart, all with hand-made
+ * sample data, so their look can be checked without a real flaky Polar session. The
+ * zone-chart sample parks the trace mid-Z3 with non-zero per-zone timers so the
+ * active-band highlight and the MM:SS labels are both visible. Not part of any real user flow.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -149,6 +155,27 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                     bpmTrace = listOf(62, 61, 63, 60, 59, 58, 60, 62, 64, 61, 59, 57, 58, 60, 61, 63, 62, 60, 59, 58, 57, 59, 61, 62, 70, 66, 63, 61, 60, 58),
                 ),
                 vo2max = 48.2,
+            )
+
+            Text("Grafico zone cardio (linea in Z3)", style = MaterialTheme.typography.titleSmall)
+            HrZoneTraceChartContent(
+                // %HRR trace climbing out of Z2 and settling mid-Z3 (70–80% band).
+                trace = listOf(
+                    58, 60, 63, 66, 68, 69, 71, 72, 73, 74,
+                    75, 76, 75, 74, 76, 77, 76, 75, 74, 75,
+                    76, 77, 78, 77, 76, 75, 76, 77, 76, 75,
+                ),
+                currentZone = HrZone.Z3,
+                boundaries = listOf(121, 135, 148, 161, 175),
+                zoneMinutes = HrZoneMinutes(
+                    belowZone1 = 1.4,
+                    zone1 = 3.1,
+                    zone2 = 6.75,
+                    zone3 = 4.5,  // current zone — timer running
+                    zone4 = 0.0,
+                    zone5 = 0.0,
+                ),
+                modifier = Modifier.height(220.dp),
             )
 
             Text("Box connessione Polar", style = MaterialTheme.typography.titleSmall)
