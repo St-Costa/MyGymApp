@@ -239,6 +239,26 @@ fun ExerciseEditScreen(
                         }
                     }
                 }
+
+                // Assisted machine (e.g. assisted pull-up/dip): the number set on the machine is
+                // *subtracted* from body weight, not added — mutually exclusive with "Corpo
+                // libero" above (see Exercise.LoadMode). No per-exercise default here: the assist
+                // offset is entered set-by-set during the workout, like a normal weight.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "Assistito (es. lat machine)",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(
+                        checked = uiState.isAssisted,
+                        onCheckedChange = viewModel::onAssistedChange,
+                    )
+                }
             }
 
             // Cardio exercises live in their own dedicated "Cardio" section (ExerciseListScreen)

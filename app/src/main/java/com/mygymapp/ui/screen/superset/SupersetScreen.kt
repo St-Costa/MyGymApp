@@ -211,6 +211,7 @@ fun SupersetScreen(
                                     prE1rmWeight = member?.prE1rmWeight ?: 0.0,
                                     prE1rmBwBaseWeightKg = member?.prE1rmBwBaseWeightKg ?: 0.0,
                                     isBodyweight = member?.exercise?.isBodyweight == true,
+                                    isAssisted = member?.exercise?.loadMode == com.mygymapp.data.model.LoadMode.ASSISTED,
                                     onUpdateReps = { viewModel.updateReps(listIndex, it) },
                                     onUpdateWeight = { viewModel.updateWeight(listIndex, it) },
                                     onToggleDone = { viewModel.toggleSetDone(listIndex) },
@@ -349,6 +350,9 @@ private fun SupersetSetItem(
     // This side's exercise is bodyweight — hide the Kg column / weight picker (load is
     // estimated from body weight at completion, see SupersetViewModel.buildUpdatedSession).
     isBodyweight: Boolean = false,
+    // This side's exercise is on an assisted machine — keeps the weight picker (the lifter
+    // dials in the assist-machine number) but relabels the column.
+    isAssisted: Boolean = false,
     onUpdateReps: (Int) -> Unit,
     onUpdateWeight: (Double) -> Unit,
     onToggleDone: () -> Unit,
@@ -451,7 +455,7 @@ private fun SupersetSetItem(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Text(
-                                    text = "Kg",
+                                    text = if (isAssisted) "Assist." else "Kg",
                                     style = MaterialTheme.typography.headlineSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                 )

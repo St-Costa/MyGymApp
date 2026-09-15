@@ -79,6 +79,13 @@ bwLoadPercent: 75             # only with isBodyweight — 25|50|75|100, % of bo
                               # movement loads (squat 100, plank 75, reverse sit-up 50,
                               # tibialis raise 25). Mandatory for a bodyweight exercise; legacy
                               # files with none migrate to 75. See below for how it feeds tonnage.
+loadMode: bodyweight          # omitted for "manual" (the default). One of manual|bodyweight|
+                              # assisted — assisted is an assist machine (e.g. assisted pull-up/
+                              # dip) where the number set on the machine is *subtracted* from
+                              # body weight. Mutually exclusive with isBodyweight; written
+                              # alongside isBodyweight/bwLoadPercent when loadMode is bodyweight
+                              # (isBodyweight stays the authority older builds/server read).
+                              # See Exercise.LoadMode / docs/CONVENTIONS.md#assisted-machine-load.
 created: 2025-03-15T10:22:14
 updated: 2025-04-18T09:00:00
 ---
@@ -197,6 +204,25 @@ exercises:
                                  # that filters on weight > 0 — see SYNC.md)
         bwLoadPercent: 75       # audit: the Exercise.bwLoadPercent used for the number above
         bwBaseWeightKg: 73.3    # audit: the body weight the estimate was taken from
+  - exerciseId: ex-d5e6f7a8
+    exerciseName: Assisted pull-up
+    type: FORZA
+    bodypart: back
+    sets:
+      - reps: 8
+        weight: 60.0            # MATERIALIZED at exercise-completion: bodyWeightKg -
+                                 # assistOffsetKg (from the most recent scale weigh-in on or
+                                 # before the session date), rounded to 0.5 kg, clamped to 0.
+                                 # Same "works everywhere with no special-casing" reasoning as
+                                 # the bodyweight case above — see materializeAssistedWeight().
+        isAssisted: true        # omitted when false — copied from Exercise.loadMode ==
+                                 # ASSISTED at session-build time; mutually exclusive with
+                                 # isBodyweight.
+        assistOffsetKg: 20.0    # audit: the raw number the lifter set on the assist machine —
+                                 # also what the "previous" pre-fill shows back to the lifter,
+                                 # never the materialized weight above.
+        bwBaseWeightKg: 80.0    # audit: the body weight the estimate was taken from (reused
+                                 # field, same meaning as the bodyweight case)
   - exerciseId: ex-c9d8e7f6
     exerciseName: Corsa leggera
     type: CARDIO
@@ -311,7 +337,7 @@ A per-exercise **materialized view** over that exercise's session history, so th
 ```yaml
 ---
 exerciseId: "ex-3e4195a9"
-schemaVersion: 4
+schemaVersion: 5
 contexts:
   - context: "DAILY"                              # NORMAL | WARMUP | DAILY, one block each
     previousSessionDate: "2026-08-28"             # bare YYYY-MM-DD (day key), never a datetime
@@ -333,16 +359,25 @@ contexts:
         weight: 59.0
         bwBaseWeightKg: 78.45
         isBodyweight: true
+    previousSessionDateAssisted: "2026-08-20"     # present only if a real assisted session exists
+    previousSetsAssisted:                          # most recent ASSISTED session with real data
+      - reps: 8
+        weight: 60.0
+        bwBaseWeightKg: 80.0
+        isAssisted: true
+        assistOffsetKg: 20.0
 ---
 ```
 
-Everything is split by [SlotContext] (a fixed-daily execution's history is unrelated to the same exercise's routine history — see [CONVENTIONS.md](CONVENTIONS.md#all-time-tonnage-pr--previous-preview-slot-context-match)). Bodyweight sets are stored with their materialized `weight` already applied, so `reps * weight` works with no special-casing.
+Everything is split by [SlotContext] (a fixed-daily execution's history is unrelated to the same exercise's routine history — see [CONVENTIONS.md](CONVENTIONS.md#all-time-tonnage-pr--previous-preview-slot-context-match)). Bodyweight and assisted sets are stored with their materialized `weight` already applied, so `reps * weight` works with no special-casing.
 
 **Schema v2** — a set entry (`pr`, `rmPr`, or a `previousSets` item) may also carry `bwBaseWeightKg`, the lifter's body weight at the time a **bodyweight** set was logged (copied from `ExerciseSet.Strength.bwBaseWeightKg`). It is omitted for non-bodyweight sets and for bodyweight sets logged before any scale weigh-in existed. The bodyweight exercise screens (strength + superset) show the PR as `reps × bwBaseWeightKg` ("peso corpo in quel momento") instead of the materialized `weight` (which for bodyweight is only `bwLoadPercent%` of that). PR *selection* is unchanged — still the highest materialized `reps × weight`.
 
 **Schema v3** — `rmPr` added: the single set with the highest **estimated 1RM** (Epley, `weight × (1 + reps/30)`) ever recorded for this exercise+context. It can be a different set than `pr` — a heavy low-rep single wins the e1RM record but not the tonnage one. The screens display `rmPr` as `reps × weight` (the set that produced the best e1RM), *not* the computed 1RM number — both exercise screens show two centered badges above the sets, `RM`ᴾᴿ`: reps × weight` stacked 2dp on top of `T`ᴾᴿ`: reps × weight` (shared `PrBadge` composable). For a bodyweight exercise the `RM` badge is hidden unless `rmPr.bwBaseWeightKg` is known (the stored `weight` is materialized load otherwise). Old sidecars can't supply the field ⇒ lazy rebuild.
 
-**Schema v4** — `previousSets` is split by **weighting approach**. The plain `previousSets` / `previousSessionDate` now carry the most recent real session whose sets were **non-bodyweight**; the new `previousSetsBodyweight` / `previousSessionDateBodyweight` (both omitted when no real bodyweight session exists) carry the most recent whose sets were **bodyweight**. `PreviousSet.isBodyweight: true` marks each bodyweight set (omitted otherwise, like `bwBaseWeightKg`). `ActiveRoutineViewModel` picks the slot matching the exercise's *current* `isBodyweight` config to seed the active-routine change badge, and shows "primo dato" when that slot is empty — so switching an exercise manual↔bodyweight never compares today's materialized ~59 kg set against a legacy `weight: 1.0` placeholder (that produced +5000% badges). `pr` / `rmPr` / `hasPriorRealTonnage` stay all-time across **both** approaches. The strength / superset screens' grey previous pre-fill and the active-routine change badge all pick the slot via `ContextStats.previousSetsFor(exercise.isBodyweight)`. Old sidecars can't supply it ⇒ lazy rebuild.
+**Schema v4** — `previousSets` is split by **weighting approach**. The plain `previousSets` / `previousSessionDate` now carry the most recent real session whose sets were **non-bodyweight**; the new `previousSetsBodyweight` / `previousSessionDateBodyweight` (both omitted when no real bodyweight session exists) carry the most recent whose sets were **bodyweight**. `PreviousSet.isBodyweight: true` marks each bodyweight set (omitted otherwise, like `bwBaseWeightKg`). `ActiveRoutineViewModel` picks the slot matching the exercise's *current* `isBodyweight` config to seed the active-routine change badge, and shows "primo dato" when that slot is empty — so switching an exercise manual↔bodyweight never compares today's materialized ~59 kg set against a legacy `weight: 1.0` placeholder (that produced +5000% badges). `pr` / `rmPr` / `hasPriorRealTonnage` stay all-time across **both** approaches. Old sidecars can't supply it ⇒ lazy rebuild.
+
+**Schema v5** — a third weighting approach, **assisted** (see [CONVENTIONS.md](CONVENTIONS.md#assisted-machine-load-subtract-from-body-weight-materialize-the-same-way)): an assist machine where the number set on the machine is subtracted from body weight. `previousSetsAssisted` / `previousSessionDateAssisted` (both omitted when no real assisted session exists) mirror the bodyweight pair, carrying the most recent real session whose sets were **assisted**. `PreviousSet.isAssisted: true` + `assistOffsetKg` mark each assisted set (omitted otherwise); `assistOffsetKg` is what the pre-fill shows back to the lifter — the raw machine number, not the materialized `weight`. `pr` / `rmPr` / `hasPriorRealTonnage` stay all-time across **all three** approaches — the net-weight materialization makes an assisted set directly comparable to a manual-load one for those metrics; only the pre-fill needs the split. The strength / superset screens' grey previous pre-fill and the active-routine change badge all pick the slot via `ContextStats.previousSetsFor(exercise.loadMode)`. Old sidecars can't supply it ⇒ lazy rebuild.
 
 **Maintenance** — [WorkoutRepository](../app/src/main/java/com/mygymapp/data/repository/WorkoutRepository.kt):
 - **`save()` of a completed session**: each of its exercises' sidecars is updated by an *incremental merge* (`ExerciseStatsCalculator.merge`) — `pr` / `rmPr` compare-and-set (each by its own metric), `previousSets` replaced only if the new session has real data. No history scan; cheap on the save path. An in-progress save (autosave / back-out, blank `completedAt`) touches nothing.

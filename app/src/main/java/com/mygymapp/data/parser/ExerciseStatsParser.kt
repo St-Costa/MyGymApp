@@ -58,6 +58,10 @@ object ExerciseStatsParser {
                     m["previousSessionDateBodyweight"] = cs.previousSessionDateBodyweight
                     m["previousSetsBodyweight"] = cs.previousSetsBodyweight.map { setMap(it) }
                 }
+                if (cs.previousSetsAssisted.isNotEmpty()) {
+                    m["previousSessionDateAssisted"] = cs.previousSessionDateAssisted
+                    m["previousSetsAssisted"] = cs.previousSetsAssisted.map { setMap(it) }
+                }
                 m
             }
 
@@ -92,6 +96,8 @@ object ExerciseStatsParser {
                 previousSessionDate = map["previousSessionDate"]?.toString() ?: "",
                 previousSetsBodyweight = parseSetList(map["previousSetsBodyweight"]),
                 previousSessionDateBodyweight = map["previousSessionDateBodyweight"]?.toString() ?: "",
+                previousSetsAssisted = parseSetList(map["previousSetsAssisted"]),
+                previousSessionDateAssisted = map["previousSessionDateAssisted"]?.toString() ?: "",
                 pr = parseSetList(map["pr"]).firstOrNull(),
                 rmPr = parseSetList(map["rmPr"]).firstOrNull(),
                 hasPriorRealTonnage = map["hasPriorRealTonnage"] as? Boolean ?: false,
@@ -108,10 +114,12 @@ object ExerciseStatsParser {
 
     private fun setMap(s: PreviousSet): Map<String, Any?> =
         linkedMapOf<String, Any?>("reps" to s.reps, "weight" to s.weight).apply {
-            // Only bodyweight sets carry a base body weight / marker — omit the keys otherwise
-            // so non-bodyweight sidecars keep their existing two-key shape.
+            // Only bodyweight/assisted sets carry these extra keys — omit them otherwise so a
+            // plain manual-load sidecar keeps its existing two-key shape.
             if (s.bwBaseWeightKg > 0.0) put("bwBaseWeightKg", s.bwBaseWeightKg)
             if (s.isBodyweight) put("isBodyweight", true)
+            if (s.isAssisted) put("isAssisted", true)
+            if (s.assistOffsetKg > 0.0) put("assistOffsetKg", s.assistOffsetKg)
         }
 
     @Suppress("UNCHECKED_CAST")
@@ -124,6 +132,8 @@ object ExerciseStatsParser {
                 weight = (m["weight"] as? Number)?.toDouble() ?: 0.0,
                 bwBaseWeightKg = (m["bwBaseWeightKg"] as? Number)?.toDouble() ?: 0.0,
                 isBodyweight = m["isBodyweight"] as? Boolean ?: false,
+                isAssisted = m["isAssisted"] as? Boolean ?: false,
+                assistOffsetKg = (m["assistOffsetKg"] as? Number)?.toDouble() ?: 0.0,
             )
         }
     }

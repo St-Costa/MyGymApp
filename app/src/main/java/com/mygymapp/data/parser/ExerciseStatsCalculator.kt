@@ -3,6 +3,7 @@ package com.mygymapp.data.parser
 import com.mygymapp.data.model.ContextStats
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseStats
+import com.mygymapp.data.model.LoadMode
 import com.mygymapp.data.model.PreviousSet
 import com.mygymapp.data.model.SlotContext
 import com.mygymapp.data.model.WorkoutSession
@@ -30,16 +31,22 @@ object ExerciseStatsCalculator {
             weight = weight,
             bwBaseWeightKg = bwBaseWeightKg,
             isBodyweight = isBodyweight,
+            isAssisted = isAssisted,
+            assistOffsetKg = assistOffsetKg,
         )
 
     /**
-     * The weighting approach a session used for this exercise+context: `true` if any of its
-     * real sets was bodyweight. A session that mixes both (rare) counts as bodyweight — the
-     * active-routine badge only reads this to pick a like-with-like previous, and a mixed
-     * session is closer to the bodyweight case than the manual-load one.
+     * The weighting approach a session used for this exercise+context, one of MANUAL /
+     * BODYWEIGHT / ASSISTED (schema v5). A session mixing more than one (rare) is classified by
+     * priority bodyweight > assisted > manual — the active-routine badge only reads this to pick
+     * a like-with-like previous, and either non-manual case is closer to the other than to plain
+     * manual load.
      */
-    private fun List<ExerciseSet.Strength>.isBodyweightSession(): Boolean =
-        any { it.isBodyweight }
+    private fun List<ExerciseSet.Strength>.sessionLoadMode(): LoadMode = when {
+        any { it.isBodyweight } -> LoadMode.BODYWEIGHT
+        any { it.isAssisted } -> LoadMode.ASSISTED
+        else -> LoadMode.MANUAL
+    }
 
     private fun ExerciseSet.Strength.tonnage(): Double = reps * weight
     private fun PreviousSet.tonnage(): Double = reps * weight
@@ -121,33 +128,44 @@ object ExerciseStatsCalculator {
             ).maxByOrNull { it.e1rm() }
 
             val hasReal = realSets.isNotEmpty()
-            // This session's sets go into exactly one of the two previous slots (bodyweight or
-            // manual load) — see ExerciseStats.SCHEMA_VERSION v4. `>=` (not `>`): a session
-            // re-saved on the same day it was first saved must still replace its slot's
+            // This session's sets go into exactly one of the three previous slots (bodyweight /
+            // assisted / manual load) — see ExerciseStats.SCHEMA_VERSION v5. `>=` (not `>`): a
+            // session re-saved on the same day it was first saved must still replace its slot's
             // "previous". Compared day-vs-day via dayKey().
-            val isBwSession = realSets.isBodyweightSession()
-            val relevantOldDate =
-                if (isBwSession) old?.previousSessionDateBodyweight else old?.previousSessionDate
+            val sessionMode = realSets.sessionLoadMode()
+            val relevantOldDate = when (sessionMode) {
+                LoadMode.BODYWEIGHT -> old?.previousSessionDateBodyweight
+                LoadMode.ASSISTED -> old?.previousSessionDateAssisted
+                LoadMode.MANUAL -> old?.previousSessionDate
+            }
             val takeThisAsPrevious = hasReal &&
                 (old == null || relevantOldDate.isNullOrBlank() ||
                     sessionDate.take(10) >= relevantOldDate.take(10))
 
             updated[ctx] = ContextStats(
                 previousSets = when {
-                    takeThisAsPrevious && !isBwSession -> realSets.map { it.toPreviousSet() }
+                    takeThisAsPrevious && sessionMode == LoadMode.MANUAL -> realSets.map { it.toPreviousSet() }
                     else -> old?.previousSets ?: emptyList()
                 },
                 previousSessionDate = when {
-                    takeThisAsPrevious && !isBwSession -> sessionDate
+                    takeThisAsPrevious && sessionMode == LoadMode.MANUAL -> sessionDate
                     else -> old?.previousSessionDate ?: ""
                 },
                 previousSetsBodyweight = when {
-                    takeThisAsPrevious && isBwSession -> realSets.map { it.toPreviousSet() }
+                    takeThisAsPrevious && sessionMode == LoadMode.BODYWEIGHT -> realSets.map { it.toPreviousSet() }
                     else -> old?.previousSetsBodyweight ?: emptyList()
                 },
                 previousSessionDateBodyweight = when {
-                    takeThisAsPrevious && isBwSession -> sessionDate
+                    takeThisAsPrevious && sessionMode == LoadMode.BODYWEIGHT -> sessionDate
                     else -> old?.previousSessionDateBodyweight ?: ""
+                },
+                previousSetsAssisted = when {
+                    takeThisAsPrevious && sessionMode == LoadMode.ASSISTED -> realSets.map { it.toPreviousSet() }
+                    else -> old?.previousSetsAssisted ?: emptyList()
+                },
+                previousSessionDateAssisted = when {
+                    takeThisAsPrevious && sessionMode == LoadMode.ASSISTED -> sessionDate
+                    else -> old?.previousSessionDateAssisted ?: ""
                 },
                 pr = mergedPr,
                 rmPr = mergedRmPr,
@@ -171,15 +189,18 @@ object ExerciseStatsCalculator {
         var rmPrE1rm = 0.0
         var hasReal = false
         // "previous" = first session in newest-first order that has real data, tracked
-        // separately per weighting approach (bodyweight vs manual load) so a manual↔bodyweight
-        // switch never compares across approaches — see ExerciseStats.SCHEMA_VERSION v4. Once a
-        // slot is set, the rest of the loop only updates the PR.
+        // separately per weighting approach (bodyweight / assisted / manual load) so a switch
+        // between approaches never compares across them — see ExerciseStats.SCHEMA_VERSION v5.
+        // Once a slot is set, the rest of the loop only updates the PR.
         var prevDate = ""
         var prevSets: List<PreviousSet> = emptyList()
         var prevFound = false
         var prevDateBw = ""
         var prevSetsBw: List<PreviousSet> = emptyList()
         var prevFoundBw = false
+        var prevDateAssisted = ""
+        var prevSetsAssisted: List<PreviousSet> = emptyList()
+        var prevFoundAssisted = false
 
         for (session in completedSessions) {
             val realSets = strengthSetsFor(exerciseId, ctx, session).filter { it.isReal() }
@@ -198,14 +219,18 @@ object ExerciseStatsCalculator {
                 rmPrE1rm = bestE1rmThisSession.e1rm()
             }
 
-            if (realSets.isBodyweightSession()) {
-                if (!prevFoundBw) {
+            when (realSets.sessionLoadMode()) {
+                LoadMode.BODYWEIGHT -> if (!prevFoundBw) {
                     prevFoundBw = true
                     prevDateBw = session.dayKey()
                     prevSetsBw = realSets.map { it.toPreviousSet() }
                 }
-            } else {
-                if (!prevFound) {
+                LoadMode.ASSISTED -> if (!prevFoundAssisted) {
+                    prevFoundAssisted = true
+                    prevDateAssisted = session.dayKey()
+                    prevSetsAssisted = realSets.map { it.toPreviousSet() }
+                }
+                LoadMode.MANUAL -> if (!prevFound) {
                     prevFound = true
                     prevDate = session.dayKey()
                     prevSets = realSets.map { it.toPreviousSet() }
@@ -219,6 +244,8 @@ object ExerciseStatsCalculator {
             previousSessionDate = prevDate,
             previousSetsBodyweight = prevSetsBw,
             previousSessionDateBodyweight = prevDateBw,
+            previousSetsAssisted = prevSetsAssisted,
+            previousSessionDateAssisted = prevDateAssisted,
             pr = pr?.toPreviousSet(),
             rmPr = rmPr?.toPreviousSet(),
             hasPriorRealTonnage = hasReal,

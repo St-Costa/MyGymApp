@@ -1537,3 +1537,39 @@ migration code. Calculator tests updated + added: the exact ❤️-day repro, a 
 day yielding no figure, and cardio-beats-a-real-stretch-block. This is the fifth pass at this
 display rule.
 
+## Phase 101 — Assisted-machine exercises (e.g. assisted pull-up/dip)
+
+Added a third weight-loading mode alongside manual load and bodyweight: `Exercise.LoadMode.ASSISTED`.
+On an assisted machine the number set on it is *subtracted* from body weight rather than
+added — more assistance selected means less real load, so progress looks like the number
+going **down**, not up. `ExerciseEditScreen` gained a second switch, "Assistito", mutually
+exclusive with "Corpo libero" (`ExerciseEditViewModel.onAssistedChange`/`onBodyweightChange`
+now clear each other). Unlike bodyweight's `bwLoadPercent`, there is no per-exercise default —
+the assist offset is entered set-by-set in the workout, like a normal weight, because it
+changes as the lifter progresses.
+
+The strength/superset weight picker stays visible for an assisted exercise (relabelled
+"Assist." instead of "Kg") and always shows the raw machine number, never the net load. On
+exercise completion, `StrengthExerciseViewModel.buildStrengthSets` / `SupersetViewModel`
+materialize `weight = materializeAssistedWeight(bodyWeightKg, assistOffsetKg)` —
+`bodyWeightKg - assistOffsetKg`, clamped to 0, rounded to 0.5 kg, same
+`ScaleHistoryRepository` weigh-in lookup as bodyweight — so `reps * weight` tonnage/PR/e1RM
+keeps working with no special-casing anywhere downstream (net weight going up is progress,
+same direction as any other exercise). The raw offset and base body weight are kept on
+`ExerciseSet.Strength` (`assistOffsetKg` + reused `bwBaseWeightKg`) for audit, same pattern as
+bodyweight.
+
+The one place that *does* need special handling is the "previous" pre-fill, which must show
+the raw assist number back to the lifter, not the net weight — so the exercise-stats sidecar
+(`history/_stats/{id}.yaml`) schema walked v4 → **v5**, adding a third `previousSetsAssisted`
+/ `previousSessionDateAssisted` slot alongside the existing manual/bodyweight split, same
+reasoning as the v4 split (comparing across weighting approaches after a mode switch produced
+nonsense change-badge percentages). `pr`/`rmPr`/`hasPriorRealTonnage` stay all-time across all
+three approaches, since materialized net weight is directly comparable. `ContextStats.previousSetsFor`
+and `.previousSessionDateFor` now take `LoadMode` instead of a bodyweight `Boolean`.
+
+New pure `materializeAssistedWeight()` in `TonnageMath.kt`, unit-tested in `TonnageMathTest`.
+`ExerciseStatsCalculatorTest` and `ExerciseParserRoundTripTest` extended for the new mode and
+schema. See [CONVENTIONS.md](CONVENTIONS.md#assisted-machine-load-subtract-from-body-weight-materialize-the-same-way)
+and [STORAGE.md](STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml).
+

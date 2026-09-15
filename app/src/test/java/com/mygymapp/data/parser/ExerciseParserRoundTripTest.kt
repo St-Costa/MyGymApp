@@ -2,6 +2,7 @@ package com.mygymapp.data.parser
 
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.LoadMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -64,6 +65,48 @@ class ExerciseParserRoundTripTest {
         val plain = Exercise(id = "ex-x", name = "Squat", type = ExerciseType.FORZA, bodypart = "legs")
         assertEquals(0, roundTrip(plain).bwLoadPercent)
         assertFalse(ExerciseParser.toMarkdown(plain).contains("bwLoadPercent"))
+    }
+
+    @Test
+    fun `loadMode ASSISTED round-trips and defaults to MANUAL when absent`() {
+        val assisted = Exercise(
+            id = "ex-lat", name = "Assisted pull-up", type = ExerciseType.FORZA,
+            bodypart = "back", loadMode = LoadMode.ASSISTED,
+        )
+        val result = roundTrip(assisted)
+        assertEquals(LoadMode.ASSISTED, result.loadMode)
+        assertFalse("assisted is not bodyweight", result.isBodyweight)
+
+        val plain = Exercise(id = "ex-x", name = "Squat", type = ExerciseType.FORZA, bodypart = "legs")
+        assertEquals(LoadMode.MANUAL, roundTrip(plain).loadMode)
+        assertFalse(ExerciseParser.toMarkdown(plain).contains("loadMode"))
+    }
+
+    @Test
+    fun `loadMode BODYWEIGHT round-trips consistently with isBodyweight`() {
+        val bw = Exercise(
+            id = "ex-bw", name = "Push-up", type = ExerciseType.FORZA, bodypart = "chest",
+            isBodyweight = true, bwLoadPercent = 75, loadMode = LoadMode.BODYWEIGHT,
+        )
+        val result = roundTrip(bw)
+        assertEquals(LoadMode.BODYWEIGHT, result.loadMode)
+        assertTrue(result.isBodyweight)
+    }
+
+    @Test
+    fun `a legacy isBodyweight file with no loadMode key still resolves loadMode to BODYWEIGHT`() {
+        val legacy = """
+            ---
+            id: "ex-legacy"
+            name: "Plank"
+            type: "forza"
+            bodypart: "core"
+            isBodyweight: true
+            bwLoadPercent: 75
+            ---
+        """.trimIndent()
+
+        assertEquals(LoadMode.BODYWEIGHT, ExerciseParser.fromMarkdown(legacy).loadMode)
     }
 
     @Test
