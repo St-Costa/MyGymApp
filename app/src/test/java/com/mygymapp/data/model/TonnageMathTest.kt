@@ -81,4 +81,37 @@ class TonnageMathTest {
         assertEquals(12 * 55.0, set.reps * set.weight, 0.0001)
         assertEquals(estimate1RM(55.0, 12), listOf(set).bestEstimated1RM()!!, 0.0001)
     }
+
+    @Test
+    fun `materializeAssistedWeight subtracts the assist offset from body weight`() {
+        // 80kg body weight, 20kg assistance -> 60kg net load
+        assertEquals(60.0, materializeAssistedWeight(80.0, 20.0), 0.0001)
+        // Rounds to the nearest 0.5 kg: 73.3 - 10 = 63.3 -> 63.5
+        assertEquals(63.5, materializeAssistedWeight(73.3, 10.0), 0.0001)
+        // Zero assistance means full body weight is lifted
+        assertEquals(80.0, materializeAssistedWeight(80.0, 0.0), 0.0001)
+    }
+
+    @Test
+    fun `materializeAssistedWeight clamps to zero when assistance meets or exceeds body weight`() {
+        assertEquals(0.0, materializeAssistedWeight(80.0, 80.0), 0.0)
+        assertEquals(0.0, materializeAssistedWeight(80.0, 95.0), 0.0)
+    }
+
+    @Test
+    fun `materializeAssistedWeight returns zero when there is no usable body weight`() {
+        assertEquals(0.0, materializeAssistedWeight(null, 20.0), 0.0)
+        assertEquals(0.0, materializeAssistedWeight(0.0, 20.0), 0.0)
+        assertEquals(0.0, materializeAssistedWeight(-1.0, 20.0), 0.0)
+    }
+
+    @Test
+    fun `a materialized assisted set now contributes to tonnage and e1RM as its net weight`() {
+        val net = materializeAssistedWeight(80.0, 20.0) // 60.0
+        val set = ExerciseSet.Strength(
+            reps = 8, weight = net, isAssisted = true, assistOffsetKg = 20.0, bwBaseWeightKg = 80.0,
+        )
+        assertEquals(8 * 60.0, set.reps * set.weight, 0.0001)
+        assertEquals(estimate1RM(60.0, 8), listOf(set).bestEstimated1RM()!!, 0.0001)
+    }
 }

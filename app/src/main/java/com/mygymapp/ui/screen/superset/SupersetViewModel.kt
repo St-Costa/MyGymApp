@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.LoadMode
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
@@ -148,8 +150,18 @@ class SupersetViewModel @Inject constructor(
                 val ctxStats = workoutRepository.getExerciseStats(exId).forContext(slotContext)
                 val prevStrengthSets: List<ExerciseSet.Strength> =
                     if (ex.type == ExerciseType.FORZA)
-                        ctxStats?.previousSetsFor(ex.isBodyweight).orEmpty()
-                            .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                        ctxStats?.previousSetsFor(ex.loadMode).orEmpty()
+                            .map {
+                                // The picker's "weight" always mirrors what the lifter dials
+                                // in: manual load, or the assist-machine number for an assisted
+                                // exercise (never the materialized net weight) — see
+                                // StrengthExerciseViewModel / PreviousSet.assistOffsetKg.
+                                ExerciseSet.Strength(
+                                    reps = it.reps,
+                                    weight = if (ex.loadMode == com.mygymapp.data.model.LoadMode.ASSISTED)
+                                        it.assistOffsetKg else it.weight,
+                                )
+                            }
                     else emptyList()
                 val prSet: ExerciseSet.Strength? =
                     if (ex.type == ExerciseType.FORZA)
@@ -414,24 +426,45 @@ class SupersetViewModel @Inject constructor(
         completed: Boolean,
     ): WorkoutSession {
         val members = _uiState.value.members
-        // One weigh-in lookup for the whole chain; per-member differences are only the percent.
-        val base = if (members.any { it.exercise.isBodyweight }) sessionBaseWeight(date) else null
-        data class Bw(val percent: Int, val weight: Double, val base: Double)
+        // One weigh-in lookup for the whole chain; per-member differences are only the percent
+        // (bodyweight) or the per-set offset (assisted).
+        val base = if (members.any { it.exercise.isBodyweight || it.exercise.loadMode == LoadMode.ASSISTED })
+            sessionBaseWeight(date) else null
+        data class Bw(val percent: Int, val weight: Double, val base: Double, val assisted: Boolean)
         val bwByIndex = members.map { m ->
-            if (m.exercise.isBodyweight) Bw(
-                percent = m.exercise.bwLoadPercent,
-                weight = materializeBodyweightWeight(m.exercise.bwLoadPercent, base),
-                base = base ?: 0.0,
-            ) else Bw(0, 0.0, 0.0)
+            when {
+                m.exercise.isBodyweight -> Bw(
+                    percent = m.exercise.bwLoadPercent,
+                    weight = materializeBodyweightWeight(m.exercise.bwLoadPercent, base),
+                    base = base ?: 0.0,
+                    assisted = false,
+                )
+                m.exercise.loadMode == LoadMode.ASSISTED -> Bw(
+                    percent = 0,
+                    weight = 0.0, // computed per-set below (assist offset varies per set)
+                    base = base ?: 0.0,
+                    assisted = true,
+                )
+                else -> Bw(0, 0.0, 0.0, false)
+            }
         }
-        fun strengthSet(setUi: SupersetSetUi, bw: Bw) =
-            if (bw.percent > 0) ExerciseSet.Strength(
+        fun strengthSet(setUi: SupersetSetUi, bw: Bw) = when {
+            bw.percent > 0 -> ExerciseSet.Strength(
                 reps = setUi.reps,
                 weight = bw.weight,
                 isBodyweight = true,
                 bwLoadPercent = bw.percent,
                 bwBaseWeightKg = bw.base,
-            ) else ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+            )
+            bw.assisted -> ExerciseSet.Strength(
+                reps = setUi.reps,
+                weight = materializeAssistedWeight(base, setUi.weight),
+                isAssisted = true,
+                assistOffsetKg = setUi.weight,
+                bwBaseWeightKg = bw.base,
+            )
+            else -> ExerciseSet.Strength(reps = setUi.reps, weight = setUi.weight)
+        }
         fun anyTouched(memberSets: List<SupersetSetUi>) = memberSets.any {
             it.repsTouched || it.weightTouched || (it.exerciseType == ExerciseType.STRETCH && it.done)
         }
@@ -445,7 +478,7 @@ class SupersetViewModel @Inject constructor(
             if (mi < 0) return@map ex
             val memberSets = sets.filter { it.exerciseIndex == mi }.sortedBy { it.setIndex }
             val performed = anyTouched(memberSets)
-            val bw = bwByIndex.getOrElse(mi) { Bw(0, 0.0, 0.0) }
+            val bw = bwByIndex.getOrElse(mi) { Bw(0, 0.0, 0.0, false) }
             ex.copy(
                 completed = completed,
                 completedEmpty = completed && !performed,
