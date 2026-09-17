@@ -2,10 +2,6 @@
 ## Nome routine
 In fase di creazione della routine, l'utente può definire il nome della routine
 Viene mostrato sopra
-## note
-In fase di creazione della routine l'utente può definire delle note per la routine.
-Anche se in fase di creazione non viene inserito nulla, nella schermata_routine viene mostrato un box testuale vuoto.
-Nella schermata_routine il box è sempre modificabile: cliccandoci sopra l'utente può modificare il testo, che viene salvato automaticamente.
 ## Lista esercizi
 In afse di creazione della routine, l'utente definisce quali esercizi includere a partire da una lista.
 (Nella schermata della lista di esercizi può creare nuovi esercizi)

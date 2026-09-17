@@ -1573,3 +1573,13 @@ New pure `materializeAssistedWeight()` in `TonnageMath.kt`, unit-tested in `Tonn
 schema. See [CONVENTIONS.md](CONVENTIONS.md#assisted-machine-load-subtract-from-body-weight-materialize-the-same-way)
 and [STORAGE.md](STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml).
 
+## Phase 102 — Remove routine free-text notes
+
+Dropped the unused per-routine free-text notes field: `Routine.notes` (model), the markdown
+body round-trip in `RoutineParser` (routine `.md` files no longer have a body section after
+the frontmatter), the "Notes" text field in `RoutineEditScreen`/`RoutineEditViewModel`, and
+the routine-side write in `ActiveRoutineViewModel.updateNotes()` (it used to fan out to both
+the session and the routine — now it only updates the session's own notes, which is a
+separate, still-used feature). `RoutineParserRoundTripTest`'s notes round-trip test removed;
+`STORAGE.md` and `FUNCTIONAL_SPEC.md` updated to match.
+
