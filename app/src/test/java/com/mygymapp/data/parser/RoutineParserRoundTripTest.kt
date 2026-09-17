@@ -103,15 +103,6 @@ class RoutineParserRoundTripTest {
     }
 
     @Test
-    fun `notes body round-trips`() {
-        val routine = Routine(id = "rt-abcd1234", name = "Push day", notes = "Focus on tempo.")
-
-        val result = roundTrip(routine)
-
-        assertEquals(routine.notes, result.notes)
-    }
-
-    @Test
     fun `fromMarkdown on empty content returns empty defaults without throwing`() {
         val result = RoutineParser.fromMarkdown("")
 

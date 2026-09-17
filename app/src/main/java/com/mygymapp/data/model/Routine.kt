@@ -10,7 +10,6 @@ data class Routine(
     val day: String = "",
     val enabled: Boolean = true,
     val exercises: List<RoutineExercise> = emptyList(),
-    val notes: String = "",
     val created: String = "",
     val updated: String = "",
 )

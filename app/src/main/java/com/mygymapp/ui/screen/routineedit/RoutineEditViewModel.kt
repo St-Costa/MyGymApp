@@ -38,7 +38,6 @@ data class RoutineEditUiState(
     val id: String = "",
     val name: String = "",
     val day: String = "",
-    val notes: String = "",
     val exercises: List<RoutineExerciseUi> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
@@ -122,7 +121,6 @@ class RoutineEditViewModel @Inject constructor(
                         id = routine.id,
                         name = routine.name,
                         day = routine.day,
-                        notes = routine.notes,
                         exercises = exerciseUis,
                         isNew = false,
                         isFixedDaily = routine.id == FIXED_DAILY_ROUTINE_ID,
@@ -140,10 +138,6 @@ class RoutineEditViewModel @Inject constructor(
 
     fun onDayChange(day: String) {
         _uiState.value = _uiState.value.copy(day = day)
-    }
-
-    fun onNotesChange(value: String) {
-        _uiState.value = _uiState.value.copy(notes = value)
     }
 
     fun addExercise(exerciseId: String) {
@@ -352,7 +346,6 @@ class RoutineEditViewModel @Inject constructor(
         id = state.id,
         name = state.name.trim(),
         day = state.day,
-        notes = state.notes.trim(),
         exercises = state.exercises.mapIndexed { index, ex ->
             RoutineExercise(
                 exerciseId = ex.exerciseId,

@@ -117,8 +117,6 @@ exercises:
 created: ...
 updated: ...
 ---
-
-Free-text routine notes
 ```
 
 `supersetWithNext: true` pairs an exercise with the following one — see [ARCHITECTURE.md](ARCHITECTURE.md) screen list for the superset UI.

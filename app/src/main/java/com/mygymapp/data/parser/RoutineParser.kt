@@ -15,7 +15,6 @@ object RoutineParser {
             day = fm["day"]?.toString() ?: "",
             enabled = fm["enabled"] as? Boolean ?: true,
             exercises = exercises,
-            notes = doc.body,
             created = fm["created"]?.toString() ?: "",
             updated = fm["updated"]?.toString() ?: "",
         )
@@ -52,7 +51,7 @@ object RoutineParser {
             "updated" to routine.updated,
             "exercises" to exerciseList,
         )
-        return MarkdownParser.serialize(frontmatter, routine.notes)
+        return MarkdownParser.serialize(frontmatter, "")
     }
 
     @Suppress("UNCHECKED_CAST")
