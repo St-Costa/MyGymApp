@@ -32,6 +32,7 @@ import kotlin.math.sqrt
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -186,6 +187,13 @@ class PolarManager @Inject constructor(
         // attempts to a strap that's briefly off / just came back on.
         private const val NO_SIGNAL_GRACE_MS = 15_000L
     }
+
+    /**
+     * BLE device ids are stable hardware identifiers: never write them whole to the
+     * persistent app log (which ships in debug tars) or logcat — last-4 is enough
+     * to correlate disconnects while debugging.
+     */
+    private fun redactId(id: String?): String = id?.takeLast(4)?.let { "…$it" } ?: "?"
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -476,8 +484,8 @@ class PolarManager @Inject constructor(
             }
 
             override fun deviceConnected(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "Connected: ${polarDeviceInfo.deviceId}")
-                appLogger.i(TAG, "Connected: ${polarDeviceInfo.deviceId} (${polarDeviceInfo.name}) midSession=$hrSeriesActive")
+                Log.d(TAG, "Connected: ${redactId(polarDeviceInfo.deviceId)}")
+                appLogger.i(TAG, "Connected: ${redactId(polarDeviceInfo.deviceId)} (${polarDeviceInfo.name}) midSession=$hrSeriesActive")
                 connectedDeviceId = polarDeviceInfo.deviceId
                 connectedDeviceName = polarDeviceInfo.name
                 lastConnectedDeviceId = polarDeviceInfo.deviceId
@@ -512,7 +520,7 @@ class PolarManager @Inject constructor(
             }
 
             override fun deviceConnecting(polarDeviceInfo: PolarDeviceInfo) {
-                Log.d(TAG, "Connecting: ${polarDeviceInfo.deviceId}")
+                Log.d(TAG, "Connecting: ${redactId(polarDeviceInfo.deviceId)}")
                 _connectionState.value = ConnectionState.CONNECTING
                 _receivingData.value = false
             }
@@ -525,10 +533,10 @@ class PolarManager @Inject constructor(
                 // points at interference or a lost electrode contact. rssi is the strap's
                 // last-known value (frequently 0/stale on Android, logged anyway).
                 val hrGapMs = if (lastHrSampleAtMs > 0L) System.currentTimeMillis() - lastHrSampleAtMs else -1L
-                Log.d(TAG, "Disconnected: ${polarDeviceInfo.deviceId} (involuntary=$involuntary)")
+                Log.d(TAG, "Disconnected: ${redactId(polarDeviceInfo.deviceId)} (involuntary=$involuntary)")
                 appLogger.w(
                     TAG,
-                    "Disconnected: ${polarDeviceInfo.deviceId} involuntary=$involuntary midSession=$hrSeriesActive " +
+                    "Disconnected: ${redactId(polarDeviceInfo.deviceId)} involuntary=$involuntary midSession=$hrSeriesActive " +
                         "rssi=${polarDeviceInfo.rssi} hrGap=${if (hrGapMs < 0) "n/a" else "${hrGapMs}ms"}",
                 )
                 if (involuntary && hrSeriesActive) {
@@ -745,7 +753,7 @@ class PolarManager @Inject constructor(
                 // Give up after 5 minutes — the device is likely off or too far away.
                 if (System.currentTimeMillis() - reconnectStartAtMs > 5 * 60_000L) {
                     Log.w(TAG, "Reconnect timed out after 5 min — stopping service")
-                    appLogger.w(TAG, "Reconnect timed out after 5 min for $id — stopping service")
+                    appLogger.w(TAG, "Reconnect timed out after 5 min for ${redactId(id)} — stopping service")
                     reconnectStartAtMs = 0L
                     _connectionState.value = ConnectionState.DISCONNECTED
                     hrSeriesActive = false
@@ -753,8 +761,8 @@ class PolarManager @Inject constructor(
                     PolarStreamingService.clearDisconnectAlert(context)
                     return
                 }
-                Log.d(TAG, "Auto-reconnect attempt to $id")
-                appLogger.i(TAG, "Auto-reconnect attempt to $id (elapsed ${(System.currentTimeMillis() - reconnectStartAtMs) / 1000}s)")
+                Log.d(TAG, "Auto-reconnect attempt to ${redactId(id)}")
+                appLogger.i(TAG, "Auto-reconnect attempt to ${redactId(id)} (elapsed ${(System.currentTimeMillis() - reconnectStartAtMs) / 1000}s)")
                 try {
                     api.connectToDevice(id)
                 } catch (t: Throwable) {
@@ -770,8 +778,11 @@ class PolarManager @Inject constructor(
         reconnectHandler.removeCallbacksAndMessages(null)
         clearNoSignalGrace()
         scanDisposable?.dispose()
+        scanDisposable = null
         hrDisposable?.dispose()
+        hrDisposable = null
         ecgDisposable?.dispose()
+        ecgDisposable = null
         ecgRestartHandler.removeCallbacksAndMessages(null)
         hrRestartHandler.removeCallbacksAndMessages(null)
         stopDataWatchdog()
@@ -1205,9 +1216,15 @@ class PolarManager @Inject constructor(
     /**
      * Run post-session ECG analysis on the recorded file.
      * Returns null if no file or file too short.
+     *
+     * Dead code, kept for reference: waveform analysis moved server-side
+     * (docs/SYNC.md "Fourth record type: raw ECG") and nothing calls this.
+     * Use the server pipeline, not [EcgAnalyzer], for any new analysis.
      */
+    @Deprecated("ECG analysis moved server-side; nothing calls this. See docs/SYNC.md.")
     fun analyzeSessionEcg(sessionId: String): EcgAnalysisResult? {
         val file = ecgRecorder.fileFor(sessionId)
+        @Suppress("DEPRECATION")
         return ecgAnalyzer.analyze(file)
     }
 
@@ -1535,8 +1552,10 @@ class PolarManager @Inject constructor(
                     bpmTrace = bpmTrace,
                 )
 
-                Log.d(TAG, "Readiness: $readiness, LnRMSSD=%.2f, restingHR=$measuredRestingHr (7d-min=$hrRestForVo2, n=${hrRestBaseline.size}), VO2max=${vo2?.let { "%.1f".format(it) }}".format(lnRmssd))
-                appLogger.i(TAG, "Readiness: $readiness lnRMSSD=${"%.2f".format(lnRmssd)} restingHr=$measuredRestingHr vo2max=${vo2?.let { "%.1f".format(it) } ?: "n/a"} rrSamples=${cleanRR.size} baselineN=${baseline.size}")
+                // Health values stay out of both logcat and the persistent app log:
+                // the outcome label + sample counts are enough to debug the pipeline.
+                Log.d(TAG, "Readiness: $readiness rrSamples=${cleanRR.size} baselineN=${baseline.size}")
+                appLogger.i(TAG, "Readiness: $readiness rrSamples=${cleanRR.size} baselineN=${baseline.size}")
                 // Best-effort: Health Connect unavailable/not permitted, or no previous
                 // checkpoint to diff against, all surface as null, never as a thrown
                 // exception or a bogus 0 — steps are a bonus riding along on the readiness
@@ -1589,6 +1608,7 @@ class PolarManager @Inject constructor(
                     }
                 }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 appLogger.e(TAG, "Failed to persist/queue readiness event", e)
             }
         }
@@ -1626,6 +1646,7 @@ class PolarManager @Inject constructor(
                     }
                 }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 appLogger.e(TAG, "Failed to record sleep quality", e)
             }
         }

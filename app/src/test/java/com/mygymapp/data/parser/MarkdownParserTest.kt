@@ -65,6 +65,25 @@ class MarkdownParserTest {
     }
 
     @Test
+    fun `triple dashes inside a quoted value do not split the frontmatter`() {
+        // Regression: the old `indexOf("---", 3)` treated the `---` inside the
+        // value as the closing delimiter and silently discarded the frontmatter.
+        // Only a `---` line of its own closes the block now.
+        val serialized = MarkdownParser.serialize(mapOf("name" to "a --- b", "id" to "ex-1"), body = "")
+        val parsed = MarkdownParser.parse(serialized)
+        assertEquals("a --- b", parsed.frontmatter["name"])
+        assertEquals("ex-1", parsed.frontmatter["id"])
+    }
+
+    @Test
+    fun `triple-dash line in the body is preserved, closing delimiter still found`() {
+        val content = "---\nid: \"ex-1\"\n---\nnotes\n---\nmore notes"
+        val parsed = MarkdownParser.parse(content)
+        assertEquals("ex-1", parsed.frontmatter["id"])
+        assertEquals("notes\n---\nmore notes", parsed.body)
+    }
+
+    @Test
     fun `nested list of maps with an inner list round-trips (exercise-stats sidecar shape)`() {
         // Mirrors ExerciseStatsParser's `contexts: [ { context, pr: [..], previousSets: [..] } ]`
         // — the deepest path through the serializer, and the one the sidecar refactor touched.

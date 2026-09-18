@@ -9,6 +9,7 @@ import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.mygymapp.data.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -61,6 +62,7 @@ class HealthConnectStepsReader @Inject constructor(
         return try {
             READ_STEPS_PERMISSION in c.permissionController.getGrantedPermissions()
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             appLogger.i(TAG, "getGrantedPermissions failed: ${e.message}")
             false
         }
@@ -98,6 +100,7 @@ class HealthConnectStepsReader @Inject constructor(
             )
             response[StepsRecord.COUNT_TOTAL] ?: 0L
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             appLogger.i(TAG, "Steps aggregate query failed: ${e.message}")
             null
         }

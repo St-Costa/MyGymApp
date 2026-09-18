@@ -8,6 +8,10 @@ import java.io.File
 import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Writes raw ECG samples to disk during an active session.
@@ -39,6 +43,11 @@ class EcgRecorder @Inject constructor(
     private var currentSessionId: String? = null
     private var sampleCount = 0
     private var samplesSinceFlush = 0
+
+    // Flush/close run here, never on the caller's thread: writeSample/stop are
+    // invoked on the Polar SDK's BLE callback thread, and blocking it stalls HR.
+    // App-lifetime singleton, so this scope is intentionally never cancelled.
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Synchronized
     fun start(sessionId: String, sampleRate: Int, startTimestampNs: Long) {
@@ -82,21 +91,27 @@ class EcgRecorder @Inject constructor(
 
     @Synchronized
     fun stop() {
-        output?.let {
-            try {
-                it.flush()
-                it.close()
-                Log.d(TAG, "ECG recording stopped: $sampleCount samples for session $currentSessionId")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to close ECG file", e)
-            }
-        }
+        val stream = output
+        val count = sampleCount
+        val session = currentSessionId
         output = null
         currentSessionId = null
         sampleCount = 0
         samplesSinceFlush = 0
+        if (stream != null) {
+            ioScope.launch {
+                try {
+                    stream.flush()
+                    stream.close()
+                    Log.d(TAG, "ECG recording stopped: $count samples for session $session")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to close ECG file", e)
+                }
+            }
+        }
     }
 
+    @Synchronized
     fun isRecording(): Boolean = output != null
 
     fun fileFor(sessionId: String): File {

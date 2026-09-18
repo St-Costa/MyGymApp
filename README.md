@@ -51,10 +51,11 @@ A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspi
 ```bash
 # Debug APK
 ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
-
-# Install on connected device / emulator
-ANDROID_HOME=~/Android/Sdk ./gradlew installDebug
 ```
+
+> Installing on a real device with data on it? Don't `installDebug` by hand —
+> run `scripts/install-debug.sh` instead: it backs up `gymdata/` off the phone and
+> verifies the tar before installing (see `CLAUDE.md`'s backup banner).
 
 From Android Studio the `sdk.dir` in `local.properties` is picked up automatically.
 
@@ -69,6 +70,9 @@ Developer documentation lives in [`docs/`](docs/):
 | [POLAR.md](docs/POLAR.md) | Heart rate / ECG / HRV subsystem |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Patterns and gotchas (DataChangedSignal, completionSaved, AutoSave flush, …) |
 | [SYNC.md](docs/SYNC.md) | Self-hosted server sync design (sessions, readiness, scale, raw ECG) |
+| [BACKUP.md](docs/BACKUP.md) | Git-style full-store backup (exercises + routines too), phone + server |
+| [backup-server-brief.md](docs/backup-server-brief.md) | The brief the `MyGymApp_server` repo was built from |
+| [backup-speed-plan.md](docs/backup-speed-plan.md) | Backup throughput plan/notes |
 | [vitafit-cloud-api.md](docs/vitafit-cloud-api.md) | VitaFit scale history import / cloud API notes |
 | [CHANGELOG.md](docs/CHANGELOG.md) | Phase history |
 | [FUNCTIONAL_SPEC.md](docs/FUNCTIONAL_SPEC.md) | Original Italian functional spec |

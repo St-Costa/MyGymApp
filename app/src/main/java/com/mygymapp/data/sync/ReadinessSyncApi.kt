@@ -9,6 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -94,6 +95,7 @@ class ReadinessSyncApi @Inject constructor() {
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             SyncResult.Failure("${e.javaClass.simpleName}: ${e.message}")
         }
     }

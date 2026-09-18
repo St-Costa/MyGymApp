@@ -427,7 +427,8 @@ No file rename is ever needed — filenames embed IDs, not names.
 
 ## SharedPreferences
 
-Two keys, both `MODE_PRIVATE`:
+All `MODE_PRIVATE`. None of these leave the device via Android Auto Backup
+(`android:allowBackup="false"` — see [§Backup / export](#backup--export)):
 
 | Prefs file | Key | Type | Owner | Purpose |
 |---|---|---|---|---|
@@ -435,10 +436,16 @@ Two keys, both `MODE_PRIVATE`:
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
 | `user_profile` | `heightCm` | Int | " | Used by BIA body-fat % (scale integration) |
-| `hrv_baseline` | `lnrmssd_values` | String (CSV, ≤14 doubles) | [PolarManager](../app/src/main/java/com/mygymapp/data/polar/PolarManager.kt) | Rolling 14-day LnRMSSD baseline for HRV readiness z-score |
 | `sync_config` | `serverUrl` | String | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net` |
 | `sync_config` | `bearerToken` | String | " | Shared secret sent as `Authorization: Bearer` on every sync POST |
 | `sync_config` | `enabled` | Boolean | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |
+| `sync_config` | `tarballManifestSha` | String | " | Last `X-Manifest-SHA256` seen from `GET /v1/repo/tarball`, for `?since=` incremental restore |
+| `powerlifting_schedule` | schedule state | String/Int | [PowerliftingScheduleRepository](../app/src/main/java/com/mygymapp/data/PowerliftingScheduleRepository.kt) | Powerlifting program position |
+| `known_polar_device` | known device id | String | [KnownPolarDeviceRepository](../app/src/main/java/com/mygymapp/data/polar/KnownPolarDeviceRepository.kt) | Last-connected Polar H10 for auto-reconnect |
+| `known_scale` | known address | String | [KnownScaleRepository](../app/src/main/java/com/mygymapp/data/scale/KnownScaleRepository.kt) | Last-connected BLE scale for auto-connect |
+
+The HRV baseline no longer lives in prefs (the old `hrv_baseline/lnrmssd_values` CSV is
+gone) — it is recomputed from readiness history the way `HrvBaselineCalculator` does.
 
 Nothing else is persisted outside `gymdata/`.
 

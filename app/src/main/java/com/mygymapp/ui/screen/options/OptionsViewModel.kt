@@ -472,17 +472,21 @@ class OptionsViewModel @Inject constructor(
         for ((relPath, bytes) in files) {
             if (relPath.contains("..") || relPath.startsWith("/")) { failed++; continue }
             val target = java.io.File(fileManager.root, relPath)
-            val hash = "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
-                .digest(bytes).joinToString("") { "%02x".format(it) }
-            val localHash = if (target.exists()) {
-                "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
-            } else null
+            // Hash + file I/O off the Main thread — restore batches can be hundreds of files.
+            val (hash, localHash, wrote) = withContext(Dispatchers.IO) {
+                val h = "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(bytes).joinToString("") { "%02x".format(it) }
+                val lh = if (target.exists()) {
+                    "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+                } else null
+                val w = if (lh == h) true else runCatching {
+                    target.parentFile?.mkdirs()
+                    target.writeBytes(bytes)
+                }.isSuccess
+                Triple(h, lh, w)
+            }
             if (localHash == hash) continue
-            val wrote = runCatching {
-                target.parentFile?.mkdirs()
-                target.writeBytes(bytes)
-            }.isSuccess
             if (!wrote) { failed++; continue }
             when {
                 relPath.startsWith("exercises/") -> {
@@ -507,16 +511,18 @@ class OptionsViewModel @Inject constructor(
     private suspend fun restoreViaManifest(serverUrl: String, token: String): String? {
         val manifest = restoreApi.fetchManifest(serverUrl, token)
         if (manifest !is RestoreResult.Manifest) return null
-        // Only pull what's missing or hash-mismatched.
-        val wanted = manifest.entries.filter { entry ->
-            if (entry.relPath.contains("..") || entry.relPath.startsWith("/")) return@filter false
-            val target = java.io.File(fileManager.root, entry.relPath)
-            val localHash = if (target.exists()) {
-                "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
-            } else null
-            localHash != entry.contentHash
-        }.map { it.relPath }
+        // Only pull what's missing or hash-mismatched (file reads on IO dispatcher).
+        val wanted = withContext(Dispatchers.IO) {
+            manifest.entries.filter { entry ->
+                if (entry.relPath.contains("..") || entry.relPath.startsWith("/")) return@filter false
+                val target = java.io.File(fileManager.root, entry.relPath)
+                val localHash = if (target.exists()) {
+                    "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+                } else null
+                localHash != entry.contentHash
+            }.map { it.relPath }
+        }
         if (wanted.isEmpty()) return "Tutto già allineato, niente da ripristinare"
 
         val pulled = mutableListOf<Pair<String, ByteArray>>()

@@ -27,6 +27,33 @@ data class SyncPreflight(
     )
 }
 
+/**
+ * True when [serverUrl] would send the bearer token over cleartext HTTP to a host
+ * outside the private networks (LAN, Tailscale CGNAT, tailnet DNS, loopback).
+ * Pure function (JDK `URI` only, no Android/OkHttp) so it is unit-testable.
+ * Malformed URLs return false — that case already has its own "invalid server URL" path.
+ */
+fun isCleartextToPublicHost(serverUrl: String): Boolean {
+    val uri = runCatching { java.net.URI(serverUrl.trim()) }.getOrNull() ?: return false
+    if (uri.scheme?.lowercase() != "http") return false
+    val host = uri.host?.lowercase() ?: return false
+    if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
+        host.endsWith(".ts.net") || host.endsWith(".internal") || host == "::1"
+    ) return false
+    if (host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.")) return false
+    if (host.startsWith("172.")) {
+        val second = host.split(".").getOrNull(1)?.toIntOrNull()
+        if (second != null && second in 16..31) return false
+    }
+    if (host.startsWith("100.")) {
+        // Tailscale CGNAT range 100.64.0.0/10.
+        val second = host.split(".").getOrNull(1)?.toIntOrNull()
+        if (second != null && second in 64..127) return false
+    }
+    // Anything else — public IP or public DNS — must not receive the token in cleartext.
+    return true
+}
+
 /** Verifies the actual Tailscale-served endpoint before a payload is uploaded. */
 @Singleton
 class SyncHealthProbe @Inject constructor(
@@ -43,6 +70,14 @@ class SyncHealthProbe @Inject constructor(
         val requestId = UUID.randomUUID().toString()
         val checkedAt = Instant.now().toString()
         val startedAt = System.currentTimeMillis()
+        if (isCleartextToPublicHost(serverUrl)) {
+            val result = SyncPreflight(
+                requestId, checkedAt, false, 0,
+                "cleartext HTTP to a non-private host — use the Tailscale Serve HTTPS URL",
+            )
+            appLogger.w(TAG, "preflight id=$requestId unavailable reason=${result.reason}")
+            return result
+        }
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
         val network = connectivity?.activeNetwork
         val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }

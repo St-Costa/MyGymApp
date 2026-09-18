@@ -1,5 +1,10 @@
 # Piano per velocizzare il backup al server
 
+> Status storico — diagnostica raccolta dal telefono il 2026-09-04
+> (`artifacts/phone-backup-diagnostics/`, non più nel repo: dati personali, vedi
+> `.gitignore`). Se un punto risulta già implementato, la fase corrispondente è in
+> [CHANGELOG.md](CHANGELOG.md).
+
 ## Sintesi
 
 Il backup funziona e gli ultimi dati raccolti dal telefono non mostrano errori, ma il

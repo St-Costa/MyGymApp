@@ -1,7 +1,6 @@
 package com.mygymapp.ui.screen.cardioexercise
 
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
@@ -11,11 +10,9 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,7 +60,7 @@ class CardioExerciseViewModel @Inject constructor(
     private val workoutRepository: WorkoutRepository,
     private val routineRepository: RoutineRepository,
     private val polarManager: PolarManager,
-) : ViewModel() {
+) : ExerciseSessionViewModel() {
 
     private val sessionId: String = savedStateHandle["sessionId"] ?: ""
     private val exerciseId: String = savedStateHandle["exerciseId"] ?: ""
@@ -72,8 +69,6 @@ class CardioExerciseViewModel @Inject constructor(
     val uiState: StateFlow<CardioExerciseUiState> = _uiState
 
     private var currentSession: WorkoutSession? = null
-    private var exerciseCompleted = false
-    private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Live-block bookkeeping — reset every time a new block starts, not persisted until
     // "Termina cardio" (or completeExercise() force-closes it).
@@ -83,9 +78,6 @@ class CardioExerciseViewModel @Inject constructor(
     private var hrMax = 0
     private var timerJob: Job? = null
     private var hrCollectJob: Job? = null
-
-    private val _completionSaved = MutableStateFlow(false)
-    val completionSaved: StateFlow<Boolean> = _completionSaved
 
     init {
         viewModelScope.launch {
@@ -203,7 +195,6 @@ class CardioExerciseViewModel @Inject constructor(
      */
     fun stopBlock() {
         if (!_uiState.value.isBlockRunning) return
-        exerciseCompleted = true
         val block = closeCurrentBlock()
         timerJob?.cancel()
         timerJob = null
@@ -218,7 +209,10 @@ class CardioExerciseViewModel @Inject constructor(
             completedBlocks = updatedBlocks,
         )
 
-        viewModelScope.launch {
+        // Completion write runs on clearScope (survives teardown) and flips
+        // completionSaved only once it lands — same contract as the other
+        // exercise VMs (see ExerciseSessionViewModel).
+        markCompletionAndSave {
             val session = currentSession
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
@@ -228,7 +222,6 @@ class CardioExerciseViewModel @Inject constructor(
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
             }
-            _completionSaved.value = true
         }
     }
 
@@ -253,7 +246,6 @@ class CardioExerciseViewModel @Inject constructor(
      * completed. With no blocks at all the exercise closes as completedEmpty.
      */
     fun completeExercise() {
-        exerciseCompleted = true
         val running = _uiState.value.isBlockRunning
         val finalBlocks = if (running) {
             timerJob?.cancel()
@@ -266,7 +258,7 @@ class CardioExerciseViewModel @Inject constructor(
         // unopened exercise rather than recording empty cardio as performed work, same
         // reasoning as StretchExerciseViewModel's anyDone check.
         val anyBlock = finalBlocks.isNotEmpty()
-        viewModelScope.launch {
+        markCompletionAndSave {
             val session = currentSession
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
@@ -280,17 +272,16 @@ class CardioExerciseViewModel @Inject constructor(
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
             }
-            _completionSaved.value = true
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
         hrCollectJob?.cancel()
-        if (exerciseCompleted) {
-            clearScope.cancel()
-            return
-        }
+        super.onCleared()
+    }
+
+    override fun saveProgressOnExit() {
         // Leaving mid-block: persist completed blocks so far, but do NOT force-close a running
         // block — the user may come back and resume it (see init{}'s closedBlocks handling for
         // the case where they never do and the process dies instead).
@@ -307,15 +298,18 @@ class CardioExerciseViewModel @Inject constructor(
         }
         val session = currentSession
         clearScope.launch {
-            if (session != null) {
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(completed = false, sets = blocksToSave)
-                    } else ex
+            try {
+                if (session != null) {
+                    val exercises = session.exercises.map { ex ->
+                        if (ex.exerciseId == exerciseId) {
+                            ex.copy(completed = false, sets = blocksToSave)
+                        } else ex
+                    }
+                    workoutRepository.save(session.copy(exercises = exercises))
                 }
-                workoutRepository.save(session.copy(exercises = exercises))
+            } finally {
+                clearScope.cancel()
             }
-            clearScope.cancel()
         }
     }
 }

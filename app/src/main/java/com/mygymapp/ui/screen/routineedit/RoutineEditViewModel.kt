@@ -316,19 +316,27 @@ class RoutineEditViewModel @Inject constructor(
     }
 
     // Called from the Screen's back button / BackHandler before popBackStack().
-    private var savedExplicitly = false
+    // Single-flight guard: the back-tap path (saveNow) and the teardown path (onCleared)
+    // can overlap — without it two saves race on the same routine file, last-writer-wins.
+    private val saveLock = Any()
+    private var saveClaimed = false
+    private fun claimSave(): Boolean = synchronized(saveLock) {
+        if (saveClaimed) return false
+        saveClaimed = true
+        return true
+    }
     suspend fun saveNow() {
+        if (!claimSave()) return
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
         val routine = buildRoutine(state)
         routineRepository.save(routine)
         dataChangedSignal.notifyRoutinesChanged()
-        savedExplicitly = true
     }
 
     override fun onCleared() {
         super.onCleared()
-        if (savedExplicitly) return
+        if (!claimSave()) return
         val state = _uiState.value
         if (state.name.isBlank() || state.deleted) return
         clearScope.launch {

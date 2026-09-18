@@ -1,4 +1,8 @@
 # Schermata_routine
+
+> ARCHIVED — spec funzionale originale (italiano, pre-cardio/scale/sync). Superata da
+> [STORAGE.md](STORAGE.md), [POLAR.md](POLAR.md) e [SYNC.md](SYNC.md); tenuta solo come
+> riferimento storico, non aggiornarla.
 ## Nome routine
 In fase di creazione della routine, l'utente può definire il nome della routine
 Viene mostrato sopra
