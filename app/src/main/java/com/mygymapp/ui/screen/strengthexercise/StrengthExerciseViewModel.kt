@@ -14,6 +14,7 @@ import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
+import com.mygymapp.ui.screen.exercise.mergeExitSets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -355,15 +356,24 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     override fun saveProgressOnExit() {
-        // Back-navigation without completing: save current progress as incomplete
+        // Back-navigation without completing: save current progress as incomplete — but only
+        // real input. Untouched sets keep whatever was on disk at entry (zeros for a fresh
+        // slot) via mergeExitSets, so a zero-touch visit can't fabricate recorded data and
+        // lock the "Switch exercise" slot (see its KDoc).
         val sets = _uiState.value.sets
         val session = currentSession
+        val entrySets = session?.exercises?.find { it.exerciseId == exerciseId }?.sets
+            ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
         clearScope.launch {
             if (session != null) {
                 val builtSets = buildStrengthSets(sets, session.date)
+                val exitSets = builtSets.mapIndexed { i, built ->
+                    val touched = sets.getOrNull(i)?.let { it.repsTouched || it.weightTouched } ?: true
+                    mergeExitSets(built, touched, completed = false, entrySets.getOrNull(i))
+                }
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        ex.copy(completed = false, sets = builtSets)
+                        ex.copy(completed = false, sets = exitSets)
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
