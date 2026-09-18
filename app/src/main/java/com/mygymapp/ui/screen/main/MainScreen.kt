@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -114,7 +114,7 @@ fun MainScreen(
                     )
                     MainMenuTile(
                         label = "Routines",
-                        icon = Icons.Default.ListAlt,
+                        icon = Icons.AutoMirrored.Filled.ListAlt,
                         onClick = onNavigateToRoutines,
                         modifier = Modifier.weight(1f),
                     )

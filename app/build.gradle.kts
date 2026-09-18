@@ -15,8 +15,9 @@ android {
         applicationId = "com.mygymapp"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // Single source of truth lives in gradle.properties (see CONVENTIONS.md#versioning).
+        versionCode = providers.gradleProperty("appVersionCode").get().toInt()
+        versionName = providers.gradleProperty("appVersionName").get()
     }
 
     buildTypes {
@@ -70,6 +71,8 @@ dependencies {
     // Server sync (docs/SYNC.md): raw session files pushed to a self-hosted
     // server over Tailscale via WorkManager-driven retry.
     implementation(libs.okhttp)
+    // EncryptedSharedPreferences for sync_config (bearer token at rest).
+    implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
     ksp(libs.androidx.hilt.compiler)

@@ -25,7 +25,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import kotlin.math.abs
-import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -119,6 +118,9 @@ class PolarManager @Inject constructor(
     @ApplicationContext private val context: Context,
     profileRepo: UserProfileRepository,
     private val ecgRecorder: EcgRecorder,
+    // Dead but kept for reference (see analyzeSessionEcg): suppress the deprecation
+    // warning at the injection site; the class itself stays @Deprecated as the signal.
+    @Suppress("DEPRECATION")
     private val ecgAnalyzer: EcgAnalyzer,
     private val appLogger: AppLogger,
     private val readinessRepository: ReadinessRepository,
@@ -142,9 +144,7 @@ class PolarManager @Inject constructor(
         private const val HR_RECOVERY_THRESHOLD = 0.70f
         private const val HR_WINDOW_SIZE = 8 // ~8 seconds of HR samples
         private const val PEAK_MIN_RISE_BPM = 15 // HR must rise at least this much above resting to count as effort (recovery/RMSSD tracking)
-        // HRR-specific thresholds — stricter, to ensure only real "set" peaks count
-        private const val HRR_PEAK_MIN_RISE_BPM = 25
-        private const val HRR_PEAK_MIN_HRMAX_FRACTION = 0.6f
+        // HRR peak thresholds live in SessionMetrics (single source of truth).
         private const val HRR_QUEUE_DEBOUNCE_MS = 90_000L
         // bpm of net rebound (rise back up from the lowest point reached partway through the
         // peak->+60s window) tolerated before an HRR delta is treated as unreliable and
@@ -930,10 +930,7 @@ class PolarManager @Inject constructor(
         if (hrWindow.size < 4) return // need enough data
 
         // Compare first half average vs second half average of the window
-        val half = hrWindow.size / 2
-        val firstHalf = hrWindow.toList().take(half).average()
-        val secondHalf = hrWindow.toList().takeLast(half).average()
-        val isRising = secondHalf > firstHalf + 1.0 // rising if second half > first half by >1 BPM
+        val isRising = SessionMetrics.isRisingHalf(hrWindow.toList())
 
         // Peak detected: was rising, now falling, and HR is well above resting
         if (hrWasRising && !isRising) {
@@ -952,8 +949,8 @@ class PolarManager @Inject constructor(
                 // than the recovery semaphore to avoid false positives from
                 // light activity (walking, stair climbing).
                 val hrMax = userProfile.hrMax
-                val meetsHrrThresholds = peakHr - restingHr >= HRR_PEAK_MIN_RISE_BPM &&
-                        peakHr >= hrMax * HRR_PEAK_MIN_HRMAX_FRACTION
+                val meetsHrrThresholds =
+                    SessionMetrics.peakMeetsHrrThresholds(peakHr, restingHr, hrMax)
                 if (meetsHrrThresholds && now - lastQueuedPeakAtMs > HRR_QUEUE_DEBOUNCE_MS) {
                     pendingHrrPeaks.add(peakHr to now)
                     lastQueuedPeakAtMs = now
@@ -1032,21 +1029,15 @@ class PolarManager @Inject constructor(
 
         val p = userProfile
 
-        // Keytel et al. (2005) calorie formula (kcal/min)
-        val kcalPerMin = if (p.isMale) {
-            (-55.0969 + 0.6309 * hr + 0.1988 * p.weightKg + 0.2017 * p.effectiveAge) / 4.184
-        } else {
-            (-20.4022 + 0.4472 * hr - 0.1263 * p.weightKg + 0.074 * p.effectiveAge) / 4.184
-        }
+        // Keytel et al. (2005) calorie formula (kcal/min) — see SessionMetrics.
+        val kcalPerMin = SessionMetrics.keytelKcalPerMinute(hr, p.weightKg, p.effectiveAge, p.isMale)
         if (kcalPerMin > 0) {
             _sessionCalories.value += kcalPerMin * elapsedMin
         }
 
-        // Banister TRIMP: duration × HRR fraction × exponential weighting
-        val hrr = (hr - restingHr).toDouble() / (p.hrMax - restingHr)
-        val clampedHrr = hrr.coerceIn(0.0, 1.0)
-        val genderExp = if (p.isMale) 1.92 else 1.67
-        val trimpContribution = elapsedMin * clampedHrr * 0.64 * exp(genderExp * clampedHrr)
+        // Banister TRIMP: duration × HRR fraction × exponential weighting — see SessionMetrics.
+        val trimpContribution = elapsedMin *
+            SessionMetrics.banisterTrimpPerMinute(hr, restingHr, p.hrMax, p.isMale)
         _sessionTrimp.value += trimpContribution
     }
 
@@ -1159,26 +1150,9 @@ class PolarManager @Inject constructor(
      * Cardiac drift rate in BPM/min over the captured HR series.
      * Requires ≥5 minutes of data, otherwise returns 0.
      * Positive value = HR drifted upward (possible dehydration/heat).
+     * Pure regression lives in [SessionMetrics.driftSlopeBpmPerMinute].
      */
-    fun cardiacDriftBpmPerMinute(): Double {
-        val data = hrSeries.toList()
-        if (data.size < 60) return 0.0
-        val totalMinutes = data.last().first / 60000.0
-        if (totalMinutes < 5.0) return 0.0
-        // Linear regression slope (HR vs minutes)
-        val xs = data.map { it.first / 60000.0 }
-        val ys = data.map { it.second.toDouble() }
-        val meanX = xs.average()
-        val meanY = ys.average()
-        var num = 0.0
-        var den = 0.0
-        for (i in xs.indices) {
-            val dx = xs[i] - meanX
-            num += dx * (ys[i] - meanY)
-            den += dx * dx
-        }
-        return if (den > 0) num / den else 0.0
-    }
+    fun cardiacDriftBpmPerMinute(): Double = SessionMetrics.driftSlopeBpmPerMinute(hrSeries.toList())
 
     /** Start raw ECG recording for [sessionId]. No-op if not connected. */
     fun startEcgRecording(sessionId: String) {

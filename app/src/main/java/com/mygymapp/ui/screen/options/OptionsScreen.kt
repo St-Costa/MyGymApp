@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import com.mygymapp.BuildConfig
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import com.mygymapp.ui.components.ScrollPickerInput
@@ -477,6 +478,15 @@ private fun DebugSection(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Debug", style = MaterialTheme.typography.titleMedium)
+
+            // Installed build, for support/diagnostics (which code produced this log/backup).
+            Text(
+                "Versione app ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            androidx.compose.material3.HorizontalDivider()
 
             // Bilancia
             Text(

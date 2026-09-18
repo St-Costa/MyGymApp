@@ -26,7 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.CheckCircle
@@ -214,7 +214,7 @@ fun HeartRateScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
-                Icons.Default.BluetoothSearching,
+                Icons.AutoMirrored.Filled.BluetoothSearching,
                 contentDescription = null,
                 modifier = Modifier.size(62.dp),
                 tint = MaterialTheme.colorScheme.primary,
@@ -368,7 +368,7 @@ private fun ScaleStatusIcon(
                 )
             } else {
                 Icon(
-                    Icons.Default.BluetoothSearching,
+                    Icons.AutoMirrored.Filled.BluetoothSearching,
                     contentDescription = "Connessa",
                     tint = MaterialTheme.colorScheme.primary,
                 )

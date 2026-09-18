@@ -1644,6 +1644,7 @@ export updated to match. Docs: `CLAUDE.md` banner and table plus `docs/SYNC.md` 
 longer say "server side isn't built / WIP" — the server side in `MyGymApp_server` is fully
 built (client sync stays opt-in with wipeable config, so the verified tar remains mandatory
 before install/test ops).
+
 ## Phase 106 — Full-repo scan fixes: parsers, coroutines, BLE, privacy, docs
 
 Second full-repo review pass, all fixed in one change (`./gradlew test` green, 20 new tests):
@@ -1677,4 +1678,36 @@ points at `install-debug.sh` + lists all docs, `STORAGE.md` prefs table rewritte
 for the four-VM base, `FUNCTIONAL_SPEC.md` marked archived, `backup-speed-plan.md` marked
 historical. New tests: `MarkdownParserTest` dash-in-value/body dashes,
 `SyncPreflightCleartextTest` (5), `BatteryLifeCorruptYamlTest` (4).
+
+## Phase 107 — Bearer-leak cleanup, encrypted sync config, versioning, worker test seams
+
+Security, from the public-repo history audit: `artifacts/phone-backup-diagnostics/`
+(ledgers, `app.log`, `shared_prefs/sync_config.xml` with the server bearer) was tracked
+in git on a public remote — purged from all history with `git filter-repo` (verified:
+zero commits reference the path; force-pushed, remote confirmed clean) and
+`/artifacts/` gitignored; the bearer itself was rotated server-side first. `sync_config` now lives in `EncryptedSharedPreferences` (`sync_config_enc`,
+Keystore AES256 via `androidx.security:security-crypto`), with a one-time migration from
+the legacy plaintext file (deleted afterwards) and a logged plaintext fallback if the
+Keystore is ever unusable. Sync preflight refuses cleartext HTTP to non-private hosts
+(`isCleartextToPublicHost`: LAN/Tailscale CGNAT/`.ts.net`/loopback allowed, everything
+else rejected before the token goes on the wire). Versioning is now a policy, not a
+memory: `versionCode` = CHANGELOG phase number, `versionName` = `1.<versionCode>`
+(`gradle.properties` is the single source of truth, `1.107` ships this phase), enforced
+by `AppVersionTest` in the pre-commit gate, shown in Options → Debug, and stamped into
+`install-debug.sh` backup filenames (`docs/CONVENTIONS.md#versioning`). Worker
+testability without new deps: pure extractions `gzipEcg` (round-trip tested) and
+`partitionRepoPending` (stale-upsert retirement rule tested) with `EcgGzipTest` (4) and
+`RepoPendingPartitionTest` (5); full `doWork` coverage stays out of reach without
+Robolectric/work-testing (documented, deferred). Also swept: deprecated `Icons.Filled` →
+`AutoMirrored` (4 sites), `EcgAnalyzer` injection warning suppressed at the single
+dead-code call site. `./gradlew test` green, zero warnings.
+
+Split of `PolarManager`, step 1 (kernels first, state machine later): pure computation
+kernels extracted into `data/polar/SessionMetrics.kt` — drift regression slope, Keytel
+kcal/min, Banister TRIMP/min, rising-half rule, HRR admission thresholds (single source
+of truth, moved out of the manager's companion) — with `PolarManager` delegating
+unchanged behaviorally. `SessionMetricsTest` (13 tests, incl. hand-computed Keytel/TRIMP
+golden values and an exact-slope drift case) pins numbers previously verifiable only
+with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
+put for a later step with an injectable clock.
 

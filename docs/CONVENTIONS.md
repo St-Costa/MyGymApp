@@ -689,3 +689,34 @@ set up yet). Favor testing pure logic classes here: parsers (`data/parser/`), ca
 file I/O directly. See the existing suite for the shape: `HrRecoveryMonotonicityTest`,
 `WorkoutParserRoundTripTest`, `WorkoutSessionSwitchExerciseTest`, `HrZoneCalculatorTest`,
 `TonnageMathTest`, `BodyCompositionCalculatorTest`.
+
+## Versioning
+
+Single source of truth: `appVersionCode` / `appVersionName` in `gradle.properties`, read by
+`app/build.gradle.kts`. The scheme is `versionCode = CHANGELOG phase number`,
+`versionName = 1.<versionCode>` (e.g. Phase 107 ships code 107 as `1.107`) — one glance at
+an APK, a log line, or a sync `appVersion` tells you exactly which code produced it. The
+installed version is also shown in Options → Debug.
+
+Rules:
+
+- Bump both in the same commit that closes a phase (the CHANGELOG entry + the bump travel
+  together, so code and docs can never disagree about what shipped).
+- One release per phase. A hotfix inside an already-shipped phase bumps the code by one and
+  appends it to the name (`1.107.1` for code 108) — the `AppVersionTest` consistency check
+  accepts both shapes.
+- `AppVersionTest` (unit test, runs in the pre-commit gate above) asserts
+  `VERSION_NAME == "1.$VERSION_CODE"` (or the hotfix shape) — the policy is enforced by a
+  test, not by memory.
+- `scripts/install-debug.sh` stamps the installed version into the pre-install backup
+  filename, so a backup tar says which app build produced it.
+
+## Commits
+
+One phase, one commit: the CHANGELOG entry, the version bump, the code, the tests and
+the doc updates for a phase travel together, so no commit ever ships code its version
+can't identify. Message format: `Phase <N> — <title>` (mirrors the CHANGELOG heading;
+see `git log --oneline`). Never commit a phase's code without its CHANGELOG paragraph,
+and never bump the version without the phase it ships. WIP checkpoints on a feature
+branch are fine (`git commit --no-verify` to skip the gate), but squash them into the
+phase commit before merging — `master` history reads as the phase log.
