@@ -58,6 +58,12 @@ object PolarSelfTest {
             !SessionMetrics.peakMeetsHrrThresholds(100, 60, 190)
         out += check("soglie HRR ammetti/rifiuta", if (hrrOk) "ok" else "KO", hrrOk)
 
+        // Readiness kernels: RMSSD golden (diffs 20,-30,20 → ≈23.8048) e Uth (58.14).
+        val rmssd = ReadinessMetrics.calculateRMSSD(listOf(800, 820, 790, 810))
+        out += check("RMSSD ≈ 23.80", "misurato=%.2f".format(rmssd), kotlin.math.abs(rmssd - 23.8048) < 1e-3)
+        val vo2 = ReadinessMetrics.uthVo2max(190, 50)
+        out += check("VO2max Uth ≈ 58.14", "misurato=%.2f".format(vo2 ?: -1.0), vo2 != null && kotlin.math.abs(vo2 - 58.14) < 1e-9)
+
         return out
     }
 
