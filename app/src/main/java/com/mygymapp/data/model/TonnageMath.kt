@@ -28,3 +28,18 @@ fun materializeBodyweightWeight(bwLoadPercent: Int, bodyWeightKg: Double?): Doub
 fun List<ExerciseSet.Strength>.bestEstimated1RM(): Double? =
     filter { it.reps > 0 && it.weight > 0 }
         .maxOfOrNull { estimate1RM(it.weight, it.reps) }
+
+/**
+ * Materialized `weight` for one assisted-machine set: [bodyWeightKg] minus [assistOffsetKg] (the
+ * number set on the assist machine — more assistance selected means *less* real load), rounded
+ * to the nearest 0.5 kg and clamped to 0 (an assist offset at or above body weight means no net
+ * load, e.g. full-assist warm-up reps). Returns 0.0 when there is no usable body weight
+ * ([bodyWeightKg] null or <= 0) — the caller then leaves `weight` at 0, same fallback as
+ * [materializeBodyweightWeight]. Kept pure (no Context/IO) so it is unit-testable — see
+ * TonnageMathTest.
+ */
+fun materializeAssistedWeight(bodyWeightKg: Double?, assistOffsetKg: Double): Double {
+    if (bodyWeightKg == null || bodyWeightKg <= 0.0) return 0.0
+    val raw = (bodyWeightKg - assistOffsetKg).coerceAtLeast(0.0)
+    return (raw * 2).roundToInt() / 2.0
+}

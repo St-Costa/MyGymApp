@@ -7,6 +7,7 @@ import com.mygymapp.data.model.DEFAULT_BW_LOAD_PERCENT
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.LoadMode
 import com.mygymapp.data.repository.ExerciseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,10 @@ data class ExerciseEditUiState(
     // One of 25/50/75/100 — only used (and always set) when isBodyweight is true. See
     // Exercise.bwLoadPercent.
     val bwLoadPercent: Int = DEFAULT_BW_LOAD_PERCENT,
+    // FORZA only: an assisted machine (e.g. assisted pull-up/dip) where the number set on the
+    // machine is subtracted from body weight. Mutually exclusive with isBodyweight — see
+    // Exercise.LoadMode.
+    val isAssisted: Boolean = false,
     val existingBodyparts: List<String> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
@@ -70,6 +75,7 @@ class ExerciseEditViewModel @Inject constructor(
                         isBodyweight = exercise.isBodyweight,
                         bwLoadPercent = if (exercise.isBodyweight) exercise.bwLoadPercent
                             else DEFAULT_BW_LOAD_PERCENT,
+                        isAssisted = exercise.loadMode == LoadMode.ASSISTED,
                         existingBodyparts = bodyparts,
                         isNew = false,
                     )
@@ -91,6 +97,8 @@ class ExerciseEditViewModel @Inject constructor(
     fun onBodyweightChange(value: Boolean) {
         _uiState.value = _uiState.value.copy(
             isBodyweight = value,
+            // Mutually exclusive with assisted — see Exercise.LoadMode.
+            isAssisted = if (value) false else _uiState.value.isAssisted,
             // Re-seed to the default whenever bodyweight is switched on, so a bodyweight
             // exercise never persists with an out-of-range percent.
             bwLoadPercent = if (value) _uiState.value.bwLoadPercent.takeIf { it in 1..100 }
@@ -100,6 +108,14 @@ class ExerciseEditViewModel @Inject constructor(
 
     fun onBwLoadPercentChange(value: Int) {
         _uiState.value = _uiState.value.copy(bwLoadPercent = value)
+    }
+
+    fun onAssistedChange(value: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            isAssisted = value,
+            // Mutually exclusive with bodyweight — see Exercise.LoadMode.
+            isBodyweight = if (value) false else _uiState.value.isBodyweight,
+        )
     }
 
     fun onBodypartChange(value: String) {
@@ -159,6 +175,11 @@ class ExerciseEditViewModel @Inject constructor(
         // Persist the load percent only for bodyweight exercises; 0 otherwise (see
         // Exercise.bwLoadPercent / ExerciseParser).
         bwLoadPercent = if (isBodyweight) bwLoadPercent else 0,
+        loadMode = when {
+            isBodyweight -> LoadMode.BODYWEIGHT
+            isAssisted -> LoadMode.ASSISTED
+            else -> LoadMode.MANUAL
+        },
     )
 
     suspend fun saveNow() {

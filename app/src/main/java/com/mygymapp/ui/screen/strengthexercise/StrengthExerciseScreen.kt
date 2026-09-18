@@ -124,8 +124,11 @@ fun StrengthExerciseScreen(
 
                 // Bodyweight exercises carry no user-entered weight — the load is estimated from
                 // body weight at completion (see StrengthExerciseViewModel.buildStrengthSets).
-                // The Kg column and per-set weight picker are hidden entirely.
+                // The Kg column and per-set weight picker are hidden entirely. Assisted
+                // exercises keep the picker (the lifter dials in the assist-machine number) but
+                // label it differently and read PRs/previous from the raw assist offset.
                 val isBodyweight = uiState.exercise?.isBodyweight == true
+                val isAssisted = uiState.exercise?.loadMode == com.mygymapp.data.model.LoadMode.ASSISTED
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -139,7 +142,7 @@ fun StrengthExerciseScreen(
                     )
                     if (!isBodyweight) {
                         Text(
-                            "Kg",
+                            if (isAssisted) "Assist." else "Kg",
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.weight(1f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -164,8 +167,13 @@ fun StrengthExerciseScreen(
                     ) {
                         uiState.rmPr?.let { rm ->
                             if (!isBodyweight || rm.bwBaseWeightKg > 0.0) {
-                                val value = if (isBodyweight) "${rm.reps} x ${formatBodyWeight(rm.bwBaseWeightKg)}"
-                                    else "${rm.reps} x ${formatWeight(rm.weight)}"
+                                val value = when {
+                                    isBodyweight -> "${rm.reps} x ${formatBodyWeight(rm.bwBaseWeightKg)}"
+                                    // Assisted PR is shown as the net load lifted (weight), not
+                                    // the machine's assist number — the badge answers "how much
+                                    // did I lift", same meaning as a manual-load PR.
+                                    else -> "${rm.reps} x ${formatWeight(rm.weight)}"
+                                }
                                 PrBadge("RM", value, Modifier.fillMaxWidth())
                             }
                         }

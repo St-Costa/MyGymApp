@@ -4,7 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
+import com.mygymapp.data.model.LoadMode
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
@@ -36,7 +38,13 @@ data class StrengthSetUi(
  * (0.0 otherwise / legacy) — bodyweight screens show `reps x bwBaseWeightKg` instead of
  * `reps x weight` (which for bodyweight is only bwLoadPercent% of the body weight).
  */
-data class TonnagePr(val reps: Int, val weight: Double, val bwBaseWeightKg: Double = 0.0)
+data class TonnagePr(
+    val reps: Int,
+    val weight: Double,
+    val bwBaseWeightKg: Double = 0.0,
+    val isAssisted: Boolean = false,
+    val assistOffsetKg: Double = 0.0,
+)
 
 /**
  * The single set ever recorded for this exercise with the highest estimated 1RM (Epley:
@@ -46,7 +54,13 @@ data class TonnagePr(val reps: Int, val weight: Double, val bwBaseWeightKg: Doub
  * at logging time for a bodyweight exercise (0.0 otherwise / legacy); the badge is hidden
  * for a bodyweight exercise when it's unknown, since the stored `weight` is materialized load.
  */
-data class RmPr(val reps: Int, val weight: Double, val bwBaseWeightKg: Double = 0.0)
+data class RmPr(
+    val reps: Int,
+    val weight: Double,
+    val bwBaseWeightKg: Double = 0.0,
+    val isAssisted: Boolean = false,
+    val assistOffsetKg: Double = 0.0,
+)
 
 data class StrengthExerciseUiState(
     val exercise: Exercise? = null,
@@ -124,8 +138,16 @@ class StrengthExerciseViewModel @Inject constructor(
             // load, schema v4) inside the sidecar, and "previous" is already the most recent
             // such session with real (non-zero) set data.
             val ctxStats = workoutRepository.getExerciseStats(exerciseId).forContext(slotContext)
-            val previousSets = ctxStats?.previousSetsFor(exercise.isBodyweight).orEmpty()
-                .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+            // The picker's "weight" always mirrors what the lifter actually dials in: manual
+            // load, or the assist-machine number for an assisted exercise (never the
+            // materialized net weight) — see PreviousSet.assistOffsetKg.
+            val previousSets = ctxStats?.previousSetsFor(exercise.loadMode).orEmpty()
+                .map {
+                    ExerciseSet.Strength(
+                        reps = it.reps,
+                        weight = if (exercise.loadMode == LoadMode.ASSISTED) it.assistOffsetKg else it.weight,
+                    )
+                }
 
             // Rep range from the routine lookup above (routineExercise).
             val repMin = routineExercise?.repRangeMin ?: 0
@@ -158,10 +180,22 @@ class StrengthExerciseViewModel @Inject constructor(
             // slot context) — also from the sidecar, same as "previous" above. The two can be
             // different sets; both badges show that set's reps x weight, RM on top.
             val tonnagePr = ctxStats?.pr?.let {
-                TonnagePr(reps = it.reps, weight = it.weight, bwBaseWeightKg = it.bwBaseWeightKg)
+                TonnagePr(
+                    reps = it.reps,
+                    weight = it.weight,
+                    bwBaseWeightKg = it.bwBaseWeightKg,
+                    isAssisted = it.isAssisted,
+                    assistOffsetKg = it.assistOffsetKg,
+                )
             }
             val rmPr = ctxStats?.rmPr?.let {
-                RmPr(reps = it.reps, weight = it.weight, bwBaseWeightKg = it.bwBaseWeightKg)
+                RmPr(
+                    reps = it.reps,
+                    weight = it.weight,
+                    bwBaseWeightKg = it.bwBaseWeightKg,
+                    isAssisted = it.isAssisted,
+                    assistOffsetKg = it.assistOffsetKg,
+                )
             }
 
             // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
@@ -215,28 +249,48 @@ class StrengthExerciseViewModel @Inject constructor(
      * Builds the [ExerciseSet.Strength] list to persist. For a bodyweight exercise each set's
      * `weight` is materialized to `bwLoadPercent% of the lifter's body weight` (from the most
      * recent scale weigh-in on or before [sessionDate]); the raw percent and base weight are
-     * kept on the set for audit. Non-bodyweight sets pass through unchanged.
+     * kept on the set for audit. For an assisted exercise, [StrengthSetUi.weight] is the number
+     * the lifter set on the assist machine — `weight` is materialized to
+     * `bodyWeight - assistOffsetKg` (materializeAssistedWeight()), with the raw offset and base
+     * weight kept on the set for audit, same pattern. Non-bodyweight/non-assisted sets pass
+     * through unchanged.
      */
     private suspend fun buildStrengthSets(
         uiSets: List<StrengthSetUi>,
         sessionDate: String,
     ): List<ExerciseSet.Strength> {
         val exercise = _uiState.value.exercise
-        if (exercise?.isBodyweight != true) {
-            return uiSets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
-        }
-        val baseWeight = scaleHistoryRepository.getLatestWeightOnOrBefore(
-            java.time.LocalDate.parse(sessionDate)
-        )
-        val materialized = materializeBodyweightWeight(exercise.bwLoadPercent, baseWeight)
-        return uiSets.map {
-            ExerciseSet.Strength(
-                reps = it.reps,
-                weight = materialized,
-                isBodyweight = true,
-                bwLoadPercent = exercise.bwLoadPercent,
-                bwBaseWeightKg = baseWeight ?: 0.0,
-            )
+        return when (exercise?.loadMode) {
+            LoadMode.BODYWEIGHT -> {
+                val baseWeight = scaleHistoryRepository.getLatestWeightOnOrBefore(
+                    java.time.LocalDate.parse(sessionDate)
+                )
+                val materialized = materializeBodyweightWeight(exercise.bwLoadPercent, baseWeight)
+                uiSets.map {
+                    ExerciseSet.Strength(
+                        reps = it.reps,
+                        weight = materialized,
+                        isBodyweight = true,
+                        bwLoadPercent = exercise.bwLoadPercent,
+                        bwBaseWeightKg = baseWeight ?: 0.0,
+                    )
+                }
+            }
+            LoadMode.ASSISTED -> {
+                val baseWeight = scaleHistoryRepository.getLatestWeightOnOrBefore(
+                    java.time.LocalDate.parse(sessionDate)
+                )
+                uiSets.map {
+                    ExerciseSet.Strength(
+                        reps = it.reps,
+                        weight = materializeAssistedWeight(baseWeight, it.weight),
+                        isAssisted = true,
+                        assistOffsetKg = it.weight,
+                        bwBaseWeightKg = baseWeight ?: 0.0,
+                    )
+                }
+            }
+            else -> uiSets.map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
         }
     }
 
@@ -325,9 +379,12 @@ class StrengthExerciseViewModel @Inject constructor(
             // Bodyweight exercises (Exercise.isBodyweight) have weight=0 by design — a
             // set with reps filled in but weight left at 0 is complete, not empty. Using
             // `&&` unconditionally would mean allSetsFilled could never become true for
-            // any bodyweight exercise.
-            val isBodyweight = _uiState.value.exercise?.isBodyweight ?: false
-            val allFilled = sets.all { it.reps > 0 && (it.weight > 0 || isBodyweight) }
+            // any bodyweight exercise. Assisted exercises are the same: 0 on the picker
+            // means "no assistance" (full body weight), a perfectly normal value, not an
+            // untouched field.
+            val loadMode = _uiState.value.exercise?.loadMode ?: LoadMode.MANUAL
+            val weightOptional = loadMode == LoadMode.BODYWEIGHT || loadMode == LoadMode.ASSISTED
+            val allFilled = sets.all { it.reps > 0 && (it.weight > 0 || weightOptional) }
             _uiState.value = _uiState.value.copy(sets = sets, allSetsFilled = allFilled)
         }
     }

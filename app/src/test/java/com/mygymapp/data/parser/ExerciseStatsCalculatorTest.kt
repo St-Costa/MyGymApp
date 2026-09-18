@@ -388,6 +388,123 @@ class ExerciseStatsCalculatorTest {
         )
     }
 
+    // ── assisted-machine weighting approach (schema v5) ──────────────────────
+
+    private fun assistedSession(
+        completedAt: String,
+        sets: List<Triple<Int, Double, Double>>, // reps, materialized net weight, assistOffsetKg
+        bwBaseWeightKg: Double = 80.0,
+        ctx: SlotContext = SlotContext.NORMAL,
+    ) = WorkoutSession(
+        id = completedAt, routineId = "rt-a", routineName = "R",
+        date = completedAt.take(10), completedAt = completedAt,
+        exercises = listOf(
+            WorkoutExercise(
+                exerciseId = EX, exerciseName = "Assisted pull-up", bodypart = "back",
+                type = ExerciseType.FORZA, completed = true,
+                excludeFromTonnage = ctx != SlotContext.NORMAL,
+                isDaily = ctx == SlotContext.DAILY,
+                sets = sets.map { (r, w, offset) ->
+                    ExerciseSet.Strength(
+                        reps = r, weight = w, isAssisted = true,
+                        assistOffsetKg = offset, bwBaseWeightKg = bwBaseWeightKg,
+                    )
+                },
+            ),
+        ),
+    )
+
+    @Test
+    fun `assisted materialized net weight is used as-is for tonnage and pr`() {
+        // 80kg body weight, 20kg assistance -> 60kg net load.
+        val session = assistedSession("2026-08-01T10:00:00", listOf(Triple(8, 60.0, 20.0)))
+        val ctx = ExerciseStatsCalculator.rebuild(EX, listOf(session)).forContext(SlotContext.NORMAL)!!
+        assertEquals(
+            PreviousSet(8, 60.0, bwBaseWeightKg = 80.0, isAssisted = true, assistOffsetKg = 20.0),
+            ctx.pr,
+        )
+        // Assisted session → lands in the assisted previous slot, not manual or bodyweight.
+        assertEquals(emptyList<PreviousSet>(), ctx.previousSets)
+        assertEquals(emptyList<PreviousSet>(), ctx.previousSetsBodyweight)
+        assertEquals(
+            listOf(PreviousSet(8, 60.0, bwBaseWeightKg = 80.0, isAssisted = true, assistOffsetKg = 20.0)),
+            ctx.previousSetsAssisted,
+        )
+    }
+
+    @Test
+    fun `manual-load and assisted previous are tracked in separate slots`() {
+        // Legacy manual-load placeholders, then the exercise is reconfigured as an assisted
+        // machine and logged for real — must not compare against the manual placeholders.
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(6 to 1.0)),
+            strengthSession("2026-08-08T10:00:00", listOf(6 to 1.0)),
+            assistedSession("2026-08-15T10:00:00", listOf(Triple(8, 60.0, 20.0))),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+
+        assertEquals("2026-08-08", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(6, 1.0)), ctx.previousSets)
+
+        assertEquals("2026-08-15", ctx.previousSessionDateAssisted)
+        assertEquals(
+            listOf(PreviousSet(8, 60.0, bwBaseWeightKg = 80.0, isAssisted = true, assistOffsetKg = 20.0)),
+            ctx.previousSetsAssisted,
+        )
+        // PR / hasPriorRealTonnage stay all-time across all approaches.
+        assertTrue(ctx.hasPriorRealTonnage)
+        assertEquals(60.0, ctx.pr!!.weight, 0.0)
+    }
+
+    @Test
+    fun `improving on an assisted machine means less assistance, which is a higher net weight PR`() {
+        // Progress on an assisted exercise looks like the assist offset going down over time —
+        // net weight (what actually counts for tonnage/PR) goes up, same direction as any
+        // other exercise.
+        val sessions = listOf(
+            assistedSession("2026-08-01T10:00:00", listOf(Triple(8, 55.0, 25.0))), // more assist
+            assistedSession("2026-08-15T10:00:00", listOf(Triple(8, 65.0, 15.0))), // less assist
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals(65.0, ctx.pr!!.weight, 0.0)
+        assertEquals(15.0, ctx.pr!!.assistOffsetKg, 0.0)
+    }
+
+    @Test
+    fun `merge routes an assisted session into the assisted slot only`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-01T10:00:00", listOf(6 to 1.0))),
+        )
+        val assisted = assistedSession("2026-08-10T10:00:00", listOf(Triple(8, 60.0, 20.0)))
+        val ctx = ExerciseStatsCalculator.merge(EX, base, assisted).forContext(SlotContext.NORMAL)!!
+
+        assertEquals("2026-08-01", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(6, 1.0)), ctx.previousSets)
+        assertEquals("2026-08-10", ctx.previousSessionDateAssisted)
+        assertEquals(
+            listOf(PreviousSet(8, 60.0, bwBaseWeightKg = 80.0, isAssisted = true, assistOffsetKg = 20.0)),
+            ctx.previousSetsAssisted,
+        )
+    }
+
+    @Test
+    fun `incremental merge chain agrees with full rebuild across a manual to assisted switch`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(6 to 1.0, 5 to 1.0)),
+            strengthSession("2026-08-08T10:00:00", listOf(6 to 1.0)),
+            assistedSession("2026-08-15T10:00:00", listOf(Triple(8, 55.0, 25.0))),
+            assistedSession("2026-08-22T10:00:00", listOf(Triple(8, 65.0, 15.0), Triple(7, 65.0, 15.0))),
+        )
+        var incremental: ExerciseStats? = null
+        for (s in sessions) incremental = ExerciseStatsCalculator.merge(EX, incremental, s)
+        val full = ExerciseStatsCalculator.rebuild(EX, sessions)
+        assertEquals(
+            full.forContext(SlotContext.NORMAL),
+            incremental!!.forContext(SlotContext.NORMAL),
+        )
+    }
+
     @Test
     fun `stretch-only history yields no context stats`() {
         val session = WorkoutSession(
