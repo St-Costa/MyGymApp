@@ -1,6 +1,7 @@
 package com.mygymapp.ui.screen.exercise
 
 import androidx.lifecycle.ViewModel
+import com.mygymapp.data.model.ExerciseSet
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -93,4 +94,34 @@ abstract class ExerciseSessionViewModel : ViewModel() {
         }
         saveProgressOnExit()
     }
+}
+
+/**
+ * Back-navigation ("save as incomplete") set merge — the other half of the "Switch exercise"
+ * eligibility story (see [com.mygymapp.data.model.WorkoutExercise.isSwitchEligible]).
+ *
+ * Exercise screens pre-fill every set with the previous session's numbers, so the values on
+ * screen are *not* the lifter's input until a picker is touched. Persisting those pre-fills
+ * verbatim on a zero-touch back-out would fabricate recorded data (`reps > 0 || weight > 0`)
+ * and permanently lock the slot's switch icon — the "first open exercise lost its swap button"
+ * bug: the first uncompleted slot is the one the lifter peeks into, so it was always the one
+ * that lost the icon. Each set therefore resolves to:
+ *
+ * - [built] (the on-screen value) when the lifter touched it, when this is an explicit
+ *   completion ([completed] — completions intentionally persist pre-fills, see the
+ *   completed-empty guard), or when there is no usable on-disk value ([entry] null or a
+ *   different set class, impossible for well-formed sessions);
+ * - [entry] (whatever was on disk when the screen opened — zeros for a fresh slot) otherwise.
+ *
+ * Real input is never deleted: a set already recorded at entry stays recorded even if untouched
+ * now — only *new* recorded data requires a touch.
+ */
+internal fun <T : ExerciseSet> mergeExitSets(
+    built: T,
+    touched: Boolean,
+    completed: Boolean,
+    entry: ExerciseSet?,
+): T {
+    @Suppress("UNCHECKED_CAST")
+    return if (!completed && !touched && entry != null && entry::class == built::class) entry as T else built
 }

@@ -15,6 +15,7 @@ import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
+import com.mygymapp.ui.screen.exercise.mergeExitSets
 import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -483,11 +484,18 @@ class SupersetViewModel @Inject constructor(
                 completed = completed,
                 completedEmpty = completed && !performed,
                 sets = memberSets.map { setUi ->
-                    when (setUi.exerciseType) {
+                    // A touched set (or an explicit completion) persists the on-screen value;
+                    // an untouched set on back-out keeps its on-disk entry value via
+                    // mergeExitSets, so a zero-touch visit can't fabricate recorded data and
+                    // lock the member's "Switch exercise" slot (see its KDoc).
+                    val touched = setUi.repsTouched || setUi.weightTouched ||
+                        (setUi.exerciseType == ExerciseType.STRETCH && setUi.done)
+                    val built: ExerciseSet = when (setUi.exerciseType) {
                         ExerciseType.FORZA -> strengthSet(setUi, bw)
                         ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)
                         ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                     }
+                    mergeExitSets(built, touched, completed, ex.sets.getOrNull(setUi.setIndex))
                 },
             )
         }

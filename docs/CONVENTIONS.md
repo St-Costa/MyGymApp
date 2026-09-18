@@ -405,6 +405,19 @@ needed extending is `ActiveRoutineViewModel`: its `previousTonnageByExercise`/
 `exercisesWithPriorTonnage` is built) so `markExerciseCompleted` still finds a baseline for the
 switched slot later. The precomputed fast-path for non-switched exercises is untouched.
 
+**A zero-touch visit must not lock the slot.** Exercise screens pre-fill every set with the
+previous session's numbers, so the values on screen are not the lifter's input until a picker
+is touched — but the back-navigation write (`saveProgressOnExit`, via `onCleared`) used to
+persist those pre-fills verbatim, fabricating recorded data and permanently hiding the switch
+icon on re-entry. It always struck the first uncompleted exercise (the one the lifter peeks
+into) while never-visited slots below stayed swappable. The shared
+`ExerciseSessionViewModel.mergeExitSets(built, touched, completed, entry)` now resolves each
+set on exit: touched sets (or explicit completions, which intentionally keep pre-fills via the
+completed-empty guard) persist the on-screen value, untouched ones keep whatever was on disk
+at entry — zeros for a fresh slot. Real input is never deleted, only *new* recorded data
+requires a touch. STRETCH single-exercise slots were already immune (eligibility keys off
+`done`, and the exit path never sets it).
+
 ## Cardio blocks & "no superset" guard
 
 `ExerciseType.CARDIO` (see [POLAR.md](POLAR.md#cardio-blocks)) is a third exercise type

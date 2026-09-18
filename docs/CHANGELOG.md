@@ -1613,3 +1613,22 @@ the session and the routine — now it only updates the session's own notes, whi
 separate, still-used feature). `RoutineParserRoundTripTest`'s notes round-trip test removed;
 `STORAGE.md` and `FUNCTIONAL_SPEC.md` updated to match.
 
+## Phase 104 — Zero-touch exercise visit no longer locks "Switch exercise"
+
+On-device bug: entering an exercise and backing out without touching anything permanently hid
+its swap icon. Root cause — the exercise screens pre-fill every set with the previous
+session's numbers, and `saveProgressOnExit()` persisted those pre-fills verbatim as an
+incomplete slot, fabricating recorded data (`reps > 0 || weight > 0`) that flipped
+`WorkoutExercise.isSwitchEligible()` to false on every later entry. It always struck the first
+uncompleted exercise (the one the lifter peeks into) while never-visited slots below stayed
+swappable; a long title was ruled out (the icon lives in the `TopAppBar` actions slot,
+independent of title length). Fix: shared `ExerciseSessionViewModel.mergeExitSets()` resolves
+each set on back-out — touched sets (or explicit completions, which intentionally keep
+pre-fills via the completed-empty guard) persist the on-screen value, untouched ones keep
+whatever was on disk at entry (zeros for a fresh slot). Wired into
+`StrengthExerciseViewModel.saveProgressOnExit()` and `SupersetViewModel.buildUpdatedSession()`;
+single-exercise STRETCH slots were already immune (eligibility keys off `done`). New
+`ExerciseSessionExitSetsTest` (8 tests, incl. an end-to-end eligibility check that a zero-touch
+exit keeps `isSwitchEligible() == true`); `./gradlew test` green. See
+[CONVENTIONS.md](CONVENTIONS.md#switch-exercise) ("A zero-touch visit must not lock the slot").
+
