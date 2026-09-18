@@ -26,9 +26,14 @@
          HealthConnectStepsReader's class doc (docs/SYNC.md § Daily step average). -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
 
+    <!-- allowBackup=false disables Android Auto Backup (Google Drive / Samsung) and
+         adb backup for filesDir + SharedPreferences (gymdata sessions, sync bearer,
+         user profile). It does NOT affect the app's own network uploads to the
+         self-hosted server (docs/SYNC.md, docs/BACKUP.md) — those are normal
+         app I/O over INTERNET, not the OS backup framework. -->
     <application
         android:name=".MyGymApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

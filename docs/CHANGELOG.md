@@ -1632,3 +1632,15 @@ single-exercise STRETCH slots were already immune (eligibility keys off `done`).
 exit keeps `isSwitchEligible() == true`); `./gradlew test` green. See
 [CONVENTIONS.md](CONVENTIONS.md#switch-exercise) ("A zero-touch visit must not lock the slot").
 
+## Phase 105 — Disable Android Auto Backup, docs catch up on server side
+
+Privacy: `android:allowBackup` flipped `true → false` in the manifest (plus comment) so
+`sessions/ECG/logs` in `filesDir` and the sync bearer + user profile in `SharedPreferences`
+never leave the device via Google Drive / Samsung Auto Backup or `adb backup`. This only
+disables the OS backup framework — the app's own uploads to the self-hosted server
+(`docs/SYNC.md`, `docs/BACKUP.md`) are normal app I/O over INTERNET and keep working, as do
+the manual `run-as … tar` backups in `scripts/install-debug.sh`. `docs/STORAGE.md` §Backup /
+export updated to match. Docs: `CLAUDE.md` banner and table plus `docs/SYNC.md` status no
+longer say "server side isn't built / WIP" — the server side in `MyGymApp_server` is fully
+built (client sync stays opt-in with wipeable config, so the verified tar remains mandatory
+before install/test ops).
