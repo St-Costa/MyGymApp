@@ -1711,6 +1711,21 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 112 — Release smoke test + baseline profile regen
+
+Closes out the Phase 111 queue: signed the unsigned release APK with the debug key,
+installed it over the debug build (`-r`, same cert, data preserved), and ran the
+`docs/CONVENTIONS.md#release-minify` validation protocol end to end on-device —
+app launched clean (no `FATAL EXCEPTION`/`AndroidRuntime` in logcat), Options → Debug
+confirmed 1.111, Polar self-test 10/10 post-R8, one real sync send succeeded. Then
+regenerated the baseline profile against the minified code (`./gradlew
+:app:generateBaselineProfile`, ~7 min on-device): 24094 rules, 2337 added / 1081
+removed / 86% unmodified vs the pre-minify profile, written straight to the committed
+`app/src/release/generated/baselineProfiles/`. The generator's own uninstall/uninstall
+cycle and the earlier release install were both covered by a verified pre-op
+`gymdata/` tar backup (696 entries), restored onto a fresh debug install afterward
+and confirmed intact before this commit.
+
 ## Phase 111 — Release minify + keep-rules (baseline regen deferred)
 
 Release builds now shrink + obfuscate (`isMinifyEnabled`, `isShrinkResources`;
