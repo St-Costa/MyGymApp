@@ -78,12 +78,20 @@ class BatteryLifeRepository @Inject constructor(
                 ?: return null
             @Suppress("UNCHECKED_CAST")
             val past = (root["pastLifeSeconds"] as? List<Any?>).orEmptyLongs()
+            // Safe casts throughout: a hand-edited YAML with a wrong type used
+            // to throw ClassCastException/DateTimeParseException here, caught
+            // below into a silent `null` that wiped the battery stats. Now a
+            // wrong-typed field returns null only for that read, same outcome
+            // but without the exception round-trip — and the write path below
+            // never persists a partial state over a good file.
             BatteryLifeState(
-                installedAtDate = LocalDate.parse(root["installedAtDate"] as String),
-                installedAtLevel = (root["installedAtLevel"] as Number).toInt(),
-                activeSeconds = (root["activeSeconds"] as Number).toLong(),
-                lastLevel = (root["lastLevel"] as Number).toInt(),
-                lastReadingEpochSec = (root["lastReadingEpochSec"] as Number).toLong(),
+                installedAtDate = (root["installedAtDate"] as? String)
+                    ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                    ?: return null,
+                installedAtLevel = (root["installedAtLevel"] as? Number)?.toInt() ?: return null,
+                activeSeconds = (root["activeSeconds"] as? Number)?.toLong() ?: return null,
+                lastLevel = (root["lastLevel"] as? Number)?.toInt() ?: return null,
+                lastReadingEpochSec = (root["lastReadingEpochSec"] as? Number)?.toLong() ?: return null,
                 pastLifeSeconds = past,
             )
         } catch (_: Exception) {

@@ -1644,3 +1644,37 @@ export updated to match. Docs: `CLAUDE.md` banner and table plus `docs/SYNC.md` 
 longer say "server side isn't built / WIP" — the server side in `MyGymApp_server` is fully
 built (client sync stays opt-in with wipeable config, so the verified tar remains mandatory
 before install/test ops).
+## Phase 106 — Full-repo scan fixes: parsers, coroutines, BLE, privacy, docs
+
+Second full-repo review pass, all fixed in one change (`./gradlew test` green, 20 new tests):
+parsers — `MarkdownParser` closing delimiter must now start on its own line (a `---` inside
+a user-typed value no longer splits the YAML mid-scalar); `WorkoutRepository` migration
+skips blank-id/date sessions instead of re-indexing phantoms, and `save()` fails fast with
+a readable message on blank date; `BatteryLifeRepository` uses safe casts (a hand-edited
+YAML reads as null, no exception round-trip). Coroutines — every `catch (Throwable/Exception)`
+on a coroutine/worker path rethrows `CancellationException` (`ActiveRoutineViewModel`,
+`PolarManager` readiness writes, all six sync APIs with unified `Class: message` reasons,
+`EcgSyncWorker`, `HealthConnectStepsReader`); ECG `readBytes` and restore hash/file I/O moved
+to `Dispatchers.IO`. Architecture — `CardioExerciseViewModel` finally extends
+`ExerciseSessionViewModel` (completions on `clearScope` via `markCompletionAndSave`, exit
+save in `saveProgressOnExit`; the old copy lost the write on fast back-out);
+`RoutineEditViewModel` saveNow/onCleared race fixed with a single-flight claim;
+`EcgRecorder.stop()` is `@Synchronized` + async close (never blocks the BLE thread) and
+`isRecording()` is synchronized; `EcgAnalyzer.analyzeSessionEcg` confirmed caller-less and
+deprecated (class kept for reference). BLE scale — 30 s scan timeout, named runnables instead
+of `removeCallbacksAndMessages(null)`, `weightSamples` synchronized + capped at 600, raw-packet
+logs behind `BuildConfig.DEBUG`. Privacy — BLE device ids redacted to last-4 in all logs,
+readiness metrics (LnRMSSD/HR/VO2max) dropped from logcat + persistent log, scale packet hex
+debug-only, `android:allowBackup="false"`, bogus `POST_PROMOTED_NOTIFICATIONS` permission
+removed, sync preflight refuses cleartext HTTP to non-private hosts (`isCleartextToPublicHost`,
+private = LAN/Tailscale CGNAT/`.ts.net`/loopback). `!!` cleanups (`GitgraphView`,
+`SupersetViewModel`, `ScaleTrendSection`, `ScaleTrendLoader`, `WorkoutRepository`).
+Security incident fixed: `artifacts/phone-backup-diagnostics/` (ledgers, `app.log`,
+`shared_prefs/sync_config.xml` with the server bearer) was tracked in git — untracked and
+`/artifacts/` gitignored here; full history purge follows in Phase 107. Docs — `README`
+points at `install-debug.sh` + lists all docs, `STORAGE.md` prefs table rewritten (no more
+`hrv_baseline`, added the three missing prefs files), `CONVENTIONS.md`/`CLAUDE.md` updated
+for the four-VM base, `FUNCTIONAL_SPEC.md` marked archived, `backup-speed-plan.md` marked
+historical. New tests: `MarkdownParserTest` dash-in-value/body dashes,
+`SyncPreflightCleartextTest` (5), `BatteryLifeCorruptYamlTest` (4).
+

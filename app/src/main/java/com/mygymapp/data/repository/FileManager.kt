@@ -21,7 +21,11 @@ class FileManager private constructor(
     constructor(root: File) : this(null, root)
 
     val root: File by lazy {
-        (explicitRoot ?: File(context!!.filesDir, "gymdata")).also { it.mkdirs() }
+        val base = explicitRoot ?: File(
+            requireNotNull(context) { "FileManager: no Context and no explicitRoot" }.filesDir,
+            "gymdata",
+        )
+        base.also { it.mkdirs() }
     }
 
     fun getDir(name: String): File {

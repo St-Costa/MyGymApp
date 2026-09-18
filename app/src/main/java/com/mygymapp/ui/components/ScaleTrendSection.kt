@@ -187,10 +187,11 @@ internal fun PointLineChart(
         for (i in values.indices) {
             val v = values[i] ?: continue
             if (prevIndex != null) {
-                val pv = values[prevIndex]!!
+                val prev = prevIndex
+                val pv = values[prev] ?: continue
                 drawLine(
                     color = color,
-                    start = Offset(xFor(prevIndex), yFor(pv)),
+                    start = Offset(xFor(prev), yFor(pv)),
                     end = Offset(xFor(i), yFor(v)),
                     strokeWidth = 4f,
                 )

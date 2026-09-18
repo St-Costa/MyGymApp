@@ -246,14 +246,18 @@ fun GitgraphView(
                                 } else null,
                             )
                         } else {
-                            val canOpen = cell.openRoutineId != null && onScheduleCellClick != null
                             ScheduleCellView(
                                 cellSize = cellSize,
                                 shape = shape,
                                 nameMaxFontSp = scheduleNameMaxFontSp,
                                 cell = cell,
                                 isToday = isToday,
-                                onClick = if (canOpen) ({ onScheduleCellClick!!(cell.openRoutineId!!) }) else null,
+                                // Same smart-cast shape as the session cell above: no `!!`
+                                // (a recomposition racing the callback to null used to be
+                                // a crash here).
+                                onClick = if (cell.openRoutineId != null && onScheduleCellClick != null) {
+                                    { onScheduleCellClick(cell.openRoutineId) }
+                                } else null,
                             )
                         }
                     }

@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.mygymapp.BuildConfig
 import com.mygymapp.data.polar.UserProfileRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
@@ -69,12 +70,22 @@ class BleScaleManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "BleScaleManager"
+        private const val SCAN_TIMEOUT_MS = 30_000L
+        private const val AUTO_DISCONNECT_MS = 1_500L
+        // Caps a pathological notify storm: the average only needs recent samples.
+        private const val MAX_WEIGHT_SAMPLES = 600
     }
 
     private var autoConnectAttempted = false
     private var savedThisSession = false
+    // Written on the mainHandler thread (notify path), cleared from connectToDevice
+    // (UI/scan-callback thread) and averaged on mainHandler — guard all three.
     private val weightSamples = mutableListOf<Double>()
+    // App-lifetime @Singleton: this scope is intentionally never cancelled.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val scanTimeout = Runnable { stopScan() }
+    private val autoDisconnect = Runnable { disconnect() }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val adapter: BluetoothAdapter? get() = bluetoothManager.adapter
@@ -140,10 +151,14 @@ class BleScaleManager @Inject constructor(
         // empty results with a service-UUID filter against the real device).
         // Phase-1 validation scans everything and lets the UI show names.
         scanner.startScan(emptyList(), settings, callback)
+        // Unfiltered scans are expensive — never run one open-ended.
+        mainHandler.removeCallbacks(scanTimeout)
+        mainHandler.postDelayed(scanTimeout, SCAN_TIMEOUT_MS)
     }
 
     @SuppressLint("MissingPermission")
     fun stopScan() {
+        mainHandler.removeCallbacks(scanTimeout)
         val scanner = adapter?.bluetoothLeScanner ?: return
         scanCallback?.let { scanner.stopScan(it) }
         scanCallback = null
@@ -161,11 +176,12 @@ class BleScaleManager @Inject constructor(
         }
         _connectionState.value = ScaleConnectionState.CONNECTING
         savedThisSession = false
-        weightSamples.clear()
+        synchronized(weightSamples) { weightSamples.clear() }
         // Cancel any pending auto-disconnect from a previous weigh-in (maybeSaveWeighIn's
-        // postDelayed) — otherwise a reconnect within that 1.5s window would have the stale
-        // callback tear down this new connection instead of the old one.
-        mainHandler.removeCallbacksAndMessages(null)
+        // postDelayed) — otherwise a reconnect within that window would have the stale
+        // callback tear down this new connection instead of the old one. Only our own
+        // runnable is removed, never the whole handler queue.
+        mainHandler.removeCallbacks(autoDisconnect)
         gatt = device.connectGatt(context, false, gattCallback)
     }
 
@@ -183,8 +199,10 @@ class BleScaleManager @Inject constructor(
      */
     private fun maybeSaveWeighIn(impedanceOhm: Int) {
         if (savedThisSession) return
-        if (weightSamples.isEmpty()) return
-        val weightKg = weightSamples.average()
+        val weightKg = synchronized(weightSamples) {
+            if (weightSamples.isEmpty()) return
+            weightSamples.average()
+        }
         savedThisSession = true
 
         val profile = userProfileRepository.get()
@@ -229,7 +247,8 @@ class BleScaleManager @Inject constructor(
         // Weigh-in is complete (weight + impedance both received) — no need to
         // keep the connection open. Brief delay so the UI has a moment to show
         // the "complete" state before it flips back to disconnected.
-        mainHandler.postDelayed({ disconnect() }, 1500)
+        mainHandler.removeCallbacks(autoDisconnect)
+        mainHandler.postDelayed(autoDisconnect, AUTO_DISCONNECT_MS)
     }
 
     @SuppressLint("MissingPermission")
@@ -295,13 +314,24 @@ class BleScaleManager @Inject constructor(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            Log.d(TAG, "onCharacteristicChanged ${characteristic.uuid} hex=${value.joinToString("") { "%02x".format(it) }}")
+            // Raw packet hex + parsed weight/impedance are health data: debug builds only.
+            // (Also avoids per-packet String.format + handler hop cost in release.)
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "onCharacteristicChanged ${characteristic.uuid} hex=${value.joinToString("") { "%02x".format(it) }}")
+            }
             if (characteristic.uuid != VtrumpSenheProtocol.NOTIFY_CHARACTERISTIC_UUID) return
             val reading = VtrumpSenheProtocol.parse(value)
-            Log.d(TAG, "parsed=$reading")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "parsed=$reading")
+            }
             if (reading == null) return
             mainHandler.post {
-                reading.weightKg?.let { weightSamples.add(it) }
+                reading.weightKg?.let {
+                    synchronized(weightSamples) {
+                        if (weightSamples.size >= MAX_WEIGHT_SAMPLES) weightSamples.removeAt(0)
+                        weightSamples.add(it)
+                    }
+                }
 
                 val previous = _lastReading.value
                 val merged = ScaleReading(

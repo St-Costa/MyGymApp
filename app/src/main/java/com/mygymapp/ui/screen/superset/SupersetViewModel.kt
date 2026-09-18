@@ -207,8 +207,9 @@ class SupersetViewModel @Inject constructor(
                             val cs = currentSet as? ExerciseSet.Strength
                             val ps = prevStrengthSets.getOrNull(i) ?: lastMeaningful
                             val hasCurrentData = cs != null && (cs.reps != 0 || cs.weight != 0.0)
-                            val displayReps = if (hasCurrentData) cs!!.reps else ps?.reps ?: 0
-                            val displayWeight = if (hasCurrentData) cs!!.weight else ps?.weight ?: 0.0
+                            val current = if (hasCurrentData) cs else null
+                            val displayReps = current?.reps ?: ps?.reps ?: 0
+                            val displayWeight = current?.weight ?: ps?.weight ?: 0.0
                             SupersetSetUi(
                                 exerciseIndex = memberIndex,
                                 exerciseName = ex.name,

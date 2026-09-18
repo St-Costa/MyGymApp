@@ -35,7 +35,11 @@ data class EcgAnalysisResult(
  *       by compensatory long RR (>110% of median).
  * Pause = RR > 2000 ms.
  * Irregular = any RR that deviates >20% from local median but isn't a PAC.
+ *
+ * NOTE: no longer called anywhere — waveform analysis moved server-side
+ * (docs/SYNC.md "Fourth record type: raw ECG"). Kept for reference/debug only.
  */
+@Deprecated("ECG analysis moved server-side; the phone never calls this. See docs/SYNC.md.")
 @Singleton
 class EcgAnalyzer @Inject constructor() {
     companion object {

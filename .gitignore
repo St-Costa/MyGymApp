@@ -15,6 +15,9 @@ local.properties
 # One-off data-recovery workspace (personal workout/weigh-in/ECG data pulled from
 # the sync server after the on-device data was wiped — see CLAUDE.md banner). Not
 # project source; contains personal data.
+# Phone diagnostics (ledger states, app.log, shared_prefs incl. sync_config with the
+# server bearer token) — personal data + secrets, must never be committed.
 /gym-recovery
+/artifacts/
 gymdata-backup-*.tar
 /backups/

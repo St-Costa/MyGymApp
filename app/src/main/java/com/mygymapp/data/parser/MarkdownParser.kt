@@ -18,8 +18,20 @@ object MarkdownParser {
             return MarkdownDocument(emptyMap(), trimmed)
         }
 
-        val secondDelimiter = trimmed.indexOf("---", 3)
-        if (secondDelimiter == -1) {
+        // The closing delimiter must start on its own line: the old
+        // `indexOf("---", 3)` matched a `---` run anywhere — including inside a
+        // user-typed quoted value — and silently split the YAML mid-scalar.
+        val lines = trimmed.split("\n")
+        var offset = lines[0].length + 1 // start of line 1 in [trimmed]
+        var secondDelimiter: Int? = null
+        for (i in 1 until lines.size) {
+            if (lines[i].trim() == "---") {
+                secondDelimiter = offset
+                break
+            }
+            offset += lines[i].length + 1
+        }
+        if (secondDelimiter == null) {
             return MarkdownDocument(emptyMap(), trimmed)
         }
 

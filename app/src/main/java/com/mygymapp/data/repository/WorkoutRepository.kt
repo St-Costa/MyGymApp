@@ -428,6 +428,11 @@ class WorkoutRepository @Inject constructor(
                 files.forEach { file ->
                     try {
                         val session = WorkoutParser.fromMarkdown(file.readText())
+                        // A blank id/date means the frontmatter was missing or
+                        // malformed — never rename/re-index it (re-saving would
+                        // mint a fresh id and fork the history). It is skipped
+                        // the same way an unparseable file is.
+                        if (session.id.isBlank() || session.date.isBlank()) return@forEach
                         val newFileName = sessionFileName(session)
                         val currentFile = if (file.name != newFileName) {
                             val dst = File(monthDir, newFileName)
@@ -457,6 +462,9 @@ class WorkoutRepository @Inject constructor(
                 session
             }
 
+            // Fail fast with a readable message: the old code fell through to
+            // `LocalDate.parse("")` with a bare DateTimeParseException.
+            require(updated.date.isNotBlank()) { "Refusing to save session ${updated.id}: blank date" }
             val date = LocalDate.parse(updated.date)
             val dir = fileManager.getHistoryDir(date.year, date.monthValue)
             val fileName = sessionFileName(updated)
@@ -597,9 +605,11 @@ class WorkoutRepository @Inject constructor(
                 val session = try {
                     WorkoutParser.fromMarkdown(file.readText()).takeIf { it.completedAt.isNotBlank() }
                 } catch (_: Exception) { null }
+                // Local val: smart-cast works, no `!!` (best is a var).
+                val currentBest = best
                 if (session != null &&
                     (beforeDate == null || LocalDate.parse(session.date).isBefore(beforeDate)) &&
-                    (best == null || session.completedAt > best!!.completedAt)
+                    (currentBest == null || session.completedAt > currentBest.completedAt)
                 ) {
                     best = session
                 }

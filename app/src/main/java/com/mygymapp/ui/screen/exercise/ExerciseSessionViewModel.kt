@@ -15,10 +15,12 @@ import kotlinx.coroutines.launch
  * Shared plumbing for the per-exercise "do the sets, tap Complete, navigate back" screens
  * ([StrengthExerciseViewModel][com.mygymapp.ui.screen.strengthexercise.StrengthExerciseViewModel],
  * [StretchExerciseViewModel][com.mygymapp.ui.screen.stretchexercise.StretchExerciseViewModel],
- * [SupersetViewModel][com.mygymapp.ui.screen.superset.SupersetViewModel]).
+ * [SupersetViewModel][com.mygymapp.ui.screen.superset.SupersetViewModel],
+ * [CardioExerciseViewModel][com.mygymapp.ui.screen.cardioexercise.CardioExerciseViewModel]).
  *
- * All three had a byte-for-byte copy of the same `completionSaved` + `clearScope` +
- * `onCleared()` teardown; small divergences between the copies were an actual source of bugs.
+ * All four had a byte-for-byte copy of the same `completionSaved` + `clearScope` +
+ * `onCleared()` teardown; small divergences between the copies were an actual source of bugs
+ * (the cardio copy saved completions on `viewModelScope`, which teardown cancels).
  * This centralises it:
  *
  *  - [clearScope] — a `SupervisorJob` scope that outlives ViewModel teardown, used for the

@@ -17,6 +17,7 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.util.AppLogger
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -105,6 +106,7 @@ class EcgSyncWorker @AssistedInject constructor(
             val compressed = try {
                 gzip(file.readBytes())
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 appLogger.w(TAG, "ECG compress failed for ${entry.sessionId}: ${e.message}")
                 ledger.markFailed(entry.sessionId, "compress failed: ${e.message}")
                 anyFailure = true

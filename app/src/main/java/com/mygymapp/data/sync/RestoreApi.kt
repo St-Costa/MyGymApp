@@ -9,6 +9,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.zip.GZIPInputStream
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -74,7 +75,8 @@ class RestoreApi @Inject constructor() {
                 RestoreResult.Manifest(entries)
             }
         } catch (e: Exception) {
-            RestoreResult.Failure(e.message ?: e.javaClass.simpleName)
+            if (e is CancellationException) throw e
+            RestoreResult.Failure("${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
@@ -98,7 +100,8 @@ class RestoreApi @Inject constructor() {
                 RestoreResult.FileBytes(relPath, bytes)
             }
         } catch (e: Exception) {
-            RestoreResult.Failure(e.message ?: e.javaClass.simpleName)
+            if (e is CancellationException) throw e
+            RestoreResult.Failure("${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
@@ -145,7 +148,8 @@ class RestoreApi @Inject constructor() {
                 RestoreResult.Files(out)
             }
         } catch (e: Exception) {
-            RestoreResult.Failure(e.message ?: e.javaClass.simpleName)
+            if (e is CancellationException) throw e
+            RestoreResult.Failure("${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
@@ -182,7 +186,8 @@ class RestoreApi @Inject constructor() {
                 RestoreResult.Tarball(manifestSha, members)
             }
         } catch (e: Exception) {
-            RestoreResult.Failure(e.message ?: e.javaClass.simpleName)
+            if (e is CancellationException) throw e
+            RestoreResult.Failure("${e.javaClass.simpleName}: ${e.message}")
         }
     }
 }

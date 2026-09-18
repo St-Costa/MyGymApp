@@ -79,7 +79,7 @@ data class ScaleTrendReport(
         val median = currentWeekMedianWeight ?: return null
         return currentWeekSlots.indices
             .filter { currentWeekSlots[it] != null }
-            .minByOrNull { kotlin.math.abs(currentWeekSlots[it]!!.weightKg - median) }
+            .minByOrNull { kotlin.math.abs((currentWeekSlots[it]?.weightKg ?: 0.0) - median) }
     }
 
     /** One point per ISO week (Monday) over the last 2 months, value = median body-fat % that week. */
