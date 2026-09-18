@@ -22,7 +22,12 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 timestamp="$(date +%Y%m%d-%H%M%S)"
-backup_file="$BACKUP_DIR/gymdata-backup-${timestamp}.tar"
+# Stamp the installed app version into the backup name (CONVENTIONS.md#versioning), so a
+# tar says which build produced it. Falls back to "v-unknown" if gradle.properties
+# ever stops carrying the version (never block the backup on this).
+app_version="$(grep -E '^appVersionName=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')"
+app_version="${app_version:-unknown}"
+backup_file="$BACKUP_DIR/gymdata-backup-${timestamp}-v${app_version}.tar"
 
 echo "==> Backing up on-device gymdata"
 if ! adb shell run-as "$APP_ID" tar -C /data/data/"$APP_ID"/files -cf - gymdata > "$backup_file" 2>/tmp/install-debug-backup-err.log; then

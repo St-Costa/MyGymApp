@@ -436,10 +436,10 @@ All `MODE_PRIVATE`. None of these leave the device via Android Auto Backup
 | `user_profile` | `weightKg` | Float | " | " |
 | `user_profile` | `isMale` | Boolean | " | " |
 | `user_profile` | `heightCm` | Int | " | Used by BIA body-fat % (scale integration) |
-| `sync_config` | `serverUrl` | String | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net` |
-| `sync_config` | `bearerToken` | String | " | Shared secret sent as `Authorization: Bearer` on every sync POST |
-| `sync_config` | `enabled` | Boolean | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |
-| `sync_config` | `tarballManifestSha` | String | " | Last `X-Manifest-SHA256` seen from `GET /v1/repo/tarball`, for `?since=` incremental restore |
+| `sync_config_enc` | `serverUrl` | String (encrypted) | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net`. Encrypted at rest via `EncryptedSharedPreferences` (Keystore AES256); the pre-Phase-107 plaintext `sync_config` file is migrated once on first open, then deleted |
+| `sync_config_enc` | `bearerToken` | String (encrypted) | " | Shared secret sent as `Authorization: Bearer` on every sync POST |
+| `sync_config_enc` | `enabled` | Boolean (encrypted) | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |
+| `sync_config_enc` | `tarballManifestSha` | String (encrypted) | " | Last `X-Manifest-SHA256` seen from `GET /v1/repo/tarball`, for `?since=` incremental restore |
 | `powerlifting_schedule` | schedule state | String/Int | [PowerliftingScheduleRepository](../app/src/main/java/com/mygymapp/data/PowerliftingScheduleRepository.kt) | Powerlifting program position |
 | `known_polar_device` | known device id | String | [KnownPolarDeviceRepository](../app/src/main/java/com/mygymapp/data/polar/KnownPolarDeviceRepository.kt) | Last-connected Polar H10 for auto-reconnect |
 | `known_scale` | known address | String | [KnownScaleRepository](../app/src/main/java/com/mygymapp/data/scale/KnownScaleRepository.kt) | Last-connected BLE scale for auto-connect |

@@ -23,6 +23,29 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
+ * Splits drained repo-ledger entries into (toSend, staleUpsertsToRetire). An `upsert`
+ * whose file vanished between enqueue and now is stale — a `delete` tombstone should
+ * already be queued separately, so it is retired without sending. `delete` ops always
+ * send (no file to read). Pure function of the pending list plus an existence check,
+ * so the decision is unit-testable without a WorkManager harness.
+ */
+internal fun partitionRepoPending(
+    pending: List<RepoLedgerEntry>,
+    exists: (relPath: String) -> Boolean,
+): Pair<List<RepoLedgerEntry>, List<String>> {
+    val toSend = mutableListOf<RepoLedgerEntry>()
+    val stale = mutableListOf<String>()
+    for (entry in pending) {
+        if (entry.op == "delete" || exists(entry.relPath)) {
+            toSend += entry
+        } else {
+            stale += entry.relPath
+        }
+    }
+    return toSend to stale
+}
+
+/**
  * Drains the repo-file sync ledger — the fifth independent sync worker alongside
  * [SyncWorker] (sessions), [ReadinessSyncWorker], [ScaleWeighInSyncWorker] and
  * [EcgSyncWorker]. See `docs/BACKUP.md` §3.4.
@@ -82,18 +105,20 @@ class RepoSyncWorker @AssistedInject constructor(
 
         // Build the bulk request. An `upsert` whose file vanished between enqueue and now
         // has a `delete` tombstone queued separately — retire the stale upsert here, don't
-        // send it.
+        // send it (see partitionRepoPending).
+        val (live, stale) = partitionRepoPending(pending) { rel ->
+            File(fileManager.root, rel).exists()
+        }
+        stale.forEach { rel ->
+            appLogger.w(TAG, "Repo upsert skip: $rel gone from disk (delete queued separately)")
+            ledger.markSent(rel)
+        }
         val bulkEntries = mutableListOf<RepoBulkEntry>()
-        for (entry in pending) {
+        for (entry in live) {
             if (entry.op == "delete") {
                 bulkEntries += RepoBulkEntry(entry.relPath, "delete", entry.contentHash, file = null)
             } else {
                 val file = File(fileManager.root, entry.relPath)
-                if (!file.exists()) {
-                    appLogger.w(TAG, "Repo upsert skip: ${entry.relPath} gone from disk (delete queued separately)")
-                    ledger.markSent(entry.relPath)
-                    continue
-                }
                 bulkEntries += RepoBulkEntry(entry.relPath, "upsert", ledger.hashOf(file), file)
             }
         }

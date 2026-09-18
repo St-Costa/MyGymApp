@@ -1,7 +1,7 @@
 package com.mygymapp.ui.components
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
@@ -32,7 +32,7 @@ fun PolarLinkStatusIcon(
 ) {
     when (status) {
         PolarLinkStatus.CONNECTED -> Icon(
-            Icons.Default.BluetoothSearching,
+            Icons.AutoMirrored.Filled.BluetoothSearching,
             contentDescription = "Connesso",
             tint = Green,
             modifier = modifier,

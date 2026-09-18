@@ -25,6 +25,17 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPOutputStream
 
 /**
+ * Gzip-compresses a raw `.ecg` payload for `POST /v1/ecg`. Top-level (not a worker
+ * method) so the round-trip is unit-testable without a WorkManager harness —
+ * `EcgSyncWorker` delegates to it.
+ */
+internal fun gzipEcg(bytes: ByteArray): ByteArray {
+    val out = ByteArrayOutputStream()
+    GZIPOutputStream(out).use { it.write(bytes) }
+    return out.toByteArray()
+}
+
+/**
  * Drains the raw-ECG sync ledger — the fourth independent sync worker alongside
  * [SyncWorker] (sessions), [ReadinessSyncWorker], and [ScaleWeighInSyncWorker]. Same
  * reasoning for staying dedicated rather than generalized: see docs/SYNC.md
@@ -60,11 +71,7 @@ class EcgSyncWorker @AssistedInject constructor(
         const val EXPEDITED_WORK_NAME = UNIQUE_EXPEDITED_NAME
     }
 
-    private fun gzip(bytes: ByteArray): ByteArray {
-        val out = ByteArrayOutputStream()
-        GZIPOutputStream(out).use { it.write(bytes) }
-        return out.toByteArray()
-    }
+    private fun gzip(bytes: ByteArray): ByteArray = gzipEcg(bytes)
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         // Age cap runs regardless of whether sync is configured — an unconfigured phone
