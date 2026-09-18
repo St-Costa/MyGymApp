@@ -1567,4 +1567,49 @@ independent holes on that exact path, neither hit while the HR screen is driving
 No new unit test: all four touch points are `PolarBleApi` / `Context` / `NotificationManager`
 calls, the same Android-framework coupling that keeps `PolarManager` and `PolarStreamingService`
 out of the local suite. `CONVENTIONS.md` "Polar foreground service + reconnection" updated.
+## Phase 102 — Assisted-machine exercises (e.g. assisted pull-up/dip)
+
+Added a third weight-loading mode alongside manual load and bodyweight: `Exercise.LoadMode.ASSISTED`.
+On an assisted machine the number set on it is *subtracted* from body weight rather than
+added — more assistance selected means less real load, so progress looks like the number
+going **down**, not up. `ExerciseEditScreen` gained a second switch, "Assistito", mutually
+exclusive with "Corpo libero" (`ExerciseEditViewModel.onAssistedChange`/`onBodyweightChange`
+now clear each other). Unlike bodyweight's `bwLoadPercent`, there is no per-exercise default —
+the assist offset is entered set-by-set in the workout, like a normal weight, because it
+changes as the lifter progresses.
+
+The strength/superset weight picker stays visible for an assisted exercise (relabelled
+"Assist." instead of "Kg") and always shows the raw machine number, never the net load. On
+exercise completion, `StrengthExerciseViewModel.buildStrengthSets` / `SupersetViewModel`
+materialize `weight = materializeAssistedWeight(bodyWeightKg, assistOffsetKg)` —
+`bodyWeightKg - assistOffsetKg`, clamped to 0, rounded to 0.5 kg, same
+`ScaleHistoryRepository` weigh-in lookup as bodyweight — so `reps * weight` tonnage/PR/e1RM
+keeps working with no special-casing anywhere downstream (net weight going up is progress,
+same direction as any other exercise). The raw offset and base body weight are kept on
+`ExerciseSet.Strength` (`assistOffsetKg` + reused `bwBaseWeightKg`) for audit, same pattern as
+bodyweight.
+
+The one place that *does* need special handling is the "previous" pre-fill, which must show
+the raw assist number back to the lifter, not the net weight — so the exercise-stats sidecar
+(`history/_stats/{id}.yaml`) schema walked v4 → **v5**, adding a third `previousSetsAssisted`
+/ `previousSessionDateAssisted` slot alongside the existing manual/bodyweight split, same
+reasoning as the v4 split (comparing across weighting approaches after a mode switch produced
+nonsense change-badge percentages). `pr`/`rmPr`/`hasPriorRealTonnage` stay all-time across all
+three approaches, since materialized net weight is directly comparable. `ContextStats.previousSetsFor`
+and `.previousSessionDateFor` now take `LoadMode` instead of a bodyweight `Boolean`.
+
+New pure `materializeAssistedWeight()` in `TonnageMath.kt`, unit-tested in `TonnageMathTest`.
+`ExerciseStatsCalculatorTest` and `ExerciseParserRoundTripTest` extended for the new mode and
+schema. See [CONVENTIONS.md](CONVENTIONS.md#assisted-machine-load-subtract-from-body-weight-materialize-the-same-way)
+and [STORAGE.md](STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml).
+
+## Phase 103 — Remove routine free-text notes
+
+Dropped the unused per-routine free-text notes field: `Routine.notes` (model), the markdown
+body round-trip in `RoutineParser` (routine `.md` files no longer have a body section after
+the frontmatter), the "Notes" text field in `RoutineEditScreen`/`RoutineEditViewModel`, and
+the routine-side write in `ActiveRoutineViewModel.updateNotes()` (it used to fan out to both
+the session and the routine — now it only updates the session's own notes, which is a
+separate, still-used feature). `RoutineParserRoundTripTest`'s notes round-trip test removed;
+`STORAGE.md` and `FUNCTIONAL_SPEC.md` updated to match.
 

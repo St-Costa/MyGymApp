@@ -17,6 +17,9 @@ data class Exercise(
     // server-side, see ANALYSIS_SPEC.md §1.2-1.5) silently drops all bodyweight work
     // because it filters on weight > 0. Propagated onto each WorkoutExercise's sets when
     // a session is built from this exercise — see WorkoutExercise/ExerciseSet.Strength.
+    // Kept as a stored field (rather than derived from loadMode) so legacy files and
+    // existing callers keep working unchanged; ExerciseParser keeps it in sync with
+    // loadMode == LoadMode.BODYWEIGHT on both read and write.
     val isBodyweight: Boolean = false,
     // How much of the lifter's body weight this movement actually loads, as a percent —
     // one of 25 / 50 / 75 / 100 (squat ≈ 100, plank/push-up ≈ 75, reverse sit-up ≈ 50,
@@ -26,7 +29,23 @@ data class Exercise(
     // `weight` is materialized to bwLoadPercent/100 * bodyWeightKg so all downstream tonnage/
     // PR/e1RM math (phone and server) keeps working unchanged on `reps * weight`.
     val bwLoadPercent: Int = 0,
+    // How this exercise's set weight is loaded: MANUAL (plate/dumbbell load entered directly),
+    // BODYWEIGHT (mirrors isBodyweight/bwLoadPercent above), or ASSISTED — an assisted machine
+    // (e.g. an assisted pull-up/dip station) where the number set on the machine is *subtracted*
+    // from body weight rather than added: more assistance selected = less real load, so a lower
+    // number on the machine is the actual progress. Mutually exclusive with isBodyweight; there
+    // is no per-exercise assist amount (unlike bwLoadPercent) because the assist offset varies
+    // set-to-set like a normal weight, not a fixed property of the movement — it is entered at
+    // set-completion time and materialized the same way, see materializeAssistedWeight() in
+    // TonnageMath.kt and ExerciseSet.Strength.assistOffsetKg.
+    val loadMode: LoadMode = LoadMode.MANUAL,
 )
+
+enum class LoadMode {
+    MANUAL,
+    BODYWEIGHT,
+    ASSISTED,
+}
 
 enum class ExerciseType {
     FORZA,

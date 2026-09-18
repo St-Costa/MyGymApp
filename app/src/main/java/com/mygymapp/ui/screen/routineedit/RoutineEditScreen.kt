@@ -186,14 +186,6 @@ fun RoutineEditScreen(
                 )
             }
 
-            OutlinedTextField(
-                value = uiState.notes,
-                onValueChange = viewModel::onNotesChange,
-                label = { Text("Notes") },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
             Text(
                 text = if (uiState.isFixedDaily) "Daily fixed exercises" else "Exercises",
                 style = MaterialTheme.typography.titleLarge,

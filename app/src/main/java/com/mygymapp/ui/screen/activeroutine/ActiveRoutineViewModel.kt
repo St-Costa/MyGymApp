@@ -371,7 +371,6 @@ class ActiveRoutineViewModel @Inject constructor(
                 date = LocalDate.now().toString(),
                 startedAt = LocalDateTime.now().toString(),
                 exercises = workoutExercises,
-                notes = routine.notes,
             )
             val saved = workoutRepository.save(session)
             currentSession = saved
@@ -384,7 +383,6 @@ class ActiveRoutineViewModel @Inject constructor(
 
             _uiState.value = ActiveRoutineUiState(
                 routineName = routine.name,
-                notes = routine.notes,
                 exercises = exercises,
                 sessionId = saved.id,
                 isLoading = false,
@@ -551,9 +549,6 @@ class ActiveRoutineViewModel @Inject constructor(
             val updated = session.copy(notes = notes)
             currentSession = updated
             workoutRepository.save(updated)
-            // Also update the routine notes
-            val routine = routineRepository.getById(routineId) ?: return@launch
-            routineRepository.save(routine.copy(notes = notes))
         }
     }
 

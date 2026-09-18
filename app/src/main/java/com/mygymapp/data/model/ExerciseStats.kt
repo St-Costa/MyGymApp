@@ -67,8 +67,21 @@ data class ExerciseStats(
          *     `isBodyweight` and shows "primo dato" when there's no like-with-like history. `pr` /
          *     `rmPr` / `hasPriorRealTonnage` stay all-time across both approaches. Old sidecars
          *     can't supply the split ⇒ lazy rebuild.
+         *
+         * v5: a third weighting approach, **assisted** (an assisted machine, e.g. assisted
+         *     pull-up/dip, where the number set on the machine is subtracted from body weight —
+         *     see Exercise.LoadMode.ASSISTED). `previousSetsAssisted` / `previousSessionDateAssisted`
+         *     mirror `previousSets` / `previousSetsBodyweight` for this third approach, same
+         *     reasoning as v4: comparing an assisted set's materialized net weight against a
+         *     manual-load or bodyweight history would be comparing unrelated numbers. `pr` /
+         *     `rmPr` / `hasPriorRealTonnage` stay all-time across all three approaches — the net
+         *     weight materialization (bwBaseWeightKg - assistOffsetKg) makes an assisted set's
+         *     `weight` directly comparable to a manual-load set's for tonnage/e1RM purposes, only
+         *     the "previous" pre-fill needs a like-with-like split because it must show the raw
+         *     number the lifter sets on the machine, not the net weight (see
+         *     PreviousSet.assistOffsetKg). Old sidecars can't supply the split ⇒ lazy rebuild.
          */
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
     }
 }
 
@@ -93,6 +106,16 @@ data class ContextStats(
     val previousSetsBodyweight: List<PreviousSet> = emptyList(),
     /** `completedAt` (or `date` fallback) of the session [previousSetsBodyweight] came from. */
     val previousSessionDateBodyweight: String = "",
+    /**
+     * Same as [previousSets] but restricted to sessions whose sets were **assisted** (an
+     * assisted machine — materialized `weight` = bwBaseWeightKg - assistOffsetKg). Used for the
+     * pre-fill and active-routine change badge when the exercise is currently configured as
+     * assisted, so it never compares against manual-load or bodyweight history (schema v5).
+     * Empty when no real assisted session exists for this context.
+     */
+    val previousSetsAssisted: List<PreviousSet> = emptyList(),
+    /** `completedAt` (or `date` fallback) of the session [previousSetsAssisted] came from. */
+    val previousSessionDateAssisted: String = "",
     /** All-time best tonnage (reps × weight) Strength set for this exercise+context. */
     val pr: PreviousSet? = null,
     /**
@@ -109,17 +132,23 @@ data class ContextStats(
     val hasPriorRealTonnage: Boolean = false,
 ) {
     /**
-     * The "previous" set list matching a weighting approach — [previousSetsBodyweight] when
-     * [bodyweight] is true, [previousSets] otherwise (schema v4). Callers that compare today's
-     * work against history (grey pre-fill, active-routine change badge) must use this so a
-     * manual↔bodyweight switch never mixes approaches.
+     * The "previous" set list matching a weighting approach — [previousSetsBodyweight] /
+     * [previousSetsAssisted] / [previousSets] depending on [loadMode] (schema v5). Callers that
+     * compare today's work against history (grey pre-fill, active-routine change badge) must use
+     * this so a manual↔bodyweight↔assisted switch never mixes approaches.
      */
-    fun previousSetsFor(bodyweight: Boolean): List<PreviousSet> =
-        if (bodyweight) previousSetsBodyweight else previousSets
+    fun previousSetsFor(loadMode: LoadMode): List<PreviousSet> = when (loadMode) {
+        LoadMode.BODYWEIGHT -> previousSetsBodyweight
+        LoadMode.ASSISTED -> previousSetsAssisted
+        LoadMode.MANUAL -> previousSets
+    }
 
-    /** [previousSessionDate] / [previousSessionDateBodyweight], matching [previousSetsFor]. */
-    fun previousSessionDateFor(bodyweight: Boolean): String =
-        if (bodyweight) previousSessionDateBodyweight else previousSessionDate
+    /** The `previousSessionDate*` field matching [previousSetsFor]. */
+    fun previousSessionDateFor(loadMode: LoadMode): String = when (loadMode) {
+        LoadMode.BODYWEIGHT -> previousSessionDateBodyweight
+        LoadMode.ASSISTED -> previousSessionDateAssisted
+        LoadMode.MANUAL -> previousSessionDate
+    }
 }
 
 /**
@@ -142,4 +171,18 @@ data class PreviousSet(
      * list a set lands in during a rebuild — see [ExerciseStats.SCHEMA_VERSION] v4.
      */
     val isBodyweight: Boolean = false,
+    /**
+     * True when this set was recorded on an assisted machine (its `weight` is the materialized
+     * bwBaseWeightKg - assistOffsetKg net load). Drives which `previousSets` list a set lands in
+     * during a rebuild — see [ExerciseStats.SCHEMA_VERSION] v5. Mutually exclusive with
+     * [isBodyweight].
+     */
+    val isAssisted: Boolean = false,
+    /**
+     * The raw number set on the assist machine when this set was recorded (0.0 for a
+     * non-assisted set). The pre-fill / active-routine badge for an assisted exercise must show
+     * *this*, not [weight] (the materialized net load) — the lifter dials in assistance on the
+     * machine, not the net load.
+     */
+    val assistOffsetKg: Double = 0.0,
 )
