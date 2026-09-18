@@ -1711,3 +1711,15 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 108 — Polar self-test button (Options → Debug)
+
+Verifying the split without polluting the workout list: a new "Self-test metriche Polar"
+button samples 60 s of live HR from the connected strap, then runs the
+`SessionMetrics` formula checks (drift, Keytel, TRIMP, peak rules) on synthetic fixtures
+and reports `OK/FAIL` per line. Read-only by construction — it only collects
+`PolarManager.heartRate` and runs pure functions; no session is started, no history or
+sidecar is written, nothing is queued for sync. New `data/polar/PolarSelfTest.kt`
+(off-line checks + report formatting) with `PolarSelfTestTest` (3 tests);
+`OptionsViewModel.runPolarSelfTest` + Debug card UI follow the existing ECG/step-debug
+patterns (double-tap guard, countdown in the button label). `./gradlew test` green.
+

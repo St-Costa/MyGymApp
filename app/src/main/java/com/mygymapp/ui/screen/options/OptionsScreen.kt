@@ -120,6 +120,7 @@ fun OptionsScreen(
                 onPolarDebugClick = onNavigateToPolarDebug,
                 onStepCheckClick = viewModel::checkStepCounterDebug,
                 onSendDebugEcg = viewModel::sendDebugEcg,
+                onRunPolarSelfTest = viewModel::runPolarSelfTest,
                 onSummaryPreviewClick = onNavigateToSummaryPreview,
             )
         }
@@ -466,6 +467,7 @@ private fun DebugSection(
     onPolarDebugClick: () -> Unit,
     onStepCheckClick: () -> Unit,
     onSendDebugEcg: () -> Unit,
+    onRunPolarSelfTest: () -> Unit,
     onSummaryPreviewClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
@@ -582,6 +584,36 @@ private fun DebugSection(
             if (uiState.ecgDebugResult != null) {
                 Text(
                     uiState.ecgDebugResult,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Self-test metriche — verifica la pipeline senza allenarsi: campiona 60s di HR
+            // live dalla fascia connessa, poi esegue i check delle formule su dati sintetici
+            // (drift, Keytel, TRIMP, regole di picco). Read-only: non crea sessioni, non
+            // scrive history, non accoda sync — la lista delle sessioni resta intatta.
+            Text(
+                "Controlla la pipeline metriche senza sporcare le sessioni: 60s di HR live + check formule.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = onRunPolarSelfTest,
+                enabled = !uiState.polarSelfTestRunning,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.polarSelfTestRunning) {
+                    Text("Self-test in corso… ${uiState.polarSelfTestSecondsLeft}s")
+                } else {
+                    Text("Self-test metriche Polar")
+                }
+            }
+            if (uiState.polarSelfTestResult != null) {
+                Text(
+                    uiState.polarSelfTestResult,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

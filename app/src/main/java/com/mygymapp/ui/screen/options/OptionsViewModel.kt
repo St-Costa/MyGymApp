@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.PowerliftingScheduleRepository
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
+import com.mygymapp.data.polar.PolarSelfTest
 import com.mygymapp.data.polar.ReadinessRepository
 import com.mygymapp.data.polar.UserProfile
 import com.mygymapp.data.polar.UserProfileRepository
@@ -82,6 +83,10 @@ data class OptionsUiState(
     // Step-counter debug (Options → "Debug contapassi")
     val stepDebugRunning: Boolean = false,
     val stepDebugResult: String? = null,
+    // Polar self-test (Options → Debug): live HR sample + offline formula checks.
+    val polarSelfTestRunning: Boolean = false,
+    val polarSelfTestSecondsLeft: Int = 0,
+    val polarSelfTestResult: String? = null,
 )
 
 @HiltViewModel
@@ -687,5 +692,63 @@ class OptionsViewModel @Inject constructor(
     companion object {
         private const val DEBUG_ECG_RECORD_MILLIS = 10_000L
         private const val RESYNC_PROGRESS_TIMEOUT_MILLIS = 60_000L
+        /** Live HR sampling window for the Polar self-test below. */
+        private const val POLAR_SELF_TEST_SECONDS = 60
+    }
+
+    // ─── Polar self-test (Options → Debug) ───────────────────────────────────────
+
+    /**
+     * End-to-end check of the session-metrics pipeline without a workout: samples live HR
+     * from the connected strap for [POLAR_SELF_TEST_SECONDS], then runs the pure
+     * [PolarSelfTest] formula checks on synthetic fixtures and reports everything.
+     *
+     * Read-only by construction — it only *collects* `PolarManager.heartRate` and runs pure
+     * functions. It never starts a session, never writes history/sidecars, never enqueues
+     * sync: pressing it any number of times leaves the workout list untouched (same
+     * guarantee as the step-counter debug's checkpoint rule above).
+     */
+    fun runPolarSelfTest() {
+        if (_uiState.value.polarSelfTestRunning) return
+        if (polarManager.connectionState.value != ConnectionState.CONNECTED) {
+            _uiState.value = _uiState.value.copy(
+                polarSelfTestResult = "Polar non connesso — collegalo dalla schermata Cuore e riprova",
+            )
+            return
+        }
+        val totalSeconds = POLAR_SELF_TEST_SECONDS
+        _uiState.value = _uiState.value.copy(
+            polarSelfTestRunning = true,
+            polarSelfTestSecondsLeft = totalSeconds,
+            polarSelfTestResult = null,
+        )
+        viewModelScope.launch {
+            val samples = mutableListOf<Int>()
+            val collectJob = launch {
+                polarManager.heartRate.collect { hr ->
+                    if (hr != null && hr > 0) samples += hr
+                }
+            }
+            try {
+                // Same countdown shape as the ECG debug above: ticks down to 0.
+                for (secondsLeft in totalSeconds - 1 downTo 0) {
+                    kotlinx.coroutines.delay(1_000L)
+                    _uiState.value = _uiState.value.copy(polarSelfTestSecondsLeft = secondsLeft)
+                }
+            } finally {
+                collectJob.cancel()
+            }
+            val liveSummary = if (samples.isEmpty()) {
+                "Live: nessun campione HR in ${totalSeconds}s (fascia connessa ma silenziosa)"
+            } else {
+                "Live: ${samples.size} campioni, media ${samples.average().toInt()}, " +
+                    "min ${samples.min()}, max ${samples.max()}"
+            }
+            val report = PolarSelfTest.formatReport(liveSummary, PolarSelfTest.runOfflineChecks())
+            _uiState.value = _uiState.value.copy(
+                polarSelfTestRunning = false,
+                polarSelfTestResult = report,
+            )
+        }
     }
 }
