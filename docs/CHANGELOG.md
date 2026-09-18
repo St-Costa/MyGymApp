@@ -1711,6 +1711,17 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 111 — Release minify + keep-rules (baseline regen deferred)
+
+Release builds now shrink + obfuscate (`isMinifyEnabled`, `isShrinkResources`;
+`app/proguard-rules.pro` covers Hilt/snakeyaml/Polar/RxJava — app code needs no keeps:
+manual YAML casts, manifest-referenced services). `assembleRelease` green, APK 3.7 MB
+unsigned. `docs/CONVENTIONS.md#release-minify` defines the validation protocol
+(sign-with-debug-key → tar backup → install → self-test 10/10 → real sync) and the
+ordering rule (baseline profile regenerates **after** minify, never before). Baseline
+regen + on-device smoke need the phone: queued, not done in this change. `./gradlew
+test` green, zero warnings.
+
 ## Phase 110 — Split step 2: ReadinessMetrics kernels
 
 Same kernels-first pattern as step 1: `filterArtifacts`, `calculateRMSSD` and the Uth

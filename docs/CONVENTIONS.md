@@ -720,3 +720,26 @@ see `git log --oneline`). Never commit a phase's code without its CHANGELOG para
 and never bump the version without the phase it ships. WIP checkpoints on a feature
 branch are fine (`git commit --no-verify` to skip the gate), but squash them into the
 phase commit before merging — `master` history reads as the phase log.
+
+## Release minify
+
+Release builds shrink + obfuscate (`isMinifyEnabled = true`, `isShrinkResources = true`;
+keep-rules in `app/proguard-rules.pro`). The rules cover, in order of blast radius:
+Hilt generated components, snakeyaml-engine (reflective construction), the Polar vendor
+SDK, RxJava. App code needs no keeps — YAML parsing is manual casts, services are
+manifest-referenced. If a new reflection-based dependency lands, its keep-rule lands in
+the same change (never "we'll add it if it crashes").
+
+Validation protocol (every minify/rules change, no exceptions):
+
+1. `ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` must be green with no new warnings.
+2. Sign the unsigned APK with the debug key (smoke only — no Play Store here):
+   `~/Android/Sdk/build-tools/36.0.0/apksigner sign --ks ~/.android/debug.keystore --ks-pass:android --out app-release-smoke.apk app/build/outputs/apk/release/app-release-unsigned.apk`
+3. Back up `gymdata/` with the `run-as … tar` one-liner (CLAUDE.md banner), then
+   `adb install -r app-release-smoke.apk`, open the app, and run Options → Debug →
+   self-test to 10/10 (it doubles as post-R8 math validation) + one real sync.
+4. Regenerate the baseline profile **after** minify, never before (the profile maps
+   optimized code): `:baseline-profile:generateBaselineProfile` on a connected
+   API 28+ device, commit the new `baseline-prof.txt`, rebuild release.
+
+Debug builds are never minified — unit tests and daily installs stay fast.

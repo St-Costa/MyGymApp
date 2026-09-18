@@ -22,7 +22,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Shrink + obfuscate release APKs. Keep-rules live in proguard-rules.pro;
+            // validate every change with assembleRelease + the on-device smoke in
+            // docs/CONVENTIONS.md#release-minify (the Debug self-test covers the math).
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
