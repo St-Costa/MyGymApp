@@ -15,7 +15,7 @@ class PolarSelfTestTest {
     @Test
     fun `all offline checks pass on correct code`() {
         val checks = PolarSelfTest.runOfflineChecks()
-        assertEquals(8, checks.size)
+        assertEquals(10, checks.size)
         assertTrue(checks.all { it.passed })
     }
 
@@ -24,13 +24,13 @@ class PolarSelfTestTest {
         val checks = PolarSelfTest.runOfflineChecks()
         val report = PolarSelfTest.formatReport("Live: 58 campioni, media 112, max 148", checks)
         assertTrue(report.startsWith("Live: 58 campioni"))
-        assertTrue(report.contains("8/8 OK"))
-        assertEquals(8, report.lines().count { it.startsWith("OK ") })
+        assertTrue(report.contains("10/10 OK"))
+        assertEquals(10, report.lines().count { it.startsWith("OK ") })
     }
 
     @Test
     fun `report without live data still lists the formula checks`() {
         val report = PolarSelfTest.formatReport(null, PolarSelfTest.runOfflineChecks())
-        assertTrue(report.startsWith("Check formule: 8/8 OK"))
+        assertTrue(report.startsWith("Check formule: 10/10 OK"))
     }
 }

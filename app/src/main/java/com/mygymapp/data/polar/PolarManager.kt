@@ -24,10 +24,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import kotlin.math.abs
 import kotlin.math.ln
-import kotlin.math.pow
-import kotlin.math.sqrt
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
 import kotlinx.coroutines.CoroutineScope
@@ -1508,9 +1505,9 @@ class PolarManager @Inject constructor(
                 val hrRestBaseline = HrvBaselineCalculator.hrRestBaseline(recentRestingHr + measuredRestingHr)
                 val hrRestForVo2 = hrRestBaseline.minOrNull() ?: measuredRestingHr
 
-                // Calculate VO2max (Uth formula)
+                // Calculate VO2max (Uth formula) — see ReadinessMetrics.
                 val hrMax = userProfile.hrMax
-                val vo2 = if (hrRestForVo2 > 0) 15.3 * (hrMax.toDouble() / hrRestForVo2) else null
+                val vo2 = ReadinessMetrics.uthVo2max(hrMax, hrRestForVo2)
                 _vo2max.value = vo2
 
                 val (readiness, recommendation) = HrvBaselineCalculator.classify(lnRmssd, baseline)
@@ -1653,13 +1650,8 @@ class PolarManager @Inject constructor(
         }
     }
 
-    private fun filterArtifacts(rrIntervals: List<Int>): List<Int> {
-        val filtered = rrIntervals.filter { it in 300..2000 }
-        if (filtered.size < 3) return filtered
-        val sorted = filtered.sorted()
-        val median = sorted[sorted.size / 2]
-        return filtered.filter { abs(it - median) < median * 0.20 }
-    }
+    private fun filterArtifacts(rrIntervals: List<Int>): List<Int> =
+        ReadinessMetrics.filterArtifacts(rrIntervals)
 
     // Phase 94: the LnRMSSD / resting-HR baseline is no longer mirrored into
     // `SharedPreferences("hrv_baseline")` — it's derived on demand from the persisted
@@ -1669,9 +1661,6 @@ class PolarManager @Inject constructor(
     // 2026-08-31 wiped it and reset readiness to "collecting (1/7)" despite 15 historic
     // measurements. The old `hrv_baseline.xml`, if present, is now simply ignored.
 
-    private fun calculateRMSSD(rrIntervals: List<Int>): Double {
-        if (rrIntervals.size < 2) return 0.0
-        val diffs = rrIntervals.zipWithNext { a, b -> (b - a).toDouble().pow(2) }
-        return sqrt(diffs.average())
-    }
+    private fun calculateRMSSD(rrIntervals: List<Int>): Double =
+        ReadinessMetrics.calculateRMSSD(rrIntervals)
 }

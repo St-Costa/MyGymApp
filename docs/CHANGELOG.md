@@ -1711,6 +1711,18 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 110 — Split step 2: ReadinessMetrics kernels
+
+Same kernels-first pattern as step 1: `filterArtifacts`, `calculateRMSSD` and the Uth
+VO2max formula move from `PolarManager` into pure `data/polar/ReadinessMetrics.kt`,
+with the manager delegating unchanged behaviorally (`ReadinessMetricsTest`, 6 tests
+incl. hand-computed RMSSD/VO2max goldens). The on-device self-test grows with them:
+2 new offline checks (now 10/10 on a correct build). The stateful readiness flow
+(60 s collection, baseline lookup, persist + sync, sleep patching) deliberately stays
+put — it shares `restingHr` state with the session metrics and is verifiable on-device
+only in the morning, so moving it blind is worse than leaving it. `./gradlew test`
+green, zero warnings.
+
 ## Phase 109 — Self-test hunts the strap itself
 
 The Options → Debug self-test button no longer needs a pre-connected strap: on tap it
