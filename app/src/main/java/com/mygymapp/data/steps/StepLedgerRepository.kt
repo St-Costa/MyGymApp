@@ -66,6 +66,9 @@ class StepLedgerRepository @Inject constructor(
     ): StepReading? = withContext(Dispatchers.IO) {
         mutex.withLock {
             val previous = readUnlocked()
+            // Advance-then-fetch, deliberately: if the fetch fails (or the process dies
+            // mid-read) those steps are never counted, instead of risking double-counting
+            // them on the next call. Under-counting a gap beats inflating health data.
             writeUnlocked(now)
             fetchAndAverage(reader, previous ?: now.minus(FIRST_READ_LOOKBACK), now)
         }
