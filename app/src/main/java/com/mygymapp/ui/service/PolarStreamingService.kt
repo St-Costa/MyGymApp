@@ -44,10 +44,41 @@ class PolarStreamingService : Service() {
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, PolarStreamingService::class.java).apply {
-                action = ACTION_STOP
+            // Best-effort: tell a running service to tear itself down cleanly.
+            // startService() throws from the background on Android 8+ (the service may
+            // not currently be foreground, e.g. the strap dropped while the app was
+            // backgrounded), so it is wrapped and always followed by forceStop() below,
+            // which does not depend on being allowed to start a service.
+            try {
+                val intent = Intent(context, PolarStreamingService::class.java).apply {
+                    action = ACTION_STOP
+                }
+                context.startService(intent)
+            } catch (t: Throwable) {
+                // BackgroundServiceStartNotAllowedException / IllegalStateException —
+                // fall through to forceStop().
             }
-            context.startService(intent)
+            forceStop(context)
+        }
+
+        /**
+         * Unconditionally kill the ongoing HR notification and stop the service, without
+         * routing an intent through onStartCommand(). Safe to call from the background and
+         * when the process holds no started-service token — the notification is cancelled
+         * directly and stopService() is a no-op if nothing is running. This is the reliable
+         * teardown: [stop] can silently fail when the app is backgrounded and the strap is
+         * powered off, which used to leave the "XX BPM" notification stuck on screen.
+         */
+        fun forceStop(context: Context) {
+            val nm = context.getSystemService(NotificationManager::class.java)
+            nm?.cancel(NOTIFICATION_ID)
+            nm?.cancel(ALERT_NOTIFICATION_ID)
+            try {
+                context.stopService(Intent(context, PolarStreamingService::class.java))
+            } catch (t: Throwable) {
+                // Nothing running / not allowed — the notification is already gone, which
+                // is the user-visible part.
+            }
         }
 
         fun updateHr(context: Context, hr: Int) {

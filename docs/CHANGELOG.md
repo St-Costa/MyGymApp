@@ -1537,3 +1537,34 @@ migration code. Calculator tests updated + added: the exact ❤️-day repro, a 
 day yielding no figure, and cardio-beats-a-real-stretch-block. This is the fifth pass at this
 display rule.
 
+## Phase 101 — Polar HR notification no longer sticks after "end workout + close app + strap off"
+
+Recurring, intermittent bug: finish a workout, close the app, switch the H10 off — the
+`PolarStreamingService` "XX BPM" / "Reconnecting…" notification stays on screen forever. Two
+independent holes on that exact path, neither hit while the HR screen is driving the connection:
+
+1. **`PolarStreamingService.stop()` used `context.startService(ACTION_STOP)`.** From a backgrounded
+   process that throws `BackgroundServiceStartNotAllowedException` (Android 8+ background-start
+   limit) and the stop is silently dropped. Added `forceStop()` — cancels `NOTIFICATION_ID` +
+   `ALERT_NOTIFICATION_ID` straight through `NotificationManager` and calls `stopService()`, with
+   no dependency on being allowed to *start* a service. `stop()` now try/catches the intent and
+   always falls through to `forceStop()`, so every teardown path (`disconnect()`, `shutdown()`,
+   `blePowerStateChanged`, reconnect-timeout, out-of-session `deviceDisconnected`) is
+   background-safe.
+2. **The SDK's `setAutomaticReconnection` was left `true` after a session ended.** Only
+   `disconnect()` ever turned it off, and the normal end-of-workout path (`registerRoutine` →
+   `stopHrSeriesCapture()`) never calls `disconnect()`. With it on, powering the strap off keeps
+   the link in `CONNECTING` and the `deviceDisconnected` teardown never arrives — or the SDK
+   silently reconnects and `deviceConnected()` re-`start()`s the service. `stopHrSeriesCapture()`
+   now does a hard teardown: `forceStop()` unconditionally (a `connectedDevice` FGS has no
+   justification with no session running, strap connected or not) **and**
+   `api.setAutomaticReconnection(false)`. `startHrSeriesCapture()` reverses both — auto-reconnect
+   back on, FGS re-`start()`ed — but only when a strap is already connected as the new session
+   begins, so mid-workout drop recovery is unchanged. `connectedDeviceName` is now kept from
+   `deviceConnected` for the re-`start()`'s notification text (`_discoveredDevices` is cleared by
+   `startScan()` and usually empty by session start).
+
+No new unit test: all four touch points are `PolarBleApi` / `Context` / `NotificationManager`
+calls, the same Android-framework coupling that keeps `PolarManager` and `PolarStreamingService`
+out of the local suite. `CONVENTIONS.md` "Polar foreground service + reconnection" updated.
+
