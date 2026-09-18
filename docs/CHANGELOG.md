@@ -1711,6 +1711,13 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 113 — StepLedger checkpoint trade-off documented
+
+One-line doc change from the phase-112 review pass: `recordReadingAndComputeAverage`
+advances the checkpoint *before* fetching — a failed read (or mid-read process death)
+loses those steps instead of risking double-counting them next call. Under-counting a
+gap beats inflating health data; now stated in code. `./gradlew test` green.
+
 ## Phase 112 — Release smoke test + baseline profile regen
 
 Closes out the Phase 111 queue: signed the unsigned release APK with the debug key,
