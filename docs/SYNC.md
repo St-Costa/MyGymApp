@@ -1,8 +1,8 @@
 # Server sync
 
-Status: **phone-side transport implemented** (`data/sync/`, hooked into
+Status: **phone + server sides implemented** (phone transport in `data/sync/`, hooked into
 `ActiveRoutineViewModel.registerRoutine()` and the Options screen). The server side lives
-in a separate repository (`MyGymApp_server`) per `docs/sync-ingestion/SPEC.md` there — not
+in a separate repository (`MyGymApp_server`) — fully built — not
 in this codebase. This document is the design this implementation followed; kept in sync
 with the code per CLAUDE.md's working conventions.
 

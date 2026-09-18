@@ -9,7 +9,8 @@ This file is the entry point for AI tooling. The details of the project live in 
 > It is **NOT** in git and **NOT** on this machine. A phone-side full-store backup pipeline
 > now exists (`docs/BACKUP.md`: sessions/readiness/scale/ECG + exercises/routines queue for
 > upload), **but it is not a safety net you can rely on**: it only sends when a sync server
-> is configured *and* reachable, the server side isn't built yet, and its config lives in
+> is configured *and* reachable, the server side lives in the separate `MyGymApp_server`
+> repo (fully built), and its config lives in
 > wipeable `SharedPreferences`. **A backup you haven't verified is not a backup — take the
 > tar below before any install/test op regardless.**
 > Any `pm uninstall`, `pm clear`, `adb install` of a differently-signed APK, a
@@ -73,7 +74,7 @@ above) rather than chaining `gradlew`/`adb install` by hand.
 | "How was old VitaFit scale history imported? Is there an official export?" | [docs/vitafit-cloud-api.md](docs/vitafit-cloud-api.md) |
 | "There's an odd pattern — is this intentional?" | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
 | "What happened over time?" | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
-| "How does syncing sessions/readiness/scale/ECG to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (implemented for sessions; readiness/scale/ECG phone-side done, server-side WIP) |
+| "How does syncing sessions/readiness/scale/ECG to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (phone + server sides implemented; server lives in `MyGymApp_server`) |
 | "How does the git-style full-store backup (exercises + routines too) work?" | [docs/BACKUP.md](docs/BACKUP.md) (phone + server side implemented) + [docs/backup-server-brief.md](docs/backup-server-brief.md) (the brief the server repo was built from) |
 
 Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementation-guide.md).
