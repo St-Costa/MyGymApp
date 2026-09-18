@@ -591,12 +591,13 @@ private fun DebugSection(
 
             androidx.compose.material3.HorizontalDivider()
 
-            // Self-test metriche — verifica la pipeline senza allenarsi: campiona 60s di HR
-            // live dalla fascia connessa, poi esegue i check delle formule su dati sintetici
-            // (drift, Keytel, TRIMP, regole di picco). Read-only: non crea sessioni, non
-            // scrive history, non accoda sync — la lista delle sessioni resta intatta.
+            // Self-test metriche — verifica la pipeline senza allenarsi: se la fascia
+            // non è connessa la cerca da solo (30s), poi campiona 60s di HR live ed
+            // esegue i check delle formule su dati sintetici (drift, Keytel, TRIMP,
+            // regole di picco). Read-only: non crea sessioni, non scrive history, non
+            // accoda sync — la lista delle sessioni resta intatta.
             Text(
-                "Controlla la pipeline metriche senza sporcare le sessioni: 60s di HR live + check formule.",
+                "Tutto da qui: cerca il Polar, campiona 60s di HR live + check formule, senza sporcare le sessioni.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -606,7 +607,11 @@ private fun DebugSection(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.polarSelfTestRunning) {
-                    Text("Self-test in corso… ${uiState.polarSelfTestSecondsLeft}s")
+                    if (uiState.polarSelfTestSearching) {
+                        Text("Ricerca Polar… ${uiState.polarSelfTestSecondsLeft}s")
+                    } else {
+                        Text("Self-test in corso… ${uiState.polarSelfTestSecondsLeft}s")
+                    }
                 } else {
                     Text("Self-test metriche Polar")
                 }

@@ -39,6 +39,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -86,6 +87,8 @@ data class OptionsUiState(
     // Polar self-test (Options → Debug): live HR sample + offline formula checks.
     val polarSelfTestRunning: Boolean = false,
     val polarSelfTestSecondsLeft: Int = 0,
+    /** True while hunting the strap, false while sampling HR once connected. */
+    val polarSelfTestSearching: Boolean = false,
     val polarSelfTestResult: String? = null,
 )
 
@@ -694,6 +697,8 @@ class OptionsViewModel @Inject constructor(
         private const val RESYNC_PROGRESS_TIMEOUT_MILLIS = 60_000L
         /** Live HR sampling window for the Polar self-test below. */
         private const val POLAR_SELF_TEST_SECONDS = 60
+        /** How long the self-test hunts the strap before giving up. */
+        private const val POLAR_SEARCH_TIMEOUT_SECONDS = 30
     }
 
     // ─── Polar self-test (Options → Debug) ───────────────────────────────────────
@@ -710,19 +715,70 @@ class OptionsViewModel @Inject constructor(
      */
     fun runPolarSelfTest() {
         if (_uiState.value.polarSelfTestRunning) return
-        if (polarManager.connectionState.value != ConnectionState.CONNECTED) {
-            _uiState.value = _uiState.value.copy(
-                polarSelfTestResult = "Polar non connesso — collegalo dalla schermata Cuore e riprova",
-            )
-            return
-        }
-        val totalSeconds = POLAR_SELF_TEST_SECONDS
         _uiState.value = _uiState.value.copy(
             polarSelfTestRunning = true,
-            polarSelfTestSecondsLeft = totalSeconds,
+            polarSelfTestSearching = false,
+            polarSelfTestSecondsLeft = POLAR_SELF_TEST_SECONDS,
             polarSelfTestResult = null,
         )
         viewModelScope.launch {
+            // Not connected yet: hunt the strap from here, no detour to the Heart
+            // screen. Permissions are requested centrally on the Home screen, so a
+            // miss here only means the user revoked them afterwards.
+            if (polarManager.connectionState.value != ConnectionState.CONNECTED) {
+                if (!hasBlePermissions()) {
+                    _uiState.value = _uiState.value.copy(
+                        polarSelfTestRunning = false,
+                        polarSelfTestResult = "Permessi Bluetooth mancanti — apri la schermata principale per concederli e riprova",
+                    )
+                    return@launch
+                }
+                val searchSeconds = POLAR_SEARCH_TIMEOUT_SECONDS
+                _uiState.value = _uiState.value.copy(
+                    polarSelfTestSearching = true,
+                    polarSelfTestSecondsLeft = searchSeconds,
+                )
+                try {
+                    polarManager.startScan()
+                } catch (e: SecurityException) {
+                    _uiState.value = _uiState.value.copy(
+                        polarSelfTestRunning = false,
+                        polarSelfTestSearching = false,
+                        polarSelfTestResult = "Permessi Bluetooth mancanti — apri la schermata principale per concederli e riprova",
+                    )
+                    return@launch
+                }
+                val ticker = launch {
+                    for (secondsLeft in searchSeconds - 1 downTo 0) {
+                        kotlinx.coroutines.delay(1_000L)
+                        _uiState.value = _uiState.value.copy(polarSelfTestSecondsLeft = secondsLeft)
+                    }
+                }
+                val connected = try {
+                    kotlinx.coroutines.withTimeoutOrNull(searchSeconds * 1_000L) {
+                        polarManager.connectionState.first { it == ConnectionState.CONNECTED }
+                    } != null
+                } finally {
+                    ticker.cancel()
+                    polarManager.stopScan()
+                }
+                if (!connected) {
+                    val hint = if (polarManager.hasKnownDevice()) {
+                        "Polar non trovato entro ${searchSeconds}s — accendilo, avvicinalo e riprova"
+                    } else {
+                        "Nessuna fascia mai collegata — apri la schermata Cuore per la prima connessione, poi riprova da qui"
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        polarSelfTestRunning = false,
+                        polarSelfTestSearching = false,
+                        polarSelfTestResult = hint,
+                    )
+                    return@launch
+                }
+                _uiState.value = _uiState.value.copy(polarSelfTestSearching = false)
+            }
+            val totalSeconds = POLAR_SELF_TEST_SECONDS
+            _uiState.value = _uiState.value.copy(polarSelfTestSecondsLeft = totalSeconds)
             val samples = mutableListOf<Int>()
             val collectJob = launch {
                 polarManager.heartRate.collect { hr ->
@@ -747,8 +803,24 @@ class OptionsViewModel @Inject constructor(
             val report = PolarSelfTest.formatReport(liveSummary, PolarSelfTest.runOfflineChecks())
             _uiState.value = _uiState.value.copy(
                 polarSelfTestRunning = false,
+                polarSelfTestSearching = false,
                 polarSelfTestResult = report,
             )
+        }
+    }
+
+    private fun hasBlePermissions(): Boolean {
+        val perms = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+            )
+        } else {
+            arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        return perms.all {
+            androidx.core.content.ContextCompat.checkSelfPermission(appContext, it) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
         }
     }
 }

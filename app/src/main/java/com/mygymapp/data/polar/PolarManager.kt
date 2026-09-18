@@ -691,6 +691,9 @@ class PolarManager @Inject constructor(
         _isScanning.value = false
     }
 
+    /** True if a strap was connected before (drives scan auto-connect). */
+    fun hasKnownDevice(): Boolean = knownPolarDeviceRepository.getKnownDeviceId() != null
+
     fun connectToDevice(deviceId: String) {
         stopScan()
         // Undo the disconnect()-time opt-out so a mid-workout BLE drop (screen lock, brief
