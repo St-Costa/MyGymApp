@@ -9,9 +9,9 @@ package com.mygymapp.data.polar
  * including on a release/minified build where it doubles as a smoke test that R8 kept
  * the math intact.
  *
- * The live half of the button (collecting real HR samples from the strap) lives in
- * `OptionsViewModel.runPolarSelfTest` and only *reads* `PolarManager.heartRate`; it
- * never starts a session, writes history, or enqueues sync — pressing it any number of
+ * The live half of the button (hunting the strap if needed, then collecting real HR
+ * samples) lives in `OptionsViewModel.runPolarSelfTest` and only *reads*
+ * `PolarManager` state; it never starts a session, writes history, or enqueues sync — pressing it any number of
  * times leaves the workout list untouched.
  */
 object PolarSelfTest {

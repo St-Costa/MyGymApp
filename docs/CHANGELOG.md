@@ -1711,6 +1711,17 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 109 — Self-test hunts the strap itself
+
+The Options → Debug self-test button no longer needs a pre-connected strap: on tap it
+scans and auto-connects to the known Polar (30 s timeout with countdown, permission
+pre-check with a message pointing at the Home screen if BLE was revoked), then samples
+60 s of live HR and runs the formula checks. A first-ever strap (nothing known yet)
+still goes through the Heart screen once — gym etiquette (no auto-connect to strangers'
+straps), and the button says so. New `PolarManager.hasKnownDevice()`,
+`polarSelfTestSearching` UI phase ("Ricerca Polar… Ns" vs "Self-test in corso… Ns").
+`./gradlew test` green.
+
 ## Phase 108 — Polar self-test button (Options → Debug)
 
 Verifying the split without polluting the workout list: a new "Self-test metriche Polar"
