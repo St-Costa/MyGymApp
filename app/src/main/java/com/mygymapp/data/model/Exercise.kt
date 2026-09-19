@@ -39,6 +39,11 @@ data class Exercise(
     // set-completion time and materialized the same way, see materializeAssistedWeight() in
     // TonnageMath.kt and ExerciseSet.Strength.assistOffsetKg.
     val loadMode: LoadMode = LoadMode.MANUAL,
+    // Poliquin tempo (FORZA only): 4-phase rep prescription, e.g. 4-0-X-0 =
+    // eccentric-pauseBottom-concentric-pauseTop. All-zero = disabled (legacy files
+    // without the key, and the default for non-strength work). Never enters
+    // tonnage/PR math — display + animation only.
+    val tempo: Tempo = Tempo.disabled(),
 )
 
 enum class LoadMode {

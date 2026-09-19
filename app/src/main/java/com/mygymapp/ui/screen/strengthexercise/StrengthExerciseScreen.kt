@@ -39,6 +39,7 @@ import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.PrBadge
 import com.mygymapp.ui.components.ScrollPickerInput
+import com.mygymapp.ui.components.TempoAnimation
 import com.mygymapp.ui.theme.SkippedColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,6 +119,14 @@ fun StrengthExerciseScreen(
 
                 // Heart rate + recovery semaphore
                 HeartRateBar()
+
+                // Poliquin tempo loop (FORZA only): infinite bottom-to-top fill, one phase
+                // at a time over its real duration (X = 0.35s). Hidden when disabled
+                // (0-0-0-0, e.g. legacy exercises without the key).
+                val tempo = uiState.exercise?.tempo
+                if (tempo != null && !tempo.isDisabled) {
+                    TempoAnimation(tempo = tempo)
+                }
 
                 // Sets header
                 val repRangeText = remember(uiState.repRangeMin, uiState.repRangeMax) {

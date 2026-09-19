@@ -264,6 +264,36 @@ number, not the net weight — see the sidecar split below (schema v5).
 `materializeAssistedWeight` lives in `TonnageMath.kt` (pure, no Context/IO) and is
 unit-tested in `TonnageMathTest`.
 
+## Poliquin tempo: stored on the exercise, animated in the strength screen
+
+A FORZA `Exercise` may carry a `tempo: Tempo` (eccentric-pauseBottom-concentric-pauseTop,
+each `0-5` seconds or `X` = explosive/maximal intent, e.g. `4-0-X-0`). It is a property of
+the exercise definition (like the rep range), not of the routine slot — superset display
+per member is future work (the data is already there via `getById`, only
+`SupersetScreen` rendering is missing).
+
+- **Storage**: single `tempo: "4-0-X-0"` frontmatter string, omitted when disabled
+  (`0-0-0-0`, the default for legacy files without the key) — same "omitted = default"
+  pattern as `isBodyweight`/`loadMode`. Pure `Tempo.fromFileString`/`toFileString`
+  (`data/model/Tempo.kt`), unit-tested in `TempoTest` + parser round-trip.
+- **Editor**: `TempoEditor` (square boxes attached 3dp apart, one big triangle as wide as
+  the square side above and below each box, stepping one unit at a time along the fixed
+  scale X-0-1-2-3-4-5 with no wrap — down-triangle disabled on X, up-triangle on 5; new
+  exercises start at `4-0-1-0`) inside the FORZA block of `ExerciseEditScreen`, via
+  `ExerciseEditViewModel.onTempoStep`. Never enters tonnage/PR math.
+- **Execution**: `TempoAnimation` under `HeartRateBar` on `StrengthExerciseScreen`, shown
+  only when enabled. Infinite loop driven by the vsync frame clock (`withFrameNanos`,
+  so phases last real seconds even with the system animator scale reduced/off): boxes
+  fill bottom-to-top in sequence over their real duration
+  (`X` = 0.35s fast fill), zero phases render faded and are skipped. Token is
+  canvas-drawn near-white with a black outline ring (`TempoOutlinedToken` — no mid-fill
+  color flip, no per-frame layout lag); phase glyphs (`TempoPhaseGlyph`) are white
+  vector paths with a uniform black rim on every side. Both readable on the empty
+  square and the violet fill; pause phases
+  (stretch bottom + peak top) share the pause-bars icon, eccentric/concentric use
+  down/up arrows. The squares are the shared `TempoSquareShell` — same size/border/fonts
+  as the editor.
+
 ## Previous-set preview: match type, skip zeros, inherit last set
 
 When a strength exercise screen opens ([StrengthExerciseViewModel](../app/src/main/java/com/mygymapp/ui/screen/strengthexercise/StrengthExerciseViewModel.kt), [SupersetViewModel](../app/src/main/java/com/mygymapp/ui/screen/superset/SupersetViewModel.kt)), the grey "previous" defaults must be picked **like-with-like** along these rules:

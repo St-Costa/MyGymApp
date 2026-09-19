@@ -82,16 +82,20 @@ bwLoadPercent: 75             # only with isBodyweight — 25|50|75|100, % of bo
                               # files with none migrate to 75. See below for how it feeds tonnage.
 loadMode: bodyweight          # omitted for "manual" (the default). One of manual|bodyweight|
                               # assisted — assisted is an assist machine (e.g. assisted pull-up/
-                              # dip) where the number set on the machine is *subtracted* from
-                              # body weight. Mutually exclusive with isBodyweight; written
-                              # alongside isBodyweight/bwLoadPercent when loadMode is bodyweight
-                              # (isBodyweight stays the authority older builds/server read).
-                              # See Exercise.LoadMode / docs/CONVENTIONS.md#assisted-machine-load.
+                               # dip) where the number set on the machine is *subtracted* from
+                               # body weight. Mutually exclusive with isBodyweight; written
+                               # alongside isBodyweight/bwLoadPercent when loadMode is bodyweight
+                               # (isBodyweight stays the authority older builds/server read).
+                               # See Exercise.LoadMode / docs/CONVENTIONS.md#assisted-machine-load.
+tempo: 4-0-X-0                 # omitted when disabled (all zeros) — FORZA only. Poliquin tempo
+                               # eccentric-pauseBottom-concentric-pauseTop, each 0-5s or X
+                               # (explosive / maximal intent). 0-0-0-0 = no tempo prescribed.
+                               # Legacy files without the key parse as disabled.
 created: 2025-03-15T10:22:14
 updated: 2025-04-18T09:00:00
 ---
 
-Free-text notes (form cues, tempo, etc.)
+Free-text notes (form cues, etc. — tempo now lives in the `tempo` key above, not here.)
 ```
 
 Filename uses `slugify(name)-{id}`. Type prefix `ex-` visually distinguishes exercise IDs from routine IDs.
