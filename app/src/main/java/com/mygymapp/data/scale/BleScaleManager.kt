@@ -77,9 +77,11 @@ class BleScaleManager @Inject constructor(
     }
 
     private var autoConnectAttempted = false
-    private var savedThisSession = false
     // Written on the mainHandler thread (notify path), cleared from connectToDevice
     // (UI/scan-callback thread) and averaged on mainHandler — guard all three.
+    // Every sample ever received this connection is kept (capped): the saved weight is
+    // the average of only the tail (see ScaleWeightAverager), so early ramp-up/movement
+    // never pollutes a later re-weigh in the same connection.
     private val weightSamples = mutableListOf<Double>()
     // App-lifetime @Singleton: this scope is intentionally never cancelled.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -175,7 +177,6 @@ class BleScaleManager @Inject constructor(
             return
         }
         _connectionState.value = ScaleConnectionState.CONNECTING
-        savedThisSession = false
         synchronized(weightSamples) { weightSamples.clear() }
         // Cancel any pending auto-disconnect from a previous weigh-in (maybeSaveWeighIn's
         // postDelayed) — otherwise a reconnect within that window would have the stale
@@ -191,19 +192,19 @@ class BleScaleManager @Inject constructor(
     }
 
     /**
-     * Persists one weigh-in per connection session, triggered by the impedance
-     * reading (the scale sends it once, near the end of the BIA measurement).
-     * Weight is the average of every weight sample seen this session, since the
-     * scale's own stability flag doesn't reliably line up with when impedance
-     * arrives.
+     * Persists the weigh-in, triggered by every impedance reading (the scale sends one
+     * near the end of each BIA measurement). Last-wins: each new impedance re-saves,
+     * overwriting the same-day file, so the last weigh-in of the day (weight + impedance)
+     * is what stays on disk. Weight is the tail average of the weight samples seen so
+     * far (see [ScaleWeightAverager]) — the full-session average it replaced dragged in
+     * ramp-up/movement samples from the start of the session (observed up to 0.4 kg off
+     * the scale's displayed value), while a single "last stable" sample proved too noisy
+     * (the scale's own stability flag doesn't reliably line up with impedance arrival).
      */
     private fun maybeSaveWeighIn(impedanceOhm: Int) {
-        if (savedThisSession) return
         val weightKg = synchronized(weightSamples) {
-            if (weightSamples.isEmpty()) return
-            weightSamples.average()
-        }
-        savedThisSession = true
+            ScaleWeightAverager.average(weightSamples)
+        } ?: return
 
         val profile = userProfileRepository.get()
         val composition = BodyCompositionCalculator.calculate(
@@ -244,9 +245,10 @@ class BleScaleManager @Inject constructor(
             }
         }
 
-        // Weigh-in is complete (weight + impedance both received) — no need to
-        // keep the connection open. Brief delay so the UI has a moment to show
-        // the "complete" state before it flips back to disconnected.
+        // Each (re-)save pushes the disconnect out: no need to keep the connection
+        // open once weighing is done, but a re-weigh within the window must not have
+        // the stale callback tear down its session. Brief delay so the UI has a moment
+        // to show the "complete" state before it flips back to disconnected.
         mainHandler.removeCallbacks(autoDisconnect)
         mainHandler.postDelayed(autoDisconnect, AUTO_DISCONNECT_MS)
     }

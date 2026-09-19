@@ -1711,6 +1711,27 @@ golden values and an exact-slope drift case) pins numbers previously verifiable 
 with a strap on. The stateful half (series capture, HRR queue, recovery semaphore) stays
 put for a later step with an injectable clock.
 
+## Phase 114 — Scale weigh-in: last-wins + tail-average weight
+
+`BleScaleManager` saved one weigh-in per connection (first impedance won, later ones
+ignored) and weighed the full-session sample average — early ramp-up/movement dragged
+the saved weight up to 0.4 kg off the scale's displayed value. Now every impedance
+reading re-saves (same-day file overwrite was already last-wins across connections;
+now it is within a connection too, weight + impedance + `UserProfile.weightKg`, ledger
+re-enqueue included so sync ships the latest version), and the saved weight is the
+average of the last 10 samples (`ScaleWeightAverager.TAIL_WINDOW`) instead of the whole
+session — smoothing kept, ancient history excluded. Kept the average over a single
+"last stable" sample deliberately: the scale's stability flag doesn't line up reliably
+with impedance arrival. New `ScaleWeightAveragerTest` (5 tests: empty/short/ramp-up
+pollution/exact-window/re-weigh-wins). `./gradlew test` green.
+
+## Phase 115 — Rimozione self-test pesata (verificato on-device 5/5 OK)
+
+Il live test della Phase 114 ha confermato sul telefono che la media tail è più precisa
+del vecchio comportamento — rimossi pulsante, `BleScaleManager.captureMode`,
+`ScaleWeighInSelfTest` (+ test) e tutto lo stato TEMP in Opzioni. Resta la logica di
+produzione (`ScaleWeightAverager` + last-wins). `./gradlew test` green.
+
 ## Phase 113 — StepLedger checkpoint trade-off documented
 
 One-line doc change from the phase-112 review pass: `recordReadingAndComputeAverage`
