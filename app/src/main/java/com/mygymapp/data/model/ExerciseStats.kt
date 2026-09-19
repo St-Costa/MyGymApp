@@ -80,8 +80,21 @@ data class ExerciseStats(
          *     the "previous" pre-fill needs a like-with-like split because it must show the raw
          *     number the lifter sets on the machine, not the net weight (see
          *     PreviousSet.assistOffsetKg). Old sidecars can't supply the split ⇒ lazy rebuild.
+         *
+         * v6: `previousHistory*` — the last [HISTORY_LIMIT] real sessions per weighting
+         *     approach (newest first), each with its day key, session id, full completedAt and
+         *     tonnage, instead of only the single most recent one. `previousSets` /
+         *     `previousSessionDate` (+ bodyweight/assisted pairs) stay as the history head for
+         *     backward-compatible readers. Skipped sessions (`WorkoutExercise.isUntouched()`,
+         *     i.e. `!completed || completedEmpty`) never feed previous/PR/history — a skip
+         *     persists the on-screen pre-fill for walk-back continuity, but must not advance
+         *     the "last performed" date. `prSessionDate` / `rmPrSessionDate` record when each
+         *     record set was logged. Old sidecars can't supply any of it ⇒ lazy rebuild.
          */
-        const val SCHEMA_VERSION = 5
+        const val SCHEMA_VERSION = 6
+
+        /** How many recent real sessions each `previousHistory*` list keeps (newest first). */
+        const val HISTORY_LIMIT = 5
     }
 }
 
@@ -118,18 +131,39 @@ data class ContextStats(
     val previousSessionDateAssisted: String = "",
     /** All-time best tonnage (reps × weight) Strength set for this exercise+context. */
     val pr: PreviousSet? = null,
+    /** Day key (`YYYY-MM-DD`) of the session [pr] came from. Empty when [pr] is null. */
+    val prSessionDate: String = "",
     /**
      * All-time best estimated-1RM (Epley: `weight * (1 + reps/30)`) Strength set for this
      * exercise+context. May be a different set than [pr] — a heavy low-rep single has a high
      * e1RM but low tonnage. Null when no PR-eligible set exists (same condition as [pr]).
      */
     val rmPr: PreviousSet? = null,
+    /** Day key (`YYYY-MM-DD`) of the session [rmPr] came from. Empty when [rmPr] is null. */
+    val rmPrSessionDate: String = "",
     /**
      * True once any PR-eligible Strength set (reps>0 && weight>0, bodyweight-materialized
      * included) has ever been recorded for this exercise+context. Drives the "primo dato"
      * badge in the active-routine list.
      */
     val hasPriorRealTonnage: Boolean = false,
+    /**
+     * Recent real **manual-load** sessions for this context, newest first, capped at
+     * [ExerciseStats.HISTORY_LIMIT]. The head (if present) always agrees with
+     * [previousSets]/[previousSessionDate]/[previousSessionId]. Lets the screens show
+     * "penultima volta" and fall back when the latest session was a deload.
+     */
+    val previousHistory: List<PreviousSession> = emptyList(),
+    /** Same as [previousHistory] for **bodyweight** sessions. */
+    val previousHistoryBodyweight: List<PreviousSession> = emptyList(),
+    /** Same as [previousHistory] for **assisted** sessions. */
+    val previousHistoryAssisted: List<PreviousSession> = emptyList(),
+    /** Id of the session [previousSets] came from. Empty when [previousSets] is empty. */
+    val previousSessionId: String = "",
+    /** Id of the session [previousSetsBodyweight] came from. */
+    val previousSessionIdBodyweight: String = "",
+    /** Id of the session [previousSetsAssisted] came from. */
+    val previousSessionIdAssisted: String = "",
 ) {
     /**
      * The "previous" set list matching a weighting approach — [previousSetsBodyweight] /
@@ -148,6 +182,25 @@ data class ContextStats(
         LoadMode.BODYWEIGHT -> previousSessionDateBodyweight
         LoadMode.ASSISTED -> previousSessionDateAssisted
         LoadMode.MANUAL -> previousSessionDate
+    }
+
+    /**
+     * The recent-session history matching a weighting approach — [previousHistoryBodyweight]
+     * / [previousHistoryAssisted] / [previousHistory] depending on [loadMode] (schema v6).
+     * Newest first, capped at [ExerciseStats.HISTORY_LIMIT]. The head (if present) always
+     * agrees with [previousSetsFor]/[previousSessionDateFor].
+     */
+    fun historyFor(loadMode: LoadMode): List<PreviousSession> = when (loadMode) {
+        LoadMode.BODYWEIGHT -> previousHistoryBodyweight
+        LoadMode.ASSISTED -> previousHistoryAssisted
+        LoadMode.MANUAL -> previousHistory
+    }
+
+    /** The `previousSessionId*` field matching [historyFor]. */
+    fun previousSessionIdFor(loadMode: LoadMode): String = when (loadMode) {
+        LoadMode.BODYWEIGHT -> previousSessionIdBodyweight
+        LoadMode.ASSISTED -> previousSessionIdAssisted
+        LoadMode.MANUAL -> previousSessionId
     }
 }
 
@@ -185,4 +238,22 @@ data class PreviousSet(
      * machine, not the net load.
      */
     val assistOffsetKg: Double = 0.0,
+)
+
+/**
+ * One real performed session for an (exercise, context, weighting approach) triple —
+ * an entry of `ContextStats.previousHistory*` (schema v6). Newest first, capped at
+ * [ExerciseStats.HISTORY_LIMIT].
+ *
+ * [date] is the bare `YYYY-MM-DD` day key (display + day-vs-day compare);
+ * [completedAt] is the full ISO datetime used for newest-first ordering (two sessions on
+ * the same day order by time, not by save order); [tonnage] is `sum(reps * weight)`
+ * pre-computed so the active-routine badge doesn't recompute it.
+ */
+data class PreviousSession(
+    val date: String = "",
+    val sessionId: String = "",
+    val completedAt: String = "",
+    val sets: List<PreviousSet> = emptyList(),
+    val tonnage: Double = 0.0,
 )

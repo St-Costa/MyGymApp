@@ -231,8 +231,77 @@ class ExerciseStatsParserTest {
     }
 
     @Test
-    fun `garbage content returns null`() {
-        assertNull(ExerciseStatsParser.fromYaml(""))
+    fun `v6 history pr dates and session ids round-trip`() {
+        val stats = ExerciseStats(
+            exerciseId = "ex-v600001",
+            perContext = mapOf(
+                SlotContext.NORMAL to ContextStats(
+                    previousSets = listOf(PreviousSet(8, 62.5)),
+                    previousSessionDate = "2026-08-10",
+                    previousSessionId = "s10",
+                    previousHistory = listOf(
+                        com.mygymapp.data.model.PreviousSession(
+                            date = "2026-08-10",
+                            sessionId = "s10",
+                            completedAt = "2026-08-10T18:00:00",
+                            sets = listOf(PreviousSet(8, 62.5)),
+                            tonnage = 500.0,
+                        ),
+                        com.mygymapp.data.model.PreviousSession(
+                            date = "2026-08-01",
+                            sessionId = "s1",
+                            completedAt = "2026-08-01T10:00:00",
+                            sets = listOf(PreviousSet(8, 60.0)),
+                            tonnage = 480.0,
+                        ),
+                    ),
+                    pr = PreviousSet(3, 200.0),
+                    prSessionDate = "2026-08-05",
+                    rmPr = PreviousSet(2, 100.0),
+                    rmPrSessionDate = "2026-08-10",
+                    hasPriorRealTonnage = true,
+                ),
+            ),
+        )
+
+        val ctx = roundTrip(stats).forContext(SlotContext.NORMAL)!!
+        assertEquals(2, ctx.previousHistory.size)
+        assertEquals("s10", ctx.previousHistory.first().sessionId)
+        assertEquals("2026-08-10T18:00:00", ctx.previousHistory.first().completedAt)
+        assertEquals(500.0, ctx.previousHistory.first().tonnage, 0.0)
+        assertEquals(listOf(PreviousSet(8, 62.5)), ctx.previousSets)
+        assertEquals("s10", ctx.previousSessionId)
+        assertEquals("2026-08-05", ctx.prSessionDate)
+        assertEquals("2026-08-10", ctx.rmPrSessionDate)
+    }
+
+    @Test
+    fun `old sidecar without v6 keys reads back with empty history`() {
+        val yaml = """
+            ---
+            exerciseId: "ex-old00000"
+            schemaVersion: 5
+            contexts:
+              - context: "NORMAL"
+                previousSessionDate: "2026-08-01"
+                hasPriorRealTonnage: true
+                pr:
+                  - reps: 8
+                    weight: 60.0
+                previousSets:
+                  - reps: 8
+                    weight: 60.0
+            ---
+        """.trimIndent()
+        val ctx = ExerciseStatsParser.fromYaml(yaml)!!.forContext(SlotContext.NORMAL)!!
+        assertEquals(emptyList<com.mygymapp.data.model.PreviousSession>(), ctx.previousHistory)
+        assertEquals("", ctx.previousSessionId)
+        assertEquals("", ctx.prSessionDate)
+        assertEquals(listOf(PreviousSet(8, 60.0)), ctx.previousSets)
+    }
+
+    @Test
+    fun `garbage content returns null`() {        assertNull(ExerciseStatsParser.fromYaml(""))
         assertNull(ExerciseStatsParser.fromYaml("not yaml at all"))
     }
 

@@ -4,6 +4,7 @@ import com.mygymapp.data.model.ContextStats
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseStats
 import com.mygymapp.data.model.LoadMode
+import com.mygymapp.data.model.PreviousSession
 import com.mygymapp.data.model.PreviousSet
 import com.mygymapp.data.model.SlotContext
 import com.mygymapp.data.model.WorkoutSession
@@ -59,10 +60,44 @@ object ExerciseStatsCalculator {
      * datetime (`2026-08-25T19:04:11`), `date` is already a bare date — take the first 10 chars
      * of whichever is present so `previousSessionDate` comparisons are always day-vs-day and
      * never mix a datetime with a date (a lexicographic `>=` between the two formats is only
-     * accidentally correct). Both [rebuild] and [merge] store and compare via this.
+     * accidentally correct). History heads store this; ordering uses [WorkoutSession.orderKey].
      */
     private fun WorkoutSession.dayKey(): String =
         completedAt.ifBlank { date }.take(10)
+
+    /** Full timestamp used for newest-first ordering (two sessions same day order by time). */
+    private fun WorkoutSession.orderKey(): String =
+        completedAt.ifBlank { date }
+
+    /**
+     * Real performed strength sets for [exerciseId] in slot context [ctx] within [session],
+     * or empty when the slot was never performed (not completed, or completed-empty/skipped —
+     * schema v6: a skip persists the on-screen pre-fill for walk-back continuity but must not
+     * advance "last performed"). PR / previous / history all build on this.
+     */
+    private fun performedSetsFor(
+        exerciseId: String,
+        ctx: SlotContext,
+        session: WorkoutSession,
+    ): List<ExerciseSet.Strength> {
+        val slot = session.exercises.firstOrNull { it.exerciseId == exerciseId && it.slotContext == ctx }
+            ?: return emptyList()
+        if (slot.isUntouched()) return emptyList()
+        return slot.sets.filterIsInstance<ExerciseSet.Strength>().filter { it.isReal() }
+    }
+
+    private fun WorkoutSession.historyEntry(
+        sets: List<ExerciseSet.Strength>,
+    ): PreviousSession {
+        val prevSets = sets.map { it.toPreviousSet() }
+        return PreviousSession(
+            date = dayKey(),
+            sessionId = id,
+            completedAt = orderKey(),
+            sets = prevSets,
+            tonnage = prevSets.sumOf { it.tonnage() },
+        )
+    }
 
     /**
      * Full rebuild: fold every session that contains [exerciseId] into a fresh [ExerciseStats].
@@ -75,7 +110,7 @@ object ExerciseStatsCalculator {
         // "previous" resolves to exactly the same session the inline code used to pick.
         val completed = sessions
             .filter { it.completedAt.isNotBlank() }
-            .sortedByDescending { it.completedAt }
+            .sortedByDescending { it.orderKey() }
         val perContext = SlotContext.entries.mapNotNull { ctx ->
             val stats = contextStatsFrom(exerciseId, ctx, completed)
             stats?.let { ctx to it }
@@ -90,12 +125,14 @@ object ExerciseStatsCalculator {
      * the next delete or schema bump). Only [SlotContext]s present in [session] are touched.
      *
      * Semantics, per context the session touches:
-     *  - `pr`: max of the old PR and this session's best real set.
-     *  - `previousSets` / `previousSessionDate`: replaced with this session's sets **iff** this
-     *    session has real data for the exercise in that context AND its date is >= the stored
-     *    one (a session is normally saved in chronological order; the `>=` guards re-saves of
-     *    the same day).
-     *  - `hasPriorRealTonnage`: OR-ed with "this session had a real set".
+     *  - `pr` / `rmPr`: max of the old record and this session's best real set (with dates).
+     *  - `previousHistory*`: this session's entry is prepended (or replaces the head on a
+     *    same-session re-save) **iff** it has real performed data AND its full `completedAt`
+     *    is >= the head's (a back-dated edit still counts for PR, never for history order).
+     *    Trimmed to [ExerciseStats.HISTORY_LIMIT]. `previousSets` / `previousSessionDate` /
+     *    `previousSessionId` mirror the new head.
+     *  - `hasPriorRealTonnage`: OR-ed with "this session had a real performed set".
+     *  - Skipped slots (`isUntouched()`) contribute nothing — not even a history entry.
      */
     fun merge(exerciseId: String, current: ExerciseStats?, session: WorkoutSession): ExerciseStats {
         if (session.completedAt.isBlank()) return current ?: ExerciseStats(exerciseId)
@@ -104,7 +141,6 @@ object ExerciseStatsCalculator {
             ?.takeIf { it.schemaVersion == ExerciseStats.SCHEMA_VERSION && it.exerciseId == exerciseId }
             ?: ExerciseStats(exerciseId)
 
-        val sessionDate = session.dayKey()
         val touchedContexts = session.exercises
             .filter { it.exerciseId == exerciseId }
             .map { it.slotContext }
@@ -112,64 +148,66 @@ object ExerciseStatsCalculator {
 
         val updated = base.perContext.toMutableMap()
         for (ctx in touchedContexts) {
-            val realSets = strengthSetsFor(exerciseId, ctx, session).filter { it.isReal() }
+            val realSets = performedSetsFor(exerciseId, ctx, session)
             val old = updated[ctx]
 
             val newBestThisSession = realSets.maxByOrNull { it.tonnage() }
-            val mergedPr = listOfNotNull(
-                old?.pr,
-                newBestThisSession?.toPreviousSet(),
-            ).maxByOrNull { it.tonnage() }
-
+            val prCandidates = listOfNotNull(
+                old?.pr?.let { it to old.prSessionDate },
+                newBestThisSession?.toPreviousSet()?.let { it to session.dayKey() },
+            )
+            val mergedPr = prCandidates.maxByOrNull { it.first.tonnage() }
             val newBestE1rmThisSession = realSets.maxByOrNull { it.e1rm() }
-            val mergedRmPr = listOfNotNull(
-                old?.rmPr,
-                newBestE1rmThisSession?.toPreviousSet(),
-            ).maxByOrNull { it.e1rm() }
+            val rmCandidates = listOfNotNull(
+                old?.rmPr?.let { it to old.rmPrSessionDate },
+                newBestE1rmThisSession?.toPreviousSet()?.let { it to session.dayKey() },
+            )
+            val mergedRmPr = rmCandidates.maxByOrNull { it.first.e1rm() }
 
             val hasReal = realSets.isNotEmpty()
-            // This session's sets go into exactly one of the three previous slots (bodyweight /
-            // assisted / manual load) — see ExerciseStats.SCHEMA_VERSION v5. `>=` (not `>`): a
-            // session re-saved on the same day it was first saved must still replace its slot's
-            // "previous". Compared day-vs-day via dayKey().
-            val sessionMode = realSets.sessionLoadMode()
-            val relevantOldDate = when (sessionMode) {
-                LoadMode.BODYWEIGHT -> old?.previousSessionDateBodyweight
-                LoadMode.ASSISTED -> old?.previousSessionDateAssisted
-                LoadMode.MANUAL -> old?.previousSessionDate
+            // This session's entry goes into exactly one of the three history lists
+            // (bodyweight / assisted / manual load) — see ExerciseStats.SCHEMA_VERSION v5.
+            // Ordered by full completedAt (not day-only): two sessions on the same day keep
+            // time order. A same-session re-save replaces the head instead of duplicating it.
+            val sessionMode: LoadMode? = if (hasReal) realSets.sessionLoadMode() else null
+            val entry = if (hasReal) session.historyEntry(realSets) else null
+            fun advance(oldHistory: List<PreviousSession>, forMode: LoadMode): List<PreviousSession> {
+                if (entry == null || sessionMode != forMode) return oldHistory
+                if (oldHistory.isEmpty()) return listOf(entry)
+                val head = oldHistory.first()
+                if (entry.sessionId.isNotBlank() && entry.sessionId == head.sessionId) {
+                    return listOf(entry) + oldHistory.drop(1)
+                }
+                if (entry.completedAt >= head.completedAt) {
+                    return (listOf(entry) + oldHistory).take(ExerciseStats.HISTORY_LIMIT)
+                }
+                return oldHistory
             }
-            val takeThisAsPrevious = hasReal &&
-                (old == null || relevantOldDate.isNullOrBlank() ||
-                    sessionDate.take(10) >= relevantOldDate.take(10))
+            val newManual = advance(old?.previousHistory.orEmpty(), LoadMode.MANUAL)
+            val newBw = advance(old?.previousHistoryBodyweight.orEmpty(), LoadMode.BODYWEIGHT)
+            val newAssisted = advance(old?.previousHistoryAssisted.orEmpty(), LoadMode.ASSISTED)
+            val headManual = newManual.firstOrNull()
+            val headBw = newBw.firstOrNull()
+            val headAssisted = newAssisted.firstOrNull()
 
             updated[ctx] = ContextStats(
-                previousSets = when {
-                    takeThisAsPrevious && sessionMode == LoadMode.MANUAL -> realSets.map { it.toPreviousSet() }
-                    else -> old?.previousSets ?: emptyList()
-                },
-                previousSessionDate = when {
-                    takeThisAsPrevious && sessionMode == LoadMode.MANUAL -> sessionDate
-                    else -> old?.previousSessionDate ?: ""
-                },
-                previousSetsBodyweight = when {
-                    takeThisAsPrevious && sessionMode == LoadMode.BODYWEIGHT -> realSets.map { it.toPreviousSet() }
-                    else -> old?.previousSetsBodyweight ?: emptyList()
-                },
-                previousSessionDateBodyweight = when {
-                    takeThisAsPrevious && sessionMode == LoadMode.BODYWEIGHT -> sessionDate
-                    else -> old?.previousSessionDateBodyweight ?: ""
-                },
-                previousSetsAssisted = when {
-                    takeThisAsPrevious && sessionMode == LoadMode.ASSISTED -> realSets.map { it.toPreviousSet() }
-                    else -> old?.previousSetsAssisted ?: emptyList()
-                },
-                previousSessionDateAssisted = when {
-                    takeThisAsPrevious && sessionMode == LoadMode.ASSISTED -> sessionDate
-                    else -> old?.previousSessionDateAssisted ?: ""
-                },
-                pr = mergedPr,
-                rmPr = mergedRmPr,
+                previousSets = headManual?.sets.orEmpty(),
+                previousSessionDate = headManual?.date.orEmpty(),
+                previousSetsBodyweight = headBw?.sets.orEmpty(),
+                previousSessionDateBodyweight = headBw?.date.orEmpty(),
+                previousSetsAssisted = headAssisted?.sets.orEmpty(),
+                previousSessionDateAssisted = headAssisted?.date.orEmpty(),
+                pr = mergedPr?.first,
+                prSessionDate = mergedPr?.second ?: "",
+                rmPr = mergedRmPr?.first,
+                rmPrSessionDate = mergedRmPr?.second ?: "",
                 hasPriorRealTonnage = (old?.hasPriorRealTonnage ?: false) || hasReal,
+                previousHistory = newManual,
+                previousHistoryBodyweight = newBw,
+                previousHistoryAssisted = newAssisted,
+                previousSessionId = headManual?.sessionId.orEmpty(),
+                previousSessionIdBodyweight = headBw?.sessionId.orEmpty(),
+                previousSessionIdAssisted = headAssisted?.sessionId.orEmpty(),
             )
         }
         return base.copy(perContext = updated)
@@ -185,25 +223,21 @@ object ExerciseStatsCalculator {
     ): ContextStats? {
         var pr: ExerciseSet.Strength? = null
         var prTonnage = 0.0
+        var prDate = ""
         var rmPr: ExerciseSet.Strength? = null
         var rmPrE1rm = 0.0
+        var rmPrDate = ""
         var hasReal = false
-        // "previous" = first session in newest-first order that has real data, tracked
-        // separately per weighting approach (bodyweight / assisted / manual load) so a switch
-        // between approaches never compares across them — see ExerciseStats.SCHEMA_VERSION v5.
-        // Once a slot is set, the rest of the loop only updates the PR.
-        var prevDate = ""
-        var prevSets: List<PreviousSet> = emptyList()
-        var prevFound = false
-        var prevDateBw = ""
-        var prevSetsBw: List<PreviousSet> = emptyList()
-        var prevFoundBw = false
-        var prevDateAssisted = ""
-        var prevSetsAssisted: List<PreviousSet> = emptyList()
-        var prevFoundAssisted = false
+        // Recent real sessions per weighting approach (newest first, capped) — a manual↔
+        // bodyweight↔assisted switch never compares across them (see SCHEMA_VERSION v5/v6).
+        // Skipped slots (isUntouched) are invisible here: they persist the pre-fill for
+        // walk-back continuity but must not advance "last performed".
+        val histManual = mutableListOf<PreviousSession>()
+        val histBw = mutableListOf<PreviousSession>()
+        val histAssisted = mutableListOf<PreviousSession>()
 
         for (session in completedSessions) {
-            val realSets = strengthSetsFor(exerciseId, ctx, session).filter { it.isReal() }
+            val realSets = performedSetsFor(exerciseId, ctx, session)
             if (realSets.isEmpty()) continue
             hasReal = true
 
@@ -211,54 +245,46 @@ object ExerciseStatsCalculator {
             if (bestThisSession != null && bestThisSession.tonnage() > prTonnage) {
                 pr = bestThisSession
                 prTonnage = bestThisSession.tonnage()
+                prDate = session.dayKey()
             }
 
             val bestE1rmThisSession = realSets.maxByOrNull { it.e1rm() }
             if (bestE1rmThisSession != null && bestE1rmThisSession.e1rm() > rmPrE1rm) {
                 rmPr = bestE1rmThisSession
                 rmPrE1rm = bestE1rmThisSession.e1rm()
+                rmPrDate = session.dayKey()
             }
 
+            val entry = session.historyEntry(realSets)
             when (realSets.sessionLoadMode()) {
-                LoadMode.BODYWEIGHT -> if (!prevFoundBw) {
-                    prevFoundBw = true
-                    prevDateBw = session.dayKey()
-                    prevSetsBw = realSets.map { it.toPreviousSet() }
-                }
-                LoadMode.ASSISTED -> if (!prevFoundAssisted) {
-                    prevFoundAssisted = true
-                    prevDateAssisted = session.dayKey()
-                    prevSetsAssisted = realSets.map { it.toPreviousSet() }
-                }
-                LoadMode.MANUAL -> if (!prevFound) {
-                    prevFound = true
-                    prevDate = session.dayKey()
-                    prevSets = realSets.map { it.toPreviousSet() }
-                }
+                LoadMode.BODYWEIGHT -> if (histBw.size < ExerciseStats.HISTORY_LIMIT) histBw += entry
+                LoadMode.ASSISTED -> if (histAssisted.size < ExerciseStats.HISTORY_LIMIT) histAssisted += entry
+                LoadMode.MANUAL -> if (histManual.size < ExerciseStats.HISTORY_LIMIT) histManual += entry
             }
         }
 
         if (!hasReal) return null
+        val headManual = histManual.firstOrNull()
+        val headBw = histBw.firstOrNull()
+        val headAssisted = histAssisted.firstOrNull()
         return ContextStats(
-            previousSets = prevSets,
-            previousSessionDate = prevDate,
-            previousSetsBodyweight = prevSetsBw,
-            previousSessionDateBodyweight = prevDateBw,
-            previousSetsAssisted = prevSetsAssisted,
-            previousSessionDateAssisted = prevDateAssisted,
+            previousSets = headManual?.sets.orEmpty(),
+            previousSessionDate = headManual?.date.orEmpty(),
+            previousSetsBodyweight = headBw?.sets.orEmpty(),
+            previousSessionDateBodyweight = headBw?.date.orEmpty(),
+            previousSetsAssisted = headAssisted?.sets.orEmpty(),
+            previousSessionDateAssisted = headAssisted?.date.orEmpty(),
             pr = pr?.toPreviousSet(),
+            prSessionDate = prDate,
             rmPr = rmPr?.toPreviousSet(),
+            rmPrSessionDate = rmPrDate,
             hasPriorRealTonnage = hasReal,
+            previousHistory = histManual,
+            previousHistoryBodyweight = histBw,
+            previousHistoryAssisted = histAssisted,
+            previousSessionId = headManual?.sessionId.orEmpty(),
+            previousSessionIdBodyweight = headBw?.sessionId.orEmpty(),
+            previousSessionIdAssisted = headAssisted?.sessionId.orEmpty(),
         )
     }
-
-    /** Strength sets for [exerciseId] performed in slot context [ctx] within [session]. */
-    private fun strengthSetsFor(
-        exerciseId: String,
-        ctx: SlotContext,
-        session: WorkoutSession,
-    ): List<ExerciseSet.Strength> =
-        session.exercises
-            .filter { it.exerciseId == exerciseId && it.slotContext == ctx }
-            .flatMap { it.sets.filterIsInstance<ExerciseSet.Strength>() }
 }

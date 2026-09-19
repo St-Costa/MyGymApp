@@ -2,6 +2,7 @@ package com.mygymapp.data.parser
 
 import com.mygymapp.data.model.ContextStats
 import com.mygymapp.data.model.ExerciseStats
+import com.mygymapp.data.model.PreviousSession
 import com.mygymapp.data.model.PreviousSet
 import com.mygymapp.data.model.SlotContext
 
@@ -50,17 +51,35 @@ object ExerciseStatsParser {
                     "hasPriorRealTonnage" to cs.hasPriorRealTonnage,
                 )
                 cs.pr?.let { m["pr"] = listOf(setMap(it)) }
+                if (cs.prSessionDate.isNotBlank()) m["prSessionDate"] = cs.prSessionDate
                 cs.rmPr?.let { m["rmPr"] = listOf(setMap(it)) }
+                if (cs.rmPrSessionDate.isNotBlank()) m["rmPrSessionDate"] = cs.rmPrSessionDate
                 if (cs.previousSets.isNotEmpty()) {
                     m["previousSets"] = cs.previousSets.map { setMap(it) }
+                }
+                if (cs.previousSessionId.isNotBlank()) m["previousSessionId"] = cs.previousSessionId
+                if (cs.previousHistory.isNotEmpty()) {
+                    m["previousHistory"] = cs.previousHistory.map { historyMap(it) }
                 }
                 if (cs.previousSetsBodyweight.isNotEmpty()) {
                     m["previousSessionDateBodyweight"] = cs.previousSessionDateBodyweight
                     m["previousSetsBodyweight"] = cs.previousSetsBodyweight.map { setMap(it) }
                 }
+                if (cs.previousSessionIdBodyweight.isNotBlank()) {
+                    m["previousSessionIdBodyweight"] = cs.previousSessionIdBodyweight
+                }
+                if (cs.previousHistoryBodyweight.isNotEmpty()) {
+                    m["previousHistoryBodyweight"] = cs.previousHistoryBodyweight.map { historyMap(it) }
+                }
                 if (cs.previousSetsAssisted.isNotEmpty()) {
                     m["previousSessionDateAssisted"] = cs.previousSessionDateAssisted
                     m["previousSetsAssisted"] = cs.previousSetsAssisted.map { setMap(it) }
+                }
+                if (cs.previousSessionIdAssisted.isNotBlank()) {
+                    m["previousSessionIdAssisted"] = cs.previousSessionIdAssisted
+                }
+                if (cs.previousHistoryAssisted.isNotEmpty()) {
+                    m["previousHistoryAssisted"] = cs.previousHistoryAssisted.map { historyMap(it) }
                 }
                 m
             }
@@ -99,8 +118,16 @@ object ExerciseStatsParser {
                 previousSetsAssisted = parseSetList(map["previousSetsAssisted"]),
                 previousSessionDateAssisted = map["previousSessionDateAssisted"]?.toString() ?: "",
                 pr = parseSetList(map["pr"]).firstOrNull(),
+                prSessionDate = map["prSessionDate"]?.toString() ?: "",
                 rmPr = parseSetList(map["rmPr"]).firstOrNull(),
+                rmPrSessionDate = map["rmPrSessionDate"]?.toString() ?: "",
                 hasPriorRealTonnage = map["hasPriorRealTonnage"] as? Boolean ?: false,
+                previousHistory = parseHistoryList(map["previousHistory"]),
+                previousHistoryBodyweight = parseHistoryList(map["previousHistoryBodyweight"]),
+                previousHistoryAssisted = parseHistoryList(map["previousHistoryAssisted"]),
+                previousSessionId = map["previousSessionId"]?.toString() ?: "",
+                previousSessionIdBodyweight = map["previousSessionIdBodyweight"]?.toString() ?: "",
+                previousSessionIdAssisted = map["previousSessionIdAssisted"]?.toString() ?: "",
             )
             ctx to cs
         }.toMap()
@@ -122,6 +149,15 @@ object ExerciseStatsParser {
             if (s.assistOffsetKg > 0.0) put("assistOffsetKg", s.assistOffsetKg)
         }
 
+    private fun historyMap(h: PreviousSession): Map<String, Any?> =
+        linkedMapOf<String, Any?>(
+            "date" to h.date,
+            "sessionId" to h.sessionId,
+            "completedAt" to h.completedAt,
+            "tonnage" to h.tonnage,
+            "sets" to h.sets.map { setMap(it) },
+        )
+
     @Suppress("UNCHECKED_CAST")
     private fun parseSetList(raw: Any?): List<PreviousSet> {
         val list = raw as? List<*> ?: return emptyList()
@@ -134,6 +170,22 @@ object ExerciseStatsParser {
                 isBodyweight = m["isBodyweight"] as? Boolean ?: false,
                 isAssisted = m["isAssisted"] as? Boolean ?: false,
                 assistOffsetKg = (m["assistOffsetKg"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseHistoryList(raw: Any?): List<PreviousSession> {
+        val list = raw as? List<*> ?: return emptyList()
+        return list.mapNotNull { item ->
+            val m = item as? Map<String, Any?> ?: return@mapNotNull null
+            PreviousSession(
+                date = m["date"]?.toString() ?: "",
+                sessionId = m["sessionId"]?.toString() ?: "",
+                completedAt = m["completedAt"]?.toString() ?: "",
+                sets = parseSetList(m["sets"]),
+                tonnage = (m["tonnage"] as? Number)?.toDouble()
+                    ?: parseSetList(m["sets"]).sumOf { it.reps * it.weight },
             )
         }
     }

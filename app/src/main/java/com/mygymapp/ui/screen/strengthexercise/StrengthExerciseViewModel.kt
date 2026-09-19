@@ -45,6 +45,8 @@ data class TonnagePr(
     val bwBaseWeightKg: Double = 0.0,
     val isAssisted: Boolean = false,
     val assistOffsetKg: Double = 0.0,
+    /** Day key (`YYYY-MM-DD`) of the session this record comes from, "" when unknown. */
+    val sessionDate: String = "",
 )
 
 /**
@@ -61,6 +63,8 @@ data class RmPr(
     val bwBaseWeightKg: Double = 0.0,
     val isAssisted: Boolean = false,
     val assistOffsetKg: Double = 0.0,
+    /** Day key (`YYYY-MM-DD`) of the session this record comes from, "" when unknown. */
+    val sessionDate: String = "",
 )
 
 data class StrengthExerciseUiState(
@@ -73,6 +77,10 @@ data class StrengthExerciseUiState(
     val allSetsFilled: Boolean = false,
     val tonnagePr: TonnagePr? = null,
     val rmPr: RmPr? = null,
+    /** Day key (`YYYY-MM-DD`) of the session the grey pre-fill comes from, "" when none. */
+    val previousSessionDate: String = "",
+    /** Day keys (newest first) of the recent like-with-like sessions backing the pre-fill. */
+    val previousHistoryDates: List<String> = emptyList(),
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): true only for a plain NORMAL
     // slot with zero recorded sets so far — warmup/daily/completed/already-switched slots
     // never show the button. excludeIds is every exerciseId already occupying a slot in this
@@ -135,9 +143,10 @@ class StrengthExerciseViewModel @Inject constructor(
             // Previous workout data + all-time PR for this exercise come from the per-exercise
             // stats sidecar (history/_stats/{id}.yaml) — a single small read instead of parsing
             // every session file that contains the exercise. Matched like-with-like on slot
-            // context (daily / warmup / normal) AND on weighting approach (bodyweight vs manual
-            // load, schema v4) inside the sidecar, and "previous" is already the most recent
-            // such session with real (non-zero) set data.
+            // context (daily / warmup / normal) AND on weighting approach (manual / bodyweight
+            // / assisted, schema v5/v6) inside the sidecar; "previous" is the most recent
+            // performed session (skips never advance it), with up to HISTORY_LIMIT earlier
+            // ones behind it for the "penultima volta" fallback.
             val ctxStats = workoutRepository.getExerciseStats(exerciseId).forContext(slotContext)
             // The picker's "weight" always mirrors what the lifter actually dials in: manual
             // load, or the assist-machine number for an assisted exercise (never the
@@ -187,6 +196,7 @@ class StrengthExerciseViewModel @Inject constructor(
                     bwBaseWeightKg = it.bwBaseWeightKg,
                     isAssisted = it.isAssisted,
                     assistOffsetKg = it.assistOffsetKg,
+                    sessionDate = ctxStats.prSessionDate,
                 )
             }
             val rmPr = ctxStats?.rmPr?.let {
@@ -196,8 +206,11 @@ class StrengthExerciseViewModel @Inject constructor(
                     bwBaseWeightKg = it.bwBaseWeightKg,
                     isAssisted = it.isAssisted,
                     assistOffsetKg = it.assistOffsetKg,
+                    sessionDate = ctxStats.rmPrSessionDate,
                 )
             }
+            val previousDate = ctxStats?.previousSessionDateFor(exercise.loadMode).orEmpty()
+            val historyDates = ctxStats?.historyFor(exercise.loadMode).orEmpty().map { it.date }
 
             // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
             // never reaches this screen) that hasn't recorded anything yet, matching
@@ -213,6 +226,8 @@ class StrengthExerciseViewModel @Inject constructor(
                 isLoading = false,
                 tonnagePr = tonnagePr,
                 rmPr = rmPr,
+                previousSessionDate = previousDate,
+                previousHistoryDates = historyDates,
                 switchEligible = switchEligible,
                 excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )

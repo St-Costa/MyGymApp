@@ -69,6 +69,12 @@ data class SupersetMemberUi(
     val prE1rmReps: Int = 0,
     val prE1rmWeight: Double = 0.0,
     val prE1rmBwBaseWeightKg: Double = 0.0,
+    /** Day key of the session the tonnage-PR set comes from, "" when unknown. */
+    val prSessionDate: String = "",
+    /** Day key of the session the e1RM-PR set comes from, "" when unknown. */
+    val prE1rmSessionDate: String = "",
+    /** Day key of the session the grey pre-fill comes from, "" when none. */
+    val previousSessionDate: String = "",
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): each member is an independent
     // slot — one can be switched even if another already has recorded sets.
     val switchEligible: Boolean = false,
@@ -253,6 +259,9 @@ class SupersetViewModel @Inject constructor(
                         prE1rmReps = rmPrSet?.reps ?: 0,
                         prE1rmWeight = rmPrSet?.weight ?: 0.0,
                         prE1rmBwBaseWeightKg = rmPrSet?.bwBaseWeightKg ?: 0.0,
+                        prSessionDate = ctxStats?.prSessionDate.orEmpty(),
+                        prE1rmSessionDate = ctxStats?.rmPrSessionDate.orEmpty(),
+                        previousSessionDate = ctxStats?.previousSessionDateFor(ex.loadMode).orEmpty(),
                         switchEligible = switchEligible,
                     ),
                     sets = memberSets,

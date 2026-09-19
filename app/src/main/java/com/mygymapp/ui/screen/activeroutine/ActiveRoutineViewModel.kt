@@ -93,8 +93,10 @@ data class ActiveExerciseUi(
     val bodypart: String,
     // Current config: bodyweight exercise (materialized `weight`) vs manual-load. The
     // change badge only compares against previous sessions with the same approach — see
-    // ExerciseStats.SCHEMA_VERSION v4.
+    // ExerciseStats.SCHEMA_VERSION v4. loadMode covers the third approach (ASSISTED) too;
+    // isBodyweight is kept for existing readers.
     val isBodyweight: Boolean = false,
+    val loadMode: com.mygymapp.data.model.LoadMode = com.mygymapp.data.model.LoadMode.MANUAL,
     val completed: Boolean = false,
     val setCount: Int = 0,
     // Configured block duration for CARDIO exercises (RoutineExercise.timePerSetSeconds).
@@ -228,6 +230,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     type = exercise.type,
                     bodypart = exercise.bodypart,
                     isBodyweight = exercise.isBodyweight,
+                    loadMode = exercise.loadMode,
                     setCount = re.sets,
                     timePerSetSeconds = re.timePerSetSeconds,
                     supersetWithNext = re.supersetWithNext,
@@ -289,8 +292,7 @@ class ActiveRoutineViewModel @Inject constructor(
                         com.mygymapp.data.model.SlotContext.NORMAL
                     }
                     val cs = statsByExercise[ex.exerciseId]?.forContext(ctx) ?: return@filter false
-                    val prevForApproach =
-                        if (ex.isBodyweight) cs.previousSetsBodyweight else cs.previousSets
+                    val prevForApproach = cs.previousSetsFor(ex.loadMode)
                     prevForApproach.isNotEmpty()
                 }
                 .map { it.exerciseId }
@@ -314,11 +316,8 @@ class ActiveRoutineViewModel @Inject constructor(
                         com.mygymapp.data.model.SlotContext.NORMAL
                     }
                     val cs = statsByExercise[ex.exerciseId]?.forContext(ctx)
-                    val prevSets = (if (ex.isBodyweight) {
-                        cs?.previousSetsBodyweight
-                    } else {
-                        cs?.previousSets
-                    }).orEmpty().map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                    val prevSets = cs?.previousSetsFor(ex.loadMode).orEmpty()
+                        .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
                     if (prevSets.isNotEmpty()) {
                         previousTonnageByExercise = previousTonnageByExercise +
                             (ex.exerciseId to prevSets.sumOf { it.reps * it.weight })
@@ -492,33 +491,27 @@ class ActiveRoutineViewModel @Inject constructor(
             currentSession = reloaded
 
             val newSlot = reloaded.exercises.find { it.exerciseId == newExerciseId } ?: return@launch
-            val newExerciseIsBodyweight =
-                exerciseRepository.getById(newExerciseId)?.isBodyweight ?: false
+            val newExercise = exerciseRepository.getById(newExerciseId)
+            val newExerciseIsBodyweight = newExercise?.isBodyweight ?: false
+            val newExerciseLoadMode =
+                newExercise?.loadMode ?: com.mygymapp.data.model.LoadMode.MANUAL
 
             // Populate an on-demand progression baseline for the new exerciseId, mirroring how
             // exercisesWithPriorTonnage is computed in init — the precomputed
             // previousTonnageByExercise/previousBestE1RMByExercise maps only cover this
             // routine's ORIGINAL exercises, so the switched-in id would otherwise have no
             // baseline at all when markExerciseCompleted looks it up later.
-            // Only a slot with REAL tonnage AND the same weighting approach (bodyweight vs
-            // manual load) as the exercise's current config seeds a baseline / the "not first
-            // time" flag — a completed-empty (skipped) slot contributes nothing, and a
-            // cross-approach slot would produce a bogus change (schema v4). Walking history
-            // newest-first, take the first slot that qualifies.
-            val lastWithTonnage = workoutRepository.getSessionsForExercise(newExerciseId)
-                .firstNotNullOfOrNull { hist ->
-                    hist.exercises.firstOrNull { ex ->
-                        val strengthSets = ex.sets.filterIsInstance<ExerciseSet.Strength>()
-                        ex.exerciseId == newExerciseId && !ex.excludeFromTonnage &&
-                            strengthSets.sumOf { it.reps * it.weight } > 0.0 &&
-                            strengthSets.any { it.isBodyweight } == newExerciseIsBodyweight
-                    }
-                }
-            if (lastWithTonnage != null) {
-                val tonnage = lastWithTonnage.sets.filterIsInstance<ExerciseSet.Strength>()
-                    .sumOf { it.reps * it.weight }
+            // Read from the stats sidecar (NORMAL context, like-with-like weighting approach):
+            // a completed-empty (skipped) slot contributes nothing by construction, and a
+            // cross-approach slot never seeds a bogus change (schema v5/v6).
+            val switchedStats = workoutRepository.getExerciseStats(newExerciseId)
+                .forContext(com.mygymapp.data.model.SlotContext.NORMAL)
+            val switchedPrevSets = switchedStats?.previousSetsFor(newExerciseLoadMode).orEmpty()
+                .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+            if (switchedPrevSets.isNotEmpty()) {
+                val tonnage = switchedPrevSets.sumOf { it.reps * it.weight }
                 previousTonnageByExercise = previousTonnageByExercise + (newExerciseId to tonnage)
-                lastWithTonnage.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM()
+                switchedPrevSets.bestEstimated1RM()
                     ?.let { previousBestE1RMByExercise = previousBestE1RMByExercise + (newExerciseId to it) }
                 exercisesWithPriorTonnage = exercisesWithPriorTonnage + newExerciseId
             }
@@ -531,6 +524,7 @@ class ActiveRoutineViewModel @Inject constructor(
                         type = newSlot.type,
                         bodypart = newSlot.bodypart,
                         isBodyweight = newExerciseIsBodyweight,
+                        loadMode = newExerciseLoadMode,
                         setCount = newSlot.sets.size,
                         supersetWithNext = ex.supersetWithNext,
                         excludeFromTonnage = newSlot.excludeFromTonnage,
