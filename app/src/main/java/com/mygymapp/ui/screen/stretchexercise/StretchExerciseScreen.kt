@@ -62,6 +62,9 @@ fun StretchExerciseScreen(
     LaunchedEffect(switchedExerciseId) {
         switchedExerciseId?.let { onSwitched(it) }
     }
+    // Same mirror as the strength screen: the swap icon is offered only while no set is
+    // toggled done (the button still reads "Segna come non eseguito").
+    val anyDone = uiState.sets.any { it.done }
 
     Scaffold(
         topBar = {
@@ -73,7 +76,7 @@ fun StretchExerciseScreen(
                     }
                 },
                 actions = {
-                    if (uiState.switchEligible) {
+                    if (uiState.switchEligible && !anyDone) {
                         IconButton(onClick = {
                             val exercise = uiState.exercise ?: return@IconButton
                             onSwitchExercise(
@@ -195,7 +198,7 @@ fun StretchExerciseScreen(
                 // Label reflects what tapping records: no set toggled done -> closes as
                 // "skipped" (grey border + X, excluded from history); any set done -> closes
                 // as performed. See StretchExerciseViewModel.completeExercise().
-                val anyDone = uiState.sets.any { it.done }
+                // (anyDone is hoisted above — the swap icon mirrors it.)
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(),

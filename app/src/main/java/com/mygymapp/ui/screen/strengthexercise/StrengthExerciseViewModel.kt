@@ -353,17 +353,24 @@ class StrengthExerciseViewModel @Inject constructor(
     val switchedExerciseId: StateFlow<String?> = _switchedExerciseId
 
     /**
-     * Applies the switch chosen from the filtered ExercisePicker. Re-verifies eligibility
-     * against the freshly-reloaded session (not just the UI flag) via
-     * [withExerciseSwitched] before saving.
+     * Applies the switch chosen from the filtered ExercisePicker. Reloads the session fresh
+     * (the in-memory copy may be stale) and re-verifies eligibility via
+     * [withExerciseSwitched] before saving. The recorded-sets guard is skipped exactly while
+     * the current visit is untouched (the Complete button still reads "Segna come non
+     * eseguito"), so a slot locked by an earlier accidental touch stays recoverable.
      */
     fun switchExercise(newExerciseId: String) {
         viewModelScope.launch {
-            val session = currentSession ?: return@launch
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
-            val updated = session.withExerciseSwitched(exerciseId, newExercise)
-            if (updated === session) return@launch // no longer eligible — ignore stale result
+            val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+                ?: currentSession ?: return@launch
+            val untouched = _uiState.value.sets.none { it.repsTouched || it.weightTouched }
+            val updated = fresh.withExerciseSwitched(
+                exerciseId, newExercise, allowDiscardRecordedSets = untouched,
+            )
+            if (updated === fresh) return@launch // no longer eligible — ignore stale result
             workoutRepository.save(updated)
+            currentSession = updated
             // This VM instance's own slot is gone now; nothing left to save from onCleared().
             markSwitched()
             _switchedExerciseId.value = newExerciseId

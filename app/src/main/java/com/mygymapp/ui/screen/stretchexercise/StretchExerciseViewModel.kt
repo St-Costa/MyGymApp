@@ -159,11 +159,18 @@ class StretchExerciseViewModel @Inject constructor(
 
     fun switchExercise(newExerciseId: String) {
         viewModelScope.launch {
-            val session = currentSession ?: return@launch
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
-            val updated = session.withExerciseSwitched(exerciseId, newExercise)
-            if (updated === session) return@launch
+            val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+                ?: currentSession ?: return@launch
+            // A stretch set only becomes `done` via an explicit toggle — same signal the
+            // Complete button uses for its "Segna come non eseguito" label.
+            val untouched = _uiState.value.sets.none { it.done }
+            val updated = fresh.withExerciseSwitched(
+                exerciseId, newExercise, allowDiscardRecordedSets = untouched,
+            )
+            if (updated === fresh) return@launch
             workoutRepository.save(updated)
+            currentSession = updated
             markSwitched()
             _switchedExerciseId.value = newExerciseId
         }

@@ -135,15 +135,27 @@ enum class SlotContext { NORMAL, WARMUP, DAILY }
  * isn't eligible (see [WorkoutExercise.isSwitchEligible]), so callers can check the result
  * for "did anything change" instead of duplicating the eligibility check themselves.
  *
+ * When [allowDiscardRecordedSets] is true the recorded-sets guard is skipped: a slot whose
+ * on-disk sets already carry data can still be switched, discarding that partial work. The
+ * exercise ViewModels pass `true` exactly when the current visit is untouched (the Complete
+ * button still reads "Segna come non eseguito"), so a slot locked by an earlier accidental
+ * touch can still be recovered — the swap itself is the explicit confirmation that the
+ * partial work may go. Completed and already-switched slots stay locked either way.
+ *
  * The slot keeps its position in [WorkoutSession.exercises] and its warmup/daily/tonnage
  * flags (switch is only ever offered for plain NORMAL slots to begin with) — only
  * exerciseId/exerciseName/bodypart/type/sets change, plus `substitutedFor` recording the
  * original id for history/sync. Shared by ActiveRoutineViewModel and the three exercise
  * ViewModels so the mutation logic lives in exactly one place.
  */
-fun WorkoutSession.withExerciseSwitched(oldExerciseId: String, newExercise: Exercise): WorkoutSession {
+fun WorkoutSession.withExerciseSwitched(
+    oldExerciseId: String,
+    newExercise: Exercise,
+    allowDiscardRecordedSets: Boolean = false,
+): WorkoutSession {
     val slot = exercises.find { it.exerciseId == oldExerciseId } ?: return this
-    if (!slot.isSwitchEligible()) return this
+    if (slot.substitutedFor != null || slot.completed) return this
+    if (!allowDiscardRecordedSets && !slot.hasNoRecordedSets()) return this
     // Regenerate empty sets matching the new exercise's type (same shape the session-creation
     // path in ActiveRoutineViewModel.init builds for a freshly-started slot). STRETCH defaults
     // to 60s per set — mirrors StretchExerciseViewModel's own fallback when no sets exist yet
