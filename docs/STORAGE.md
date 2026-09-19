@@ -24,7 +24,8 @@ All user data lives under `context.filesDir/gymdata/` (app-internal storage). No
 ```
 filesDir/gymdata/              ← FileManager.root
 ├── exercises/                 ← Exercise repository
-│   └── {slug}-ex-{8hex}.md
+│   ├── {slug}-ex-{8hex}.md
+│   └── _settings.md             ← file-backed user profile (birthYear/height/weight/sex, NOT a workout — see § below)
 ├── routines/                  ← Routine repository
 │   └── {slug}-rt-{8hex}.md
 ├── history/                   ← Workout sessions
@@ -124,6 +125,34 @@ updated: ...
 `isWarmup: true` marks an exercise as warmup (the contiguous leading prefix of the list). Warmup exercises are excluded from tonnage. In the routine editor a positional divider line separates warmup (above) from normal (below). See [CONVENTIONS.md](CONVENTIONS.md#fixed-daily-exercise-container).
 
 **Fixed daily exercise container**: a reserved routine `id: rt-fixeddaily` (name `Fixed daily exercise`, `day: ""`) is auto-seeded on first load and is non-deletable / non-disableable. Its exercises are injected at the start of every session (excluded from tonnage). See [CONVENTIONS.md](CONVENTIONS.md#fixed-daily-exercise-container).
+
+### User profile (`exercises/_settings.md`)
+
+Non-secret profile (age source, sex, height, weight) owned by [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt), parsed by [UserProfileParser](../app/src/main/java/com/mygymapp/data/parser/UserProfileParser.kt):
+
+```yaml
+---
+type: settings
+version: 1
+weightKg: 82.4                 # written by the VitaFit scale integration, no manual entry
+isMale: true
+heightCm: 180                  # used by BIA body-fat %
+birthYear: 1990                # absent until set — sole source of age (effectiveAge), every
+                               # age-dependent formula (Keytel, Tanaka, TRIMP, VO2max, BIA)
+                               # falls back to 30 until then
+---
+```
+
+Why here and not `SharedPreferences`: the old `user_profile` prefs were wiped by every
+uninstall/`pm clear`/baseline-profile run and never reached any backup (this bit the user
+in Phase 118). A file under `gymdata/` rides the tar backup and the server full-store
+backup like everything else. Why under `exercises/` with a `_` prefix: the server's
+repo-file endpoint only accepts paths under `exercises/`/`routines/`
+(`backup-server-brief.md` §2.1) and already excludes `_`-prefixed basenames from its SQL
+view — so the file is stored/committed/restored without polluting the exercise tables,
+and `ExerciseRepository` skips `_`-prefixed files on load for the same reason. Secrets
+(server URL, bearer token) stay out — they live in `EncryptedSharedPreferences` and must
+never be backed up to the server they authenticate against (see [BACKUP.md](BACKUP.md)).
 
 ### Workout session (`history/YYYY/MM/YYYY-MM-DD_{routineId}_{sessionId}.md`)
 
@@ -434,10 +463,7 @@ All `MODE_PRIVATE`. None of these leave the device via Android Auto Backup
 
 | Prefs file | Key | Type | Owner | Purpose |
 |---|---|---|---|---|
-| `user_profile` | `birthYear` | Int, absent if unset | [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt) | Sole source of age (`UserProfile.effectiveAge`, recomputed from the current year) for every age-dependent formula: calorie (Keytel), Tanaka HRmax, TRIMP, VO2max, BIA body-fat %. Falls back to a fixed default age until set — no separate "age" field exists |
-| `user_profile` | `weightKg` | Float | " | " |
-| `user_profile` | `isMale` | Boolean | " | " |
-| `user_profile` | `heightCm` | Int | " | Used by BIA body-fat % (scale integration) |
+| `user_profile` | *(legacy, migrated)* | — | [UserProfileRepository](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt) | Pre-Phase-118 store. On first read the values move once to `exercises/_settings.md` and this file is deleted |
 | `sync_config_enc` | `serverUrl` | String (encrypted) | [SyncConfigRepository](../app/src/main/java/com/mygymapp/data/sync/SyncConfigRepository.kt) | Tailscale Serve hostname for the self-hosted sync server, e.g. `https://gym-server.tailnet.ts.net`. Encrypted at rest via `EncryptedSharedPreferences` (Keystore AES256); the pre-Phase-107 plaintext `sync_config` file is migrated once on first open, then deleted |
 | `sync_config_enc` | `bearerToken` | String (encrypted) | " | Shared secret sent as `Authorization: Bearer` on every sync POST |
 | `sync_config_enc` | `enabled` | Boolean (encrypted) | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |

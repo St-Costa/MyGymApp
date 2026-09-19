@@ -186,19 +186,19 @@ class OptionsViewModel @Inject constructor(
     fun updateGender(isMale: Boolean) {
         val profile = _uiState.value.profile.copy(isMale = isMale)
         _uiState.value = _uiState.value.copy(profile = profile)
-        profileRepo.save(profile)
+        viewModelScope.launch { profileRepo.save(profile) }
     }
 
     fun updateHeight(heightCm: Int) {
         val profile = _uiState.value.profile.copy(heightCm = heightCm)
         _uiState.value = _uiState.value.copy(profile = profile)
-        profileRepo.save(profile)
+        viewModelScope.launch { profileRepo.save(profile) }
     }
 
     fun updateBirthYear(birthYear: Int?) {
         val profile = _uiState.value.profile.copy(birthYear = birthYear)
         _uiState.value = _uiState.value.copy(profile = profile)
-        profileRepo.save(profile)
+        viewModelScope.launch { profileRepo.save(profile) }
     }
 
     /** Select any day; the whole week (its Monday) becomes the anchor. */
@@ -462,8 +462,16 @@ class OptionsViewModel @Inject constructor(
                     else -> "Risposta inattesa dal server (tarball)."
                 }
             }
+            // The restore may have (re)written exercises/_settings.md bypassing
+            // UserProfileRepository's cache — pick it up so the profile card shows
+            // the restored values without an app restart.
+            profileRepo.refresh()
             refreshSyncStatus()
-            _uiState.value = _uiState.value.copy(syncIsRestoring = false, syncRestoreResult = result)
+            _uiState.value = _uiState.value.copy(
+                profile = profileRepo.get(),
+                syncIsRestoring = false,
+                syncRestoreResult = result,
+            )
         }
     }
 
@@ -498,7 +506,11 @@ class OptionsViewModel @Inject constructor(
             if (!wrote) { failed++; continue }
             when {
                 relPath.startsWith("exercises/") -> {
-                    restoredExercises++
+                    // exercises/_settings.md is the file-backed user profile, not an
+                    // exercise (see UserProfileRepository) — restored and ledger-marked
+                    // like everything else, just counted separately.
+                    if (relPath.substringAfterLast('/').startsWith("_")) restoredOther++
+                    else restoredExercises++
                     repoLedgerRepository.markRestored(relPath, hash)
                 }
                 relPath.startsWith("routines/") -> {

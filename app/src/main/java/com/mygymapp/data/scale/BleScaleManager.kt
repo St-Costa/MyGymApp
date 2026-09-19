@@ -217,9 +217,8 @@ class BleScaleManager @Inject constructor(
         // Keep UserProfile.weightKg in sync with the scale — it's the only
         // source of body weight now (no manual entry), and PolarManager reads
         // it for calorie-burn calculations during heart-rate sessions.
-        userProfileRepository.save(profile.copy(weightKg = weightKg))
-
         scope.launch {
+            userProfileRepository.save(profile.copy(weightKg = weightKg))
             val weighIn = scaleHistoryRepository.save(
                 weightKg = weightKg,
                 bmi = composition.bmi,
