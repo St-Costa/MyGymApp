@@ -603,9 +603,22 @@ disk (this happened on 2026-08-31 — Phase 94).
 
 Rule: **anything that behaves like accumulated user state must be a file under
 `gymdata/`**, not `SharedPreferences`. SharedPreferences is for config that a fresh install
-is expected to re-ask for (server URL, profile) — and even those are flagged as
-"wipeable, not a backup" in the docs. If you add another running aggregate, derive it from
+is expected to re-ask for (server URL) — and even that is flagged as "wipeable, not a
+backup" in the docs. The user profile followed this rule the hard way: `user_profile`
+prefs were wiped by a baseline-profile run in Phase 118 and moved to
+`exercises/_settings.md` (BACKUP.md §6). If you add another running aggregate, derive it from
 its source records the way `HrvBaselineCalculator` does; don't cache it in prefs.
+
+## `_`-prefixed files under `exercises/` are not exercises
+
+`exercises/_settings.md` (file-backed user profile) lives under `exercises/` because the
+server's repo-file endpoint only accepts paths under `exercises/`/`routines/`
+(`backup-server-brief.md` §2.1), and both sides already excluded `_`-prefixed basenames
+from the exercise views by convention (server SQL view skips them; `ExerciseRepository`
+skips them on load). If you add another non-exercise repo file, put it under
+`exercises/_*.md`, skip `_`-prefixed names in any new code that walks that dir as
+exercises, and keep secrets out (server URL / bearer token must never ride the repo
+pipeline — they authenticate against that very server).
 
 ## Per-exercise ViewModels: `ExerciseSessionViewModel`
 

@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 118 — Profilo in `gymdata`, backup `shared_prefs` negli script
+
+Il profilo utente (anno nascita, altezza, sesso, peso) non vive più in `SharedPreferences` — un run baseline-profile (che disinstalla l'app) lo aveva appena wipato insieme a server URL + token. Ora è un file `gymdata/exercises/_settings.md` (source of truth, cache in-memory, `save()` suspend): finisce nel tar di `install-debug.sh` e nel backup full-store sul server come gli altri repo file. Sotto `exercises/` con prefisso `_` perché l'endpoint repo del server accetta solo path `exercises/`/`routines/` e già esclude i `_` dalla vista SQL — niente modifiche server, niente righe spurie nelle liste (skip simmetrico in `ExerciseRepository`). Migrazione una tantum dai vecchi prefs (poi cancellati); `birthYear` assente resta assente. `save()` suspend: adeguati i 4 chiamanti (3 in `OptionsViewModel` via `viewModelScope`, peso-bilancia dentro lo scope IO esistente). "Ripristina dal server" fa `refresh()` del profilo a fine restore (niente restart). Token/URL restano solo sul telefono in `EncryptedSharedPreferences`: mai sul server; rete locale di sicurezza via `install-debug.sh` (tar best-effort di `shared_prefs/` in `backups/prefs/`, mai bloccante) + nuovo `scripts/restore-prefs.sh` (con force-stop; dopo un full uninstall le chiavi Keystore sono perse e URL+token vanno reinseriti a mano — documentato). Test: `UserProfileParserTest` (4 casi); `./gradlew test` verde.
+
 ## Phase 117 — Switch finché "Segna come non eseguito"
 
 La regola di eleggibilità dello switch segue ora il pulsante Complete: l'icona swap resta

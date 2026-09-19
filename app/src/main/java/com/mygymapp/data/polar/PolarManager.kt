@@ -374,8 +374,8 @@ class PolarManager @Inject constructor(
     private var connectedDeviceName: String? = null
         private set
 
-    // User profile for calorie/TRIMP calculations. Always read fresh from SharedPreferences
-    // (already an in-memory-cached read after the first access, so this is cheap even at the
+    // User profile for calorie/TRIMP calculations. Always read fresh from the
+    // file-backed UserProfileRepository's in-memory cache (cheap even at the
     // ~1Hz HR-sample rate) rather than a manually-synced cached copy — a stale copy meant a
     // just-recorded scale weigh-in wouldn't affect Keytel calories until some other screen
     // (HeartRateViewModel) happened to observe the scale disconnect and call

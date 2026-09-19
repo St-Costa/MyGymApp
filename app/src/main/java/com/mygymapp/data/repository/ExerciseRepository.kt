@@ -180,7 +180,11 @@ class ExerciseRepository @Inject constructor(
             if (loaded) return
             val dir = exercisesDir()
             if (dir.exists()) {
-                dir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
+                // `_`-prefixed files are not exercises: `exercises/_settings.md` is the
+                // file-backed user profile (see UserProfileRepository — the server's
+                // repo endpoint only accepts paths under exercises//routines/, and both
+                // sides exclude `_` basenames from the exercise views by convention).
+                dir.listFiles()?.filter { it.extension == "md" && !it.name.startsWith("_") }?.forEach { file ->
                     try {
                         val exercise = ExerciseParser.fromMarkdown(file.readText())
                         if (exercise.id.isNotBlank()) {

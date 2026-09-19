@@ -20,7 +20,8 @@ This file is the entry point for AI tooling. The details of the project live in 
 >
 > **Standard way to build+install the debug build: run [`scripts/install-debug.sh`](scripts/install-debug.sh).**
 > This is the prescribed procedure for "build/install the latest version" requests — it checks
-> the device, backs up `gymdata/`, verifies the tar is non-empty, prunes old backups (keeps last
+> the device, backs up `gymdata/` **and** `shared_prefs/` (best-effort tar under `backups/prefs/`,
+> restore with `scripts/restore-prefs.sh`), verifies the tar is non-empty, prunes old backups (keeps last
 > 5, stored under `backups/gymdata/`), runs `assembleDebug`, then `adb install -r`. It aborts
 > without installing if the backup fails or comes back empty. Do not hand-roll the steps below
 > for a routine debug install — use the script.
@@ -84,6 +85,7 @@ Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementat
 - **Storage root**: `context.filesDir/gymdata/`. Subdirs: `exercises/`, `routines/`, `history/YYYY/MM/`, `history/_idx/`, `ecg/`, `cache/images/`, `image_cache/`. Full detail in [STORAGE.md](docs/STORAGE.md#root-layout).
 - **Session filename**: `YYYY-MM-DD_{routineId}_{sessionId}.md`. The routineId is in the filename so routine lookups don't need to parse YAML.
 - **IDs**: `ex-{8hex}` for exercises, `rt-{8hex}` for routines, bare `{8hex}` for sessions.
+- **User profile file**: `gymdata/exercises/_settings.md` (birthYear/height/weight/sex) is the profile source of truth — NOT `SharedPreferences` (migrated once, then deleted). `_`-prefixed files under `exercises/` are never exercises (server SQL view and `ExerciseRepository` both skip them). Secrets (server URL/token) stay in `EncryptedSharedPreferences` only — never in `gymdata/`, never on the server.
 - **Event bus**: `DataChangedSignal` — edit VMs emit, list VMs reload. See [CONVENTIONS.md](docs/CONVENTIONS.md#datachangedsignal).
 - **Derived-data sidecars**: `history/_stats/{exerciseId}.yaml` (per-exercise "previous"/tonnage-PR/1RM-PR/has-prior-tonnage, split by slot context) and `history/_gitgraph.yaml` (home's 4 pre-week history rows). Caches over the `.md` files; `.md` stays source of truth. Pure `…Calculator` + round-tripping `…Parser` + `WorkoutRepository` lifecycle; schema mismatch ⇒ lazy rebuild, no migration code. Same shape for any future one. See [CONVENTIONS.md](docs/CONVENTIONS.md#derived-data-sidecars) and [STORAGE.md](docs/STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml).
 - **`ExerciseSessionViewModel`**: base class for all four exercise VMs (Strength/Stretch/Superset/Cardio) — owns `clearScope`, `markCompletionAndSave`, `markSwitched`, the `onCleared` template. See [CONVENTIONS.md](docs/CONVENTIONS.md#per-exercise-viewmodels-exercisesessionviewmodel).

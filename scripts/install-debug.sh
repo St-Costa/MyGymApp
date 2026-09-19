@@ -11,6 +11,7 @@ cd "$(dirname "$0")/.."
 APP_ID="com.mygymapp"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 BACKUP_DIR="backups/gymdata"
+PREFS_BACKUP_DIR="backups/prefs"
 KEEP_BACKUPS=5
 APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
 
@@ -47,6 +48,35 @@ echo "    backup OK: $backup_file ($file_count entries, $(du -h "$backup_file" |
 
 echo "==> Pruning old backups (keeping last $KEEP_BACKUPS)"
 ls -t "$BACKUP_DIR"/gymdata-backup-*.tar 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -v
+
+# Best-effort backup of SharedPreferences (sync server URL/token, powerlifting
+# schedule, paired devices). The user profile itself no longer needs this — it lives
+# in gymdata/exercises/_settings.md since Phase 118 — but the sync bearer does: it is
+# Keystore-encrypted and re-entering it by hand after every wipe is the annoyance this
+# covers. Never aborts the install: gymdata above is the critical backup.
+# Restore with: scripts/restore-prefs.sh <tar> (force-stops the app afterwards, since
+# prefs are cached in memory). Caveat: after a FULL uninstall (not -r) the Keystore
+# keys are gone, so sync_config_enc.xml can't be decrypted anymore — re-enter the
+# server URL + token by hand in that case.
+mkdir -p "$PREFS_BACKUP_DIR"
+prefs_backup_file="$PREFS_BACKUP_DIR/shared-prefs-backup-${timestamp}-v${app_version}.tar"
+echo "==> Backing up on-device shared_prefs (best-effort)"
+if ! adb shell run-as "$APP_ID" tar -C /data/data/"$APP_ID"/shared_prefs -cf - . > "$prefs_backup_file" 2>/tmp/install-debug-prefs-err.log; then
+  echo "WARNING: shared_prefs backup failed — continuing (gymdata backup is the critical one). Details:" >&2
+  cat /tmp/install-debug-prefs-err.log >&2
+  rm -f "$prefs_backup_file"
+else
+  prefs_count="$(tar -tf "$prefs_backup_file" | wc -l)"
+  if [ "$prefs_count" -lt 1 ]; then
+    echo "WARNING: shared_prefs tar is empty — dropping it and continuing." >&2
+    rm -f "$prefs_backup_file"
+  else
+    echo "    prefs backup OK: $prefs_backup_file ($prefs_count entries)"
+  fi
+fi
+
+echo "==> Pruning old prefs backups (keeping last $KEEP_BACKUPS)"
+ls -t "$PREFS_BACKUP_DIR"/shared-prefs-backup-*.tar 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -v
 
 echo "==> Building debug APK"
 ANDROID_HOME="$ANDROID_HOME" ./gradlew assembleDebug
