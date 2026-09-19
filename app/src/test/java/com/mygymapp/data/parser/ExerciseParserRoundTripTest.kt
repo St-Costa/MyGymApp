@@ -154,6 +154,34 @@ class ExerciseParserRoundTripTest {
     }
 
     @Test
+    fun `tempo round-trips including X and is omitted when disabled`() {
+        val withTempo = Exercise(
+            id = "ex-t", name = "Tempo Bench", type = ExerciseType.FORZA, bodypart = "chest",
+            tempo = com.mygymapp.data.model.Tempo.fromFileString("4-0-X-0")!!,
+        )
+        val result = roundTrip(withTempo)
+        assertEquals("4-0-X-0", result.tempo.toFileString())
+
+        val plain = Exercise(id = "ex-x", name = "Squat", type = ExerciseType.FORZA, bodypart = "legs")
+        assertTrue(roundTrip(plain).tempo.isDisabled)
+        assertFalse(ExerciseParser.toMarkdown(plain).contains("tempo"))
+    }
+
+    @Test
+    fun `a legacy file with no tempo key parses as disabled`() {
+        val legacy = """
+            ---
+            id: "ex-legacy"
+            name: "Squat"
+            type: "forza"
+            bodypart: "legs"
+            ---
+        """.trimIndent()
+
+        assertTrue(ExerciseParser.fromMarkdown(legacy).tempo.isDisabled)
+    }
+
+    @Test
     fun `fromMarkdown on empty content returns empty defaults without throwing`() {
         val result = ExerciseParser.fromMarkdown("")
 

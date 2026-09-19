@@ -8,6 +8,9 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.LoadMode
+import com.mygymapp.data.model.Tempo
+import com.mygymapp.data.model.TempoDuration
+import com.mygymapp.data.model.stepped
 import com.mygymapp.data.repository.ExerciseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +41,9 @@ data class ExerciseEditUiState(
     // machine is subtracted from body weight. Mutually exclusive with isBodyweight — see
     // Exercise.LoadMode.
     val isAssisted: Boolean = false,
+    // Poliquin tempo (FORZA only): per-phase durations, 0-5s or X. New exercises start
+    // at 4-0-1-0; all-zero = disabled. See Tempo.
+    val tempo: Tempo = Tempo.default(),
     val existingBodyparts: List<String> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
@@ -76,6 +82,8 @@ class ExerciseEditViewModel @Inject constructor(
                         bwLoadPercent = if (exercise.isBodyweight) exercise.bwLoadPercent
                             else DEFAULT_BW_LOAD_PERCENT,
                         isAssisted = exercise.loadMode == LoadMode.ASSISTED,
+                        // Legacy files without the key parse as disabled (all zeros).
+                        tempo = exercise.tempo,
                         existingBodyparts = bodyparts,
                         isNew = false,
                     )
@@ -146,6 +154,13 @@ class ExerciseEditViewModel @Inject constructor(
         _uiState.value = state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
     }
 
+    /** Stepper for one tempo phase (0..3): delta is +1/-1, clamped (0 min, X max). */
+    fun onTempoStep(phaseIndex: Int, delta: Int) {
+        val state = _uiState.value
+        val stepped: TempoDuration = state.tempo.phaseAt(phaseIndex).stepped(delta)
+        _uiState.value = state.copy(tempo = state.tempo.withPhaseAt(phaseIndex, stepped))
+    }
+
     fun deleteExercise() {
         val id = exerciseId ?: return
         viewModelScope.launch {
@@ -180,6 +195,9 @@ class ExerciseEditViewModel @Inject constructor(
             isAssisted -> LoadMode.ASSISTED
             else -> LoadMode.MANUAL
         },
+        // Persisted only when not disabled (ExerciseParser omits the key then); enforced
+        // FORZA-only at the UI level, but stored as-is so a type flip never loses data.
+        tempo = tempo,
     )
 
     suspend fun saveNow() {

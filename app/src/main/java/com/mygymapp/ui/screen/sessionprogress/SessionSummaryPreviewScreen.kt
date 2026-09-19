@@ -33,8 +33,10 @@ import com.mygymapp.data.sync.BackupDiffEntry
 import com.mygymapp.data.sync.BackupError
 import com.mygymapp.data.sync.BackupErrorCategory
 import com.mygymapp.data.sync.BackupVerifyReport
+import com.mygymapp.data.model.Tempo
 import com.mygymapp.ui.components.BackupVerifyBox
 import com.mygymapp.ui.components.HrZoneTraceChartContent
+import com.mygymapp.ui.components.TempoAnimation
 import com.mygymapp.ui.screen.heartrate.PolarDeviceBox
 import com.mygymapp.ui.screen.heartrate.ReadinessCard
 import com.mygymapp.ui.screen.heartrate.SleepQualitySelector
@@ -46,7 +48,9 @@ import java.time.LocalDate
  * Polar-disconnection box — plus the live cardio HR-zone chart, all with hand-made
  * sample data, so their look can be checked without a real flaky Polar session. The
  * zone-chart sample parks the trace mid-Z3 with non-zero per-zone timers so the
- * active-band highlight and the MM:SS labels are both visible. Not part of any real user flow.
+ * active-band highlight and the MM:SS labels are both visible. The animated Poliquin
+ * tempo loops (4-0-1-0, 3-1-X-0, 2-2-2-2) are also previewed here. Not part of any real
+ * user flow.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -203,6 +207,11 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                     ),
                 ),
             )
+
+            Text("Box Poliquin animati", style = MaterialTheme.typography.titleSmall)
+            TempoAnimation(tempo = Tempo.default())
+            TempoAnimation(tempo = Tempo.fromFileString("3-1-X-0") ?: Tempo.default())
+            TempoAnimation(tempo = Tempo.fromFileString("2-2-2-2") ?: Tempo.default())
         }
     }
 }

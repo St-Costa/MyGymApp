@@ -46,6 +46,7 @@ import com.mygymapp.ui.components.BodyPartAutocomplete
 import com.mygymapp.ui.components.DeleteConfirmationDialog
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.RoundStepButton
+import com.mygymapp.ui.components.TempoEditor
 import com.mygymapp.ui.theme.CardioColor
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.StretchColor
@@ -201,6 +202,11 @@ fun ExerciseEditScreen(
                         RoundStepButton("+") { viewModel.onRepMaxChange(uiState.defaultRepRangeMax + 1) }
                     }
                 }
+
+                TempoEditor(
+                    tempo = uiState.tempo,
+                    onStep = viewModel::onTempoStep,
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

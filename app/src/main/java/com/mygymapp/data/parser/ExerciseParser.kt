@@ -4,6 +4,7 @@ import com.mygymapp.data.model.DEFAULT_BW_LOAD_PERCENT
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.data.model.LoadMode
+import com.mygymapp.data.model.Tempo
 
 object ExerciseParser {
 
@@ -41,6 +42,9 @@ object ExerciseParser {
                 else -> 0
             },
             loadMode = loadMode,
+            // Poliquin tempo: single "4-0-X-0" string (0-5 or X per phase). Absent/invalid
+            // (legacy files) falls back to disabled (all zeros = nothing shown).
+            tempo = Tempo.fromFileString(fm["tempo"]?.toString()) ?: Tempo.disabled(),
         )
     }
 
@@ -68,6 +72,11 @@ object ExerciseParser {
                 put("loadMode", "bodyweight")
             } else if (exercise.loadMode == LoadMode.ASSISTED) {
                 put("loadMode", "assisted")
+            }
+            // Tempo: omitted when disabled to keep the file lean (same pattern as
+            // isBodyweight/loadMode above). Old builds/server ignore unknown keys.
+            if (!exercise.tempo.isDisabled) {
+                put("tempo", exercise.tempo.toFileString())
             }
             // LoadMode.MANUAL (and not bodyweight/assisted): omit both keys, the default.
         }
