@@ -395,12 +395,24 @@ class SupersetViewModel @Inject constructor(
 
     fun switchExerciseAt(memberIndex: Int, newExerciseId: String) {
         viewModelScope.launch {
-            val session = currentSession ?: return@launch
             val oldExerciseId = exerciseIds.getOrNull(memberIndex) ?: return@launch
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
-            val updated = session.withExerciseSwitched(oldExerciseId, newExercise)
-            if (updated === session) return@launch
+            val fresh = workoutRepository.getSession(sessionId, LocalDate.now())
+                ?: currentSession ?: return@launch
+            // Per-member untouched: same signal the "Segna come non eseguito" label uses —
+            // a STRETCH member counts as touched once any of its sets is toggled done.
+            val untouched = _uiState.value.sets
+                .filter { it.exerciseIndex == memberIndex }
+                .none {
+                    it.repsTouched || it.weightTouched ||
+                        (it.exerciseType == ExerciseType.STRETCH && it.done)
+                }
+            val updated = fresh.withExerciseSwitched(
+                oldExerciseId, newExercise, allowDiscardRecordedSets = untouched,
+            )
+            if (updated === fresh) return@launch
             workoutRepository.save(updated)
+            currentSession = updated
             markSwitched()
             _switchedMember.value = memberIndex to newExerciseId
         }

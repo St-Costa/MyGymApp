@@ -101,6 +101,17 @@ fun SupersetScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Per-member swap mirror: each member's icon is offered only while that
+                // member is untouched (same signal its "completedEmpty" close uses) — one
+                // member can be switched while another already has sets.
+                val touchedByMember = remember(uiState.sets) {
+                    uiState.sets.groupBy { it.exerciseIndex }.mapValues { (_, memberSets) ->
+                        memberSets.any {
+                            it.repsTouched || it.weightTouched ||
+                                (it.exerciseType == ExerciseType.STRETCH && it.done)
+                        }
+                    }
+                }
                 // Header showing exercise names, "+"-separated
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -120,7 +131,8 @@ fun SupersetScreen(
                             name = member.exercise.name,
                             type = member.exercise.type,
                             modifier = Modifier.weight(1f),
-                            switchEligible = member.switchEligible,
+                            switchEligible = member.switchEligible &&
+                                touchedByMember[index] != true,
                             onSwitch = {
                                 onSwitchExercise(
                                     member.exercise.bodypart,

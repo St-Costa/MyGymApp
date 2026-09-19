@@ -59,6 +59,10 @@ fun StrengthExerciseScreen(
     LaunchedEffect(switchedExerciseId) {
         switchedExerciseId?.let { onSwitched(it) }
     }
+    // The swap icon mirrors the Complete button: offered only while nothing was touched
+    // (the button still reads "Segna come non eseguito"). Touching any value starts real
+    // work in this slot, so the icon hides rather than silently discarding it via a swap.
+    val anyTouched = uiState.sets.any { it.repsTouched || it.weightTouched }
 
     Scaffold(
         topBar = {
@@ -70,7 +74,7 @@ fun StrengthExerciseScreen(
                     }
                 },
                 actions = {
-                    if (uiState.switchEligible) {
+                    if (uiState.switchEligible && !anyTouched) {
                         IconButton(onClick = {
                             val exercise = uiState.exercise ?: return@IconButton
                             onSwitchExercise(
@@ -252,7 +256,7 @@ fun StrengthExerciseScreen(
                 // where no reps/weight value was touched closes as "skipped" (grey border + X
                 // in the active list, excluded from tonnage), one where any value was touched
                 // closes as done. See StrengthExerciseViewModel.completeExercise().
-                val anyTouched = uiState.sets.any { it.repsTouched || it.weightTouched }
+                // (anyTouched is hoisted above — the swap icon mirrors it.)
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(),

@@ -105,6 +105,56 @@ class WorkoutSessionSwitchExerciseTest {
     }
 
     @Test
+    fun `allowDiscardRecordedSets recovers a slot locked by an earlier touch`() {
+        // The "swap while Segna come non eseguito" path: the current visit is untouched
+        // but the on-disk slot already carries partial work (e.g. an accidental touch
+        // saved on a previous back-out). The swap discards it and regenerates fresh sets.
+        val touchedSlot = untouchedSlot.copy(sets = listOf(ExerciseSet.Strength(reps = 5, weight = 40.0)))
+        val session = WorkoutSession(
+            id = "s1", routineId = "rt-1", routineName = "Push", date = "2026-08-25",
+            exercises = listOf(touchedSlot),
+        )
+
+        val result = session.withExerciseSwitched(
+            "ex-original", newExercise, allowDiscardRecordedSets = true,
+        )
+
+        val slot = result.exercises.single()
+        assertEquals("ex-newone01", slot.exerciseId)
+        assertEquals("ex-original", slot.substitutedFor)
+        assertTrue(slot.sets.all { (it as ExerciseSet.Strength).reps == 0 })
+    }
+
+    @Test
+    fun `allowDiscardRecordedSets still locks completed and already-switched slots`() {
+        val completedSlot = untouchedSlot.copy(
+            completed = true,
+            sets = listOf(ExerciseSet.Strength(reps = 5, weight = 40.0)),
+        )
+        val completedSession = WorkoutSession(
+            id = "s1", routineId = "rt-1", routineName = "Push", date = "2026-08-25",
+            exercises = listOf(completedSlot),
+        )
+        assertSame(
+            completedSession,
+            completedSession.withExerciseSwitched(
+                "ex-original", newExercise, allowDiscardRecordedSets = true,
+            ),
+        )
+
+        val switchedSession = WorkoutSession(
+            id = "s1", routineId = "rt-1", routineName = "Push", date = "2026-08-25",
+            exercises = listOf(untouchedSlot.copy(substitutedFor = "ex-evenolder")),
+        )
+        assertSame(
+            switchedSession,
+            switchedSession.withExerciseSwitched(
+                "ex-original", newExercise, allowDiscardRecordedSets = true,
+            ),
+        )
+    }
+
+    @Test
     fun `slot already switched once cannot be switched again`() {
         val alreadySwitched = untouchedSlot.copy(substitutedFor = "ex-evenolder")
         val session = WorkoutSession(

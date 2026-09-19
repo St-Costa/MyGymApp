@@ -335,6 +335,17 @@ Once switched — or once a real set exists — the slot is locked for the rest 
 re-switch, not even back to the original. Offered only for plain NORMAL slots (FORZA/STRETCH):
 never for warmup, fixed-daily, or CARDIO exercises.
 
+**The icon mirrors the Complete button.** The swap icon is shown only while the current visit
+is untouched — the Complete button still reads "Segna come non eseguito" (per-member in a
+superset, `done` for stretch). Touching any value hides the icon: the slot now holds real
+in-progress work and a swap would silently discard it. Conversely, `withExerciseSwitched()`
+takes `allowDiscardRecordedSets` (passed `true` by the three exercise ViewModels only when
+the current visit is untouched, on a freshly-reloaded session): a slot whose *on-disk* sets
+were locked by an earlier accidental touch stays recoverable — the swap itself is the
+explicit confirmation that the partial work may go. Completed and already-switched slots stay
+locked either way, and the switch ViewModels reload the session fresh instead of trusting
+their possibly-stale `currentSession` copy.
+
 **Candidates**: same `bodypart` **and** same `ExerciseType` as the slot's current exercise
 (`ExerciseRepository.getSwitchCandidates`), excluding every exercise already occupying a slot
 in the current session (`excludeIds` — otherwise a switch could create a duplicate slot for the
