@@ -506,8 +506,7 @@ class ExerciseStatsCalculatorTest {
     }
 
     @Test
-    fun `stretch-only history yields no context stats`() {
-        val session = WorkoutSession(
+    fun `stretch-only history yields no context stats`() {        val session = WorkoutSession(
             id = "s", routineId = "rt-a", routineName = "R", date = "2026-08-01",
             completedAt = "2026-08-01T10:00:00",
             exercises = listOf(
@@ -521,5 +520,158 @@ class ExerciseStatsCalculatorTest {
         val stats = ExerciseStatsCalculator.rebuild(EX, listOf(session))
         assertNull(stats.forContext(SlotContext.NORMAL))
         assertFalse(stats.perContext.containsKey(SlotContext.NORMAL))
+    }
+
+    // ── schema v6: skipped slots, history depth, dates, ordering ────────────
+
+    private fun skippedSession(
+        completedAt: String,
+        sets: List<Pair<Int, Double>>,
+        ctx: SlotContext = SlotContext.NORMAL,
+    ) = WorkoutSession(
+        id = "skip-$completedAt",
+        routineId = "rt-aaaa1111",
+        routineName = "R",
+        date = completedAt.take(10),
+        completedAt = completedAt,
+        exercises = listOf(
+            WorkoutExercise(
+                exerciseId = EX,
+                exerciseName = "Bench",
+                bodypart = "chest",
+                type = ExerciseType.FORZA,
+                completed = true,
+                completedEmpty = true,
+                excludeFromTonnage = ctx != SlotContext.NORMAL,
+                isDaily = ctx == SlotContext.DAILY,
+                sets = sets.map { (r, w) -> ExerciseSet.Strength(reps = r, weight = w) },
+            ),
+        ),
+    )
+
+    @Test
+    fun `skipped session with pre-filled sets does not advance previous or history`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0, 8 to 60.0)),
+            // A skip persists the on-screen pre-fill — must not move "last performed".
+            skippedSession("2026-08-10T10:00:00", listOf(8 to 60.0, 8 to 60.0)),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals("2026-08-01", ctx.previousSessionDate)
+        assertEquals(listOf(PreviousSet(8, 60.0), PreviousSet(8, 60.0)), ctx.previousSets)
+        assertEquals(1, ctx.previousHistory.size)
+        assertEquals("2026-08-01", ctx.previousHistory.single().date)
+        assertTrue(ctx.hasPriorRealTonnage)
+    }
+
+    @Test
+    fun `merge of a skipped session leaves previous and history untouched`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0))),
+        )
+        val merged = ExerciseStatsCalculator.merge(
+            EX, base,
+            skippedSession("2026-08-05T10:00:00", listOf(8 to 60.0)),
+        )
+        assertEquals(
+            base.forContext(SlotContext.NORMAL),
+            merged.forContext(SlotContext.NORMAL),
+        )
+    }
+
+    @Test
+    fun `history keeps the newest five sessions with ids and tonnage`() {
+        val sessions = (1..7).map { day ->
+            strengthSession(
+                "2026-08-%02dT10:00:00".format(day),
+                listOf(8 to (50.0 + day)),
+            ).copy(id = "s$day")
+        }
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals(ExerciseStats.HISTORY_LIMIT, ctx.previousHistory.size)
+        // Newest first.
+        assertEquals("2026-08-07", ctx.previousHistory.first().date)
+        assertEquals("s7", ctx.previousHistory.first().sessionId)
+        assertEquals("2026-08-03", ctx.previousHistory.last().date)
+        assertEquals(8 * 57.0, ctx.previousHistory.first().tonnage, 0.0)
+        // Head agrees with the legacy previous* fields.
+        assertEquals(ctx.previousHistory.first().sets, ctx.previousSets)
+        assertEquals(ctx.previousHistory.first().date, ctx.previousSessionDate)
+        assertEquals(ctx.previousHistory.first().sessionId, ctx.previousSessionId)
+    }
+
+    @Test
+    fun `same-day sessions order by full completedAt`() {
+        val sessions = listOf(
+            strengthSession("2026-08-05T10:00:00", listOf(8 to 60.0)).copy(id = "morning"),
+            strengthSession("2026-08-05T18:30:00", listOf(8 to 62.5)).copy(id = "evening"),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        assertEquals(listOf(PreviousSet(8, 62.5)), ctx.previousSets)
+        assertEquals("evening", ctx.previousSessionId)
+        assertEquals("evening", ctx.previousHistory.first().sessionId)
+        assertEquals("morning", ctx.previousHistory[1].sessionId)
+    }
+
+    @Test
+    fun `merge of a backdated session counts for PR but not for history order`() {
+        val base = ExerciseStatsCalculator.rebuild(
+            EX,
+            listOf(strengthSession("2026-08-10T10:00:00", listOf(8 to 60.0)).copy(id = "s10")),
+        )
+        // Older session with a bigger single set: PR moves, history head stays.
+        val backdated = strengthSession("2026-08-05T10:00:00", listOf(3 to 200.0)).copy(id = "s05")
+        val ctx = ExerciseStatsCalculator.merge(EX, base, backdated).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(3, 200.0), ctx.pr)
+        assertEquals("2026-08-05", ctx.prSessionDate)
+        assertEquals("2026-08-10", ctx.previousSessionDate)
+        assertEquals(1, ctx.previousHistory.size)
+        assertEquals("s10", ctx.previousHistory.first().sessionId)
+    }
+
+    @Test
+    fun `merge of a same-session re-save replaces the head instead of duplicating`() {
+        var stats = ExerciseStatsCalculator.merge(
+            EX, null,
+            strengthSession("2026-08-05T10:00:00", listOf(8 to 60.0)).copy(id = "s1"),
+        )
+        stats = ExerciseStatsCalculator.merge(
+            EX, stats,
+            strengthSession("2026-08-05T18:00:00", listOf(8 to 62.5)).copy(id = "s1"),
+        )
+        val ctx = stats.forContext(SlotContext.NORMAL)!!
+        assertEquals(1, ctx.previousHistory.size)
+        assertEquals(listOf(PreviousSet(8, 62.5)), ctx.previousSets)
+        assertEquals("2026-08-05T18:00:00", ctx.previousHistory.single().completedAt)
+    }
+
+    @Test
+    fun `pr and rmPr carry their session dates`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0)),
+            strengthSession("2026-08-10T10:00:00", listOf(2 to 100.0)),
+        )
+        val ctx = ExerciseStatsCalculator.rebuild(EX, sessions).forContext(SlotContext.NORMAL)!!
+        // Tonnage PR stays the 8x60 (480 > 200); e1RM PR is the 2x100.
+        assertEquals("2026-08-01", ctx.prSessionDate)
+        assertEquals("2026-08-10", ctx.rmPrSessionDate)
+    }
+
+    @Test
+    fun `incremental merge chain agrees with full rebuild with skips mixed in`() {
+        val sessions = listOf(
+            strengthSession("2026-08-01T10:00:00", listOf(8 to 60.0, 8 to 60.0)).copy(id = "s1"),
+            skippedSession("2026-08-05T10:00:00", listOf(8 to 60.0, 8 to 60.0)),
+            strengthSession("2026-08-10T10:00:00", listOf(8 to 62.5)).copy(id = "s3"),
+            strengthSession("2026-08-10T18:00:00", listOf(6 to 65.0)).copy(id = "s4"),
+        )
+        var incremental: ExerciseStats? = null
+        for (s in sessions) incremental = ExerciseStatsCalculator.merge(EX, incremental, s)
+        val full = ExerciseStatsCalculator.rebuild(EX, sessions)
+        assertEquals(
+            full.forContext(SlotContext.NORMAL),
+            incremental!!.forContext(SlotContext.NORMAL),
+        )
     }
 }

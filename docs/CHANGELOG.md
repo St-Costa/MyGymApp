@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 116 — Ricordo vecchi set: storia N sessioni, skip filtrati, date sui badge
+
+Il sidecar `history/_stats/{id}.yaml` passa a schema **v6**: ogni slot (contesto × approccio manuale/bodyweight/assistito) tiene le ultime 5 sessioni **eseguite** (`previousHistory*`, newest-first, con `date`/`sessionId`/`completedAt`/`tonnage`), `previousSessionId*` e `prSessionDate`/`rmPrSessionDate`; `previousSets`/`previousSessionDate` restano la testa per i lettori esistenti. Gli skip (`completedEmpty`) non avanzano più "ultima volta"/PR/storia (`performedSetsFor` filtra `isUntouched()` — prima il prefill trattenuto dallo skip spostava la data avanti). Ordinamento per `completedAt` pieno (stesso giorno in ordine orario), backdate conta per il PR ma non per la testa, re-save stessa sessione sostituisce la testa. Fix: `ActiveRoutineViewModel` usava ancora `if (isBodyweight)` invece di `previousSetsFor(loadMode)` — gli assistiti confrontavano contro il manuale — e il baseline on-demand dello switch camminava la storia a mano (ora legge il sidecar, come il resto). UI: badge `RMᴾᴿ`/`Tᴾᴿ` con giorno (`· 12/08`) e riga `Ultima volta: 28/08 · penultima: …` in strength e superset. Test: 8 casi Calculator (skip, cap 5, stesso giorno, backdate, re-save, date PR, merge==rebuild con skip) + 2 Parser (round-trip v6, vecchio YAML senza chiavi v6). `./gradlew test` verde.
+
 ## Phase 1 — Foundation
 Android project bootstrap: Kotlin, Compose, Hilt, Material3 dark-only theme. Data models (`Exercise`, `Routine`, `WorkoutSession`, sealed `ExerciseSet`). Parsers (`MarkdownParser` + per-type parsers). Repositories with in-memory cache + `FileManager`. Navigation skeleton with all screens wired as placeholders.
 
