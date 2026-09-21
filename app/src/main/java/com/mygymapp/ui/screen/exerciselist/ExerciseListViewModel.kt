@@ -32,6 +32,11 @@ data class ExerciseListUiState(
     // User-selected bodypart filter (dropdown, below the type chips) — null means "all
     // bodyparts". Combines with selectedType/searchQuery (AND).
     val selectedBodypart: String? = null,
+    // "Switch exercise" picker lock (docs/CONVENTIONS.md#switch-exercise): the bodypart of
+    // the slot being switched. Non-blank only in the filtered switch picker — drives the
+    // hidden bodypart row and the contextual empty message. The type lock instead becomes
+    // the initial selectedType chip below (still changeable by the user).
+    val switchBodypart: String = "",
 )
 
 @HiltViewModel
@@ -42,9 +47,10 @@ class ExerciseListViewModel @Inject constructor(
 ) : ViewModel() {
 
     // "Switch exercise" filter (docs/CONVENTIONS.md#switch-exercise): when this screen is
-    // reached as the filtered picker, these restrict the list to same-bodypart/same-type
-    // candidates and hide exercises already occupying a slot in the current session. All
-    // empty/blank for the unfiltered RoutineEdit picker — a strict no-op filter.
+    // reached as the filtered picker, bodypart/excludeIds restrict the list to the slot's
+    // bodypart (cardio always passes — it has no bodypart) minus exercises already in the
+    // session, while type only preselects the chip. All empty/blank for the unfiltered
+    // RoutineEdit picker — a strict no-op filter.
     private val bodypartFilter: String = savedStateHandle["bodypart"] ?: ""
     private val typeFilter: String = savedStateHandle["type"] ?: ""
     private val excludeIds: Set<String> =
@@ -54,7 +60,21 @@ class ExerciseListViewModel @Inject constructor(
             .filter { it.isNotBlank() }
             .toSet()
 
-    private val _uiState = MutableStateFlow(ExerciseListUiState())
+    private val _uiState = MutableStateFlow(
+        ExerciseListUiState(
+            // The switch picker's type lock preselects the chip (still tappable — the
+            // user can switch to another type). Blank (RoutineEdit picker, plain list)
+            // means "all types" as before. Parsed explicitly so a blank/missing param
+            // can't fall through ExerciseType.fromString's else -> FORZA default.
+            selectedType = when (typeFilter.lowercase()) {
+                "forza" -> ExerciseType.FORZA
+                "stretch" -> ExerciseType.STRETCH
+                "cardio" -> ExerciseType.CARDIO
+                else -> null
+            },
+            switchBodypart = bodypartFilter,
+        )
+    )
     val uiState: StateFlow<ExerciseListUiState> = _uiState
 
     private var allExercises: List<Exercise> = emptyList()
@@ -70,9 +90,14 @@ class ExerciseListViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             allExercises = exerciseRepository.getAll().filter { ex ->
-                (bodypartFilter.isBlank() || ex.bodypart == bodypartFilter) &&
-                    (typeFilter.isBlank() || ex.type == ExerciseType.fromString(typeFilter)) &&
-                    ex.id !in excludeIds
+                ex.id !in excludeIds &&
+                    // Switch picker: same bodypart as the slot being switched. Cardio has
+                    // no meaningful bodypart so it always passes — otherwise tapping the
+                    // Cardio chip would land on an empty list. The type lock is the
+                    // preselected chip above, not a hard filter, so the other chips stay
+                    // usable. Blank bodypartFilter (RoutineEdit picker, plain list) is a
+                    // strict no-op as before.
+                    (bodypartFilter.isBlank() || ex.type == ExerciseType.CARDIO || ex.bodypart == bodypartFilter)
             }
             _uiState.value = _uiState.value.copy(isLoading = false, availableBodyparts = computeAvailableBodyparts())
             applyFilter()

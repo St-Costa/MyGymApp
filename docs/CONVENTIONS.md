@@ -382,6 +382,12 @@ in the current session (`excludeIds` — otherwise a switch could create a dupli
 same exercise). The filtered `ExercisePicker` route
 (`exercises/pick?bodypart=..&type=..&excludeIds=..`) reuses the existing picker screen with
 these as optional query params — all empty/no-op for the original RoutineEdit picker.
+The `type` param only *preselects* the matching type chip (still tappable — the lifter can
+switch to another type); only `bodypart` + `excludeIds` stay hard filters, with cardio
+always passing the bodypart lock (it has no meaningful bodypart — otherwise the Cardio chip
+would land on an empty list). The bodypart row stays hidden in the switch picker (it would
+only ever show the one locked chip), and the empty state names the locked bodypart/type
+instead of the generic "tap +" hint (the picker has no + action).
 
 **Mutation**: `WorkoutSession.withExerciseSwitched(oldExerciseId, newExercise)` (extension
 function next to `WorkoutExercise` in `WorkoutSession.kt`) re-verifies eligibility itself and

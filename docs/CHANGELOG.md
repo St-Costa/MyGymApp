@@ -2,6 +2,18 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 121 — Picker di switch: tipo preselezionato, cambiabile, empty state dedicato
+
+Nel picker "Switch exercise" il chip del tipo ora parte premuto (forza/stretch dello slot che
+si sta sostituendo) ma resta tappabile: prima partiva deselezionato e toccarne un altro
+filtrava sopra il filtro rigido finendo su lista vuota. Il `type` della route è solo la
+preselezione (`selectedType` iniziale); restano hard filter solo bodypart + `excludeIds`, con
+passthrough per il cardio (nessun bodypart significativo — così il chip Cardio mostra
+qualcosa). La riga bodypart resta nascosta nel picker di switch (mostrerebbe un solo chip) e
+l'empty state nomina bodypart/tipo bloccati (`No strength exercises for "Petto". Try another
+type above.`, variante cardio che rimanda alla schermata Exercises dato che il picker non ha
+il +) al posto del generico "tap + to create one".
+
 ## Phase 120 — Daily duplicato: il superset superstite resta superset
 
 Quando un esercizio fixed-daily è anche nella routine avviata, la copia daily viene filtrata
