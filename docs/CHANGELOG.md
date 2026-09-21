@@ -2,6 +2,20 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 120 — Daily duplicato: il superset superstite resta superset
+
+Quando un esercizio fixed-daily è anche nella routine avviata, la copia daily viene filtrata
+dalla sezione DAILY (i dettagli per `exerciseId` non supportano duplicati). Il vecchio
+`filterBreakingSupersetLinks` (Phase 85) azzerava sempre il link del predecessore, così togliere
+il membro centrale di una catena da 3 (daily A→B→C con B anche nella routine) lasciava due
+singoli nei daily invece del superset A→C da 2. Ora `filterStitchingSupersetLinks` (stesso file,
+rinominato) ricuce: un superstite tiene il forward link se e solo se il superstite successivo
+appartiene alla stessa catena originale (ogni flag in mezzo era `true`) — coda e confini di
+catena restano azzerati, quindi nessun re-link tra vicini non correlati né coppie a cavallo di
+sezione (`clearTailLink` invariato). Stessa regola per i riferimenti a esercizi cancellati.
+Test rinominato in `FilterStitchingSupersetLinksTest` (11 casi: ricucitura centrale, testa, due
+centrali, non-re-link oltre confine di catena); `./gradlew test` verde.
+
 ## Phase 119 — Tempo Poliquin: stepper in editor + loop animato in esecuzione
 
 Ogni esercizio FORZA ha un `tempo` Poliquin (eccentrica-pausaBassa-concentrica-pausaAlto, es. `4-0-X-0`, ogni fase 0–5s o `X` = esplosivo): nuovo `Tempo`/`TempoDuration` in `data/model/Tempo.kt`, singola chiave `tempo` nel frontmatter (omessa se disabilitato `0-0-0-0`, come `isBodyweight`/`loadMode`; file legacy senza chiave = disabilitato). Editor: `TempoEditor` con 4 riquadri quadrati stile gitgraph (triangoloni larghi come il lato sopra/sotto, scala fissa X-0-…-5 senza wrap con triangoli disabilitati agli estremi, default nuovi `4-0-1-0`) nel blocco FORZA di `ExerciseEditScreen` via `onTempoStep`. Esecuzione: `TempoAnimation` sotto `HeartRateBar` in `StrengthExerciseScreen` (solo se abilitato) — loop infinito con fill dal basso verso l'alto in sequenza sulla durata reale (`X` = 0.35s), fasi a 0 sbiadite e skippate, token canvas-drawn con outline nero e icone vettoriali bianche con bordino nero uniforme; pause (stretch/picco) con icona pausa, eccentrica/concentrica con frecce giù/sù. Display superset per membro rimandato (dato già disponibile via `getById`). Test: `TempoTest` (8 casi: parsing X, validazione, disabled, activePhases, durate, stepper, round-trip) + 2 casi parser (round-trip X, omissione/legacy); `./gradlew test` verde.

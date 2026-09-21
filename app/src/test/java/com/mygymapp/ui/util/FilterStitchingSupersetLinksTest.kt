@@ -4,19 +4,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * [filterBreakingSupersetLinks] drops elements and clears the forward superset link of any
- * survivor whose original successor was removed. Pins the fix for a fabricated superset in the
- * active session when a fixed-daily exercise that is also in the routine gets filtered out of
- * the daily section mid-chain — see
+ * [filterStitchingSupersetLinks] drops elements and stitches the surviving members of a
+ * superset chain back together: a survivor keeps its forward link iff the next survivor
+ * belongs to the same original chain. Pins the daily-section behaviour — a fixed-daily
+ * exercise that is also in the routine is filtered out of the daily section, and the
+ * remaining daily members of its chain stay paired instead of going single — see
  * [ActiveRoutineViewModel][com.mygymapp.ui.screen.activeroutine.ActiveRoutineViewModel].
  */
-class FilterBreakingSupersetLinksTest {
+class FilterStitchingSupersetLinksTest {
 
     /** id + "links to next" flag. */
     private data class Item(val id: String, val linked: Boolean)
 
     private fun run(items: List<Item>, keep: (Item) -> Boolean): List<Item> =
-        filterBreakingSupersetLinks(
+        filterStitchingSupersetLinks(
             items = items,
             linked = { it.linked },
             linkOff = { it.copy(linked = false) },
@@ -24,12 +25,12 @@ class FilterBreakingSupersetLinksTest {
         )
 
     @Test
-    fun `dropping a mid-chain member clears the predecessor link`() {
-        // A links->B links->C. B is dropped. A must NOT end up linked to C.
+    fun `dropping a mid-chain member stitches the survivors`() {
+        // A links->B links->C. B is dropped. A stays linked to C (2-superset).
         val out = run(
             listOf(Item("A", true), Item("B", true), Item("C", false)),
         ) { it.id != "B" }
-        assertEquals(listOf(Item("A", false), Item("C", false)), out)
+        assertEquals(listOf(Item("A", true), Item("C", false)), out)
     }
 
     @Test
@@ -82,5 +83,36 @@ class FilterBreakingSupersetLinksTest {
             listOf(Item("A", true), Item("B", true), Item("C", false)),
         ) { it.id != "C" }
         assertEquals(listOf(Item("A", true), Item("B", false)), out)
+    }
+
+    @Test
+    fun `dropping the head of a three chain keeps the remaining pair`() {
+        // A links->B links->C, drop A. Result B links->C.
+        val out = run(
+            listOf(Item("A", true), Item("B", true), Item("C", false)),
+        ) { it.id != "A" }
+        assertEquals(listOf(Item("B", true), Item("C", false)), out)
+    }
+
+    @Test
+    fun `dropping does not re-link across an original chain boundary`() {
+        // [A links->B] [C links->D]. Drop B: A's chain ends with it, so A goes single
+        // and must NOT re-link to C. C->D survives intact.
+        val out = run(
+            listOf(Item("A", true), Item("B", false), Item("C", true), Item("D", false)),
+        ) { it.id != "B" }
+        assertEquals(
+            listOf(Item("A", false), Item("C", true), Item("D", false)),
+            out,
+        )
+    }
+
+    @Test
+    fun `dropping two mid-chain members stitches the outer survivors`() {
+        // A links->B links->C links->D, drop B and C. Result A links->D.
+        val out = run(
+            listOf(Item("A", true), Item("B", true), Item("C", true), Item("D", false)),
+        ) { it.id != "B" && it.id != "C" }
+        assertEquals(listOf(Item("A", true), Item("D", false)), out)
     }
 }
