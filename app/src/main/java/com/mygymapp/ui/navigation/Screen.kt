@@ -34,9 +34,10 @@ sealed class Screen(val route: String) {
     ) {
         /**
          * Filtered picker for "Switch exercise" (docs/CONVENTIONS.md#switch-exercise):
-         * [bodypart]/[type] restrict candidates to the slot being switched, [excludeIds]
+         * [bodypart] restricts candidates to the slot's bodypart, [excludeIds]
          * (comma-separated exerciseIds) excludes exercises already occupying a slot in the
-         * current session. The unfiltered `ExercisePicker.route` (used by RoutineEdit) still
+         * current session, [type] only preselects the type chip (still changeable).
+         * The unfiltered `ExercisePicker.route` (used by RoutineEdit) still
          * works as-is — all query params default to empty/no-op.
          *
          * [resultKeySide]: for the Superset screen only, the 1-based position (1..3) of the

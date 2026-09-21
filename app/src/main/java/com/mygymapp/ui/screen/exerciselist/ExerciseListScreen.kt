@@ -131,7 +131,9 @@ fun ExerciseListScreen(
                     )
                 }
             }
-            if (uiState.availableBodyparts.isNotEmpty()) {
+            // Hidden in the "Switch exercise" picker (switchBodypart non-blank): the list
+            // is already locked to that bodypart, so the row would only ever show one chip.
+            if (uiState.switchBodypart.isBlank() && uiState.availableBodyparts.isNotEmpty()) {
                 // "Bodypart" always stays put and toggles the choices row below it. Picking
                 // one adds a second chip to its right showing that bodypart, in selected
                 // style; tapping that chip clears the filter (chip disappears). Tapping
@@ -190,6 +192,16 @@ fun ExerciseListScreen(
                 isEmpty -> EmptyStateBox(
                     message = if (uiState.searchQuery.isNotBlank()) {
                         "No exercises match \"${uiState.searchQuery}\"."
+                    } else if (pickerMode && uiState.switchBodypart.isNotBlank()) {
+                        // Switch picker has no "+" action, so the generic "tap +"
+                        // hint would be wrong — name the bodypart/type instead and
+                        // point at the type chips, which stay usable.
+                        when (uiState.selectedType) {
+                            ExerciseType.CARDIO -> "No cardio exercises yet.\nCreate one from the Exercises screen."
+                            ExerciseType.STRETCH -> "No stretch exercises for \"${uiState.switchBodypart}\".\nTry another type above."
+                            ExerciseType.FORZA -> "No strength exercises for \"${uiState.switchBodypart}\".\nTry another type above."
+                            null -> "No exercises for \"${uiState.switchBodypart}\".\nTry another type above."
+                        }
                     } else {
                         "No exercises yet.\nTap + to create one."
                     },
