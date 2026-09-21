@@ -77,9 +77,9 @@ data class StrengthExerciseUiState(
     val allSetsFilled: Boolean = false,
     val tonnagePr: TonnagePr? = null,
     val rmPr: RmPr? = null,
-    /** Day key (`YYYY-MM-DD`) of the session the grey pre-fill comes from, "" when none. */
+    /** Day key (`YYYY-MM-DD`) of the session the grey pre-fill comes from, "" when none. Saved but intentionally not shown. */
     val previousSessionDate: String = "",
-    /** Day keys (newest first) of the recent like-with-like sessions backing the pre-fill. */
+    /** Day keys (newest first) of the recent like-with-like sessions backing the pre-fill. Saved but intentionally not shown. */
     val previousHistoryDates: List<String> = emptyList(),
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): true only for a plain NORMAL
     // slot with zero recorded sets so far — warmup/daily/completed/already-switched slots

@@ -69,11 +69,11 @@ data class SupersetMemberUi(
     val prE1rmReps: Int = 0,
     val prE1rmWeight: Double = 0.0,
     val prE1rmBwBaseWeightKg: Double = 0.0,
-    /** Day key of the session the tonnage-PR set comes from, "" when unknown. */
+    /** Day key of the session the tonnage-PR set comes from, "" when unknown. Saved but intentionally not shown. */
     val prSessionDate: String = "",
-    /** Day key of the session the e1RM-PR set comes from, "" when unknown. */
+    /** Day key of the session the e1RM-PR set comes from, "" when unknown. Saved but intentionally not shown. */
     val prE1rmSessionDate: String = "",
-    /** Day key of the session the grey pre-fill comes from, "" when none. */
+    /** Day key of the session the grey pre-fill comes from, "" when none. Saved but intentionally not shown. */
     val previousSessionDate: String = "",
     // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): each member is an independent
     // slot — one can be switched even if another already has recorded sets.

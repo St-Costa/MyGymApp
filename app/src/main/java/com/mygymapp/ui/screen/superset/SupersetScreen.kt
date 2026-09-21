@@ -362,10 +362,10 @@ private fun SupersetSetItem(
     prE1rmReps: Int = 0,
     prE1rmWeight: Double = 0.0,
     prE1rmBwBaseWeightKg: Double = 0.0,
-    /** Day keys of the sessions the PR sets come from, "" when unknown. */
+    /** Day keys of the sessions the PR sets come from, "" when unknown. Saved but intentionally not shown. */
     prSessionDate: String = "",
     prE1rmSessionDate: String = "",
-    /** Day key of the session the grey pre-fill comes from, "" when none. */
+    /** Day key of the session the grey pre-fill comes from, "" when none. Saved but intentionally not shown. */
     previousSessionDate: String = "",
     // This side's exercise is bodyweight — hide the Kg column / weight picker (load is
     // estimated from body weight at completion, see SupersetViewModel.buildUpdatedSession).
@@ -405,20 +405,16 @@ private fun SupersetSetItem(
             // PR badges: shown once above the first set of a FORZA member — the best-estimated-
             // 1RM set ("RM") stacked 2dp above the best-tonnage set ("T"), each rendered as
             // `reps x weight` (the set, not the computed 1RM), with a small subscript "PR",
-            // both centered. For a bodyweight member the weight shown is the body weight at the
+            // both centered. Record dates (prSessionDate/prE1rmSessionDate) and the
+            // "Ultima volta" date stay saved in the sidecar/ViewModel but are intentionally
+            // not shown. For a bodyweight member the weight shown is the body weight at the
             // time the set was logged ("peso corpo in quel momento"), not the materialized
             // bwLoadPercent% of it — and only when that body weight is known.
             // A real barbell weight keeps its fraction ("82.5"); a body weight is rounded to
             // the nearest whole kg — a weigh-in of 79.45 shows as "79", not two decimals.
-            // Badges carry the session day (" · 12/08"); below them "Ultima volta: 28/08"
-            // tells which session the grey pre-fill comes from.
             fun fmtWeight(w: Double) =
                 if (w == w.toLong().toDouble()) w.toLong().toString() else "%.1f".format(w)
             fun fmtSetWeight(w: Double) = if (isBodyweight) Math.round(w).toString() else fmtWeight(w)
-            fun shortDate(dayKey: String): String {
-                val parts = dayKey.split("-")
-                return if (parts.size == 3) "${parts[2]}/${parts[1]}" else dayKey
-            }
             val prBadgeWeight = if (isBodyweight) prBwBaseWeightKg else prWeight
             val rmBadgeWeight = if (isBodyweight) prE1rmBwBaseWeightKg else prE1rmWeight
             val showRmBadge = prE1rmReps > 0 && rmBadgeWeight > 0
@@ -431,27 +427,16 @@ private fun SupersetSetItem(
                 ) {
                     if (showRmBadge) {
                         PrBadge(
-                            "RM", "$prE1rmReps x ${fmtSetWeight(rmBadgeWeight)}" +
-                                (prE1rmSessionDate.takeIf { it.isNotBlank() }?.let { " · ${shortDate(it)}" } ?: ""),
+                            "RM", "$prE1rmReps x ${fmtSetWeight(rmBadgeWeight)}",
                             Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
                     if (prBadgeWeight > 0) {
                         PrBadge(
-                            "T", "$prReps x ${fmtSetWeight(prBadgeWeight)}" +
-                                (prSessionDate.takeIf { it.isNotBlank() }?.let { " · ${shortDate(it)}" } ?: ""),
+                            "T", "$prReps x ${fmtSetWeight(prBadgeWeight)}",
                             Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                    if (previousSessionDate.isNotBlank()) {
-                        Text(
-                            text = "Ultima volta: ${shortDate(previousSessionDate)}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
                 }

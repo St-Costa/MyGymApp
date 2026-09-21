@@ -167,18 +167,13 @@ fun StrengthExerciseScreen(
 
                 // All-time PRs, centered: the best-estimated-1RM set ("RM") stacked 2dp above
                 // the best-tonnage set ("T"), each with a small subscript "PR". Each badge
-                // shows that set's `reps x weight` (not the computed 1RM), with the session
-                // day it was logged (" · 12/08"). For a bodyweight
+                // shows that set's `reps x weight` (not the computed 1RM). Record dates
+                // (prSessionDate/rmPrSessionDate) and the "Ultima volta" date stay saved in
+                // the sidecar/ViewModel but are intentionally not shown. For a bodyweight
                 // exercise the weight shown is the lifter's body weight at the time the set was
                 // logged ("peso corpo in quel momento"), not the materialized bwLoadPercent% of
                 // it; if that body weight is unknown (legacy set, no weigh-in) the T badge
                 // shows reps only and the RM badge is hidden.
-                // Below the badges, "Ultima volta: 28/08" tells which session the grey
-                // pre-fill comes from (plus "penultima: ..." when a deeper history exists).
-                fun shortDate(dayKey: String): String {
-                    val parts = dayKey.split("-")
-                    return if (parts.size == 3) "${parts[2]}/${parts[1]}" else dayKey
-                }
                 if (uiState.rmPr != null || uiState.tonnagePr != null) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -193,7 +188,7 @@ fun StrengthExerciseScreen(
                                     // the machine's assist number — the badge answers "how much
                                     // did I lift", same meaning as a manual-load PR.
                                     else -> "${rm.reps} x ${formatWeight(rm.weight)}"
-                                } + (rm.sessionDate.takeIf { it.isNotBlank() }?.let { " · ${shortDate(it)}" } ?: "")
+                                }
                                 PrBadge("RM", value, Modifier.fillMaxWidth())
                             }
                         }
@@ -203,17 +198,8 @@ fun StrengthExerciseScreen(
                                 else "${pr.reps}"
                             } else {
                                 "${pr.reps} x ${formatWeight(pr.weight)}"
-                            } + (pr.sessionDate.takeIf { it.isNotBlank() }?.let { " · ${shortDate(it)}" } ?: "")
+                            }
                             PrBadge("T", value, Modifier.fillMaxWidth())
-                        }
-                        if (uiState.previousSessionDate.isNotBlank()) {
-                            val penultimate = uiState.previousHistoryDates.drop(1).firstOrNull()
-                            Text(
-                                text = "Ultima volta: ${shortDate(uiState.previousSessionDate)}" +
-                                    (penultimate?.let { " · penultima: ${shortDate(it)}" } ?: ""),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            )
                         }
                     }
                 }

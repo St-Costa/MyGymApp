@@ -2,6 +2,13 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 122 — Badge PR senza date, via la riga "Ultima volta"
+
+I badge `RMᴾᴿ`/`Tᴾᴿ` mostrano solo `reps × peso`, senza il suffisso `· GG/MM`, e la riga
+`Ultima volta: … (· penultima: …)` sotto i badge è rimossa in strength e superset. Le date
+(`prSessionDate`/`rmPrSessionDate`, `previousSessionDate`/`previousHistory*`) restano salvate
+nel sidecar `history/_stats/` e popolate negli UI state — solo non renderizzate.
+
 ## Phase 121 — Picker di switch: tipo preselezionato, cambiabile, empty state dedicato
 
 Nel picker "Switch exercise" il chip del tipo ora parte premuto (forza/stretch dello slot che
