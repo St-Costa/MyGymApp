@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,13 +45,9 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
                     values = report.restingHrWeekly.map { it.value },
                     color = RestingHrColor,
                     labelStyle = PointLabelStyle.TEXT_ABOVE,
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    xLabels = report.restingHrWeekly.map { it.weekLabel },
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
                 )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (point in report.restingHrWeekly) {
-                        Text(point.weekLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
 
@@ -71,13 +66,9 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
                     values = report.hrr60sWeekly.map { it.value },
                     color = Hrr60sColor,
                     labelStyle = PointLabelStyle.TEXT_ABOVE,
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    xLabels = report.hrr60sWeekly.map { it.weekLabel },
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
                 )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (point in report.hrr60sWeekly) {
-                        Text(point.weekLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
 
@@ -96,13 +87,9 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
                     values = report.vo2maxMonthly.map { it.value },
                     color = Vo2maxColor,
                     labelStyle = PointLabelStyle.TEXT_ABOVE,
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    xLabels = report.vo2maxMonthly.map { it.monthLabel },
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
                 )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (point in report.vo2maxMonthly) {
-                        Text(point.monthLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
     }

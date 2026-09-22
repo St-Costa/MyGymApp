@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 123 — Grafici bilancia/cardio: label asse X allineate ai puntini
+
+I puntini dei grafici (`PointLineChart` in `ScaleTrendSection`/`CardioMetricsTrendSection`: peso settimanale, peso 2 mesi, resting HR, HRR 60s, VO2max) non erano centrati sulle label dell'asse X — le label vivevano in una `Row(SpaceBetween)` separata dal `Canvas` (item allineati ai bordi + padding orizzontale diverso dall'inset del canvas). Ora le label sono disegnate dentro il canvas stesso (`xLabels`, 11sp non-bold, `onSurfaceVariant`) sullo stesso `xFor(i)` dei puntini — allineamento garantito per costruzione; inset laterale portato a 28dp (prima 20px, tagliava le label dei valori ai bordi) e altezza grafici 90→110dp per ospitare l'asse. `./gradlew test` verde.
+
 ## Phase 122 — Badge PR senza date, via la riga "Ultima volta"
 
 I badge `RMᴾᴿ`/`Tᴾᴿ` mostrano solo `reps × peso`, senza il suffisso `· GG/MM`, e la riga
