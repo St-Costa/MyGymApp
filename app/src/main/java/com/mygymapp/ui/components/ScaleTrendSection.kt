@@ -88,13 +88,9 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
                     color = WeightColor,
                     labelStyle = PointLabelStyle.TEXT_ABOVE,
                     highlightIndex = report.currentWeekMedianSlotIndex,
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    xLabels = dayInitials,
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
                 )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (label in dayInitials) {
-                        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
 
@@ -109,13 +105,9 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
                     values = weeklyMedians.map { it.value },
                     color = WeightColor,
                     labelStyle = PointLabelStyle.TEXT_ABOVE,
-                    modifier = Modifier.fillMaxWidth().height(90.dp),
+                    xLabels = weeklyMedians.map { it.weekLabel },
+                    modifier = Modifier.fillMaxWidth().height(110.dp),
                 )
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (point in weeklyMedians) {
-                        Text(point.weekLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
 
@@ -147,6 +139,11 @@ internal enum class PointLabelStyle { NONE, TEXT_ABOVE, BADGE }
  * extended. Values are plotted against a fixed x-slot per list index, so
  * gaps stay in their correct position (e.g. an unweighed Tuesday leaves an
  * empty slot between Monday's and Wednesday's dots).
+ *
+ * [xLabels] (when present) are drawn inside the canvas itself, centered on
+ * the exact same x-slot as their dot — so axis labels can never drift out of
+ * alignment with the points the way a separate `Row(SpaceBetween)` does
+ * (edge-aligned items + different horizontal padding than the canvas inset).
  */
 @Composable
 internal fun PointLineChart(
@@ -155,6 +152,7 @@ internal fun PointLineChart(
     labelStyle: PointLabelStyle,
     modifier: Modifier = Modifier,
     highlightIndex: Int? = null,
+    xLabels: List<String>? = null,
 ) {
     val present = values.filterNotNull()
     if (present.isEmpty()) return
@@ -166,15 +164,18 @@ internal fun PointLineChart(
     // for the label/badge drawn above each dot.
     val hasRange = present.size > 1 && max > min
     val n = values.size
+    val axisColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Canvas(modifier = modifier) {
-        // Horizontal inset so the first/last point's label isn't clipped by the canvas edge.
-        val sideInset = 20f
-        val plotWidth = size.width - 2 * sideInset
+        // Inset so the first/last point's centered labels (value above, axis
+        // label below) aren't clipped by the canvas edge. ~28dp covers half a
+        // "102.4" value label at 13sp bold.
+        val sideInset = 28.dp.toPx()
+        val plotWidth = (size.width - 2 * sideInset).coerceAtLeast(0f)
         val stepX = if (n > 1) plotWidth / (n - 1) else plotWidth / 2
-        val labelHeadroom = if (labelStyle == PointLabelStyle.NONE) size.height * 0.12f else size.height * 0.32f
-        val bottomPad = size.height * 0.12f
-        val usableH = size.height - labelHeadroom - bottomPad
+        val labelHeadroom = if (labelStyle == PointLabelStyle.NONE) size.height * 0.12f else size.height * 0.30f
+        val bottomPad = if (xLabels != null) 20.dp.toPx() else size.height * 0.12f
+        val usableH = (size.height - labelHeadroom - bottomPad).coerceAtLeast(0f)
 
         fun yFor(v: Double): Float {
             if (!hasRange) return labelHeadroom + usableH / 2f
@@ -227,6 +228,18 @@ internal fun PointLineChart(
                 PointLabelStyle.NONE -> {}
             }
         }
+
+        xLabels?.forEachIndexed { i, label ->
+            if (i !in values.indices) return@forEachIndexed
+            drawCenteredText(
+                text = label,
+                x = xFor(i),
+                y = size.height - 4.dp.toPx(),
+                color = axisColor,
+                textSizeSp = 11f,
+                bold = false,
+            )
+        }
     }
 }
 
@@ -236,11 +249,12 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCenteredText(
     y: Float,
     color: Color,
     textSizeSp: Float = 13f,
+    bold: Boolean = true,
 ) {
     val paint = Paint().asFrameworkPaint().apply {
         isAntiAlias = true
         textSize = textSizeSp.sp.toPx()
-        isFakeBoldText = true
+        isFakeBoldText = bold
         this.color = color.toArgb()
         textAlign = android.graphics.Paint.Align.CENTER
     }
