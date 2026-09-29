@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 125 — Tempo Poliquin nel superset: un loop per membro sotto HR
+
+`SupersetScreen` mostra un `TempoAnimation` full-size per ogni membro FORZA con tempo abilitato, in stack sotto `HeartRateBar` (stessa posizione dello strength screen) con il nome del membro in `ForzaColor` sopra ogni loop così 2–3 tempi diversi restano distinguibili; niente quando nessun membro ne ha uno. Nessun cambio ViewModel — `SupersetMemberUi.exercise.tempo` era già caricato via `getById`. Solo UI, niente test nuovi; `./gradlew test` verde.
+
 ## Phase 124 — Contatore ore batteria Polar: colore di avviso
 
 Il contatore "ore attive" nel `PolarDeviceBox` (schermata Heart Rate) ora cambia colore in base all'usura della pila corrente, indipendentemente dalla percentuale riportata (che resta piatta vicino al 100% per gran parte della vita della cella e da sola non è un segnale d'allarme utile, vedi Phase precedente su `BatteryLifeRepository`): giallo/ambra oltre 20h attive, rosso oltre 30h. Sfruttata l'occasione anche per ricostruire a mano lo storico di una pila mai rilevata come sostituita dal jump-detection automatico (il livello riportato è rimasto fisso al 100% dall'installazione della feature fino al cambio fisico di oggi, senza mai attraversare la soglia di rilevamento salto): stimate ~42h di connessione attiva dalle sessioni/readiness salvate dal 2026-08-27 a oggi, scritte a mano in `pastLifeSeconds` di `gymdata/_sync/battery_life.yml` così la nuova cella parte già con una media di riferimento.
