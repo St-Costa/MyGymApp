@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 124 — Contatore ore batteria Polar: colore di avviso
+
+Il contatore "ore attive" nel `PolarDeviceBox` (schermata Heart Rate) ora cambia colore in base all'usura della pila corrente, indipendentemente dalla percentuale riportata (che resta piatta vicino al 100% per gran parte della vita della cella e da sola non è un segnale d'allarme utile, vedi Phase precedente su `BatteryLifeRepository`): giallo/ambra oltre 20h attive, rosso oltre 30h. Sfruttata l'occasione anche per ricostruire a mano lo storico di una pila mai rilevata come sostituita dal jump-detection automatico (il livello riportato è rimasto fisso al 100% dall'installazione della feature fino al cambio fisico di oggi, senza mai attraversare la soglia di rilevamento salto): stimate ~42h di connessione attiva dalle sessioni/readiness salvate dal 2026-08-27 a oggi, scritte a mano in `pastLifeSeconds` di `gymdata/_sync/battery_life.yml` così la nuova cella parte già con una media di riferimento.
+
 ## Phase 123 — Grafici bilancia/cardio: label asse X allineate ai puntini
 
 I puntini dei grafici (`PointLineChart` in `ScaleTrendSection`/`CardioMetricsTrendSection`: peso settimanale, peso 2 mesi, resting HR, HRR 60s, VO2max) non erano centrati sulle label dell'asse X — le label vivevano in una `Row(SpaceBetween)` separata dal `Canvas` (item allineati ai bordi + padding orizzontale diverso dall'inset del canvas). Ora le label sono disegnate dentro il canvas stesso (`xLabels`, 11sp non-bold, `onSurfaceVariant`) sullo stesso `xFor(i)` dei puntini — allineamento garantito per costruzione; inset laterale portato a 28dp (prima 20px, tagliava le label dei valori ai bordi) e altezza grafici 90→110dp per ospitare l'asse. `./gradlew test` verde.

@@ -548,6 +548,7 @@ Because the percentage is a near-flat voltage proxy with no "hours remaining" in
 - **On a swap, the outgoing cell's `activeSeconds` is appended to `pastLifeSeconds`** — but only if it clears `MIN_CREDIBLE_LIFE_SEC` (2 h), so a pull-and-reinsert or a double swap doesn't drag the mean toward zero. `BatteryLifeState.avgLifeHours` is the mean of that list (null while empty); `measuredCellCount` is its size.
 - **Active time** is accumulated as the wall-clock gap between consecutive battery callbacks, *unless* that gap exceeds `MAX_SESSION_GAP_SEC` (30 min) — a longer gap means the strap was off between readings, so that span is skipped and the anchor moves forward. This under-counts by at most one inter-callback interval per session; it never over-counts. No connect/disconnect bookkeeping is involved — the periodic battery callback is the only hook.
 - All the logic is the pure `reduce(prev, level, nowEpochSec, today)` function; file I/O is a thin wrapper. Unit-tested in `BatteryLifeReducerTest`.
+- **The active-hours counter changes color as wear increases**, independent of the reported `%` (which, per above, stays flat near 100% for most of the cell's life and is useless as a warning signal on its own): amber past `ACTIVE_HOURS_WARNING_THRESHOLD` (20 h), red past `ACTIVE_HOURS_CRITICAL_THRESHOLD` (30 h) — both in `PolarDeviceBox` ([ReadinessCard.kt](../app/src/main/java/com/mygymapp/ui/screen/heartrate/ReadinessCard.kt)).
 
 ## ECG raw file: send-then-delete, no local analysis fallback
 

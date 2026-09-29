@@ -386,6 +386,12 @@ private fun ReadinessBpmSparkline(
     }
 }
 
+/** Active hours on the current cell past which [PolarDeviceBox] turns the counter amber. */
+private const val ACTIVE_HOURS_WARNING_THRESHOLD = 20.0
+
+/** Active hours on the current cell past which [PolarDeviceBox] turns the counter red. */
+private const val ACTIVE_HOURS_CRITICAL_THRESHOLD = 30.0
+
 /**
  * Polar strap connection facts, boxed: device id (left) · battery % with icon (centre) ·
  * active hours / estimated cell lifespan (right). Shared between [HeartRateScreen] and the
@@ -458,10 +464,19 @@ fun PolarDeviceBox(
                     "${"%.0f".format(life.activeHours)} h"
                 }
             } ?: ""
+            // Wear warning independent of the reported %, which stays flat near 100% for
+            // most of the cell's life (see BatteryLifeRepository doc): amber past
+            // ACTIVE_HOURS_WARNING_THRESHOLD, red past ACTIVE_HOURS_CRITICAL_THRESHOLD.
+            val lifeColor = when {
+                batteryLife == null -> MaterialTheme.colorScheme.onSurface
+                batteryLife.activeHours >= ACTIVE_HOURS_CRITICAL_THRESHOLD -> MaterialTheme.colorScheme.error
+                batteryLife.activeHours >= ACTIVE_HOURS_WARNING_THRESHOLD -> Color(0xFFFFC107)
+                else -> MaterialTheme.colorScheme.onSurface
+            }
             Text(
                 lifeText,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = lifeColor,
                 textAlign = TextAlign.End,
                 modifier = Modifier.weight(1f),
             )
