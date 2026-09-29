@@ -49,6 +49,7 @@ import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.PrBadge
 import com.mygymapp.ui.components.ScrollPickerInput
+import com.mygymapp.ui.components.TempoAnimation
 import com.mygymapp.ui.service.StopwatchService
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.SkippedColor
@@ -157,6 +158,31 @@ fun SupersetScreen(
 
                 // Heart rate + recovery semaphore
                 HeartRateBar()
+
+                // Poliquin tempo loops (FORZA members only): one full-size loop per
+                // member with an enabled tempo, stacked under HeartRateBar — same
+                // TempoAnimation as StrengthExerciseScreen, with the member name above
+                // so 2–3 different tempos stay distinguishable. Hidden when no member
+                // has one (all disabled, e.g. legacy/STRETCH-only chain).
+                uiState.members.forEach { member ->
+                    val tempo = member.exercise.tempo
+                    if (member.exercise.type == ExerciseType.FORZA && !tempo.isDisabled) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = member.exercise.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = ForzaColor,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            TempoAnimation(tempo = tempo)
+                        }
+                    }
+                }
 
                 // Single stopwatch shown once if at least one exercise is STRETCH
                 val hasStretch = uiState.members.any { it.exercise.type == ExerciseType.STRETCH }

@@ -264,13 +264,13 @@ number, not the net weight — see the sidecar split below (schema v5).
 `materializeAssistedWeight` lives in `TonnageMath.kt` (pure, no Context/IO) and is
 unit-tested in `TonnageMathTest`.
 
-## Poliquin tempo: stored on the exercise, animated in the strength screen
+## Poliquin tempo: stored on the exercise, animated in the strength and superset screens
 
 A FORZA `Exercise` may carry a `tempo: Tempo` (eccentric-pauseBottom-concentric-pauseTop,
 each `0-5` seconds or `X` = explosive/maximal intent, e.g. `4-0-X-0`). It is a property of
-the exercise definition (like the rep range), not of the routine slot — superset display
-per member is future work (the data is already there via `getById`, only
-`SupersetScreen` rendering is missing).
+the exercise definition (like the rep range), not of the routine slot — `SupersetScreen`
+renders one loop per member with an enabled tempo (the data was already there via
+`getById` on each `SupersetMemberUi.exercise`).
 
 - **Storage**: single `tempo: "4-0-X-0"` frontmatter string, omitted when disabled
   (`0-0-0-0`, the default for legacy files without the key) — same "omitted = default"
@@ -282,7 +282,10 @@ per member is future work (the data is already there via `getById`, only
   exercises start at `4-0-1-0`) inside the FORZA block of `ExerciseEditScreen`, via
   `ExerciseEditViewModel.onTempoStep`. Never enters tonnage/PR math.
 - **Execution**: `TempoAnimation` under `HeartRateBar` on `StrengthExerciseScreen`, shown
-  only when enabled. Infinite loop driven by the vsync frame clock (`withFrameNanos`,
+  only when enabled. `SupersetScreen` stacks one full-size `TempoAnimation` per FORZA
+  member with an enabled tempo in the same position (member name in `ForzaColor` above
+  each loop, so 2–3 different tempos stay distinguishable; nothing shown when no member
+  has one). Infinite loop driven by the vsync frame clock (`withFrameNanos`,
   so phases last real seconds even with the system animator scale reduced/off): boxes
   fill bottom-to-top in sequence over their real duration
   (`X` = 0.35s fast fill), zero phases render faded and are skipped. Token is
