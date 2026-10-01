@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 127 — Superset: nomi nel titolo in alto come gli esercizi normali
+
+`SupersetScreen`: il titolo in `TopAppBar` ora mostra i nomi dei membri (`"Nome1 + Nome2 [+ Nome3]"`, ellipsis a una riga; `"Superset"` solo durante il load) come gli screen normali mostrano il singolo nome — rimossa la vecchia riga `"A + B"` nel corpo che duplicava i nomi in modo diverso. L'icona "switch exercise" per-membro si è spostata nella rispettiva `ExerciseInfoCard` (stessa eleggibilità di prima: solo membro intoccato), così nessuna funzione si perde. Resto invariato (info-card, set, PR). Solo UI, niente test nuovi; build verde.
+
 ## Phase 126 — Description collassata quando vuota (un tap per scrivere)
 
 Nuovo `CollapsibleDescriptionField` (`ui/components`): quando la descrizione è vuota mostra solo una riga singola (`OutlinedCard` con label + freccia) invece del campo a 2–3 righe — resta visibile così si può aggiungere con un tap. Il tap espande e dà subito focus con tastiera aperta (nessun secondo tap per iniziare a scrivere); da espansa e ancora vuota si può ricollassare con la freccia in alto. Se il valore arriva dopo (load async) o non è vuoto, il campo è sempre esteso. Stesso debounce+flush dell'`AutoSaveTextField` originale (contratto di save invariato). Usato in `StrengthExerciseScreen`, `StretchExerciseScreen`, `SupersetScreen` (`ExerciseInfoCard`) + variante senza autosave (`CollapsibleNotesField`) per note in `ExerciseEditScreen`. Solo UI, niente test nuovi; build + `./gradlew test` verdi.
