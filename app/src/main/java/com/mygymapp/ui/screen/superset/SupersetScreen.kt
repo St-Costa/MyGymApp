@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.Exercise
@@ -80,7 +81,17 @@ fun SupersetScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Superset") },
+                title = {
+                    Text(
+                        text = if (uiState.members.isNotEmpty()) {
+                            uiState.members.joinToString(" + ") { it.exercise.name }
+                        } else {
+                            "Superset"
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -104,45 +115,15 @@ fun SupersetScreen(
 
                 // Per-member swap mirror: each member's icon is offered only while that
                 // member is untouched (same signal its "completedEmpty" close uses) — one
-                // member can be switched while another already has sets.
+                // member can be switched while another already has sets. L'icona vive
+                // nella info-card del membro (la vecchia riga "A + B" è stata rimossa:
+                // i nomi stanno nel titolo in alto come negli esercizi normali).
                 val touchedByMember = remember(uiState.sets) {
                     uiState.sets.groupBy { it.exerciseIndex }.mapValues { (_, memberSets) ->
                         memberSets.any {
                             it.repsTouched || it.weightTouched ||
                                 (it.exerciseType == ExerciseType.STRETCH && it.done)
                         }
-                    }
-                }
-                // Header showing exercise names, "+"-separated
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    uiState.members.forEachIndexed { index, member ->
-                        if (index > 0) {
-                            Text(
-                                text = "+",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                            )
-                        }
-                        ExerciseLabel(
-                            name = member.exercise.name,
-                            type = member.exercise.type,
-                            modifier = Modifier.weight(1f),
-                            switchEligible = member.switchEligible &&
-                                touchedByMember[index] != true,
-                            onSwitch = {
-                                onSwitchExercise(
-                                    member.exercise.bodypart,
-                                    member.exercise.type.toFileString(),
-                                    uiState.excludeIds,
-                                    index + 1,
-                                )
-                            },
-                        )
                     }
                 }
 
@@ -153,6 +134,16 @@ fun SupersetScreen(
                         description = member.description,
                         onDescriptionChange = { viewModel.updateDescriptionAt(index, it) },
                         onDescriptionSave = { viewModel.saveDescriptionAt(index, it) },
+                        switchEligible = member.switchEligible &&
+                            touchedByMember[index] != true,
+                        onSwitch = {
+                            onSwitchExercise(
+                                member.exercise.bodypart,
+                                member.exercise.type.toFileString(),
+                                uiState.excludeIds,
+                                index + 1,
+                            )
+                        },
                     )
                 }
 
@@ -302,6 +293,8 @@ private fun ExerciseInfoCard(
     description: String,
     onDescriptionChange: (String) -> Unit,
     onDescriptionSave: (String) -> Unit,
+    switchEligible: Boolean = false,
+    onSwitch: () -> Unit = {},
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -312,11 +305,34 @@ private fun ExerciseInfoCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = exercise.name,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = exercise.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                // "Switch exercise" — ogni lato del superset è uno slot indipendente
+                // (docs/CONVENTIONS.md#switch-exercise).
+                if (switchEligible) {
+                    val switchTint = when (exercise.type) {
+                        ExerciseType.FORZA -> ForzaColor
+                        ExerciseType.STRETCH -> StretchColor
+                        ExerciseType.CARDIO -> MaterialTheme.colorScheme.primary
+                    }
+                    IconButton(onClick = onSwitch, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.SwapHoriz,
+                            contentDescription = "Switch exercise",
+                            tint = switchTint,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
             if (exercise.link.isNotBlank()) {
                 MediaPreview(link = exercise.link)
             }
@@ -329,44 +345,6 @@ private fun ExerciseInfoCard(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
             )
-        }
-    }
-}
-
-@Composable
-private fun ExerciseLabel(
-    name: String,
-    type: ExerciseType,
-    modifier: Modifier = Modifier,
-    switchEligible: Boolean = false,
-    onSwitch: () -> Unit = {},
-) {
-    val color = when (type) {
-        ExerciseType.FORZA -> ForzaColor
-        ExerciseType.STRETCH -> StretchColor
-        // Cardio exercises can never be superset members — see SupersetViewModel.
-        ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
-    }
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = name,
-            style = MaterialTheme.typography.titleSmall,
-            color = color,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        // "Switch exercise" — each side of a superset is an independent slot (docs/CONVENTIONS.md#switch-exercise).
-        if (switchEligible) {
-            IconButton(onClick = onSwitch, modifier = Modifier.size(24.dp)) {
-                Icon(
-                    imageVector = Icons.Filled.SwapHoriz,
-                    contentDescription = "Switch exercise",
-                    tint = color,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
         }
     }
 }
