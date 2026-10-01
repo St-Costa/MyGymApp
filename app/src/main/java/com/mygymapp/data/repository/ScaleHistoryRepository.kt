@@ -131,7 +131,7 @@ class ScaleHistoryRepository @Inject constructor(
 
     /**
      * All weigh-ins across the entire `scale/` tree, unfiltered. Used only by the sync
-     * "Invia tutti i dati in coda" action to re-enqueue every weigh-in for server
+     * "Invia" action to re-enqueue every weigh-in for server
      * delivery — not for anything performance-sensitive, mirrors
      * [WorkoutRepository.getAllCompletedSessions].
      */

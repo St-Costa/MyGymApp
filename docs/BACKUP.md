@@ -64,7 +64,7 @@ NEW  data/sync/RepoSyncWorker.kt           @HiltWorker, expedited + 4h periodic
 NEW  data/sync/RestoreApi.kt              GET /v1/manifest, GET /v1/file   (restore path)
      ExerciseRepository.save()/delete()   → repoLedger.requeueIfChanged() / .markDeleted()
      RoutineRepository.save()/delete()    → same
-     OptionsScreen                        → "Ripristina dal server" action + repo count in status line
+     OptionsScreen                        → "Ripristina" action + repo count in status line
 ```
 
 Everything else — the envelope, bearer auth, `contentHash` verification, `stored`/`duplicate`
@@ -142,7 +142,7 @@ required; the content is identical so `git` may even detect the rename itself).
 | `rt-fixeddaily` auto-seed on first launch | Its `save()` path already runs → picked up automatically. |
 | End of session | `ActiveRoutineViewModel.registerRoutine()` — after the session save, calls `RepoSyncWorker.Scheduler.runExpedited(force = true)` (alongside the session / readiness / scale / ECG workers, all forced). End-of-session flushes the repo queue **whether the toggle is on or off** — see SYNC.md §1.5 / `shouldSyncRun`. |
 | 4-hourly periodic net | `MyGymApp.onCreate()` adds `RepoSyncWorker` to the `ensurePeriodic()` batch. The periodic run passes `force = false`, so with the toggle off it's a no-op. |
-| "Verifica backup sul server" / "Invia tutti i dati in coda" (Options) | `verifyBackupRoundTrip()` POSTs directly; `resyncAll()` walks `exercises/`+`routines/` and forces every worker. Both bypass the toggle. |
+| "Verifica backup" / "Invia" (Options) | `verifyBackupRoundTrip()` POSTs directly; `resyncAll()` walks `exercises/`+`routines/` and forces every worker. Both bypass the toggle. |
 
 The `requeueIfChanged` / `markDeleted` **ledger write always happens** when a server is
 configured, regardless of the toggle — so a catalogue edit made while sync is off is not
@@ -210,7 +210,7 @@ trigger a retry. The single-file `postUpsert`/`postDelete` stay as the fallback.
 
 ### 3.6 Restore — `GET /v1/manifest` + `GET /v1/file`
 
-New `RestoreApi.kt`. Used by a **"Ripristina dal server"** action in Options (and could run
+New `RestoreApi.kt`. Used by a **"Ripristina"** action in Options (and could run
 automatically once, on a fresh install where `_sync/repo_state.yml` is absent but the server
 is configured):
 
@@ -255,15 +255,15 @@ Extend the existing sync section:
 
 - Status line count now also sums the repo ledger's `PENDING` + `DELETED_PENDING`:
   "N in attesa (sessioni, misurazioni, pesate, **schede/esercizi**)".
-- **"Ripristina dal server"** button → runs §3.6. Confirmation dialog ("Scarica dal server
+- **"Ripristina"** button → runs §3.6. Confirmation dialog ("Scarica dal server
   ogni file mancante o diverso. Non cancella nulla in locale."). Show a result summary:
   "Ripristinati 12 esercizi, 3 routine, 0 sessioni". Shown whenever a server is
   **configured**, regardless of the "Sincronizzazione attiva" toggle — it's the post-wipe
   recovery action, and a fresh install may have sync still ON from restored config. (The
-  pending list + "Invia dati in coda" stay gated on toggle-off, where they're meaningful.)
-- The existing **"Invia tutti i dati in coda"** now also backfills `exercises/` + `routines/`.
+  pending list + "Invia" stay gated on toggle-off, where they're meaningful.)
+- The existing **"Invia"** now also backfills `exercises/` + `routines/`.
 
-#### "Verifica backup sul server" (debug section)
+#### "Verifica backup" (debug section)
 
 A debug-only button — grouped with the Scale-BLE / step-counter / ECG debug sends, not the
 main sync card — that does a **real round-trip** of the repo-file pipeline against the user's
@@ -290,7 +290,7 @@ Behaviour (`OptionsViewModel.verifyBackupRoundTrip()` → `runVerify()`):
 
 The round-trip logic lives in `data/sync/BackupVerifier.kt` (`@Singleton`, injectable). It
 is run from **two** places with identical behaviour:
-- Options → Debug → **"Verifica backup sul server"** button (`OptionsViewModel`).
+- Options → Debug → **"Verifica backup"** button (`OptionsViewModel`).
 - The **end-of-session summary** (`SessionProgressViewModel`, only when `justCompleted` and
   a server is configured) — so a finished workout shows, right there, exactly which
   exercises/routines it just pushed. Runs once on screen open, no retry loop.
@@ -352,7 +352,7 @@ regardless of where it renders — `adb shell run-as com.mygymapp cat
 files/gymdata/logs/app.log | grep BackupVerifier`.
 
 Requires a **configured** server (URL + token); ignores the "Sincronizzazione attiva"
-toggle — pressing the button is the opt-in, same as "Invia dati in coda".
+toggle — pressing the button is the opt-in, same as "Invia".
 
 **Server-visible side effects**: one commit per file that was actually new/changed (a
 re-run with nothing changed pushes nothing → no commit). **No deletes, no `deleted/`
@@ -448,9 +448,9 @@ otherwise.
       does new-upsert + old-tombstone), `ActiveRoutineViewModel.registerRoutine()` expedited
       trigger, `MyGymApp.onCreate()` periodic batch
 - [x] `OptionsViewModel` / `OptionsScreen` — "Schede/esercizi" count in the pending list,
-      "Ripristina dal server" (confirm dialog + result summary via `restoreFromServer()`),
+      "Ripristina" (confirm dialog + result summary via `restoreFromServer()`),
       `resyncAll()` walks `exercises/` + `routines/`
-- [x] "Verifica backup sul server" debug button (§3.7) — real round-trip against actual
+- [x] "Verifica backup" debug button (§3.7) — real round-trip against actual
       exercises/routines: `GET /v1/manifest` → diff → `POST /v1/repo` (direct, awaited, one
       per changed file) → `GET /v1/manifest`+`GET /v1/file` byte-for-byte. Result is a
       `BackupVerifyReport` shown as a git-diff block (`+`/`-` per category) plus a one-line

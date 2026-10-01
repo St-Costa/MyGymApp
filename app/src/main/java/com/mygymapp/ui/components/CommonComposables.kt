@@ -85,7 +85,7 @@ fun RoundStepButton(text: String, modifier: Modifier = Modifier, onClick: () -> 
         contentPadding = PaddingValues(0.dp),
         modifier = modifier.size(32.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
     }
 }
 

@@ -258,7 +258,7 @@ fun ActiveRoutineScreen(
                             .fillMaxWidth()
                             .padding(top = 8.dp, bottom = 8.dp),
                     ) {
-                        Text("Registra routine")
+                        Text("Registra")
                     }
                 }
 
@@ -306,7 +306,7 @@ fun ActiveRoutineScreen(
 
 /**
  * Mandatory session-RPE prompt (Foster method, 0-9 "how hard was this session"), shown
- * right after "Registra routine" is tapped. Not dismissible/skippable — a rating is
+ * right after "Registra" is tapped. Not dismissible/skippable — a rating is
  * required before the session can be registered. See docs/SYNC.md — internal-load signal
  * that complements tonnage server-side.
  */
@@ -349,7 +349,7 @@ private fun SessionRpeDialog(
             androidx.compose.material3.TextButton(
                 enabled = selected != null,
                 onClick = { selected?.let { onSubmit(it) } },
-            ) { Text("Conferma") }
+            ) { Text("OK") }
         },
     )
 }
@@ -388,7 +388,7 @@ private fun PowerliftingWeekOverlay(onDismiss: () -> Unit) {
                         contentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                 ) {
-                    Text("Ho capito")
+                    Text("OK")
                 }
             }
         }

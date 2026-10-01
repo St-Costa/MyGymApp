@@ -63,7 +63,7 @@ fun StretchExerciseScreen(
         switchedExerciseId?.let { onSwitched(it) }
     }
     // Same mirror as the strength screen: the swap icon is offered only while no set is
-    // toggled done (the button still reads "Segna come non eseguito").
+    // toggled done (the button still reads "Salta").
     val anyDone = uiState.sets.any { it.done }
 
     Scaffold(
@@ -163,7 +163,7 @@ fun StretchExerciseScreen(
                     ),
                 ) {
                     Text(
-                        if (uiState.isStopwatchRunning) "Stop Stopwatch" else "Start Stopwatch"
+                        if (uiState.isStopwatchRunning) "Stop" else "Start"
                     )
                 }
 
@@ -213,7 +213,7 @@ fun StretchExerciseScreen(
                         )
                     },
                 ) {
-                    Text(if (anyDone) "Completa esercizio" else "Segna come non eseguito")
+                    Text(if (anyDone) "Completa" else "Salta")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

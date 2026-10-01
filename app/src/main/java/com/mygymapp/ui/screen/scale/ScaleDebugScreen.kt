@@ -96,12 +96,12 @@ fun ScaleDebugScreen(
             when (uiState.connectionState) {
                 ScaleConnectionState.DISCONNECTED -> {
                     Button(onClick = { startScanWithPermissionCheck() }) {
-                        Text("Avvia scan")
+                        Text("Avvia")
                     }
                 }
                 ScaleConnectionState.SCANNING -> {
                     Button(onClick = { viewModel.stopScan() }) {
-                        Text("Ferma scan")
+                        Text("Ferma")
                     }
                 }
                 ScaleConnectionState.CONNECTING, ScaleConnectionState.CONNECTED -> {
@@ -122,11 +122,11 @@ fun ScaleDebugScreen(
             }
 
             OutlinedButton(onClick = { viewModel.forgetKnownScale() }) {
-                Text("Dimentica bilancia associata")
+                Text("Dimentica")
             }
 
             OutlinedButton(onClick = { viewModel.seedDebugWeighIns() }) {
-                Text("Genera pesate di debug (65 giorni)")
+                Text("Pesate debug")
             }
 
             Text("Dispositivi trovati:")

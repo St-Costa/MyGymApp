@@ -1570,7 +1570,7 @@ class PolarManager @Inject constructor(
                 appLogger.i(TAG, "Readiness event persisted: id=${event.id}")
                 // docs/SYNC.md §1.5: always queue in the ledger when a server is configured
                 // (so a measurement taken while the toggle is off isn't lost — it flushes
-                // at end-of-session or via "Invia dati in coda"), but only kick an immediate
+                // at end-of-session or via "Invia"), but only kick an immediate
                 // upload when the toggle is on.
                 if (syncConfigRepository.isConfigured()) {
                     val file = readinessRepository.fileFor(event)

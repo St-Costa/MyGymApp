@@ -96,7 +96,7 @@ class UserProfileRepository @Inject constructor(
         queueForBackup()
     }
 
-    /** Re-reads the file (e.g. after "Ripristina dal server" wrote it bypassing this repo). */
+    /** Re-reads the file (e.g. after "Ripristina" wrote it bypassing this repo). */
     suspend fun refresh() = withContext(Dispatchers.IO) {
         val fresh = readFile() ?: return@withContext
         synchronized(lock) { cached = fresh }

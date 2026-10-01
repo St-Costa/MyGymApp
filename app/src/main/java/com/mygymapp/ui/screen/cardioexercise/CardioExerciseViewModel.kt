@@ -39,17 +39,17 @@ data class CardioExerciseUiState(
     val configuredDurationSeconds: Int = 0,
     // Seconds remaining in the countdown — counts down from configuredDurationSeconds and
     // keeps going negative (overtime) past zero rather than auto-stopping; the user must tap
-    // "Termina cardio" explicitly (see stopBlock()).
+    // "Termina" explicitly (see stopBlock()).
     val remainingSeconds: Int = 0,
     val liveHr: Int? = null,
     val history: List<CardioHistoryEntry> = emptyList(),
 )
 
 /**
- * Drives one cardio exercise screen: "Inizia cardio" starts a continuous block (see
+ * Drives one cardio exercise screen: "Inizia" starts a continuous block (see
  * docs/STORAGE.md — ExerciseSet.Cardio) with on-device HR avg/max computed from
- * PolarManager.heartRate; "Termina cardio" closes the block and completes the exercise in
- * one step (no separate "Completa esercizio" tap). Mirrors
+ * PolarManager.heartRate; "Termina" closes the block and completes the exercise in
+ * one step (no separate "Completa" tap). Mirrors
  * StretchExerciseViewModel's session read/save + completionSaved pattern; see
  * docs/CONVENTIONS.md#completionsaved-pattern.
  */
@@ -71,7 +71,7 @@ class CardioExerciseViewModel @Inject constructor(
     private var currentSession: WorkoutSession? = null
 
     // Live-block bookkeeping — reset every time a new block starts, not persisted until
-    // "Termina cardio" (or completeExercise() force-closes it).
+    // "Termina" (or completeExercise() force-closes it).
     private var blockStartedAt: LocalDateTime? = null
     private var hrSum = 0L
     private var hrSamples = 0
@@ -89,7 +89,7 @@ class CardioExerciseViewModel @Inject constructor(
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
             // A block left with a blank endedAt here means the app died mid-block (e.g. process
-            // kill) rather than a clean "Termina cardio" — resuming it live is not worth the
+            // kill) rather than a clean "Termina" — resuming it live is not worth the
             // complexity, so close it silently with whatever partial HR data was captured
             // (0 if none), same "don't leave inconsistent state lying around" spirit as the
             // ghost-session guard elsewhere. A block closed this way is otherwise a normal one.
@@ -171,7 +171,7 @@ class CardioExerciseViewModel @Inject constructor(
             while (true) {
                 delay(1000)
                 // Keeps decrementing past zero (overtime) rather than stopping — the user must
-                // tap "Termina cardio" explicitly, per the countdown design.
+                // tap "Termina" explicitly, per the countdown design.
                 _uiState.value = _uiState.value.copy(remainingSeconds = _uiState.value.remainingSeconds - 1)
             }
         }
@@ -189,8 +189,8 @@ class CardioExerciseViewModel @Inject constructor(
     }
 
     /**
-     * "Termina cardio": closes the running block AND completes the exercise in one step — there
-     * is no intermediate "Completa esercizio" phase. Force-closes the block, marks the exercise
+     * "Termina": closes the running block AND completes the exercise in one step — there
+     * is no intermediate "Completa" phase. Force-closes the block, marks the exercise
      * completed and saves, then flips completionSaved so the screen navigates away.
      */
     fun stopBlock() {
@@ -238,10 +238,10 @@ class CardioExerciseViewModel @Inject constructor(
     }
 
     /**
-     * Reached two ways: the "Completa esercizio" button in the DONE state (a block was
-     * force-closed on load after a process kill), or the grey "Segna come non eseguito"
+     * Reached two ways: the "Completa" button in the DONE state (a block was
+     * force-closed on load after a process kill), or the grey "Salta"
      * button shown in IDLE — the cardio skip path, mirroring strength/stretch. A block left
-     * running (user didn't tap "Termina cardio" first) is force-closed here — an
+     * running (user didn't tap "Termina" first) is force-closed here — an
      * ExerciseSet.Cardio with a blank endedAt is never persisted for an exercise marked
      * completed. With no blocks at all the exercise closes as completedEmpty.
      */
@@ -254,7 +254,7 @@ class CardioExerciseViewModel @Inject constructor(
         } else {
             _uiState.value.completedBlocks
         }
-        // No blocks at all means the lifter never touched "Inizia cardio" — treat like an
+        // No blocks at all means the lifter never touched "Inizia" — treat like an
         // unopened exercise rather than recording empty cardio as performed work, same
         // reasoning as StretchExerciseViewModel's anyDone check.
         val anyBlock = finalBlocks.isNotEmpty()

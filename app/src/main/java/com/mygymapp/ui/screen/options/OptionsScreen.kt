@@ -280,7 +280,7 @@ private fun ServerSettingsSection(
                     if (uiState.syncIsTestingConnection) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Verifica connessione")
+                        Text("Verifica")
                     }
                 }
                 when (uiState.syncConnectionTestResult) {
@@ -312,7 +312,7 @@ private fun ServerSettingsSection(
                 if (uiState.backupVerifyRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Verifica backup sul server")
+                    Text("Verifica backup")
                 }
             }
             if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
@@ -361,7 +361,7 @@ private fun ServerSettingsSection(
                 PendingItemsList(uiState)
             }
 
-            // "Invia dati in coda": a full backfill re-enqueue. Always available (not just
+            // "Invia": a full backfill re-enqueue. Always available (not just
             // while sync is OFF) — it's the escape hatch when you're not sure the
             // background workers delivered everything.
             Button(
@@ -372,7 +372,7 @@ private fun ServerSettingsSection(
                 if (uiState.syncIsResyncing) {
                     Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
                 } else {
-                    Text("Invia dati in coda")
+                    Text("Invia")
                 }
             }
             if (uiState.syncIsResyncing) {
@@ -392,7 +392,7 @@ private fun ServerSettingsSection(
                     enabled = !uiState.syncIsRestoring,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina dal server")
+                    Text(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina")
                 }
                 uiState.syncRestoreResult?.let {
                     Text(
@@ -497,7 +497,7 @@ private fun DebugSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onScaleDebugClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Scale BLE Debug")
+                Text("Scale BLE")
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -511,7 +511,7 @@ private fun DebugSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onPolarDebugClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Polar BLE Debug")
+                Text("Polar BLE")
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -525,7 +525,7 @@ private fun DebugSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onSummaryPreviewClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Anteprima riepilogo fine routine")
+                Text("Anteprima riepilogo")
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -548,7 +548,7 @@ private fun DebugSection(
                 if (uiState.stepDebugRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Controlla passi ultime 24h")
+                    Text("Passi 24h")
                 }
             }
             if (uiState.stepDebugResult != null) {
@@ -576,9 +576,9 @@ private fun DebugSection(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.ecgDebugRecording) {
-                    Text("Registrazione ECG… ${uiState.ecgDebugSecondsLeft}s")
+                    Text("ECG… ${uiState.ecgDebugSecondsLeft}s")
                 } else {
-                    Text("Debug ECG: registra e invia")
+                    Text("ECG debug")
                 }
             }
             if (uiState.ecgDebugResult != null) {
@@ -591,7 +591,7 @@ private fun DebugSection(
 
             androidx.compose.material3.HorizontalDivider()
 
-            // Self-test metriche — verifica la pipeline senza allenarsi: se la fascia
+            // Test Polar — verifica la pipeline senza allenarsi: se la fascia
             // non è connessa la cerca da solo (30s), poi campiona 60s di HR live ed
             // esegue i check delle formule su dati sintetici (drift, Keytel, TRIMP,
             // regole di picco). Read-only: non crea sessioni, non scrive history, non
@@ -608,12 +608,12 @@ private fun DebugSection(
             ) {
                 if (uiState.polarSelfTestRunning) {
                     if (uiState.polarSelfTestSearching) {
-                        Text("Ricerca Polar… ${uiState.polarSelfTestSecondsLeft}s")
+                        Text("Ricerca… ${uiState.polarSelfTestSecondsLeft}s")
                     } else {
-                        Text("Self-test in corso… ${uiState.polarSelfTestSecondsLeft}s")
+                        Text("Test… ${uiState.polarSelfTestSecondsLeft}s")
                     }
                 } else {
-                    Text("Self-test metriche Polar")
+                    Text("Test Polar")
                 }
             }
             if (uiState.polarSelfTestResult != null) {
@@ -660,7 +660,7 @@ private fun PowerliftingSection(
 
             if (anchorMonday != null) {
                 OutlinedButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
-                    Text("Disattiva avviso powerlifting")
+                    Text("Disattiva avviso")
                 }
             }
         }

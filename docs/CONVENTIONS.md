@@ -117,7 +117,7 @@ without a valid 0-9 rating.
 
 **Touching nothing = completed-empty (skipped), still closed out.** Tap Complete without touching anything and the exercise is saved as `completed = true, completedEmpty = true`. Its `sets` still carry the grey pre-fill that was on screen (not `emptyList()`) so the next session's prefill walk-back finds real numbers instead of restarting at 0×0 — the fixed-load warmup/daily regression that Phase 74 introduced by conflating "empty flag" with "empty sets list", fixed properly in Phase 81. The active-routine row renders it with the neutral **skipped** styling — grey border (`SkippedColor`) + `Close` icon — instead of a tonnage change, and all tonnage / history / PR math skips it. For supersets this is per-member: `buildUpdatedSession(completed = true)` closes every chain member (2–3 of them), flagging any untouched member `completedEmpty = true` independently, always persisting that member's shown sets.
 
-The **"Complete Exercise" button label and colour reflect the outcome**: with any value touched it reads "Completa esercizio" on the primary colour; with nothing touched it reads "Segna come non eseguito" on `surfaceVariant`. So the lifter knows before tapping whether this will record work or a skip. (Superset: keyed on whether *any* member was touched.)
+The **"Complete Exercise" button label and colour reflect the outcome**: with any value touched it reads "Completa" on the primary colour; with nothing touched it reads "Salta" on `surfaceVariant`. So the lifter knows before tapping whether this will record work or a skip. (Superset: keyed on whether *any* member was touched.)
 
 Touch tracking: each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `repsTouched`/`weightTouched`, set `true` only by an explicit user action (`updateReps`/`updateWeight`/`confirmReps`/`confirmWeight`, or the stepper buttons that call them) — never by the prefill logic in `init`. Stretch sets have no prefill, so `done` itself (only ever flipped by an explicit toggle) is the touch signal.
 
@@ -369,7 +369,7 @@ re-switch, not even back to the original. Offered only for plain NORMAL slots (F
 never for warmup, fixed-daily, or CARDIO exercises.
 
 **The icon mirrors the Complete button.** The swap icon is shown only while the current visit
-is untouched — the Complete button still reads "Segna come non eseguito" (per-member in a
+is untouched — the Complete button still reads "Salta" (per-member in a
 superset, `done` for stretch). Touching any value hides the icon: the slot now holds real
 in-progress work and a swap would silently discard it. Conversely, `withExerciseSwitched()`
 takes `allowDiscardRecordedSets` (passed `true` by the three exercise ViewModels only when
@@ -473,7 +473,7 @@ requires a touch. STRETCH single-exercise slots were already immune (eligibility
 
 `ExerciseType.CARDIO` (see [POLAR.md](POLAR.md#cardio-blocks)) is a third exercise type
 alongside FORZA/STRETCH, but structurally different: no pre-configured set count, no rep
-range — `CardioExerciseScreen`'s "Inizia cardio"/"Termina cardio" appends one
+range — `CardioExerciseScreen`'s "Inizia"/"Termina" appends one
 `ExerciseSet.Cardio` block at a time. Two things fall out of that:
 
 - **`RoutineEditScreen`'s "Sets"/rep-range fields are hidden for CARDIO, replaced by a

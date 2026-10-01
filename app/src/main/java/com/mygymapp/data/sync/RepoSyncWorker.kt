@@ -87,7 +87,7 @@ class RepoSyncWorker @AssistedInject constructor(
         // See docs/SYNC.md §1.5 + [shouldSyncRun]. With the "Sincronizzazione attiva" toggle
         // OFF, only a forced run drains the queue — the periodic net is a no-op, and a
         // catalogue edit no longer kicks an upload (RepoLedgerRepository still queues it, so
-        // it rides out on the next end-of-session sync or "Invia dati in coda"). A forced
+        // it rides out on the next end-of-session sync or "Invia"). A forced
         // run is set by registerRoutine() (finalize) and the manual send buttons.
         val force = inputData.getBoolean(SYNC_FORCE_KEY, false)
         if (!shouldSyncRun(config.isConfigured(), config.isEnabled(), force)) {

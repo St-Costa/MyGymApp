@@ -77,7 +77,7 @@ sealed interface BackupVerifyOutcome {
 }
 
 /**
- * The full-store backup round-trip, shared by Options ("Verifica backup sul server") and
+ * The full-store backup round-trip, shared by Options ("Verifica backup") and
  * the end-of-session summary. See docs/BACKUP.md §3.7:
  *
  * 1. **Diff** — `GET /v1/manifest`; compare `sha256(local)` for every exercise/routine

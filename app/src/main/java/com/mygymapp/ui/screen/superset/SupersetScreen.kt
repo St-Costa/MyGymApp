@@ -208,7 +208,7 @@ fun SupersetScreen(
                                 MaterialTheme.colorScheme.secondary,
                         ),
                     ) {
-                        Text(if (uiState.isStopwatchRunning) "Stop Stopwatch" else "Start Stopwatch")
+                        Text(if (uiState.isStopwatchRunning) "Stop" else "Start")
                     }
                 }
 
@@ -278,7 +278,7 @@ fun SupersetScreen(
                         )
                     },
                 ) {
-                    Text(if (anyTouched) "Completa superset" else "Segna come non eseguito")
+                    Text(if (anyTouched) "Completa" else "Salta")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

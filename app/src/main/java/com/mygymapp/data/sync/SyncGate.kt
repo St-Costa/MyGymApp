@@ -12,7 +12,7 @@ package com.mygymapp.data.sync
  * | catalogue edit / readiness / weigh-in / loose ECG | queue only | upload now |
  * | **end of session** (`registerRoutine`)            | **upload all** (force) | upload all |
  * | 4h periodic net                  | **no-op**         | runs |
- * | "Invia dati in coda" / "Verifica backup" | runs (force) | runs |
+ * | "Invia" / "Verifica backup" | runs (force) | runs |
  *
  * `isConfigured()` (URL + token present) is the hard precondition — nothing ever leaves the
  * phone without it, regardless of the toggle or [force].

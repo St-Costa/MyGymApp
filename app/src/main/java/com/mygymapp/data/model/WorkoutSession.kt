@@ -137,7 +137,7 @@ enum class SlotContext { NORMAL, WARMUP, DAILY }
  * When [allowDiscardRecordedSets] is true the recorded-sets guard is skipped: a slot whose
  * on-disk sets already carry data can still be switched, discarding that partial work. The
  * exercise ViewModels pass `true` exactly when the current visit is untouched (the Complete
- * button still reads "Segna come non eseguito"), so a slot locked by an earlier accidental
+ * button still reads "Salta"), so a slot locked by an earlier accidental
  * touch can still be recovered — the swap itself is the explicit confirmation that the
  * partial work may go. Completed and already-switched slots stay locked either way.
  *

@@ -19,7 +19,7 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 ## VO2max
 - [ ] Mostrato nella schermata Heart Rate dopo i 60s di readiness
 - [ ] Valore ragionevole (tipico: 30-55 ml/kg/min per persona media)
-- [ ] Mostrato nella sezione progress dopo "Registra routine"
+- [ ] Mostrato nella sezione progress dopo "Registra"
 - [ ] Mostrato in SessionProgressScreen (tap su gitgraph)
 - [ ] Salvato correttamente (appare anche riaprendo la sessione)
 
@@ -40,8 +40,8 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 - [ ] Se la soglia di 15 BPM sopra il minimo e' troppo alta o bassa, segnalarlo
 
 ## ActiveRoutineScreen
-- [ ] HeartRateBar visibile sopra "Registra routine"
-- [ ] Dopo "Registra routine": kcal, TRIMP e VO2max mostrati nella sezione progress
+- [ ] HeartRateBar visibile sopra "Registra"
+- [ ] Dopo "Registra": kcal, TRIMP e VO2max mostrati nella sezione progress
 - [ ] I valori kcal/TRIMP sono ragionevoli (non zero, non assurdi)
 
 ## Grafici progress (filter chips)
@@ -67,7 +67,7 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 
 ## ECG recording + raw file handling (post server-side migration — see CONVENTIONS.md § ECG raw file: send-then-delete)
 - [ ] Durante la routine: nessun crash dovuto allo stream ECG (funziona in background a schermo spento)
-- [ ] Su "Registra routine": nessun ritardo eccessivo (non c'è più analisi Pan-Tompkins sul telefono — deep analysis è server-side)
+- [ ] Su "Registra": nessun ritardo eccessivo (non c'è più analisi Pan-Tompkins sul telefono — deep analysis è server-side)
 - [ ] Il file `.ecg` grezzo viene cancellato dopo l'upload al server se sync è configurata/attiva, o immediatamente se non lo è (controlla `/data/data/com.mygymapp/files/gymdata/ecg/` vuoto dopo la registrazione)
 - [ ] Cardiac drift: dopo ≥5 minuti mostra il valore BPM/min con label (normal / moderate / high) — questo è ancora calcolato localmente dalla serie HR, non dall'ECG grezzo
 - [ ] Valore realistico (normale < 0.5, moderato 0.5-1.0, alto > 1.0)

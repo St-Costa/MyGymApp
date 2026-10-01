@@ -94,13 +94,13 @@ class ExerciseRepository @Inject constructor(
         }
         // Full-store backup (docs/BACKUP.md §3.3): queue the new/changed file in the ledger
         // so it's never lost — this always happens, regardless of the sync toggle, so
-        // "Invia dati in coda" / the periodic net / a restore all see it.
+        // "Invia" / the periodic net / a restore all see it.
         newBytes?.let { repoLedgerRepository.requeueIfChanged(newRelPath, it) }
         obsoleteRelPath?.let { repoLedgerRepository.markDeleted(it, obsoleteHash) }
         // Only kick an *immediate* upload when the sync toggle is on — same rule as the
         // per-session enqueue in ActiveRoutineViewModel.registerRoutine(). With the toggle
         // off, a catalogue edit stays queued locally and rides out on the next end-of-
-        // session sync, the 4h periodic net, or "Invia dati in coda".
+        // session sync, the 4h periodic net, or "Invia".
         if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {
             RepoSyncWorker.Scheduler.runExpedited(appContext)
         }
