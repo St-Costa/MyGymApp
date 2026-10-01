@@ -227,21 +227,6 @@ class WorkoutParserRoundTripTest {
     }
 
     @Test
-    fun `notes body round-trips`() {
-        val session = WorkoutSession(
-            id = "abcd1234",
-            routineId = "rt-abcd1234",
-            routineName = "Push day",
-            date = "2026-08-25",
-            notes = "Felt strong today, PR on bench.",
-        )
-
-        val result = roundTrip(session)
-
-        assertEquals(session.notes, result.notes)
-    }
-
-    @Test
     fun `fromMarkdown on empty content returns empty defaults without throwing`() {
         val result = WorkoutParser.fromMarkdown("")
 

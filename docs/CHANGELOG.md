@@ -1878,3 +1878,15 @@ sidecar is written, nothing is queued for sync. New `data/polar/PolarSelfTest.kt
 `OptionsViewModel.runPolarSelfTest` + Debug card UI follow the existing ECG/step-debug
 patterns (double-tap guard, countdown in the button label). `./gradlew test` green.
 
+## Phase 128 — Remove session free-text notes
+
+Follow-up to Phase 103 (routine notes): the per-session notes box is gone too.
+Dropped `WorkoutSession.notes` (model), the markdown-body round-trip in
+`WorkoutParser` (session `.md` files no longer have a body section after the
+frontmatter — old files with a body still parse, the body is just ignored),
+the "Notes" `AutoSaveTextField` in `ActiveRoutineScreen` plus
+`ActiveRoutineViewModel.updateNotes()` and the `notes` slot in
+`ActiveRoutineUiState`. `WorkoutParserRoundTripTest`'s notes round-trip test
+removed; `STORAGE.md` updated to match. Exercise notes (`Exercise.notes`, the
+description field on the exercise screens) are untouched.
+
