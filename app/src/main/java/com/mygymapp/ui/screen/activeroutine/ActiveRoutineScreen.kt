@@ -52,7 +52,6 @@ import androidx.compose.ui.unit.dp
 import com.mygymapp.ui.theme.JetBrainsMono
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
-import com.mygymapp.ui.components.AutoSaveTextField
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.HrZoneTraceChart
@@ -167,8 +166,7 @@ fun ActiveRoutineScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // Routine title belongs to the session content so it can be shown
-                // prominently above the editable notes.
+                // Routine title shown prominently at the top of the session content.
                 item(key = "routine-title") {
                     Text(
                         text = uiState.routineName.ifBlank { "Workout" },
@@ -179,18 +177,6 @@ fun ActiveRoutineScreen(
                             fontSize = MaterialTheme.typography.headlineLarge.fontSize * 1.2f,
                         ),
                         textAlign = TextAlign.Center,
-                    )
-                }
-
-                // Notes
-                item(key = "notes") {
-                    AutoSaveTextField(
-                        value = uiState.notes,
-                        onValueChange = {},
-                        onSave = { viewModel.updateNotes(it) },
-                        label = "Notes",
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2,
                     )
                 }
 

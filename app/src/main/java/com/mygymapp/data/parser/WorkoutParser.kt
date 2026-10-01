@@ -41,7 +41,6 @@ object WorkoutParser {
             sessionRpe = (fm["sessionRpe"] as? Number)?.toInt(),
             sessionLoad = (fm["sessionLoad"] as? Number)?.toFloat(),
             exercises = parseExercises(fm["exercises"]),
-            notes = doc.body,
         )
     }
 
@@ -126,7 +125,7 @@ object WorkoutParser {
             session.sessionLoad?.let { put("sessionLoad", it) }
             put("exercises", exerciseList)
         }
-        return MarkdownParser.serialize(frontmatter, session.notes)
+        return MarkdownParser.serialize(frontmatter, "")
     }
 
     @Suppress("UNCHECKED_CAST")

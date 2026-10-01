@@ -41,7 +41,6 @@ data class WorkoutSession(
     // both sessionRpe and a valid startedAt/completedAt pair are available.
     val sessionLoad: Float? = null,
     val exercises: List<WorkoutExercise> = emptyList(),
-    val notes: String = "",
 )
 
 data class WorkoutExercise(

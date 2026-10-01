@@ -47,7 +47,6 @@ import javax.inject.Inject
 
 data class ActiveRoutineUiState(
     val routineName: String = "",
-    val notes: String = "",
     val exercises: List<ActiveExerciseUi> = emptyList(),
     val sessionId: String = "",
     val isLoading: Boolean = true,
@@ -538,16 +537,6 @@ class ActiveRoutineViewModel @Inject constructor(
                 } else ex
             }
             _uiState.value = _uiState.value.copy(exercises = updatedExercises)
-        }
-    }
-
-    fun updateNotes(notes: String) {
-        _uiState.value = _uiState.value.copy(notes = notes)
-        viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            val updated = session.copy(notes = notes)
-            currentSession = updated
-            workoutRepository.save(updated)
         }
     }
 
