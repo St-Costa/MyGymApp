@@ -69,10 +69,10 @@ data class OptionsUiState(
     val syncIsResyncing: Boolean = false,
     // Set when syncIsResyncing starts, to 0..1 as ledgers drain — see resyncAll().
     val syncResyncProgress: Float = 0f,
-    // Full-store restore (docs/BACKUP.md §3.6) — "Ripristina dal server".
+    // Full-store restore (docs/BACKUP.md §3.6) — "Ripristina".
     val syncIsRestoring: Boolean = false,
     val syncRestoreResult: String? = null,
-    // Backup round-trip check (docs/BACKUP.md §3.7) — "Verifica backup sul server".
+    // Backup round-trip check (docs/BACKUP.md §3.7) — "Verifica backup".
     val backupVerifyRunning: Boolean = false,
     val backupVerifyProgress: String? = null,
     val backupVerifyError: String? = null,          // set instead of report on a hard failure
@@ -381,7 +381,7 @@ class OptionsViewModel @Inject constructor(
             // fixed at start and the numerator (below) is "how many of THIS batch drained."
             val totalQueued = sessions.size + readinessEvents.size + weighIns.size + ecgFiles.size + repoFiles.size
 
-            // "Invia dati in coda" is itself the opt-in — force past the toggle.
+            // "Invia" is itself the opt-in — force past the toggle.
             SyncWorker.Scheduler.runExpedited(appContext, force = true)
             ReadinessSyncWorker.Scheduler.runExpedited(appContext, force = true)
             ScaleWeighInSyncWorker.Scheduler.runExpedited(appContext, force = true)
@@ -422,7 +422,7 @@ class OptionsViewModel @Inject constructor(
     // ─── Full-store restore (docs/BACKUP.md §3.6) ───────────────────────────
 
     /**
-     * "Ripristina dal server": `GET /v1/manifest`, then pull every file the phone is
+     * "Ripristina": `GET /v1/manifest`, then pull every file the phone is
      * missing or whose local bytes differ. Pull-only — never deletes a local file the
      * server lacks (a local-only draft must survive), and hash-diffed so an unchanged file
      * is skipped. After writing, the repo ledger entry is set to SENT so the next push
@@ -604,7 +604,7 @@ class OptionsViewModel @Inject constructor(
      * session ECG recordings if it ever needs to.
      *
      * Requires a connected Polar device (checked via [PolarManager.connectionState]) and a
-     * configured sync server — same requirement as "Invia tutti i dati in coda", since a
+     * configured sync server — same requirement as "Invia", since a
      * debug recording with nowhere to send it would just accumulate on disk.
      */
     fun sendDebugEcg() {

@@ -99,7 +99,7 @@ class RoutineRepository @Inject constructor(
         // Full-store backup (docs/BACKUP.md §3.3): always queue in the ledger (never lost),
         // but only kick an immediate upload when the sync toggle is on — same rule as
         // ExerciseRepository.save() and the per-session enqueue. Toggle off ⇒ the edit
-        // waits for end-of-session sync / the 4h periodic net / "Invia dati in coda".
+        // waits for end-of-session sync / the 4h periodic net / "Invia".
         newBytes?.let { repoLedgerRepository.requeueIfChanged(newRelPath, it) }
         obsoleteRelPath?.let { repoLedgerRepository.markDeleted(it, obsoleteHash) }
         if (syncConfigRepository.isEnabled() && syncConfigRepository.isConfigured()) {

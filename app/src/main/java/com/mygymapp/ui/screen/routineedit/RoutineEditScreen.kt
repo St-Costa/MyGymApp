@@ -220,7 +220,7 @@ fun RoutineEditScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
-                Text("Add Exercise", modifier = Modifier.padding(start = 8.dp))
+                Text("Add", modifier = Modifier.padding(start = 8.dp))
             }
 
             Spacer(modifier = Modifier.height(80.dp))
@@ -651,12 +651,12 @@ private fun RoutineExerciseItem(
             }
 
             // Sets/rep-range are meaningless for CARDIO — no pre-configured set count, blocks
-            // are appended live from "Inizia cardio"/"Termina cardio" in CardioExerciseScreen
+            // are appended live from "Inizia"/"Termina" in CardioExerciseScreen
             // (ActiveRoutineViewModel builds an empty set list for CARDIO regardless of
             // exercise.sets here). It reuses timePerSetSeconds instead, but as a single total
             // countdown duration for the whole block rather than "per set" — CardioExerciseScreen
-            // counts down from this value once "Inizia cardio" is pressed, continuing into
-            // overtime rather than auto-stopping if the user doesn't tap "Termina cardio" first.
+            // counts down from this value once "Inizia" is pressed, continuing into
+            // overtime rather than auto-stopping if the user doesn't tap "Termina" first.
             if (exercise.exerciseType == ExerciseType.CARDIO) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),

@@ -399,7 +399,7 @@ class SupersetViewModel @Inject constructor(
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
             val fresh = workoutRepository.getSession(sessionId, LocalDate.now())
                 ?: currentSession ?: return@launch
-            // Per-member untouched: same signal the "Segna come non eseguito" label uses —
+            // Per-member untouched: same signal the "Salta" label uses —
             // a STRETCH member counts as touched once any of its sets is toggled done.
             val untouched = _uiState.value.sets
                 .filter { it.exerciseIndex == memberIndex }

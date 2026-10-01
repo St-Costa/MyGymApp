@@ -108,7 +108,7 @@ fun PolarDebugScreen(
 
             if (uiState.isScanning) {
                 Button(onClick = { viewModel.stopScan() }) {
-                    Text("Ferma scan")
+                    Text("Ferma")
                 }
             } else {
                 when (uiState.connectionState) {
@@ -119,14 +119,14 @@ fun PolarDebugScreen(
                     }
                     ConnectionState.DISCONNECTED -> {
                         Button(onClick = { startScanWithPermissionCheck() }) {
-                            Text("Avvia scan")
+                            Text("Avvia")
                         }
                     }
                 }
             }
 
             OutlinedButton(onClick = { viewModel.forgetKnownDevice() }) {
-                Text("Dimentica dispositivo salvato")
+                Text("Dimentica")
             }
 
             Text("Dispositivi trovati:")

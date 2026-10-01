@@ -134,7 +134,7 @@ arbitrary paths — be strict.
 `exercises/_*.md` / `routines/_*.md` as a normal file for storage/commit purposes but
 **exclude it from the parsed SQL view** (§4): don't upsert a `routines`/`exercises` row,
 just log at debug level and skip. The phone doesn't currently send any such file (its
-"Verifica backup sul server" button round-trips *real* exercises/routines, no synthetic
+"Verifica backup" button round-trips *real* exercises/routines, no synthetic
 data), but keeping the rule means a future debug/scratch file can't pollute the query
 tables.
 
@@ -186,7 +186,7 @@ needs trimming, that's a manual `git rm` + commit, deliberately.
 
 ## Task 3 — restore endpoints
 
-Both behind the same bearer token. Used by the phone's "Ripristina dal server" flow and by
+Both behind the same bearer token. Used by the phone's "Ripristina" flow and by
 a fresh install with no local ledger.
 
 ### 3.1 `GET /v1/manifest`
@@ -321,7 +321,7 @@ Update the server repo's README / sync-ingestion docs:
 6. `GET /v1/manifest` → lists the session and other live files, **not** the deleted exercise.
 7. `GET /v1/file?relPath=<the session>` → exact bytes, `X-Content-SHA256` matches.
 8. Path-traversal: `GET /v1/file?relPath=../../etc/passwd` → `422`, nothing served.
-9. Phone's Options → "Verifica backup sul server": pushes any missing/changed
+9. Phone's Options → "Verifica backup": pushes any missing/changed
    exercise/routine (`POST /v1/repo` upsert, `repo:1` commit each), then `GET /v1/manifest`
    and `GET /v1/file` for each → button shows `OK — N esercizi + M routine sul server, hash
    allineati e … riletti identici`. A second press with nothing changed → no new commit,

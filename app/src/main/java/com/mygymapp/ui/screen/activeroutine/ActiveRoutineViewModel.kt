@@ -66,7 +66,7 @@ data class ActiveRoutineUiState(
     val sessionRegistered: Boolean = false,
     val registeredSessionId: String = "",
     val registeredSessionDate: String = "",
-    // Session-RPE prompt: shown once, right after "Registra routine" is tapped and before
+    // Session-RPE prompt: shown once, right after "Registra" is tapped and before
     // the session is actually finalized/synced. Skippable — see docs/CONVENTIONS.md.
     val showRpePrompt: Boolean = false,
     // Cross-routine charts (all sessions, not filtered by routine)
@@ -344,7 +344,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 val exercise = exerciseRepository.getById(re.exerciseId) ?: return@mapNotNull null
                 // Cardio has no pre-configured set count (re.sets is meaningless for it — the
                 // routine editor hides that field for CARDIO exercises) — blocks are appended
-                // one at a time from CardioExerciseScreen's "Inizia cardio"/"Termina cardio".
+                // one at a time from CardioExerciseScreen's "Inizia"/"Termina".
                 val sets = when (exercise.type) {
                     ExerciseType.FORZA -> (1..re.sets).map {
                         ExerciseSet.Strength(isBodyweight = exercise.isBodyweight)
@@ -549,7 +549,7 @@ class ActiveRoutineViewModel @Inject constructor(
     }
 
     /**
-     * Entry point from the "Registra routine" button. Shows the mandatory session-RPE prompt
+     * Entry point from the "Registra" button. Shows the mandatory session-RPE prompt
      * first (docs/SYNC.md — internal-load signal complementing tonnage); the actual
      * finalize+sync flow ([registerRoutine]) runs only after the user answers it, via
      * [submitSessionRpe]. No skip option — a rating is required to proceed.

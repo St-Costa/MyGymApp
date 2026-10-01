@@ -274,7 +274,7 @@ than inventing a new one):
   | catalogue edit (`Exercise`/`RoutineRepository.save`), readiness measurement, weigh-in, loose/debug ECG | **queued in the ledger, no upload** | queued + expedited upload |
   | **end of session** (`ActiveRoutineViewModel.registerRoutine()`) | **forces every worker** — the session *and* whatever else is queued (readiness / scale / repo / ECG) all flush | same |
   | 4h periodic net (`ensurePeriodic`) | **no-op** (`force` unset) | drains normally |
-  | "Invia tutti i dati in coda", "Verifica backup sul server", flipping the toggle to ON | force, always run | force, always run |
+  | "Invia", "Verifica backup", flipping the toggle to ON | force, always run | force, always run |
 
   So the toggle now means: *"while off, the only thing that reaches the server is a
   finished workout (and its trailing data), plus anything I send by hand."* Nothing is ever
@@ -285,7 +285,7 @@ than inventing a new one):
   The **enqueue** side (writing the ledger entry) is gated only by `isConfigured()`, never
   by `isEnabled()` — an earlier version gated the readiness/scale enqueue on `isEnabled()`
   too, which silently *dropped* measurements taken while the toggle was off (no ledger
-  entry ⇒ nothing for end-of-session or "Invia dati in coda" to find). Fixed: producers
+  entry ⇒ nothing for end-of-session or "Invia" to find). Fixed: producers
   always enqueue when a server is configured.
 - **Status line**: "N elementi in attesa (sessioni, misurazioni, pesate), ultimo invio:
   <time>" — sums the pending count across all three ledgers (sessions + readiness +
@@ -295,7 +295,7 @@ than inventing a new one):
   just-finished session in the queue): with sync ON and nothing pending it collapses to a
   green "Tutto sincronizzato" line with the last-send time; with anything pending it shows
   the same per-type breakdown as while OFF.
-- **"Invia tutti i dati in coda" button**: also shown in both toggle states (it's the
+- **"Invia" button**: also shown in both toggle states (it's the
   escape hatch when you're unsure the background workers delivered everything). Re-enqueues
   every session, readiness event, and
   scale weigh-in found on disk, across all three independent sync pipelines (§ below),
@@ -471,7 +471,7 @@ in the worst case a queued item gets retried roughly every few hours indefinitel
 giving up, for as long as the server stays down. `AppLogger` records every attempt
 (success and failure) so a multi-day gap can be reviewed after the fact — see
 `adb shell run-as com.mygymapp cat files/gymdata/logs/app.log`, filtering for `SyncWorker`
-/ `ReadinessSyncWorker` / `ScaleWeighInSyncWorker` — and "Invia tutti i dati in coda" in
+/ `ReadinessSyncWorker` / `ScaleWeighInSyncWorker` — and "Invia" in
 Options exists specifically to force a fresh attempt across all three once the server is
 confirmed back up, rather than waiting for the next periodic tick.
 
@@ -848,7 +848,7 @@ all, the `.ecg` is still deleted immediately (nothing local would consume it). T
 age-cap sweep in `EcgSyncWorker.doWork()` runs *outside* the toggle gate — stale `.ecg`
 files are pruned regardless.
 
-"Invia tutti i dati in coda" also resends any `.ecg` file still present in `gymdata/ecg/`
+"Invia" also resends any `.ecg` file still present in `gymdata/ecg/`
 — but unlike the other three, this is not a true backfill: once a file has been uploaded
 and deleted, there's nothing left on the phone to resend. Only files that are still
 pending/failed/not-yet-queued get picked up.
@@ -914,7 +914,7 @@ Full design (phone + server): **[docs/BACKUP.md](BACKUP.md)**. Server-side brief
 `RepoSyncWorker`, `RestoreApi` (`GET /v1/manifest`, `GET /v1/file`). Hooked into
 `ExerciseRepository`/`RoutineRepository` `save()`/`delete()`, `MyGymApp.onCreate()`'s
 periodic batch, and `ActiveRoutineViewModel.registerRoutine()`'s expedited nudge. Options
-gains a "Schede/esercizi" pending bullet and a "Ripristina dal server" restore action.
+gains a "Schede/esercizi" pending bullet and a "Ripristina" restore action.
 
 **Phase 90 — batch endpoints.** The N-round-trip loops are now one request each where the
 server offers it (`docs/backup/README.md` § "Batch endpoints"), single-file endpoints kept
@@ -945,7 +945,7 @@ Phone side (this repo, package `data/sync/`):
       `updateRoutineNameInHistory` — `syncLedgerRepository.requeueIfChanged()` after each
       rewritten session file, so a rename-triggered edit gets resynced (§3.4).
 - [x] `OptionsScreen`/`OptionsViewModel` additions — server URL + token fields, enabled
-      switch, "Verifica connessione" (health check), pending-count/last-sync status line,
+      switch, "Verifica" (health check), pending-count/last-sync status line,
       "Rinvia tutte le sessioni" (resync-all, backed by
       `WorkoutRepository.getAllCompletedSessions()`).
 - [x] `STORAGE.md`'s SharedPreferences table updated with `sync_config`; new
@@ -965,7 +965,7 @@ Phone side (this repo, package `data/sync/`):
       periodic durability net (`ensurePeriodic()`, scheduled together in
       `MyGymApp.onCreate()`) — added once it became clear the server would be offline for
       multi-day stretches during its own development, not just brief outages.
-- [x] "Invia tutti i dati in coda" (Options) now backfills and resends all four record
+- [x] "Invia" (Options) now backfills and resends all four record
       types in one action — `OptionsViewModel.resyncAll()` re-enqueues every session,
       readiness event, scale weigh-in, and still-on-disk `.ecg` file regardless of prior
       status, and the pending-count status line sums all four ledgers.

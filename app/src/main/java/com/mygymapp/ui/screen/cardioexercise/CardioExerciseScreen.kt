@@ -34,13 +34,13 @@ import com.mygymapp.ui.theme.SkippedColor
 
 /**
  * The single action button:
- * IDLE ("Inizia cardio") -> RUNNING ("Termina cardio"), which closes the block, marks the
+ * IDLE ("Inizia") -> RUNNING ("Termina"), which closes the block, marks the
  * exercise completed and exits in one step — no intermediate phase. The DONE state
- * ("Completa esercizio") only shows on re-entry when a block was left open by a process
+ * ("Completa") only shows on re-entry when a block was left open by a process
  * kill and closed on load (see CardioExerciseViewModel.init) — normal flow never hits it.
  * See CardioExerciseViewModel's startBlock()/stopBlock()/completeExercise().
  *
- * In IDLE a second, grey "Segna come non eseguito" button sits below the main one — the
+ * In IDLE a second, grey "Salta" button sits below the main one — the
  * cardio equivalent of the strength/stretch skip path (completeExercise() with no blocks
  * closes the exercise as completedEmpty). It disappears once a block is running/done.
  */
@@ -102,7 +102,7 @@ fun CardioExerciseScreen(
 
                 // Countdown from the configured block duration (RoutineEditScreen) — keeps
                 // going negative (overtime) rather than auto-stopping at zero; the user must
-                // tap "Termina cardio" explicitly.
+                // tap "Termina" explicitly.
                 val remaining = uiState.remainingSeconds
                 val isOvertime = remaining < 0
                 val formatted = remember(remaining) {
@@ -131,7 +131,7 @@ fun CardioExerciseScreen(
                     )
                 }
 
-                // Single action button: IDLE -> RUNNING, and "Termina cardio" both ends the
+                // Single action button: IDLE -> RUNNING, and "Termina" both ends the
                 // block and completes the exercise (see buttonState() / stopBlock()).
                 val buttonState = uiState.buttonState()
                 Button(
@@ -153,14 +153,14 @@ fun CardioExerciseScreen(
                 ) {
                     Text(
                         when (buttonState) {
-                            CardioButtonState.IDLE -> "Inizia cardio"
-                            CardioButtonState.RUNNING -> "Termina cardio"
-                            CardioButtonState.DONE -> "Completa esercizio"
+                            CardioButtonState.IDLE -> "Inizia"
+                            CardioButtonState.RUNNING -> "Termina"
+                            CardioButtonState.DONE -> "Completa"
                         }
                     )
                 }
 
-                // Skip path, mirroring the strength/stretch grey "Segna come non eseguito"
+                // Skip path, mirroring the strength/stretch grey "Salta"
                 // button: completeExercise() with no blocks closes the exercise as
                 // completedEmpty (grey border + X in the active list, excluded from stats).
                 // Only meaningful before a block is started — hidden once running/done.
@@ -173,7 +173,7 @@ fun CardioExerciseScreen(
                             contentColor = Color(0xFF1E1E1E),
                         ),
                     ) {
-                        Text("Segna come non eseguito")
+                        Text("Salta")
                     }
                 }
             }

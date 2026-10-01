@@ -259,7 +259,7 @@ exercises:
     type: CARDIO
     bodypart: cardio
     excludeFromTonnage: true    # always true for CARDIO, regardless of section
-    sets:                       # one entry per "Inizia cardio"/"Termina cardio" block —
+    sets:                       # one entry per "Inizia"/"Termina" block —
                                  # several are possible in one session (e.g. 10min bike +
                                  # 20min run), see docs/POLAR.md#cardio-blocks
       - startedAt: "2026-08-12T10:15:03"
@@ -268,7 +268,7 @@ exercises:
         maxHr: 156
       - startedAt: "2026-08-12T10:50:00"
         endedAt: ""              # blank = block still running, or abandoned without an
-                                 # explicit "Termina cardio" (never left blank on a
+                                 # explicit "Termina" (never left blank on a
                                  # completed exercise — see CardioExerciseViewModel)
         avgHr: 0
         maxHr: 0
@@ -536,7 +536,7 @@ files:
 ```
 
 Since exercises and routines are now backed up incrementally to the server, a wipe of
-`filesDir/gymdata/` is recoverable via **Options → "Ripristina dal server"**
+`filesDir/gymdata/` is recoverable via **Options → "Ripristina"**
 (`GET /v1/manifest` + `GET /v1/file`, pull-only) — see [BACKUP.md](BACKUP.md) §3.6.
 
 ## Backup / export

@@ -85,7 +85,7 @@ data class SessionProgressUiState(
     val polarDrops: DisconnectStats = DisconnectStats(),
     // Full-store backup round-trip (docs/BACKUP.md §3.7), run once when this screen opens
     // right after a session (justCompleted) and a sync server is configured. Same
-    // BackupVerifier the Options "Verifica backup sul server" button uses.
+    // BackupVerifier the Options "Verifica backup" button uses.
     val backupVerifyRunning: Boolean = false,
     val backupVerifyProgress: String? = null,
     val backupVerifyError: String? = null,

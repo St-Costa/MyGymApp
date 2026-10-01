@@ -106,7 +106,7 @@ class WorkoutSessionSwitchExerciseTest {
 
     @Test
     fun `allowDiscardRecordedSets recovers a slot locked by an earlier touch`() {
-        // The "swap while Segna come non eseguito" path: the current visit is untouched
+        // The swap-while-untouched ("Salta") path: the current visit is untouched
         // but the on-disk slot already carries partial work (e.g. an accidental touch
         // saved on a previous back-out). The swap discards it and regenerates fresh sets.
         val touchedSlot = untouchedSlot.copy(sets = listOf(ExerciseSet.Strength(reps = 5, weight = 40.0)))

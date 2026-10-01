@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -124,7 +125,7 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth(menuTileScale).align(Alignment.CenterHorizontally),
                 ) {
                     MainMenuTile(
-                        label = "Heart & Scale",
+                        label = "HR & Scale",
                         icon = Icons.Default.Bluetooth,
                         onClick = onNavigateToHeartRate,
                         modifier = Modifier.weight(1f),
@@ -175,6 +176,7 @@ private fun MainMenuTile(
             Text(
                 text = label,
                 fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onPrimary,
             )
         }

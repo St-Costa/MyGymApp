@@ -2,6 +2,28 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 129 — Pulsanti: etichette più corte e tutte in bold
+
+Rinominate (solo label visibili, nessun cambio di comportamento) tutte le etichette dei
+pulsanti, tenendo le più brevi possibili senza perdere il significato: "Registra routine"→
+"Registra", "Inizia/Termina cardio"→"Inizia"/"Termina", "Completa esercizio/superset"→
+"Completa", "Segna come non eseguito"→"Salta", "Start/Stop Stopwatch"→"Start"/"Stop",
+FAB "New Exercise"/"New Routine"→"New", "Add Exercise"→"Add", "Conferma"/"Ho capito"→"OK",
+Options ("Verifica connessione"→"Verifica", "Verifica backup sul server"→"Verifica backup",
+"Invia dati in coda"→"Invia", "Ripristina dal server"→"Ripristina", "Controlla passi ultime
+24h"→"Passi 24h", "Debug ECG: registra e invia"→"ECG debug", "Self-test metriche Polar"→
+"Test Polar", "Anteprima riepilogo fine routine"→"Anteprima riepilogo", "Disattiva avviso
+powerlifting"→"Disattiva avviso", "Scale/Polar BLE Debug"→"Scale BLE"/"Polar BLE"), debug
+Polar/bilancia ("Avvia/Ferma scan"→"Avvia"/"Ferma", "Dimentica …"→"Dimentica", "Genera pesate
+di debug (65 giorni)"→"Pesate debug") e tile home "Heart & Scale"→"HR & Scale". Tutti i label
+ora sono in **bold**: `labelLarge` del tema passa da `Medium` a `Bold` (copre in un colpo solo
+`Button`/`OutlinedButton`/`TextButton`/`FilterChip`/FAB, che usano lo stile di default del
+bottone) più `fontWeight = FontWeight.Bold` esplicito dove lo stile è custom
+(`RoundStepButton`, `PickerButton`, tile della home). Titoli d'header, label di campo e
+menu restano invariati. Commenti del codice e docs (CONVENTIONS/STORAGE/POLAR/SYNC/BACKUP/
+testing-checklist/brief) allineati alle nuove label; le entry storiche del CHANGELOG sono
+intoccate. Solo UI, niente test nuovi; `./gradlew test` + `assembleDebug` verdi.
+
 ## Phase 127 — Superset: nomi nel titolo in alto come gli esercizi normali
 
 `SupersetScreen`: il titolo in `TopAppBar` ora mostra i nomi dei membri (`"Nome1 + Nome2 [+ Nome3]"`, ellipsis a una riga; `"Superset"` solo durante il load) come gli screen normali mostrano il singolo nome — rimossa la vecchia riga `"A + B"` nel corpo che duplicava i nomi in modo diverso. L'icona "switch exercise" per-membro si è spostata nella rispettiva `ExerciseInfoCard` (stessa eleggibilità di prima: solo membro intoccato), così nessuna funzione si perde. Resto invariato (info-card, set, PR). Solo UI, niente test nuovi; build verde.

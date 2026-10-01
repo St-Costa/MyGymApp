@@ -226,7 +226,7 @@ class BleScaleManager @Inject constructor(
                 leanMassPercent = composition.leanMassPercent,
             )
             // docs/SYNC.md §1.5: always queue in the ledger when a server is configured
-            // (so nothing is lost and end-of-session / "Invia dati in coda" can flush it),
+            // (so nothing is lost and end-of-session / "Invia" can flush it),
             // but only kick an immediate upload when the "Sincronizzazione attiva" toggle
             // is on. Never blocks the save, never inline on the network.
             if (syncConfigRepository.isConfigured()) {

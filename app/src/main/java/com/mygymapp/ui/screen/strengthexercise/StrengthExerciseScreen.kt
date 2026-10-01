@@ -61,7 +61,7 @@ fun StrengthExerciseScreen(
         switchedExerciseId?.let { onSwitched(it) }
     }
     // The swap icon mirrors the Complete button: offered only while nothing was touched
-    // (the button still reads "Segna come non eseguito"). Touching any value starts real
+    // (the button still reads "Salta"). Touching any value starts real
     // work in this slot, so the icon hides rather than silently discarding it via a swap.
     val anyTouched = uiState.sets.any { it.repsTouched || it.weightTouched }
 
@@ -267,7 +267,7 @@ fun StrengthExerciseScreen(
                         )
                     },
                 ) {
-                    Text(if (anyTouched) "Completa esercizio" else "Segna come non eseguito")
+                    Text(if (anyTouched) "Completa" else "Salta")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

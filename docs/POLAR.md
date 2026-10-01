@@ -192,7 +192,7 @@ On session completion (or abandon), `ActiveRoutineViewModel`:
 mark "this part is cardio" explicitly instead of the whole session being one undifferentiated
 HR stream. A cardio exercise (e.g. "Corsa leggera", "Bici" — catalog entries like any other
 `Exercise`, created via the normal exercise editor) has no pre-configured sets: instead,
-`CardioExerciseScreen` shows "Inizia cardio" / "Termina cardio", and each press cycle appends
+`CardioExerciseScreen` shows "Inizia" / "Termina", and each press cycle appends
 one `ExerciseSet.Cardio` block (`startedAt`/`endedAt`/`avgHr`/`maxHr`) to that exercise's
 `sets` — see [STORAGE.md](STORAGE.md#workout-session-historyyyyymmyyyy-mm-dd_routineid_sessionidmd)
 for the YAML shape. Several blocks are supported per session (different cardio types, or the
@@ -210,7 +210,7 @@ same one resumed later after e.g. stretching in between).
   fixed-daily-routine special case). `startBlock()` counts *down* from that value once
   every second and **keeps going past zero into negative/overtime** rather than
   auto-stopping — the countdown is a pacing aid, not an enforced cutoff; only an explicit
-  "Termina cardio" tap ends the block (`stopBlock()`). If the routine exercise has no
+  "Termina" tap ends the block (`stopBlock()`). If the routine exercise has no
   configured duration (`timePerSetSeconds == 0`), the countdown just starts at 0 and
   free-runs into overtime immediately — no separate count-up mode.
 - **Duration is set per routine only**, in `RoutineEditScreen`'s "Durata cardio" picker —
@@ -220,7 +220,7 @@ same one resumed later after e.g. stretching in between).
 - **Never left half-open**: an `ExerciseSet.Cardio` with a blank `endedAt` is never persisted
   against an exercise marked `completed`. `completeExercise()` force-closes a still-running
   block before saving. A block left running because the app died mid-session (not a clean
-  "Termina cardio") is instead closed silently the next time the screen opens
+  "Termina") is instead closed silently the next time the screen opens
   (`CardioExerciseViewModel.init`), same "don't leave inconsistent state lying around" spirit
   as the ghost-session guard (see [CONVENTIONS.md](CONVENTIONS.md#ghost-session-prevention)).
 - **Tonnage**: `excludeFromTonnage` is always `true` for CARDIO, regardless of section
