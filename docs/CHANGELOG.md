@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 126 — Description collassata quando vuota (un tap per scrivere)
+
+Nuovo `CollapsibleDescriptionField` (`ui/components`): quando la descrizione è vuota mostra solo una riga singola (`OutlinedCard` con label + freccia) invece del campo a 2–3 righe — resta visibile così si può aggiungere con un tap. Il tap espande e dà subito focus con tastiera aperta (nessun secondo tap per iniziare a scrivere); da espansa e ancora vuota si può ricollassare con la freccia in alto. Se il valore arriva dopo (load async) o non è vuoto, il campo è sempre esteso. Stesso debounce+flush dell'`AutoSaveTextField` originale (contratto di save invariato). Usato in `StrengthExerciseScreen`, `StretchExerciseScreen`, `SupersetScreen` (`ExerciseInfoCard`) + variante senza autosave (`CollapsibleNotesField`) per note in `ExerciseEditScreen`. Solo UI, niente test nuovi; build + `./gradlew test` verdi.
+
 ## Phase 125 — Tempo Poliquin nel superset: un loop per membro sotto HR
 
 `SupersetScreen` mostra un `TempoAnimation` full-size per ogni membro FORZA con tempo abilitato, in stack sotto `HeartRateBar` (stessa posizione dello strength screen) con il nome del membro in `ForzaColor` sopra ogni loop così 2–3 tempi diversi restano distinguibili; niente quando nessun membro ne ha uno. Nessun cambio ViewModel — `SupersetMemberUi.exercise.tempo` era già caricato via `getById`. Solo UI, niente test nuovi; `./gradlew test` verde.

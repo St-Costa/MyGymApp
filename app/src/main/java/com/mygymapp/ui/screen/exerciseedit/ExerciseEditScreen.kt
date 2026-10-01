@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
 import com.mygymapp.ui.components.BodyPartAutocomplete
+import com.mygymapp.ui.components.CollapsibleNotesField
 import com.mygymapp.ui.components.DeleteConfirmationDialog
 import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.RoundStepButton
@@ -280,12 +281,13 @@ fun ExerciseEditScreen(
                 )
             }
 
-            OutlinedTextField(
+            // Collassata a una riga quando vuota (un tap: espandi+focus).
+            CollapsibleNotesField(
                 value = uiState.notes,
                 onValueChange = viewModel::onNotesChange,
-                label = { Text("Notes / Description") },
-                minLines = 3,
+                label = "Notes / Description",
                 modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
             )
 
             OutlinedTextField(
