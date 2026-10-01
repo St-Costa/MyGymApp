@@ -33,7 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.components.CollapsibleAutoSaveDescription
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
@@ -107,8 +107,9 @@ fun StrengthExerciseScreen(
                 // Media (image or YouTube thumbnail)
                 MediaPreview(link = uiState.exercise?.link ?: "")
 
-                // Description (auto-save)
-                AutoSaveTextField(
+                // Description (auto-save) — collassata a una riga quando vuota, resta
+                // visibile: un tap la espande con focus+tastiera subito pronti.
+                CollapsibleAutoSaveDescription(
                     value = uiState.description,
                     onValueChange = viewModel::updateDescription,
                     onSave = viewModel::saveDescription,

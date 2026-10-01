@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseType
-import com.mygymapp.ui.components.AutoSaveTextField
+import com.mygymapp.ui.components.CollapsibleAutoSaveDescription
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
@@ -320,7 +320,8 @@ private fun ExerciseInfoCard(
             if (exercise.link.isNotBlank()) {
                 MediaPreview(link = exercise.link)
             }
-            AutoSaveTextField(
+            // Collassata a una riga quando vuota (un tap: espandi+focus).
+            CollapsibleAutoSaveDescription(
                 value = description,
                 onValueChange = onDescriptionChange,
                 onSave = onDescriptionSave,
