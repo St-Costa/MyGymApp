@@ -187,6 +187,25 @@ Every `startScan` / `startHrStreaming` / `startEcgStreamingInternal` begins with
 
 `waitForUpOrCancellation()` returns `null` for **both** gesture-cancellation (a scroll stole the touch) and genuine timeout (a long press). Distinguishing them requires a `gestureCancelled` flag set inside the `withTimeoutOrNull` block before the timeout fires. Treating both cases as long-press caused scrolling over the button to trigger the repeat loop.
 
+## Haptic tick: `USAGE_HARDWARE_FEEDBACK` + predefined effect, not a bare one-shot
+
+`ui.components.HapticTick` (`performHapticTick` / `rememberHapticTick`) is the one place that
+should ever touch the `Vibrator` for UI feedback (home tiles, `ScrollPickerInput` ±). Two
+non-obvious failure modes, both found by reading `adb shell dumpsys vibrator_manager` (it logs
+every vibration with its `usage` and whether it was `finished` or `ignored_for_settings`):
+
+- `vibrator.vibrate(effect)` with no `VibrationAttributes` is classified `usage: TOUCH`. If the
+  device's "vibrate on touch" setting is off (`VibrationIntensities: TOUCH = OFF` in the dump),
+  the system silently drops it — no exception, nothing in app logs, the call just does nothing.
+  Fix: always pass `VibrationAttributes.createForUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK)`
+  (guard `SDK_INT >= R`) — a separate channel, defaults to MEDIUM, not gated by that toggle.
+- Even once it's not being dropped (`finished` in the dump), a generic-amplitude `createOneShot`
+  reads as a faint buzz on some linear motors (observed on Samsung) — too weak to notice even at
+  60 ms. `VibrationEffect.createPredefined(EFFECT_HEAVY_CLICK)` (check support first with
+  `vibrator.areEffectsSupported(...)`, requires `SDK_INT >= Q`) uses the manufacturer's own tuned
+  effect on real hardware and is far more distinct at the same duration. Keep the one-shot only
+  as the fallback for devices without a supported predefined effect.
+
 ## Common-exercise tonnage
 
 Gitgraph / session comparisons don't use `totalTonnage` directly. They use `computeCommonTonnage(s1, s2)` which restricts to exercises present in *both* sessions. Otherwise adding a new exercise to a routine reads as a sudden tonnage jump. Falls back to `totalTonnage` only when there is no overlap. All tonnage readers also filter `!excludeFromTonnage` (see below).

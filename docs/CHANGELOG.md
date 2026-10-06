@@ -2,6 +2,26 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 132 — Haptic tick: usage corretto + effetto predefinito
+
+Il tick di Phase 131/131b restava silenzioso su alcuni telefoni pur girando senza eccezioni.
+Diagnosi via `adb shell dumpsys vibrator_manager` (mostra per ogni vibrazione lo `usage` e se è
+stata `ignored_for_settings` o `finished`): `vibrator.vibrate(effect)` senza attributi viene
+classificato `usage: TOUCH`, e quel canale era `OFF` nelle `VibrationIntensities` del telefono
+(Impostazioni → Vibrazione e aptica → Tocco) — il sistema scartava la vibrazione in silenzio,
+a prescindere dal codice. Fix: `performHapticTick` passa ora `VibrationAttributes` con
+`USAGE_HARDWARE_FEEDBACK` (canale separato, default MEDIUM, non legato al toggle "vibrazione al
+tocco"; guard `SDK_INT >= R` per attrs, no-op prima). Il log confermava poi `finished` ma la
+vibrazione restava comunque appena percettibile: il one-shot a ampiezza generica rende come un
+ronzio debole sui motori lineari (riscontrato su Samsung). Sostituito con
+`VibrationEffect.createPredefined(EFFECT_HEAVY_CLICK)` quando il device lo supporta
+(`vibrator.areEffectsSupported(...)`, richiede `SDK_INT >= Q`; il device di test esponeva
+`capabilities = [COMPOSE_EFFECTS, AMPLITUDE_CONTROL]`, `supportedEffects = [CLICK, DOUBLE_CLICK,
+TICK, HEAVY_CLICK]`) — effetto tarato dal produttore sul motore reale, molto più netto a parità
+di durata. Fallback al one-shot da 60 ms (`HAPTIC_TICK_MS`) se l'effetto predefinito non è
+supportato. Nessun cambio di API esterna (`performHapticTick`/`rememberHapticTick` invariati).
+Solo UI/haptics, niente test nuovi; `./gradlew test` + `assembleDebug` verdi.
+
 ## Phase 131 — Haptic feedback: tile home + step ± tenuti premuti
 
 Piccola vibrazione (one-shot da 60 ms a ampiezza di default sul `Vibrator` di
