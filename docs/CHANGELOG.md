@@ -4,14 +4,19 @@ Historical phase log. The most recent commits live in `git log` — this file ca
 
 ## Phase 131 — Haptic feedback: tile home + step ± tenuti premuti
 
-Piccola vibrazione (`LocalHapticFeedback`, `HapticFeedbackType.LongPress` — rispetta
-l'impostazione di sistema, nessun permesso extra) alla pressione dei 4 tile della home
-(`MainMenuTile`: l'haptic avvolge l'`onClick`) e a ogni attivazione dei `+/−` di
+Piccola vibrazione (one-shot da 60 ms a ampiezza di default sul `Vibrator` di
+sistema — `VIBRATE` era già nel manifest) alla pressione dei 4 tile della home
+(`MainMenuTile`: il tick avvolge l'`onClick`) e a ogni attivazione dei `+/−` di
 `ScrollPickerInput.PickerButton`: tap singolo e ogni scatto del long-press repeat
 (+5 rip / +10 kg), letto via `rememberUpdatedState` così il blocco `pointerInput`
-(keyed su `Unit`, mai riavviato) usa sempre l'istanza corrente. Copre in un colpo solo
-tutti gli stepper esistenti (Strength, Superset, RoutineEdit, Options). Solo UI,
-niente test nuovi; `./gradlew test` + `assembleDebug` verdi.
+(keyed su `Unit`, mai riavviato) usa sempre la lambda corrente. Il tick vive
+nell'helper condiviso `ui.components.HapticTick` (`performHapticTick` /
+`rememberHapticTick`, try/catch perché l'haptic non deve mai rompere
+l'interazione): il primo tentativo con `LocalHapticFeedback.LongPress` (~20 ms,
+inoltre ignorato se il feedback aptico di sistema è spento) sul telefono non si
+sentiva. Copre in un colpo solo tutti gli stepper esistenti (Strength, Superset,
+RoutineEdit, Options). Solo UI, niente test nuovi; `./gradlew test` +
+`assembleDebug` verdi.
 
 ## Phase 130 — Descrizione vuota collassata: via la freccia, label attenuata
 
