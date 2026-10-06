@@ -1,12 +1,10 @@
 package com.mygymapp.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,9 +30,10 @@ import kotlinx.coroutines.delay
 
 /**
  * Descrizione collassata quando vuota: resta visibile come riga singola
- * ("Description" + freccia) così occupa poco spazio ma si può aggiungere
- * con un tap. Il tap espande il campo e gli dà subito il focus (tastiera
- * aperta), senza bisogno di un secondo tap per iniziare a scrivere.
+ * (solo label attenuata, senza freccia — l'attenuazione segnala che è vuota)
+ * così occupa poco spazio ma si può aggiungere con un tap. Il tap espande
+ * il campo e gli dà subito il focus (tastiera aperta), senza bisogno di un
+ * secondo tap per iniziare a scrivere.
  *
  * Quando il valore non è vuoto il campo è sempre mostrato per intero.
  */
@@ -184,18 +183,12 @@ private fun CollapsedDescriptionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Icon(
-                Icons.Filled.ExpandMore,
-                contentDescription = "Espandi descrizione",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             )
         }
     }
