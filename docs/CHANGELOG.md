@@ -2,6 +2,25 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 131 — Haptic feedback: tile home + step ± tenuti premuti
+
+Piccola vibrazione (`LocalHapticFeedback`, `HapticFeedbackType.LongPress` — rispetta
+l'impostazione di sistema, nessun permesso extra) alla pressione dei 4 tile della home
+(`MainMenuTile`: l'haptic avvolge l'`onClick`) e a ogni attivazione dei `+/−` di
+`ScrollPickerInput.PickerButton`: tap singolo e ogni scatto del long-press repeat
+(+5 rip / +10 kg), letto via `rememberUpdatedState` così il blocco `pointerInput`
+(keyed su `Unit`, mai riavviato) usa sempre l'istanza corrente. Copre in un colpo solo
+tutti gli stepper esistenti (Strength, Superset, RoutineEdit, Options). Solo UI,
+niente test nuovi; `./gradlew test` + `assembleDebug` verdi.
+
+## Phase 130 — Descrizione vuota collassata: via la freccia, label attenuata
+
+La riga collassata di `CollapsibleDescriptionField` (descrizione vuota) non mostra più la
+freccia `ExpandMore`: resta solo la label con `onSurfaceVariant` al 60% di opacità, così
+l'attenuazione segnala che il campo è vuoto. Comportamento invariato (tap per
+espandere con focus + tastiera, ricollasso da vuota). Solo UI, niente test nuovi;
+`./gradlew test` + `assembleDebug` verdi.
+
 ## Phase 129 — Pulsanti: etichette più corte e tutte in bold
 
 Rinominate (solo label visibili, nessun cambio di comportamento) tutte le etichette dei
