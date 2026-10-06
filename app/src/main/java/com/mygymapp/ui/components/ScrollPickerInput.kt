@@ -22,9 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -42,8 +40,9 @@ import kotlin.math.roundToInt
  *   - Tap (release < 1s) → haptic tick + onClick
  *   - Hold ≥ 1s → haptic tick + onLongPressRepeat fires, then again every 1s until released
  *
- * The haptic tick is the same HapticFeedbackType.LongPress pulse used by the home menu
- * tiles — one small vibration per activation, including every long-press repeat step.
+ * The haptic tick is the shared [performHapticTick] pulse (60 ms [Vibrator]
+ * one-shot, same as the home menu tiles) — one small vibration per activation,
+ * including every long-press repeat step.
  *
  * rememberUpdatedState keeps lambdas fresh across recompositions without restarting
  * the pointerInput block (keyed on Unit).
@@ -54,14 +53,12 @@ private fun PickerButton(
     onClick: () -> Unit,
     onLongPressRepeat: (() -> Unit)? = null,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val hapticTick = rememberHapticTick()
     val currentOnClick = rememberUpdatedState(onClick)
     val currentOnLongPressRepeat = rememberUpdatedState(onLongPressRepeat)
     // Read through rememberUpdatedState so the pointerInput block (keyed on Unit,
-    // never restarted) always performs on the current HapticFeedback instance.
-    val currentPerformTick = rememberUpdatedState({
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-    })
+    // never restarted) always performs on the current tick lambda.
+    val currentPerformTick = rememberUpdatedState(hapticTick)
 
     Box(
         modifier = Modifier

@@ -35,15 +35,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.GitgraphView
+import com.mygymapp.ui.components.rememberHapticTick
 
 @Composable
 fun MainScreen(
@@ -154,10 +153,10 @@ private fun MainMenuTile(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val hapticTick = rememberHapticTick()
     Card(
         onClick = {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            hapticTick()
             onClick()
         },
         modifier = modifier.aspectRatio(1f),
