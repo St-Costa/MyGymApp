@@ -22,7 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,8 +39,11 @@ import kotlin.math.roundToInt
  * annotated @RestrictsSuspension and only allows its own member suspend functions.
  *
  * Behavior:
- *   - Tap (release < 1s) → onClick
- *   - Hold ≥ 1s → onLongPressRepeat fires, then again every 1s until released
+ *   - Tap (release < 1s) → haptic tick + onClick
+ *   - Hold ≥ 1s → haptic tick + onLongPressRepeat fires, then again every 1s until released
+ *
+ * The haptic tick is the same HapticFeedbackType.LongPress pulse used by the home menu
+ * tiles — one small vibration per activation, including every long-press repeat step.
  *
  * rememberUpdatedState keeps lambdas fresh across recompositions without restarting
  * the pointerInput block (keyed on Unit).
@@ -49,8 +54,14 @@ private fun PickerButton(
     onClick: () -> Unit,
     onLongPressRepeat: (() -> Unit)? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     val currentOnClick = rememberUpdatedState(onClick)
     val currentOnLongPressRepeat = rememberUpdatedState(onLongPressRepeat)
+    // Read through rememberUpdatedState so the pointerInput block (keyed on Unit,
+    // never restarted) always performs on the current HapticFeedback instance.
+    val currentPerformTick = rememberUpdatedState({
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+    })
 
     Box(
         modifier = Modifier
@@ -81,11 +92,15 @@ private fun PickerButton(
                         }
 
                         when {
-                            result != null -> currentOnClick.value()
+                            result != null -> {
+                                currentPerformTick.value()
+                                currentOnClick.value()
+                            }
                             gestureCancelled -> { /* scroll stole the gesture — do nothing */ }
                             else -> {
-                                // Long press: fire immediately, then every 500ms while held
+                                // Long press: tick + fire immediately, then every 500ms while held
                                 while (true) {
+                                    currentPerformTick.value()
                                     currentOnLongPressRepeat.value?.invoke()
                                     val released = withTimeoutOrNull(500L) {
                                         awaitPointerEventScope { waitForUpOrCancellation() }
@@ -96,7 +111,10 @@ private fun PickerButton(
                         }
                     } else {
                         val change = awaitPointerEventScope { waitForUpOrCancellation() }
-                        if (change != null) currentOnClick.value()
+                        if (change != null) {
+                            currentPerformTick.value()
+                            currentOnClick.value()
+                        }
                     }
                 }
             },
