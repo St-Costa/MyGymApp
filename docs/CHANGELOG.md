@@ -2,6 +2,14 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 133 — Cardio: schermo acceso durante il blocco
+
+`CardioExerciseScreen` teneva il timer visibile ma lo schermo andava in standby
+a metà corsa. Ora imposta `view.keepScreenOn` solo mentre il blocco è in corso
+(`isBlockRunning`, rilasciato in `onDispose`): niente permessi extra, niente
+WakeLock, e fuori dal blocco il comportamento torna quello di sistema. Solo UI,
+niente test nuovi; `compileDebugKotlin` verde.
+
 ## Phase 132 — Haptic tick: usage corretto + effetto predefinito
 
 Il tick di Phase 131/131b restava silenzioso su alcuni telefoni pur girando senza eccezioni.

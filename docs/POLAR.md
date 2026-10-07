@@ -229,6 +229,10 @@ same one resumed later after e.g. stretching in between).
   `RoutineEditScreen`'s "Superset" button never shows for one (superset pairing is
   strictly FORZA/STRETCH; `SupersetViewModel`/`SupersetScreen` only know how to interleave
   reps/weight or timeSeconds/done).
+- **Schermo acceso durante il blocco**: `CardioExerciseScreen` imposta
+  `view.keepScreenOn` finché `isBlockRunning` è vero (rilasciato in `onDispose`) —
+  lo schermo non va in standby mentre il timer gira. Nessun permesso extra (niente
+  WakeLock); fuori dal blocco il comportamento torna quello di sistema.
 - **History**: `CardioExerciseScreen` shows a small panel of past sessions for the same
   `exerciseId`, reusing `WorkoutRepository.getSessionsForExercise()` unchanged (no new
   repository) — aggregated inline (summed block duration, averaged `avgHr`, maxed `maxHr`
