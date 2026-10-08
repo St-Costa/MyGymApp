@@ -30,6 +30,13 @@ class StopwatchService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.mygymapp.START_STOPWATCH"
         const val ACTION_STOP = "com.mygymapp.STOP_STOPWATCH"
+        /**
+         * Optional start extra: when present and > 0 the service runs a countdown loop of
+         * that many seconds (stretch mode) instead of the legacy count-up stopwatch —
+         * restarting automatically at zero, buzzing every 30s inside the loop and three
+         * times fast on each loop completion. Absent (superset) = legacy count-up.
+         */
+        const val EXTRA_DURATION_SECONDS = "com.mygymapp.COUNTDOWN_DURATION_SECONDS"
 
         // 5 light colors readable with black text, one per minute (cycles)
         private val CYCLE_COLORS = intArrayOf(
@@ -45,6 +52,10 @@ class StopwatchService : Service() {
     private var startElapsedRealtime = 0L
     private var startWallClockTime = 0L
     private var lastVibrationAt = -1
+    // Countdown-loop mode (stretch): null = legacy count-up stopwatch.
+    private var countdownDuration: Int? = null
+    private var loopStartElapsed = 0L
+    private var loopCount = 1
 
     // Reused across every tick to avoid per-second allocations during a stretch workout.
     private val timerBitmap: Bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
@@ -61,13 +72,34 @@ class StopwatchService : Service() {
 
     private val tickRunnable = object : Runnable {
         override fun run() {
-            val elapsed = ((SystemClock.elapsedRealtime() - startElapsedRealtime) / 1000).toInt()
-            if (elapsed > 0 && elapsed - lastVibrationAt >= 30) {
-                lastVibrationAt = elapsed
-                vibrate()
+            val now = SystemClock.elapsedRealtime()
+            val duration = countdownDuration
+            if (duration != null) {
+                // Countdown-loop mode: the 30s cadence is per-loop, and the loop-end
+                // triple buzz takes precedence when both land on the same second
+                // (e.g. a 30s stretch buzzes three times, not once).
+                var loopElapsed = ((now - loopStartElapsed) / 1000).toInt()
+                if (loopElapsed >= duration) {
+                    vibrateTriple()
+                    loopStartElapsed = now
+                    loopElapsed = 0
+                    loopCount++
+                    lastVibrationAt = -1
+                } else if (loopElapsed > 0 && loopElapsed - lastVibrationAt >= 30) {
+                    lastVibrationAt = loopElapsed
+                    vibrate()
+                }
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildCountdownNotification(duration - loopElapsed, loopCount))
+            } else {
+                val elapsed = ((now - startElapsedRealtime) / 1000).toInt()
+                if (elapsed > 0 && elapsed - lastVibrationAt >= 30) {
+                    lastVibrationAt = elapsed
+                    vibrate()
+                }
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildNotification(elapsed))
             }
-            getSystemService(NotificationManager::class.java)
-                .notify(NOTIFICATION_ID, buildNotification(elapsed))
             handler.postDelayed(this, 1000)
         }
     }
@@ -85,7 +117,11 @@ class StopwatchService : Service() {
                 startElapsedRealtime = SystemClock.elapsedRealtime()
                 startWallClockTime = System.currentTimeMillis()
                 lastVibrationAt = -1
-                val notification = buildNotification(0)
+                countdownDuration = intent.getIntExtra(EXTRA_DURATION_SECONDS, 0).takeIf { it > 0 }
+                loopStartElapsed = startElapsedRealtime
+                loopCount = 1
+                val notification = countdownDuration?.let { buildCountdownNotification(it, 1) }
+                    ?: buildNotification(0)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
                         NOTIFICATION_ID,
@@ -100,6 +136,8 @@ class StopwatchService : Service() {
             ACTION_STOP -> {
                 handler.removeCallbacks(tickRunnable)
                 lastVibrationAt = -1
+                countdownDuration = null
+                loopCount = 1
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -117,16 +155,39 @@ class StopwatchService : Service() {
     private fun buildNotification(elapsedSeconds: Int): Notification {
         val secs = elapsedSeconds % 60
         val colorIndex = (elapsedSeconds / 60) % CYCLE_COLORS.size
-        val bgColor = CYCLE_COLORS[colorIndex]
-        val bitmap = createTimerBitmap(secs, bgColor)
-        val totalTime = "%d:%02d".format(elapsedSeconds / 60, secs)
+        return buildTimerNotification(
+            title = "Stopwatch",
+            text = "%d:%02d".format(elapsedSeconds / 60, secs),
+            secsForIcon = secs,
+            bgColor = CYCLE_COLORS[colorIndex],
+        )
+    }
+
+    private fun buildCountdownNotification(remainingSeconds: Int, loop: Int): Notification {
+        val secs = remainingSeconds % 60
+        val colorIndex = (remainingSeconds / 60) % CYCLE_COLORS.size
+        return buildTimerNotification(
+            title = "Stretch",
+            text = "%d:%02d · loop %d".format(remainingSeconds / 60, secs, loop),
+            secsForIcon = secs,
+            bgColor = CYCLE_COLORS[colorIndex],
+        )
+    }
+
+    private fun buildTimerNotification(
+        title: String,
+        text: String,
+        secsForIcon: Int,
+        bgColor: Int,
+    ): Notification {
+        val bitmap = createTimerBitmap(secsForIcon, bgColor)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
             val n = Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(Icon.createWithBitmap(bitmap))
                 .setLargeIcon(Icon.createWithBitmap(bitmap))
-                .setContentTitle("Stopwatch")
-                .setContentText(totalTime)
+                .setContentTitle(title)
+                .setContentText(text)
                 .setCategory(Notification.CATEGORY_STOPWATCH)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -143,8 +204,8 @@ class StopwatchService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(IconCompat.createWithBitmap(bitmap))
             .setLargeIcon(bitmap)
-            .setContentTitle("Stopwatch")
-            .setContentText(totalTime)
+            .setContentTitle(title)
+            .setContentText(text)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -163,15 +224,29 @@ class StopwatchService : Service() {
         return timerBitmap
     }
 
-    private fun vibrate() {
+    private fun systemVibrator(): Vibrator? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getSystemService(VibratorManager::class.java)
-                .defaultVibrator
-                .vibrate(VibrationEffect.createOneShot(2000, 255))
+            getSystemService(VibratorManager::class.java)?.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             getSystemService(Vibrator::class.java)
-                .vibrate(VibrationEffect.createOneShot(2000, 255))
+        }
+
+    private fun vibrate() {
+        systemVibrator()?.vibrate(VibrationEffect.createOneShot(2000, 255))
+    }
+
+    /**
+     * Three quick buzzes marking a completed countdown loop. A single waveform rather
+     * than three one-shots: one `vibrate()` call can't be interleaved by the next tick.
+     */
+    private fun vibrateTriple() {
+        try {
+            systemVibrator()?.vibrate(
+                VibrationEffect.createWaveform(longArrayOf(0, 150, 150, 150, 150, 150), -1)
+            )
+        } catch (_: Throwable) {
+            // No-op: haptics must never break the timer.
         }
     }
 
