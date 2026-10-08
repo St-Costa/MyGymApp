@@ -29,7 +29,12 @@ data class StretchExerciseUiState(
     val description: String = "",
     val isLoading: Boolean = true,
     val isStopwatchRunning: Boolean = false,
-    val elapsedSeconds: Int = 0,
+    // Countdown-loop timer: counts down from [countdownDuration] (the set duration) and
+    // restarts automatically at zero — sets stay manual (toggled via checkbox), the loop
+    // only drives the display while StopwatchService owns buzz + notification.
+    val countdownDuration: Int = 60,
+    val remainingSeconds: Int = 60,
+    val loopCount: Int = 1,
     // See StrengthExerciseUiState for the "Switch exercise" fields' semantics.
     val switchEligible: Boolean = false,
     val excludeIds: Set<String> = emptySet(),
@@ -76,11 +81,17 @@ class StretchExerciseViewModel @Inject constructor(
             val switchEligible = workoutExercise?.isSwitchEligible() == true &&
                 !isDaily && workoutExercise?.excludeFromTonnage != true
 
+            // All sets share the routine's timePerSetSeconds (the editor has no per-set
+            // duration) — the countdown runs off the first set's duration.
+            val duration = sets.firstOrNull()?.timeSeconds?.coerceAtLeast(1) ?: 60
+
             _uiState.value = StretchExerciseUiState(
                 exercise = exercise,
                 sets = sets,
                 description = exercise.notes,
                 isLoading = false,
+                countdownDuration = duration,
+                remainingSeconds = duration,
                 switchEligible = switchEligible,
                 excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
@@ -100,15 +111,31 @@ class StretchExerciseViewModel @Inject constructor(
         if (wasRunning) {
             timerJob?.cancel()
             timerJob = null
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = false)
+            _uiState.value = _uiState.value.copy(
+                isStopwatchRunning = false,
+                remainingSeconds = _uiState.value.countdownDuration,
+                loopCount = 1,
+            )
         } else {
             timerJob?.cancel()
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = true, elapsedSeconds = 0)
+            val countdown = StretchCountdown.start(_uiState.value.countdownDuration)
+            _uiState.value = _uiState.value.copy(
+                isStopwatchRunning = true,
+                countdownDuration = countdown.remainingSeconds,
+                remainingSeconds = countdown.remainingSeconds,
+                loopCount = countdown.loopCount,
+            )
             timerJob = viewModelScope.launch {
                 while (true) {
                     delay(1000)
-                    _uiState.value = _uiState.value.copy(
-                        elapsedSeconds = _uiState.value.elapsedSeconds + 1
+                    val current = _uiState.value
+                    val (next, _) = StretchCountdown(
+                        remainingSeconds = current.remainingSeconds,
+                        loopCount = current.loopCount,
+                    ).tick(current.countdownDuration)
+                    _uiState.value = current.copy(
+                        remainingSeconds = next.remainingSeconds,
+                        loopCount = next.loopCount,
                     )
                 }
             }

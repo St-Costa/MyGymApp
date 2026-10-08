@@ -121,21 +121,32 @@ fun StretchExerciseScreen(
                 // Heart rate + recovery semaphore
                 HeartRateBar()
 
-                // Stopwatch timer display
-                val elapsed = uiState.elapsedSeconds
-                val formatted = remember(elapsed) { "%02d:%02d".format(elapsed / 60, elapsed % 60) }
+                // Countdown timer display — runs down the set duration and loops
+                // automatically at zero (StopwatchService buzzes: every 30s in-loop,
+                // three times fast on each loop completion). Red in the last 5s.
+                val remaining = uiState.remainingSeconds
+                val formatted = remember(remaining) { "%02d:%02d".format(remaining / 60, remaining % 60) }
                 Text(
                     text = formatted,
                     style = MaterialTheme.typography.displayMedium,
                     textAlign = TextAlign.Center,
-                    color = if (uiState.isStopwatchRunning)
-                        MaterialTheme.colorScheme.secondary
-                    else
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    color = when {
+                        uiState.isStopwatchRunning && remaining <= 5 -> MaterialTheme.colorScheme.error
+                        uiState.isStopwatchRunning -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = "${uiState.countdownDuration}s · loop ${uiState.loopCount}",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                // Stopwatch button
+                // Countdown button — the duration travels to StopwatchService so the
+                // loop (and its buzzes) keeps running with the screen off.
                 val context = LocalContext.current
                 Button(
                     onClick = {
@@ -146,6 +157,12 @@ fun StretchExerciseScreen(
                                 StopwatchService.ACTION_STOP
                             } else {
                                 StopwatchService.ACTION_START
+                            }
+                            if (!wasRunning) {
+                                putExtra(
+                                    StopwatchService.EXTRA_DURATION_SECONDS,
+                                    uiState.countdownDuration,
+                                )
                             }
                         }
                         if (wasRunning) {

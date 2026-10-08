@@ -2,6 +2,19 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 135 — Stretch: countdown in loop con vibrazioni
+
+Il timer degli stretch era un cronometro a salire scollegato dalla durata del set. Ora è
+un countdown che parte dai `timeSeconds` del set e ricomincia da solo a zero: un buzz ogni
+30s dentro il giro e tre vibrazioni veloci (waveform) a fine giro, con precedenza al
+triplo quando coincidono (stretch da 30s = solo triplo). Il loop vive nello
+`StopwatchService` (extra `EXTRA_DURATION_SECONDS`), quindi gira anche a schermo spento
+con notifica che mostra il rimanente e il numero di giro; senza extra (superset) resta il
+count-up legacy. Su schermo: `MM:SS` rimanente (rosso negli ultimi 5s) + riga
+"60s · loop N", solo display — i set restano checkbox manuali. Matematica del loop nella
+pura `StretchCountdown` con `StretchCountdownTest` (6 test); servizio invariato per il
+resto. `compileDebugKotlin` + `testDebugUnitTest` verdi (JDK 21).
+
 ## Phase 134 — Pulsanti azione: più stretti, più grandi, più bold
 
 I pulsanti azione occupavano tutta la larghezza dello schermo con il testo piccolo di

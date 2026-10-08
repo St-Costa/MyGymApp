@@ -192,6 +192,20 @@ Generated with `UUID.randomUUID().toString().replace("-", "").take(8)`. You can 
 
 `StopwatchService` handles repeated `ACTION_START` by calling `handler.removeCallbacks(tickRunnable)` before `postDelayed`. Without that, a duplicate start would queue two tickers and double every vibration.
 
+## Stretch countdown loop
+
+The stretch timer is a countdown, not the legacy count-up: `StretchExerciseScreen` passes
+the set duration (`EXTRA_DURATION_SECONDS`, from the first set's `timeSeconds` — all sets
+share the routine's `timePerSetSeconds`) to `StopwatchService`, which owns the loop so it
+keeps running with the screen off. Loop semantics: restart automatically at zero, one buzz
+every 30s inside the loop (per-loop cadence, reset on wrap), three quick buzzes
+(`createWaveform`, not three one-shots) on each loop completion — the triple takes
+precedence when both land on the same second (a 30s stretch buzzes three times, not once).
+No-duration start (superset) keeps the legacy count-up. The on-screen `MM:SS` is display
+only, driven by the pure [`StretchCountdown`](../app/src/main/java/com/mygymapp/ui/screen/stretchexercise/StretchCountdown.kt)
+state machine (`tick()` returns the loop-completion flag; sets stay manual checkboxes —
+a finished loop never auto-marks a set). Timer goes red in the last 5s.
+
 ## Polar disposables
 
 Every `startScan` / `startHrStreaming` / `startEcgStreamingInternal` begins with `xxxDisposable?.dispose()`. If you add a new Rx subscription, follow suit — skipping it leaks the previous subscription and can cause overlapping emissions when a device reconnects.
