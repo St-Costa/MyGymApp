@@ -200,7 +200,7 @@ fun SupersetScreen(
                             }
                             if (wasRunning) context.startService(svcIntent) else context.startForegroundService(svcIntent)
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (uiState.isStopwatchRunning)
                                 MaterialTheme.colorScheme.error
@@ -208,7 +208,7 @@ fun SupersetScreen(
                                 MaterialTheme.colorScheme.secondary,
                         ),
                     ) {
-                        Text(if (uiState.isStopwatchRunning) "Stop" else "Start")
+                        com.mygymapp.ui.components.ActionButtonText(if (uiState.isStopwatchRunning) "Stop" else "Start")
                     }
                 }
 
@@ -266,7 +266,7 @@ fun SupersetScreen(
                 }
                 Button(
                     onClick = { viewModel.completeSuperset() },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                     colors = if (anyTouched) {
                         ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -278,7 +278,7 @@ fun SupersetScreen(
                         )
                     },
                 ) {
-                    Text(if (anyTouched) "Completa" else "Salta")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Completa" else "Salta")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

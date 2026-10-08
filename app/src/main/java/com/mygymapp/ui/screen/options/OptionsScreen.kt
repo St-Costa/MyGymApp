@@ -307,12 +307,12 @@ private fun ServerSettingsSection(
             OutlinedButton(
                 onClick = onVerifyBackup,
                 enabled = configured && !uiState.backupVerifyRunning,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
             ) {
                 if (uiState.backupVerifyRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Verifica backup")
+                    com.mygymapp.ui.components.ActionButtonText("Verifica backup")
                 }
             }
             if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
@@ -367,12 +367,12 @@ private fun ServerSettingsSection(
             Button(
                 onClick = onResyncAll,
                 enabled = !uiState.syncIsResyncing && configured,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
             ) {
                 if (uiState.syncIsResyncing) {
-                    Text("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
+                    com.mygymapp.ui.components.ActionButtonText("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
                 } else {
-                    Text("Invia")
+                    com.mygymapp.ui.components.ActionButtonText("Invia")
                 }
             }
             if (uiState.syncIsResyncing) {
@@ -390,9 +390,9 @@ private fun ServerSettingsSection(
                 OutlinedButton(
                     onClick = { showRestoreConfirm = true },
                     enabled = !uiState.syncIsRestoring,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                 ) {
-                    Text(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina")
+                    com.mygymapp.ui.components.ActionButtonText(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina")
                 }
                 uiState.syncRestoreResult?.let {
                     Text(
