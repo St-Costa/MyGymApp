@@ -227,9 +227,9 @@ fun SessionProgressScreen(
             if (justCompleted) {
                 androidx.compose.material3.Button(
                     onClick = onDone,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally).padding(top = 8.dp),
                 ) {
-                    Text("Fatto")
+                    com.mygymapp.ui.components.ActionButtonText("Fatto")
                 }
             }
         }

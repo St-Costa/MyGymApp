@@ -2,6 +2,16 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 134 — Pulsanti azione: più stretti, più grandi, più bold
+
+I pulsanti azione occupavano tutta la larghezza dello schermo con il testo piccolo di
+default. Ora i primari (Completa/Salta, Inizia/Termina, Start/Stop, Registra, Fatto +
+Verifica backup/Invia/Ripristina nelle Opzioni) sono larghi l'85% e centrati, con
+etichetta condivisa `ActionButtonText` (`CommonComposables.kt`: titleMedium a 18sp
+ExtraBold). I pulsanti secondari/debug restano invariati. Solo UI, niente test nuovi;
+`compileDebugKotlin` + `testDebugUnitTest` verdi (con `JAVA_HOME` su JDK 21: il JDK 25
+di default fa fallire il build Gradle prima ancora di compilare).
+
 ## Phase 133 — Cardio: schermo acceso durante il blocco
 
 `CardioExerciseScreen` teneva il timer visibile ma lo schermo andava in standby

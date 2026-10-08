@@ -25,6 +25,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+
+/**
+ * Testo dei pulsanti azione primari (Completa/Salta, Inizia/Termina, Registra, ...):
+ * leggermente più grande del default dei Button (labelLarge 14sp) e ExtraBold.
+ */
+@Composable
+fun ActionButtonText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 18.sp,
+        ),
+        textAlign = TextAlign.Center,
+    )
+}
 
 @Composable
 fun FullscreenLoading(paddingValues: PaddingValues = PaddingValues(0.dp)) {

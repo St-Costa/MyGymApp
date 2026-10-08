@@ -252,13 +252,18 @@ fun ActiveRoutineScreen(
 
                 // Register button — shown before progress chart
                 item(key = "register_button") {
-                    Button(
-                        onClick = { viewModel.requestRegisterRoutine() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp, bottom = 8.dp),
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("Registra")
+                        Button(
+                            onClick = { viewModel.requestRegisterRoutine() },
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .padding(top = 8.dp, bottom = 8.dp),
+                        ) {
+                            com.mygymapp.ui.components.ActionButtonText("Registra")
+                        }
                     }
                 }
 

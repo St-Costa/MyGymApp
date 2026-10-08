@@ -255,7 +255,7 @@ fun StrengthExerciseScreen(
                 // (anyTouched is hoisted above — the swap icon mirrors it.)
                 Button(
                     onClick = { viewModel.completeExercise() },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                     colors = if (anyTouched) {
                         ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -267,7 +267,7 @@ fun StrengthExerciseScreen(
                         )
                     },
                 ) {
-                    Text(if (anyTouched) "Completa" else "Salta")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Completa" else "Salta")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

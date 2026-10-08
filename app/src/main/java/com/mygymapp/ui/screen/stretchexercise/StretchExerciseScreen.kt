@@ -154,7 +154,7 @@ fun StretchExerciseScreen(
                             context.startForegroundService(intent)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (uiState.isStopwatchRunning)
                             MaterialTheme.colorScheme.error
@@ -162,7 +162,7 @@ fun StretchExerciseScreen(
                             MaterialTheme.colorScheme.secondary,
                     ),
                 ) {
-                    Text(
+                    com.mygymapp.ui.components.ActionButtonText(
                         if (uiState.isStopwatchRunning) "Stop" else "Start"
                     )
                 }
@@ -201,7 +201,7 @@ fun StretchExerciseScreen(
                 // (anyDone is hoisted above — the swap icon mirrors it.)
                 Button(
                     onClick = { viewModel.completeExercise() },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                     colors = if (anyDone) {
                         ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -213,7 +213,7 @@ fun StretchExerciseScreen(
                         )
                     },
                 ) {
-                    Text(if (anyDone) "Completa" else "Salta")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyDone) "Completa" else "Salta")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

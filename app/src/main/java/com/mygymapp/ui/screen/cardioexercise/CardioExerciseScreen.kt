@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
@@ -153,7 +154,7 @@ fun CardioExerciseScreen(
                             CardioButtonState.DONE -> viewModel.completeExercise()
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = when (buttonState) {
                             CardioButtonState.IDLE -> MaterialTheme.colorScheme.secondary
@@ -162,7 +163,7 @@ fun CardioExerciseScreen(
                         },
                     ),
                 ) {
-                    Text(
+                    com.mygymapp.ui.components.ActionButtonText(
                         when (buttonState) {
                             CardioButtonState.IDLE -> "Inizia"
                             CardioButtonState.RUNNING -> "Termina"
@@ -178,13 +179,13 @@ fun CardioExerciseScreen(
                 if (buttonState == CardioButtonState.IDLE) {
                     Button(
                         onClick = { viewModel.completeExercise() },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = SkippedColor,
                             contentColor = Color(0xFF1E1E1E),
                         ),
                     ) {
-                        Text("Salta")
+                        com.mygymapp.ui.components.ActionButtonText("Salta")
                     }
                 }
             }

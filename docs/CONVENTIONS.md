@@ -167,6 +167,19 @@ Both `RoutineEditViewModel.buildExerciseSegments` and `ActiveRoutineScreen.build
 
 Use `ExerciseType.accentColor()` from [`theme/Color.kt`](../app/src/main/java/com/mygymapp/ui/theme/Color.kt) to resolve FORZA → `ForzaColor`, STRETCH → `StretchColor`. Don't write the `when` block inline.
 
+## Primary action buttons
+
+The big workout-flow buttons (Completa/Salta, Inizia/Termina, Start/Stop, Registra,
+Fatto) and the three server buttons in Options (Verifica backup, Invia, Ripristina) are
+deliberately **narrower than full width**: `Modifier.fillMaxWidth(0.85f)` centered with
+`.align(Alignment.CenterHorizontally)` in a `Column` (or a centering `Box` wrapper inside
+a `LazyColumn` item, where there is no `ColumnScope` — see the register button in
+`ActiveRoutineScreen`). Their label is
+[`ActionButtonText`](../app/src/main/java/com/mygymapp/ui/components/CommonComposables.kt)
+(`titleMedium` copied to 18sp `ExtraBold`), not a bare `Text` — don't inline the style.
+Secondary/debug buttons (Options BLE/test buttons, routine-editor Add) stay full-width
+with the default label style.
+
 ## Typed ID prefixes
 
 - Exercises: `ex-{8hex}`
