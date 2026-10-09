@@ -2,6 +2,31 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 138 — Switch: badge confrontato col sostituito
+
+Il badge tonnellaggio%/RM% di uno slot sostituito usava lo storico proprio del subentrato
+(spesso assente → "primo dato", nessuna comparazione). Ora `applyExerciseSwitch` risolve il
+riferimento con la pura `resolveSwitchBaseline`: prima lo storico dell'esercizio
+*sostituito* (stesso bodypart+tipo per costruzione, pesi netti materializzati quindi
+confrontabili), con fallback a quello proprio e infine a "primo dato" se mancano entrambi.
+`ActiveRoutineBadgesTest` +4 test; `test` verde.
+
+## Phase 137 — Switch+completa: la riga restava "da eseguire"
+
+Completare un esercizio appena sostituito senza ripassare dalla lista lasciava la riga
+"da eseguire" con "Sostituito: …" e senza tonnellaggio, pur coi numeri salvati su disco
+(rientrava col pulsante grigio "Salta"). Causa: al pop finale arrivano insieme i due
+`savedStateHandle`-result (`switchedExerciseIds` + `completedExerciseId`) e
+`applyExerciseSwitch`/`markExerciseCompleted` giravano in concorrenza sulla stessa
+`_uiState.exercises`, perdendo il completamento in un read-modify-write incrociato.
+Ora un `completionMutex` li serializza, `applyExerciseSwitch` riporta il `completed` già
+su disco costruendo la riga già col badge (via la condivisa
+`ActiveExerciseUi.withCompletionFrom`, con le pure `tonnageChangePct`/`rmChangePct`), e
+rivaluta `allCompleted`/`finalizeSession`. Nuovo `ActiveRoutineBadgesTest` (4 test);
+`test` verde. Vedi `CONVENTIONS.md#switch-exercise` ("Switch + complete nella stessa
+navigazione"). Nota per la sessione già colpita: i dati su disco sono intatti —
+rientrare, toccare un valore e ricompletare rimette a posto la riga.
+
 ## Phase 135 — Stretch: countdown in loop con vibrazioni
 
 Il timer degli stretch era un cronometro a salire scollegato dalla durata del set. Ora è
