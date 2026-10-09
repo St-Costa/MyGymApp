@@ -34,12 +34,15 @@ class BatteryLifeReducerTest {
     }
 
     @Test
-    fun `consecutive readings within the gap cap accumulate active seconds`() {
+    fun `consecutive readings only advance bookkeeping, never active time`() {
         var s = reduce(null, 90, nowEpochSec = 0)
-        s = reduce(s, 90, nowEpochSec = 600)   // +10 min
-        s = reduce(s, 89, nowEpochSec = 1_200) // +10 min
-        assertEquals(1_200L, s.activeSeconds)
+        s = reduce(s, 90, nowEpochSec = 600)
+        s = reduce(s, 89, nowEpochSec = 1_200)
+        // Spans are added via addActiveSeconds (connect/disconnect/heartbeat), not here:
+        // battery callbacks arrive ~once per connect, so gap counting measured 0 h forever.
+        assertEquals(0L, s.activeSeconds)
         assertEquals(89, s.lastLevel)
+        assertEquals(1_200L, s.lastReadingEpochSec)
     }
 
     @Test
@@ -55,8 +58,8 @@ class BatteryLifeReducerTest {
     @Test
     fun `a rise of more than five points resets install date and counter`() {
         var s = reduce(null, 70, nowEpochSec = 0)
-        s = reduce(s, 70, nowEpochSec = 600) // 600s of use on the old cell
-        assertEquals(600L, s.activeSeconds)
+        s = reduce(s, 70, nowEpochSec = 600) // same cell, 10 min later — no time added here
+        assertEquals(0L, s.activeSeconds)
 
         // Next day: 70% -> 100%. Fresh CR2025.
         s = reduce(s, 100, nowEpochSec = 700, today = day2)
@@ -70,9 +73,12 @@ class BatteryLifeReducerTest {
 
     @Test
     fun `a swap folds the outgoing cell's active hours into the lifespan history`() {
-        var s = reduce(null, 100, nowEpochSec = 0)
-        // 40 h of active use accumulated in <=30min steps.
-        repeat(80) { i -> s = reduce(s, 100 - i / 8, nowEpochSec = (i + 1) * 30 * 60L) }
+        // 40 h of connected spans, as addActiveSeconds would have recorded them.
+        val s = BatteryLifeState(
+            installedAtDate = day1, installedAtLevel = 100, activeSeconds = 40 * hour,
+            lastLevel = 92, lastReadingEpochSec = 40 * hour,
+            pastLifeSeconds = emptyList(),
+        )
         assertEquals(40.0, s.activeHours, 0.01)
         assertTrue(s.pastLifeSeconds.isEmpty())
         assertNull(s.avgLifeHours)
@@ -98,11 +104,14 @@ class BatteryLifeReducerTest {
 
     @Test
     fun `a near-zero-life swap is not credited to the average`() {
-        var s = reduce(null, 100, nowEpochSec = 0)
-        s = reduce(s, 99, nowEpochSec = hour) // only 1 h on this cell — below MIN_CREDIBLE_LIFE_SEC
-        s = reduce(s, 100, nowEpochSec = hour + 60, today = day2) // pulled & reinserted
-        assertTrue(s.pastLifeSeconds.isEmpty())
-        assertNull(s.avgLifeHours)
+        // Only 1 h on this cell — below MIN_CREDIBLE_LIFE_SEC (2 h).
+        val s = BatteryLifeState(
+            installedAtDate = day1, installedAtLevel = 100, activeSeconds = hour,
+            lastLevel = 99, lastReadingEpochSec = hour,
+        )
+        val afterSwap = reduce(s, 100, nowEpochSec = hour + 60, today = day2) // pulled & reinserted
+        assertTrue(afterSwap.pastLifeSeconds.isEmpty())
+        assertNull(afterSwap.avgLifeHours)
     }
 
     @Test
@@ -122,7 +131,7 @@ class BatteryLifeReducerTest {
         var s = reduce(null, 80, nowEpochSec = 0)
         s = reduce(s, 85, nowEpochSec = 600) // +5 exactly -> not a reset
         assertEquals(day1, s.installedAtDate)
-        assertEquals(600L, s.activeSeconds)
+        assertEquals(0L, s.activeSeconds)
         assertEquals(85, s.lastLevel)
     }
 

@@ -32,8 +32,13 @@ class PolarStreamingService : Service() {
         private const val ACTION_STOP = "com.mygymapp.STOP_POLAR"
         private const val ACTION_UPDATE_HR = "com.mygymapp.UPDATE_POLAR_HR"
         private const val ACTION_RECONNECTING = "com.mygymapp.RECONNECTING_POLAR"
+        private const val ACTION_STANDBY = "com.mygymapp.STANDBY_POLAR"
         private const val EXTRA_HR = "hr"
         private const val EXTRA_DEVICE = "device"
+
+        /** True while the service is up (set on START, cleared on STOP/onDestroy). */
+        @Volatile
+        private var isRunning = false
 
         fun start(context: Context, deviceName: String?) {
             val intent = Intent(context, PolarStreamingService::class.java).apply {
@@ -98,6 +103,27 @@ class PolarStreamingService : Service() {
         }
 
         /**
+         * Switch the ongoing notification to a "Standby" state (BLE link kept, HR/ECG
+         * streams paused to save the strap's battery). No-op if the service isn't running —
+         * in particular this never resurrects a notification that [forceStop] (e.g. at
+         * session end) just removed. Best-effort from any thread: a backgrounded caller
+         * may hit BackgroundServiceStartNotAllowedException, which is swallowed — the
+         * in-app standby icon remains the source of truth.
+         */
+        fun setStandby(context: Context, deviceName: String?) {
+            if (!isRunning) return
+            try {
+                val intent = Intent(context, PolarStreamingService::class.java).apply {
+                    action = ACTION_STANDBY
+                    putExtra(EXTRA_DEVICE, deviceName ?: "Polar H10")
+                }
+                context.startService(intent)
+            } catch (t: Throwable) {
+                // Background start not allowed — notification keeps its last text.
+            }
+        }
+
+        /**
          * Fire a one-shot heads-up notification *with sound* when the sensor disconnects.
          * Independent of the foreground-service notification, on a high-importance channel.
          */
@@ -139,6 +165,7 @@ class PolarStreamingService : Service() {
 
     private var currentHr: Int? = null
     private var reconnecting: Boolean = false
+    private var standby: Boolean = false
     private var deviceName: String = "Polar H10"
 
     override fun onCreate() {
@@ -158,6 +185,8 @@ class PolarStreamingService : Service() {
                 deviceName = intent.getStringExtra(EXTRA_DEVICE) ?: "Polar H10"
                 currentHr = null
                 reconnecting = false
+                standby = false
+                isRunning = true
                 val notification = buildNotification()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
@@ -174,17 +203,28 @@ class PolarStreamingService : Service() {
                 if (hr > 0) {
                     currentHr = hr
                     reconnecting = false
+                    standby = false
                     getSystemService(NotificationManager::class.java)
                         .notify(NOTIFICATION_ID, buildNotification())
                 }
             }
             ACTION_RECONNECTING -> {
                 reconnecting = true
+                standby = false
+                currentHr = null
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildNotification())
+            }
+            ACTION_STANDBY -> {
+                deviceName = intent.getStringExtra(EXTRA_DEVICE) ?: deviceName
+                standby = true
+                reconnecting = false
                 currentHr = null
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, buildNotification())
             }
             ACTION_STOP -> {
+                isRunning = false
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -193,6 +233,11 @@ class PolarStreamingService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        isRunning = false
+        super.onDestroy()
+    }
 
     /**
      * The user swiped the app away from recents. A foreground service survives this, so without
@@ -209,6 +254,7 @@ class PolarStreamingService : Service() {
     private fun buildNotification(): Notification {
         val title = when {
             reconnecting -> "Reconnecting…"
+            standby -> "Standby · stream in pausa"
             currentHr != null -> "${currentHr} BPM"
             else -> "Connecting…"
         }

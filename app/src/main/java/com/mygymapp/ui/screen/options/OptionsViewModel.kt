@@ -625,6 +625,9 @@ class OptionsViewModel @Inject constructor(
             ecgDebugResult = null,
         )
         viewModelScope.launch {
+            // Explicit live-data request: leave HR standby (e.g. afternoon, parked after the
+            // skipped readiness) so the strap is actually streaming during the recording.
+            polarManager.resumeLiveHr()
             polarManager.startEcgRecording(debugId)
             // Countdown shown in the button label — one tick per second, ticking down to 0
             // rather than up, so what's on screen matches "time remaining" directly.
@@ -720,8 +723,9 @@ class OptionsViewModel @Inject constructor(
      * from the connected strap for [POLAR_SELF_TEST_SECONDS], then runs the pure
      * [PolarSelfTest] formula checks on synthetic fixtures and reports everything.
      *
-     * Read-only by construction — it only *collects* `PolarManager.heartRate` and runs pure
-     * functions. It never starts a session, never writes history/sidecars, never enqueues
+     * Read-only by construction — it only *collects* `PolarManager.heartRate` (waking the
+     * stream from standby first via `resumeLiveHr()`, so a parked strap isn't misreported
+     * as silent) and runs pure functions. It never starts a session, never writes history/sidecars, never enqueues
      * sync: pressing it any number of times leaves the workout list untouched (same
      * guarantee as the step-counter debug's checkpoint rule above).
      */
@@ -789,6 +793,11 @@ class OptionsViewModel @Inject constructor(
                 }
                 _uiState.value = _uiState.value.copy(polarSelfTestSearching = false)
             }
+            // Explicit live-data request: leave HR standby (e.g. afternoon, parked after the
+            // skipped readiness) — otherwise the sample collection below would see zero
+            // samples and misreport a healthy-but-parked strap as silent. Still read-only:
+            // resuming the stream writes no history/sidecars and enqueues no sync.
+            polarManager.resumeLiveHr()
             val totalSeconds = POLAR_SELF_TEST_SECONDS
             _uiState.value = _uiState.value.copy(polarSelfTestSecondsLeft = totalSeconds)
             val samples = mutableListOf<Int>()

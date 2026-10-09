@@ -23,6 +23,7 @@ private val Green = Color(0xFF66BB6A)
  * - CONNECTED  → Bluetooth icon, green
  * - NO_SIGNAL  → Warning ⚠️, amber (BLE up but strap silent — taken off / powered off)
  * - CONNECTING → Sync arrows, amber (first handshake or Android retrying a drop)
+ * - STANDBY → Bluetooth icon, muted grey-blue (link up, streams paused to save battery)
  * - DISCONNECTED → LinkOff, muted grey
  */
 @Composable
@@ -49,6 +50,12 @@ fun PolarLinkStatusIcon(
             tint = Amber,
             modifier = modifier,
         )
+        PolarLinkStatus.STANDBY -> Icon(
+            Icons.AutoMirrored.Filled.BluetoothSearching,
+            contentDescription = "In standby per risparmiare batteria",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
+        )
         PolarLinkStatus.DISCONNECTED -> Icon(
             Icons.Default.LinkOff,
             contentDescription = "Non connesso",
@@ -63,5 +70,6 @@ fun polarLinkStatusLabel(status: PolarLinkStatus): String = when (status) {
     PolarLinkStatus.CONNECTED -> "Connesso"
     PolarLinkStatus.NO_SIGNAL -> "Nessun segnale"
     PolarLinkStatus.CONNECTING -> "Connessione…"
+    PolarLinkStatus.STANDBY -> "Standby"
     PolarLinkStatus.DISCONNECTED -> "Disconnesso"
 }

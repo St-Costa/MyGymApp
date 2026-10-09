@@ -1,6 +1,7 @@
 package com.mygymapp.ui.screen.heartrate
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -397,6 +398,10 @@ private const val ACTIVE_HOURS_CRITICAL_THRESHOLD = 30.0
  * active hours / estimated cell lifespan (right). Shared between [HeartRateScreen] and the
  * end-of-routine debug preview. Any "Polar <model> " marketing prefix is stripped off the
  * id — only the identifying digits are shown.
+ *
+ * @param onBatteryClick when non-null, tapping the battery % opens the caller's "battery
+ *   changed?" confirm dialog (manual CR2025 reset). The debug preview leaves it null —
+ *   its fake state must stay inert.
  */
 @Composable
 fun PolarDeviceBox(
@@ -405,6 +410,7 @@ fun PolarDeviceBox(
     batteryLow: Boolean,
     batteryLife: BatteryLifeState?,
     modifier: Modifier = Modifier,
+    onBatteryClick: (() -> Unit)? = null,
 ) {
     val shortId = deviceId
         ?.replace(Regex("^Polar\\s+\\S+\\s+"), "")
@@ -437,7 +443,22 @@ fun PolarDeviceBox(
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Tappable only on the real screen (onBatteryClick != null): opens the
+                    // "hai cambiato batteria?" confirm. No visual chrome — the dialog
+                    // explains what the tap does, so the box stays as small as before.
+                    val batteryModifier = if (onBatteryClick != null) {
+                        Modifier.clickable(
+                            role = Role.Button,
+                            onClickLabel = "Batteria cambiata?",
+                            onClick = onBatteryClick,
+                        )
+                    } else {
+                        Modifier
+                    }
+                    Row(
+                        modifier = batteryModifier.padding(vertical = 4.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(
                             if (batteryLow) Icons.Default.BatteryAlert else Icons.Default.BatteryFull,
                             contentDescription = null,
@@ -455,13 +476,15 @@ fun PolarDeviceBox(
 
             // Active hours accumulated on the current CR2025 vs the mean measured lifespan
             // of a cell in this setup. Falls back to just active hours until at least one
-            // cell has been swapped out and there's an average to show.
+            // cell has been swapped out and there's an average to show. One decimal below
+            // 10 h so short uses ("1.5 h") don't all round down to a misleading "0 h".
             val lifeText = batteryLife?.let { life ->
+                val hoursFmt = if (life.activeHours < 10) "%.1f" else "%.0f"
                 val avg = life.avgLifeHours
                 if (avg != null) {
-                    "${"%.0f".format(life.activeHours)}/${"%.0f".format(avg)} h"
+                    "${hoursFmt.format(life.activeHours)}/${"%.0f".format(avg)} h"
                 } else {
-                    "${"%.0f".format(life.activeHours)} h"
+                    "${hoursFmt.format(life.activeHours)} h"
                 }
             } ?: ""
             // Wear warning independent of the reported %, which stays flat near 100% for

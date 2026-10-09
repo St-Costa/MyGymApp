@@ -183,6 +183,13 @@ class PolarManager @Inject constructor(
         // before falling back to DISCONNECTED (grey). Covers the SDK's own auto-reconnect
         // attempts to a strap that's briefly off / just came back on.
         private const val NO_SIGNAL_GRACE_MS = 15_000L
+        // Battery-life heartbeat: while the BLE link is up, checkpoint connected-time into
+        // BatteryLifeRepository this often, so a process death loses at most one interval
+        // instead of the whole session's span.
+        private const val BATTERY_HEARTBEAT_MS = 5L * 60L * 1000L
+        // Sanity cap on a single connected-span flush: missed heartbeats (Doze) or a
+        // forward clock jump must not credit hours that never happened.
+        private const val MAX_SPAN_FLUSH_SEC = 15L * 60L
     }
 
     /**
@@ -227,6 +234,17 @@ class PolarManager @Inject constructor(
     private val _receivingData = MutableStateFlow(false)
     val receivingData: StateFlow<Boolean> = _receivingData
 
+    /**
+     * HR-stream standby: BLE link stays up but the app unsubscribed from HR notifications to
+     * save the H10's CR2025 (no ~1 Hz TX; ECG is already session-only). True only while
+     * CONNECTED with no readiness measurement and no session running. Entered automatically
+     * when readiness finishes/is skipped and when a session ends; cleared automatically on
+     * session/readiness start (see [ensureHrStreaming]) or manually via [resumeLiveHr].
+     * Folded into [linkStatus] as STANDBY so the UI never mistakes it for a NO_SIGNAL fault.
+     */
+    private val _hrStandby = MutableStateFlow(false)
+    val hrStandby: StateFlow<Boolean> = _hrStandby
+
     // Post-drop grace window: set true when the strap vanishes OUTSIDE a session (an
     // involuntary drop that isn't user-initiated). While true, linkStatus reports
     // NO_SIGNAL instead of DISCONNECTED even though the BLE link is really gone — the H10
@@ -242,8 +260,8 @@ class PolarManager @Inject constructor(
      * session, shows as NO_SIGNAL without any change to the real connection.
      */
     val linkStatus: StateFlow<PolarLinkStatus> = combine(
-        _connectionState, _receivingData, _noSignalGrace,
-    ) { state, receiving, grace -> linkStatusOf(state, receiving, grace) }
+        _connectionState, _receivingData, _noSignalGrace, _hrStandby,
+    ) { state, receiving, grace, standby -> linkStatusOf(state, receiving, grace, standby) }
         .stateIn(readinessScope, SharingStarted.Eagerly, PolarLinkStatus.DISCONNECTED)
 
     private fun startNoSignalGrace() {
@@ -426,6 +444,11 @@ class PolarManager @Inject constructor(
     // escalate to a full device disconnect+reconnect, which resets the sensor's PMD
     // state. Reset to 0 as soon as a real sample flows in.
     private var ecgRestartAttempts = 0
+    // Battery-life span accounting (see BatteryLifeRepository): epoch seconds when the
+    // current BLE connection started; 0 = no span open. Connected radio-on time is the
+    // wear gauge — independent of whether HR/ECG streams are flowing.
+    private var batterySpanAnchorSec = 0L
+    private val batteryHeartbeatHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val hrRestartHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val watchdogHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val reconnectHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -462,6 +485,9 @@ class PolarManager @Inject constructor(
                     reconnectStartAtMs = 0L
                     reconnectHandler.removeCallbacksAndMessages(null)
                     clearNoSignalGrace()
+                    _hrStandby.value = false
+                    flushBatterySpan(reopen = false)
+                    stopBatteryHeartbeat()
                     hrDisposable?.dispose(); hrDisposable = null
                     ecgDisposable?.dispose(); ecgDisposable = null
                     ecgRestartHandler.removeCallbacksAndMessages(null)
@@ -498,6 +524,10 @@ class PolarManager @Inject constructor(
                 lastHrTimestamp = System.currentTimeMillis()
                 lastHrSampleAtMs = 0L
                 lastEcgSampleAtMs = 0L
+                // Open a battery-life span for this connection (closed + checkpointed on
+                // disconnect/heartbeat — see flushBatterySpan).
+                batterySpanAnchorSec = System.currentTimeMillis() / 1000
+                startBatteryHeartbeat()
                 // Run the 60s readiness measurement only on the FIRST connect, not on a
                 // mid-session reconnect (which would re-measure readiness and reset its beep).
                 if (!hrSeriesActive) {
@@ -560,6 +590,10 @@ class PolarManager @Inject constructor(
                 stopDataWatchdog()
                 ecgRecorder.stop()
                 streamingFeatureReady = false
+                // Attribute this connection's span to the cell, then stop checkpointing.
+                // A mid-session drop + auto-reconnect opens a fresh span — the sum is exact.
+                flushBatterySpan(reopen = false)
+                stopBatteryHeartbeat()
                 // Keep activeEcgSessionId so that a reconnect resumes ECG for the same session.
                 // Mirror it into pendingEcgSessionId so the feature-ready callback will restart.
                 activeEcgSessionId?.let { pendingEcgSessionId = it }
@@ -593,7 +627,13 @@ class PolarManager @Inject constructor(
                 Log.d(TAG, "Feature ready: $feature for $identifier")
                 when (feature) {
                     PolarBleApi.PolarBleSdkFeature.FEATURE_HR -> {
-                        startHrStreaming(identifier)
+                        if (_hrStandby.value && !hrSeriesActive && !readinessMeasuring) {
+                            // Reconnect (SDK auto-reconnect or manual) while intentionally idle:
+                            // stay unsubscribed, the strap keeps its radio mostly quiet.
+                            Log.d(TAG, "HR feature ready but in standby — stream stays paused")
+                        } else {
+                            startHrStreaming(identifier)
+                        }
                     }
                     PolarBleApi.PolarBleSdkFeature.FEATURE_POLAR_ONLINE_STREAMING -> {
                         streamingFeatureReady = true
@@ -693,6 +733,9 @@ class PolarManager @Inject constructor(
 
     fun connectToDevice(deviceId: String) {
         stopScan()
+        // Fresh user intent to use the strap — drop any standby left over from a previous
+        // idle period so the FEATURE_HR-ready callback below actually subscribes.
+        _hrStandby.value = false
         // Undo the disconnect()-time opt-out so a mid-workout BLE drop (screen lock, brief
         // out-of-range) still auto-recovers via the SDK's own reconnection layer, on top of
         // our app-level scheduleReconnect().
@@ -707,6 +750,9 @@ class PolarManager @Inject constructor(
         reconnectStartAtMs = 0L
         reconnectHandler.removeCallbacksAndMessages(null)
         clearNoSignalGrace()
+        _hrStandby.value = false
+        flushBatterySpan(reopen = false)
+        stopBatteryHeartbeat()
         val deviceId = connectedDeviceId ?: lastConnectedDeviceId
         hrDisposable?.dispose()
         hrDisposable = null
@@ -777,6 +823,9 @@ class PolarManager @Inject constructor(
         userInitiatedDisconnect = true
         reconnectHandler.removeCallbacksAndMessages(null)
         clearNoSignalGrace()
+        _hrStandby.value = false
+        flushBatterySpan(reopen = false)
+        stopBatteryHeartbeat()
         scanDisposable?.dispose()
         scanDisposable = null
         hrDisposable?.dispose()
@@ -920,6 +969,48 @@ class PolarManager @Inject constructor(
     }
 
     /**
+     * Park the strap in HR standby: unsubscribe from HR notifications while keeping the BLE
+     * link up. Saves the H10's CR2025 outside the two windows that actually need live data
+     * (the 60s readiness measurement, the session). No-op unless CONNECTED and fully idle —
+     * never interrupts readiness or a session, and never touches the link itself.
+     */
+    fun enterHrStandby() {
+        if (_connectionState.value != ConnectionState.CONNECTED) {
+            _hrStandby.value = false
+            return
+        }
+        if (hrSeriesActive || readinessMeasuring) return
+        if (hrDisposable == null && _hrStandby.value) return // already parked
+        hrDisposable?.dispose()
+        hrDisposable = null
+        hrRestartHandler.removeCallbacksAndMessages(null)
+        _heartRate.value = null
+        _receivingData.value = false
+        lastHrSampleAtMs = 0L
+        _hrStandby.value = true
+        PolarStreamingService.setStandby(context, connectedDeviceName)
+        Log.d(TAG, "HR standby entered — BLE link kept, stream paused")
+        appLogger.i(TAG, "HR standby entered (link kept, stream paused)")
+    }
+
+    /**
+     * Leave standby and (re)subscribe to HR. Called automatically by [startHrSeriesCapture]
+     * and [startReadinessMeasurement]; [resumeLiveHr] is the manual entry point for the HR
+     * screen's "Riattiva" button. No-op when nothing is connected.
+     */
+    fun resumeLiveHr() = ensureHrStreaming("manual-resume")
+
+    private fun ensureHrStreaming(reason: String) {
+        val deviceId = connectedDeviceId ?: return
+        if (hrDisposable != null && !_hrStandby.value) return // already flowing
+        _hrStandby.value = false
+        _receivingData.value = false
+        startHrStreaming(deviceId)
+        PolarStreamingService.start(context, connectedDeviceName)
+        Log.d(TAG, "HR streaming (re)started: $reason")
+    }
+
+    /**
      * Automatic peak detection: tracks a rolling HR window.
      * When HR was rising and starts falling, and the peak is significantly
      * above resting HR, we know the user just finished a set → start recovery.
@@ -1051,6 +1142,9 @@ class PolarManager @Inject constructor(
         hrSeriesStart = System.currentTimeMillis()
         hrSeriesActive = true
         userInitiatedDisconnect = false
+        // A session needs live HR: leave standby (re)subscribing if the strap is connected.
+        // No-op when no strap is connected (session without Polar).
+        ensureHrStreaming("session-start")
         // A previous session's stopHrSeriesCapture() turns the SDK auto-reconnect off and
         // tears down the foreground service. If the strap is still connected as this new
         // session starts (the normal case — connection is established from the HR screen,
@@ -1116,6 +1210,9 @@ class PolarManager @Inject constructor(
 
     fun stopHrSeriesCapture() {
         hrSeriesActive = false
+        // Session over: park the strap in standby (no-op if already disconnected) before
+        // the foreground-service teardown below removes the notification.
+        enterHrStandby()
         // Session over: stop chasing a reconnection and clear any disconnect alert.
         reconnectHandler.removeCallbacksAndMessages(null)
         reconnectStartAtMs = 0L
@@ -1398,6 +1495,56 @@ class PolarManager @Inject constructor(
         watchdogHandler.removeCallbacks(watchdogRunnable)
     }
 
+    private val batteryHeartbeatRunnable = object : Runnable {
+        override fun run() {
+            flushBatterySpan(reopen = true)
+            batteryHeartbeatHandler.postDelayed(this, BATTERY_HEARTBEAT_MS)
+        }
+    }
+
+    private fun startBatteryHeartbeat() {
+        batteryHeartbeatHandler.removeCallbacks(batteryHeartbeatRunnable)
+        batteryHeartbeatHandler.postDelayed(batteryHeartbeatRunnable, BATTERY_HEARTBEAT_MS)
+    }
+
+    private fun stopBatteryHeartbeat() {
+        batteryHeartbeatHandler.removeCallbacks(batteryHeartbeatRunnable)
+    }
+
+    /**
+     * Attribute the connected span since [batterySpanAnchorSec] to the current CR2025, then
+     * either re-anchor (heartbeat: the connection continues) or close the span (disconnect).
+     * Disk I/O goes to readinessScope; safe to call with no span open (no-op), so a
+     * disconnect-followed-by-callback double-flush is harmless.
+     */
+    private fun flushBatterySpan(reopen: Boolean) {
+        val anchor = batterySpanAnchorSec
+        if (anchor <= 0L) return
+        val nowSec = System.currentTimeMillis() / 1000
+        val span = (nowSec - anchor).coerceAtMost(MAX_SPAN_FLUSH_SEC)
+        batterySpanAnchorSec = if (reopen) nowSec else 0L
+        if (span <= 0) return
+        readinessScope.launch {
+            _batteryLife.value = batteryLifeRepository.addActiveSeconds(span) ?: _batteryLife.value
+        }
+    }
+
+    /**
+     * Manual "I changed the CR2025" reset, from the HR screen's battery-indicator dialog.
+     * Same bookkeeping as an auto-detected swap (credible outgoing hours join the lifespan
+     * history, counter restarts), for swaps the jump detector can't see. Fire-and-forget on
+     * readinessScope like the rest of the battery-life writes.
+     */
+    fun resetBatteryCell() {
+        readinessScope.launch {
+            val next = batteryLifeRepository.resetForNewBattery(currentLevel = _batteryLevel.value)
+            if (next != null) {
+                _batteryLife.value = next
+                appLogger.i(TAG, "Battery manually reset: new cell, counter restarted")
+            }
+        }
+    }
+
     /** Latest cutoff hour for the automatic on-connect readiness measurement (local time). */
     private val autoReadinessCutoff: LocalTime = LocalTime.of(10, 0)
 
@@ -1429,6 +1576,8 @@ class PolarManager @Inject constructor(
                 restingHr = today.restingHr.takeIf { it > 0 } ?: restingHr
                 lowestObservedHr = today.restingHr.takeIf { it > 0 } ?: lowestObservedHr
                 _readinessResult.value = _readinessResult.value.copy(sleepQuality = today.sleepQuality)
+                // Nothing to measure — park the strap instead of streaming HR idle.
+                enterHrStandby()
                 return@launch
             }
             if (LocalTime.now().isAfter(autoReadinessCutoff)) {
@@ -1437,6 +1586,8 @@ class PolarManager @Inject constructor(
                     readiness = Readiness.NO_BASELINE,
                     secondsRemaining = 0,
                 )
+                // Nothing to measure — park the strap instead of streaming HR idle.
+                enterHrStandby()
                 return@launch
             }
             startReadinessMeasurement()
@@ -1445,6 +1596,9 @@ class PolarManager @Inject constructor(
 
     private fun startReadinessMeasurement() {
         readinessMeasuring = true
+        // The 60s window needs live RR intervals — leave standby if we parked there after
+        // a previous skip (e.g. reconnect later the same day that now measures manually).
+        ensureHrStreaming("readiness-start")
         readinessStartTime = System.currentTimeMillis()
         readinessRR.clear()
         readinessMinHr = 200
@@ -1473,6 +1627,8 @@ class PolarManager @Inject constructor(
                 recommendation = "Not enough clean data. Try again staying still.",
                 bpmTrace = readinessBpmTrace.toList(),
             )
+            // Window over and no session running: park the strap (no-op mid-session).
+            enterHrStandby()
             return
         }
 
@@ -1586,6 +1742,9 @@ class PolarManager @Inject constructor(
                 appLogger.e(TAG, "Failed to persist/queue readiness event", e)
             }
         }
+        // Window over and no session running: park the strap (no-op mid-session).
+        // Persistence above is fire-and-forget and doesn't need the stream.
+        enterHrStandby()
     }
 
     /**
