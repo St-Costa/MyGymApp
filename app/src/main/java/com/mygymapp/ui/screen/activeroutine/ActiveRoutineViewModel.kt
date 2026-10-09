@@ -37,6 +37,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
@@ -84,6 +86,47 @@ data class ActiveRoutineUiState(
 
 /** Section an exercise belongs to within a running session. */
 enum class SessionExerciseCategory { WARMUP, DAILY, NORMAL }
+
+/**
+ * Variazione percentuale del tonnellaggio rispetto al baseline, o null quando non c'è un
+ * baseline confrontabile (primo dato). Pura, così è testabile senza ViewModel.
+ */
+internal fun tonnageChangePct(current: Double, previous: Double?): Double? =
+    if (previous != null && previous > 0) ((current - previous) / previous) * 100.0 else null
+
+/**
+ * Variazione percentuale del miglior e1RM stimato rispetto al baseline, o null quando
+ * manca uno dei due termini. Pura, così è testabile senza ViewModel.
+ */
+internal fun rmChangePct(current: Double?, previous: Double?): Double? =
+    if (previous != null && previous > 0 && current != null) {
+        ((current - previous) / previous) * 100.0
+    } else {
+        null
+    }
+
+/** Baseline di progressione (tonnellaggio + miglior e1RM) contro cui il badge confronta. */
+internal data class SwitchBaseline(val tonnage: Double?, val bestE1RM: Double?)
+
+/**
+ * Risolve il riferimento del badge per uno slot sostituito: il confronto è sempre contro
+ * l'esercizio *sostituito* (il pianificato), così c'è una comparazione anche quando i due
+ * esercizi sono diversi — ha senso perché gli switch candidati sono stesso bodypart+tipo, e
+ * i tonnellaggi sono comunque pesi netti materializzati, quindi confrontabili. Solo quando
+ * il sostituito non ha alcuno storico si ripiega su quello proprio del subentrato (che a
+ * sua volta può mancare: allora la riga mostra "primo dato"). Pura, testabile senza ViewModel.
+ */
+internal fun resolveSwitchBaseline(
+    replacedTonnage: Double?,
+    replacedBestE1RM: Double?,
+    ownTonnage: Double?,
+    ownBestE1RM: Double?,
+): SwitchBaseline =
+    if (replacedTonnage != null) {
+        SwitchBaseline(replacedTonnage, replacedBestE1RM)
+    } else {
+        SwitchBaseline(ownTonnage, ownBestE1RM)
+    }
 
 data class ActiveExerciseUi(
     val exerciseId: String,
@@ -156,6 +199,14 @@ class ActiveRoutineViewModel @Inject constructor(
     private var exercisesWithPriorTonnage: Set<String> = emptySet()
     private var sessionFinalized = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Serializza applyExerciseSwitch e markExerciseCompleted: al rientro da un esercizio appena
+    // sostituito E completato, AppNavigation recapita entrambi i savedStateHandle-result
+    // ("switchedExerciseIds" + "completedExerciseId") nella stessa ricomposizione e i due handler
+    // partirebbero in concorrenza facendo read-modify-write sulla stessa _uiState.exercises —
+    // il completamento non trova ancora il nuovo id (o viene sovrascritto dallo switch con
+    // completed=false) e la riga resta "da eseguire" pur col disco corretto. Vedi
+    // docs/CONVENTIONS.md#switch-exercise ("Switch + complete nella stessa navigazione").
+    private val completionMutex = Mutex()
 
     init {
         viewModelScope.launch {
@@ -398,81 +449,101 @@ class ActiveRoutineViewModel @Inject constructor(
 
     fun markExerciseCompleted(exerciseId: String) {
         viewModelScope.launch {
-            // Reload session from disk to get actual set data written by exercise screen
-            val session = currentSession ?: return@launch
-            val today = LocalDate.parse(session.date)
-            val reloaded = workoutRepository.getSession(session.id, today) ?: session
+            completionMutex.withLock {
+                // Reload session from disk to get actual set data written by exercise screen
+                val session = currentSession ?: return@withLock
+                val today = LocalDate.parse(session.date)
+                val reloaded = workoutRepository.getSession(session.id, today) ?: session
 
-            val reloadedExercise = reloaded.exercises.find { it.exerciseId == exerciseId }
-            // A "Complete" tap always closes the exercise out (completed=true), whether or not
-            // the lifter touched a value — an untouched one comes back completedEmpty=true and
-            // renders as "skipped" (grey border + X), handled below. Only bail if the reload
-            // genuinely shows it still open (e.g. this fired without a preceding complete).
-            if (reloadedExercise?.completed != true) {
-                return@launch
+                val reloadedExercise = reloaded.exercises.find { it.exerciseId == exerciseId }
+                // A "Complete" tap always closes the exercise out (completed=true), whether or not
+                // the lifter touched a value — an untouched one comes back completedEmpty=true and
+                // renders as "skipped" (grey border + X), handled below. Only bail if the reload
+                // genuinely shows it still open (e.g. this fired without a preceding complete).
+                // Nota: con uno switch appena applicato la lista in memoria può non contenere
+                // ancora questo id (applyExerciseSwitch deve ancora girare) — in quel caso la map
+                // sotto è un no-op intenzionale: sarà applyExerciseSwitch a riportare il completed
+                // dal disco, così i due ordini convergono allo stesso stato.
+                if (reloadedExercise?.completed != true) {
+                    return@withLock
+                }
+
+                val updatedExercises = _uiState.value.exercises.map { ex ->
+                    if (ex.exerciseId == exerciseId) {
+                        ex.withCompletionFrom(reloadedExercise)
+                    } else ex
+                }
+                val allCompleted = updatedExercises.all { it.completed }
+                _uiState.value = _uiState.value.copy(
+                    exercises = updatedExercises,
+                    allCompleted = allCompleted,
+                )
+
+                if (allCompleted && !sessionFinalized) {
+                    finalizeSession(reloaded)
+                }
             }
+        }
+    }
 
-            // Compute current tonnage for this exercise
-            val currentExTonnage = reloadedExercise
-                .sets.filterIsInstance<ExerciseSet.Strength>()
-                .sumOf { it.reps * it.weight }
+    /**
+     * Applica a questa riga lo stato di completamento letto dal disco ([reloadedExercise]):
+     * flag completed/completedEmpty + badge tonnellaggio/1RM (solo slot FORZA con baseline
+     * like-with-like) + secondi eseguiti (solo STRETCH). Condivisa da [markExerciseCompleted] e
+     * da [applyExerciseSwitch] (che deve riportare un completed già su disco quando lo switch
+     * e il completamento arrivano nella stessa navigazione) così i due percorsi non divergono.
+     */
+    private fun ActiveExerciseUi.withCompletionFrom(
+        reloadedExercise: WorkoutExercise,
+    ): ActiveExerciseUi {
+        // Compute current tonnage for this exercise
+        val currentExTonnage = reloadedExercise
+            .sets.filterIsInstance<ExerciseSet.Strength>()
+            .sumOf { it.reps * it.weight }
 
-            val prevExTonnage = previousTonnageByExercise[exerciseId]
-            val changePct: Double? = if (prevExTonnage != null && prevExTonnage > 0) {
-                ((currentExTonnage - prevExTonnage) / prevExTonnage) * 100.0
-            } else null
+        val currentBestE1RM = reloadedExercise
+            .sets.filterIsInstance<ExerciseSet.Strength>()
+            .bestEstimated1RM()
+
+        // Total stretch seconds actually performed = sum of `timeSeconds` over the sets the
+        // lifter toggled done. Shown in the active-routine row for STRETCH exercises (daily
+        // and normal alike) in place of the tonnage/1RM badge.
+        val stretchDoneSeconds = reloadedExercise
+            .sets.filterIsInstance<ExerciseSet.Stretch>()
+            .filter { it.done }
+            .sumOf { it.timeSeconds }
+
+        val completedEmpty = reloadedExercise.completedEmpty
+        // Tonnage/1RM change is shown for NORMAL and DAILY strength slots (each
+        // compared against its own like-with-like history), but not for warmup
+        // slots, and never when the exercise was completed with no data.
+        val strengthWithBadge = type == ExerciseType.FORZA && !completedEmpty &&
+            (category != SessionExerciseCategory.WARMUP)
+        return copy(
+            completed = true,
+            completedEmpty = completedEmpty,
+            tonnageChangePct = if (strengthWithBadge) {
+                tonnageChangePct(currentExTonnage, previousTonnageByExercise[exerciseId])
+            } else {
+                null
+            },
+            rmChangePct = if (strengthWithBadge) {
+                rmChangePct(currentBestE1RM, previousBestE1RMByExercise[exerciseId])
+            } else {
+                null
+            },
             // True when this is the first time real tonnage has ever been recorded for this
             // exercise (checked against its full history via exercisesWithPriorTonnage, not just
             // the immediately previous session — a completed-empty/skipped previous session must
             // not make a well-tracked exercise look like "first time" again).
-            val isFirstTime = exerciseId !in exercisesWithPriorTonnage && currentExTonnage > 0
-
-            val currentBestE1RM = reloadedExercise
-                .sets.filterIsInstance<ExerciseSet.Strength>()
-                .bestEstimated1RM()
-            val prevBestE1RM = previousBestE1RMByExercise[exerciseId]
-            val rmChangePct: Double? = if (prevBestE1RM != null && prevBestE1RM > 0 && currentBestE1RM != null) {
-                ((currentBestE1RM - prevBestE1RM) / prevBestE1RM) * 100.0
-            } else null
-
-            // Total stretch seconds actually performed = sum of `timeSeconds` over the sets the
-            // lifter toggled done. Shown in the active-routine row for STRETCH exercises (daily
-            // and normal alike) in place of the tonnage/1RM badge.
-            val stretchDoneSeconds = reloadedExercise
-                .sets.filterIsInstance<ExerciseSet.Stretch>()
-                .filter { it.done }
-                .sumOf { it.timeSeconds }
-
-            val completedEmpty = reloadedExercise.completedEmpty
-            val updatedExercises = _uiState.value.exercises.map { ex ->
-                if (ex.exerciseId == exerciseId) {
-                    // Tonnage/1RM change is shown for NORMAL and DAILY strength slots (each
-                    // compared against its own like-with-like history), but not for warmup
-                    // slots, and never when the exercise was completed with no data.
-                    val strengthWithBadge = ex.type == ExerciseType.FORZA && !completedEmpty &&
-                        (ex.category != SessionExerciseCategory.WARMUP)
-                    ex.copy(
-                        completed = true,
-                        completedEmpty = completedEmpty,
-                        tonnageChangePct = if (strengthWithBadge) changePct else null,
-                        rmChangePct = if (strengthWithBadge) rmChangePct else null,
-                        isFirstTimeTonnage = strengthWithBadge && isFirstTime,
-                        stretchTotalSeconds = if (ex.type == ExerciseType.STRETCH && !completedEmpty) {
-                            stretchDoneSeconds
-                        } else null,
-                    )
-                } else ex
-            }
-            val allCompleted = updatedExercises.all { it.completed }
-            _uiState.value = _uiState.value.copy(
-                exercises = updatedExercises,
-                allCompleted = allCompleted,
-            )
-
-            if (allCompleted && !sessionFinalized) {
-                finalizeSession(reloaded)
-            }
-        }
+            isFirstTimeTonnage = strengthWithBadge &&
+                exerciseId !in exercisesWithPriorTonnage && currentExTonnage > 0,
+            stretchTotalSeconds = if (type == ExerciseType.STRETCH && !completedEmpty) {
+                stretchDoneSeconds
+            } else {
+                null
+            },
+        )
     }
 
     /**
@@ -487,56 +558,87 @@ class ActiveRoutineViewModel @Inject constructor(
      */
     fun applyExerciseSwitch(oldExerciseId: String, newExerciseId: String) {
         viewModelScope.launch {
-            val session = currentSession ?: return@launch
-            val today = LocalDate.parse(session.date)
-            val reloaded = workoutRepository.getSession(session.id, today) ?: return@launch
-            currentSession = reloaded
+            completionMutex.withLock {
+                val session = currentSession ?: return@withLock
+                val today = LocalDate.parse(session.date)
+                val reloaded = workoutRepository.getSession(session.id, today) ?: return@withLock
+                currentSession = reloaded
 
-            val newSlot = reloaded.exercises.find { it.exerciseId == newExerciseId } ?: return@launch
-            val newExercise = exerciseRepository.getById(newExerciseId)
-            val newExerciseIsBodyweight = newExercise?.isBodyweight ?: false
-            val newExerciseLoadMode =
-                newExercise?.loadMode ?: com.mygymapp.data.model.LoadMode.MANUAL
+                val newSlot = reloaded.exercises.find { it.exerciseId == newExerciseId } ?: return@withLock
+                val newExercise = exerciseRepository.getById(newExerciseId)
+                val newExerciseIsBodyweight = newExercise?.isBodyweight ?: false
+                val newExerciseLoadMode =
+                    newExercise?.loadMode ?: com.mygymapp.data.model.LoadMode.MANUAL
 
-            // Populate an on-demand progression baseline for the new exerciseId, mirroring how
-            // exercisesWithPriorTonnage is computed in init — the precomputed
-            // previousTonnageByExercise/previousBestE1RMByExercise maps only cover this
-            // routine's ORIGINAL exercises, so the switched-in id would otherwise have no
-            // baseline at all when markExerciseCompleted looks it up later.
-            // Read from the stats sidecar (NORMAL context, like-with-like weighting approach):
-            // a completed-empty (skipped) slot contributes nothing by construction, and a
-            // cross-approach slot never seeds a bogus change (schema v5/v6).
-            val switchedStats = workoutRepository.getExerciseStats(newExerciseId)
-                .forContext(com.mygymapp.data.model.SlotContext.NORMAL)
-            val switchedPrevSets = switchedStats?.previousSetsFor(newExerciseLoadMode).orEmpty()
-                .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
-            if (switchedPrevSets.isNotEmpty()) {
-                val tonnage = switchedPrevSets.sumOf { it.reps * it.weight }
-                previousTonnageByExercise = previousTonnageByExercise + (newExerciseId to tonnage)
-                switchedPrevSets.bestEstimated1RM()
-                    ?.let { previousBestE1RMByExercise = previousBestE1RMByExercise + (newExerciseId to it) }
-                exercisesWithPriorTonnage = exercisesWithPriorTonnage + newExerciseId
+                // Baseline di progressione per il nuovo exerciseId: il confronto è contro
+                // l'esercizio *sostituito* (il pianificato), non contro lo storico proprio del
+                // subentrato — così il badge tonnellaggio/1RM c'è anche quando i due esercizi
+                // sono diversi (i candidati sono stesso bodypart+tipo e i pesi sono netti
+                // materializzati, quindi confrontabili). Solo se il sostituito non ha alcuno
+                // storico si ripiega su quello proprio del subentrato, letto dal sidecar come
+                // in init (contesto NORMAL, approccio di carico like-with-like): uno slot
+                // completed-empty non contribuisce per costruzione, e uno cross-approccio non
+                // genera mai un confronto fasullo (schema v5/v6).
+                val switchedStats = workoutRepository.getExerciseStats(newExerciseId)
+                    .forContext(com.mygymapp.data.model.SlotContext.NORMAL)
+                val switchedPrevSets = switchedStats?.previousSetsFor(newExerciseLoadMode).orEmpty()
+                    .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
+                val ownTonnage = switchedPrevSets.takeIf { it.isNotEmpty() }
+                    ?.sumOf { it.reps * it.weight }
+                val ownBestE1RM = switchedPrevSets.takeIf { it.isNotEmpty() }
+                    ?.bestEstimated1RM()
+                val baseline = resolveSwitchBaseline(
+                    replacedTonnage = previousTonnageByExercise[oldExerciseId],
+                    replacedBestE1RM = previousBestE1RMByExercise[oldExerciseId],
+                    ownTonnage = ownTonnage,
+                    ownBestE1RM = ownBestE1RM,
+                )
+                baseline.tonnage?.let {
+                    previousTonnageByExercise = previousTonnageByExercise + (newExerciseId to it)
+                }
+                baseline.bestE1RM?.let {
+                    previousBestE1RMByExercise = previousBestE1RMByExercise + (newExerciseId to it)
+                }
+                if (baseline.tonnage != null &&
+                    (oldExerciseId in exercisesWithPriorTonnage || ownTonnage != null)
+                ) {
+                    exercisesWithPriorTonnage = exercisesWithPriorTonnage + newExerciseId
+                }
+
+                val updatedExercises = _uiState.value.exercises.map { ex ->
+                    if (ex.exerciseId == oldExerciseId) {
+                        val base = ActiveExerciseUi(
+                            exerciseId = newSlot.exerciseId,
+                            exerciseName = newSlot.exerciseName,
+                            type = newSlot.type,
+                            bodypart = newSlot.bodypart,
+                            isBodyweight = newExerciseIsBodyweight,
+                            loadMode = newExerciseLoadMode,
+                            setCount = newSlot.sets.size,
+                            supersetWithNext = ex.supersetWithNext,
+                            excludeFromTonnage = newSlot.excludeFromTonnage,
+                            category = ex.category,
+                            substitutedFor = oldExerciseId,
+                            substitutedForName = ex.exerciseName,
+                        )
+                        // Switch + complete nella stessa navigazione: il reload dal disco vede
+                        // già completed=true (la write del Complete è atterrata prima del pop),
+                        // quindi la riga nasce già completata col badge — altrimenti,
+                        // nell'ordine mark-prima-apply, il completamento andrebbe perso e la riga
+                        // resterebbe "da eseguire" pur col disco corretto.
+                        if (newSlot.completed) base.withCompletionFrom(newSlot) else base
+                    } else ex
+                }
+                val allCompleted = updatedExercises.all { it.completed }
+                _uiState.value = _uiState.value.copy(
+                    exercises = updatedExercises,
+                    allCompleted = allCompleted,
+                )
+
+                if (allCompleted && !sessionFinalized) {
+                    finalizeSession(reloaded)
+                }
             }
-
-            val updatedExercises = _uiState.value.exercises.map { ex ->
-                if (ex.exerciseId == oldExerciseId) {
-                    ActiveExerciseUi(
-                        exerciseId = newSlot.exerciseId,
-                        exerciseName = newSlot.exerciseName,
-                        type = newSlot.type,
-                        bodypart = newSlot.bodypart,
-                        isBodyweight = newExerciseIsBodyweight,
-                        loadMode = newExerciseLoadMode,
-                        setCount = newSlot.sets.size,
-                        supersetWithNext = ex.supersetWithNext,
-                        excludeFromTonnage = newSlot.excludeFromTonnage,
-                        category = ex.category,
-                        substitutedFor = oldExerciseId,
-                        substitutedForName = ex.exerciseName,
-                    )
-                } else ex
-            }
-            _uiState.value = _uiState.value.copy(exercises = updatedExercises)
         }
     }
 

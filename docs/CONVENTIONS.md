@@ -498,9 +498,33 @@ previous-set preview automatically once the screen re-navigates with its id. The
 needed extending is `ActiveRoutineViewModel`: its `previousTonnageByExercise`/
 `previousBestE1RMByExercise` maps are precomputed once at session start from
 `getLastSessionForRoutine` — i.e. only cover the routine's *original* exercises.
-`applyExerciseSwitch` populates an on-demand entry for the new exerciseId (mirroring how
-`exercisesWithPriorTonnage` is built) so `markExerciseCompleted` still finds a baseline for the
-switched slot later. The precomputed fast-path for non-switched exercises is untouched.
+`applyExerciseSwitch` risolve il riferimento del badge con `resolveSwitchBaseline`: il
+confronto è contro l'esercizio *sostituito* (il pianificato), così tonnellaggio% e RM% ci
+sono anche quando i due esercizi sono diversi — ha senso perché gli switch candidati sono
+stesso bodypart+tipo e i pesi sono netti materializzati, quindi confrontabili. Solo quando
+il sostituito non ha alcuno storico si ripiega su quello proprio del subentrato (stessa
+lettura sidecar like-with-like di `exercisesWithPriorTonnage`); se manca anche quello, la
+riga mostra "primo dato". `exercisesWithPriorTonnage` segue la stessa precedenza, così
+`isFirstTimeTonnage` è falso quando c'è un riferimento dal sostituito. The precomputed
+fast-path for non-switched exercises is untouched.
+
+**Switch + complete nella stessa navigazione — i due result arrivano insieme.** Quando il
+lifter completa un esercizio *appena sostituito* senza ripassare dalla lista, al pop finale
+l'entry di `ActiveRoutine` contiene **sia** `"switchedExerciseIds"` **sia**
+`"completedExerciseId"`, e `AppNavigation` li osserva con due `LaunchedEffect` separati che
+partono nella stessa ricomposizione: `applyExerciseSwitch` e `markExerciseCompleted`
+giravano in concorrenza facendo read-modify-write sulla stessa `_uiState.exercises`. Il
+completamento non trovava il nuovo id (la lista aveva ancora il vecchio) oppure veniva
+sovrascritto dallo switch con `completed=false` — la riga restava "da eseguire" con
+"Sostituito: …" pur col disco corretto (e rientrando mostrava i numeri salvati col pulsante
+grigio "Salta", perché i flag `touched` non sopravvivono alla VM). Tre contromisure, tutte in
+`ActiveRoutineViewModel`: (1) un `completionMutex` serializza i due handler; (2)
+`applyExerciseSwitch` riporta il `completed` già su disco (`newSlot.completed`, la write del
+Complete è atterrata prima del pop) costruendo la riga già completata, e rivaluta
+`allCompleted` con `finalizeSession` come fa `markExerciseCompleted`; (3) la costruzione del
+badge vive nella condivisa `ActiveExerciseUi.withCompletionFrom(reloadedExercise)` (con le
+pure `tonnageChangePct`/`rmChangePct`, coperte da `ActiveRoutineBadgesTest`), così i due
+ordini di arrivo convergono allo stesso stato invece di divergere.
 
 **A zero-touch visit must not lock the slot.** Exercise screens pre-fill every set with the
 previous session's numbers, so the values on screen are not the lifter's input until a picker
