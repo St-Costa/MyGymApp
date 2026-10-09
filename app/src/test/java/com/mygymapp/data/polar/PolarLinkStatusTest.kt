@@ -84,4 +84,29 @@ class PolarLinkStatusTest {
             linkStatusOf(ConnectionState.CONNECTING, receivingData = false, noSignalGrace = true),
         )
     }
+
+    @Test
+    fun standby_wins_over_data_flag_when_connected() {
+        // Intentional stream pause is not a fault: no NO_SIGNAL warning either way.
+        assertEquals(
+            PolarLinkStatus.STANDBY,
+            linkStatusOf(ConnectionState.CONNECTED, receivingData = false, hrStandby = true),
+        )
+        assertEquals(
+            PolarLinkStatus.STANDBY,
+            linkStatusOf(ConnectionState.CONNECTED, receivingData = true, hrStandby = true),
+        )
+    }
+
+    @Test
+    fun standby_only_applies_while_connected() {
+        assertEquals(
+            PolarLinkStatus.DISCONNECTED,
+            linkStatusOf(ConnectionState.DISCONNECTED, receivingData = false, hrStandby = true),
+        )
+        assertEquals(
+            PolarLinkStatus.CONNECTING,
+            linkStatusOf(ConnectionState.CONNECTING, receivingData = false, hrStandby = true),
+        )
+    }
 }

@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,6 +49,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -238,6 +243,8 @@ fun HeartRateScreen(
                     uiState = uiState,
                     onDisconnect = { viewModel.disconnect() },
                     onSelectSleepQuality = { viewModel.setSleepQuality(it) },
+                    onResumeLiveHr = { viewModel.resumeLiveHr() },
+                    onBatteryReset = { viewModel.resetBatteryCell() },
                 )
             }
 
@@ -382,7 +389,11 @@ private fun ColumnScope.ConnectedContent(
     uiState: HeartRateUiState,
     onDisconnect: () -> Unit,
     onSelectSleepQuality: (Int) -> Unit,
+    onResumeLiveHr: () -> Unit,
+    onBatteryReset: () -> Unit,
 ) {
+    var showBatteryDialog by remember { mutableStateOf(false) }
+
     // HR display
     Icon(
         Icons.Default.Favorite,
@@ -396,6 +407,22 @@ private fun ColumnScope.ConnectedContent(
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,
     )
+
+    // Standby: link up but streams paused to save the strap's battery (readiness done,
+    // no session running). Offer an explicit resume — opening this screen must not
+    // restart the stream by itself, or standby would never hold.
+    if (uiState.linkStatus == com.mygymapp.data.polar.PolarLinkStatus.STANDBY) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Fascia in standby per risparmiare batteria — stream HR in pausa.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedButton(onClick = onResumeLiveHr) {
+            Text("Riattiva BPM live")
+        }
+    }
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -426,7 +453,39 @@ private fun ColumnScope.ConnectedContent(
         batteryLevel = uiState.batteryLevel,
         batteryLow = uiState.batteryLow,
         batteryLife = uiState.batteryLife,
+        onBatteryClick = { showBatteryDialog = true },
     )
+
+    // Manual CR2025 reset: the auto jump-detection is blind when old and new cell report
+    // nearly the same % (both ~100%), so tapping the battery % asks first. "Sì" restarts
+    // the counter and folds credible outgoing hours into the lifespan average.
+    if (showBatteryDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatteryDialog = false },
+            title = { Text("Hai cambiato la batteria?") },
+            text = {
+                Text(
+                    "Conferma solo se hai appena inserito una CR2025 nuova: il contatore " +
+                        "ore riparte da zero e le ore della cella vecchia entrano nella media.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showBatteryDialog = false
+                        onBatteryReset()
+                    },
+                ) {
+                    Text("Sì, cambiata")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatteryDialog = false }) {
+                    Text("No")
+                }
+            },
+        )
+    }
 
     // The H10's percentage comes from cell voltage, which stays near 3V until the
     // CR2025 is nearly spent — the strap typically goes silent while still reporting

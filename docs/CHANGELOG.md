@@ -2,6 +2,29 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 140 — Polar: pulsante "ho cambiato batteria" sulla % batteria
+
+Il salto automatico >5% non vede gli swap in cui vecchia e nuova cella riportano quasi la
+stessa % (entrambe ~100%, voltaggio piatto). Ora la % batteria in `PolarDeviceBox`
+(schermata HR) è tappabile e apre un dialog "Hai cambiato la batteria? Sì/No": il Sì
+chiama `resetForNewBattery()` (stessa contabilità dello swap auto — ore uscenti credibili
+≥2 h nella media, contatore a zero), senza chrome visivo extra. `BatteryLifeSpanTest` +3
+test; `test` verde (JDK 21).
+
+## Phase 139 — Polar: ore batteria sempre a 0, accumulo su tempo di connessione
+
+Il contatore "ore attive" della CR2025 restava a 0 nonostante ore d'uso: accumulava il
+wall-clock tra callback batteria consecutivi (cap 30 min), ma l'H10 ne spinge
+essenzialmente una per connessione — ogni gap inter-sessione superava il cap e veniva
+scartato, per sempre 0. Ora l'uso attivo è il tempo di connessione: `PolarManager` apre
+un anchor su ogni `deviceConnected`, lo flusha su ogni disconnect (drop compreso: drop +
+reconnect = due span, somma esatta) e lo checkpointa ogni 5 min (`BATTERY_HEARTBEAT_MS`,
+così un process kill perde al max un heartbeat); singoli flush cappati a 15 min contro
+clock jump. I callback batteria ora fanno solo seed + swap-detection (niente più doppio
+conteggio), `MAX_SESSION_GAP_SEC` rimosso. Display a 1 decimale sotto le 10 h ("1.5 h"
+invece di un fuorviante "0 h"). `BatteryLifeReducerTest` aggiornato alla nuova semantica
++ nuovo `BatteryLifeSpanTest` (4 test su `addActiveSeconds`); `test` verde (JDK 21).
+
 ## Phase 138 — Switch: badge confrontato col sostituito
 
 Il badge tonnellaggio%/RM% di uno slot sostituito usava lo storico proprio del subentrato
@@ -26,6 +49,24 @@ rivaluta `allCompleted`/`finalizeSession`. Nuovo `ActiveRoutineBadgesTest` (4 te
 `test` verde. Vedi `CONVENTIONS.md#switch-exercise` ("Switch + complete nella stessa
 navigazione"). Nota per la sessione già colpita: i dati su disco sono intatti —
 rientrare, toccare un valore e ricompletare rimette a posto la riga.
+
+## Phase 136 — Polar: standby HR fuori da readiness/sessione
+
+Fuori dai 60s di readiness e dalla sessione il Polar restava iscritto alle notifiche HR
+(~1 Hz, radio sempre accesa per niente: l'ECG era già solo in sessione). Ora
+`PolarManager` parcheggia lo stream in automatico — `enterHrStandby()` a fine readiness
+(anche nei percorsi "già misurato oggi" / "pomeriggio, niente misura") e a fine sessione
+(`stopHrSeriesCapture`), con riuscita automatica a inizio sessione/readiness
+(`ensureHrStreaming`) — tenendo su il link BLE. Nuovo `PolarLinkStatus.STANDBY`
+(prioritario su `receivingData`, mai confuso col ⚠️ `NO_SIGNAL`), notifica del foreground
+service su "Standby · stream in pausa" (mai resuscitata dopo il `forceStop` di fine
+sessione grazie al flag `isRunning`), e pulsante "Riattiva BPM live" nella schermata HR
+(`resumeLiveHr()`; aprire la schermata non riuscita da sola, o lo standby non terrebbe).
+Il reconnect con feature-ready resta in standby se idle, riparte se c'è sessione/readiness
+in corso. Anche le due azioni debug nelle Opzioni (ECG-debug, self-test Polar) chiamano
+`resumeLiveHr()` prima di raccogliere: senza, il self-test avrebbe collezionato zero
+campioni e segnalato "fascia silenziosa" su una fascia sana ma parcheggiata.
+`PolarLinkStatusTest` +2 test; `test` verde (343 test, JDK 21).
 
 ## Phase 135 — Stretch: countdown in loop con vibrazioni
 

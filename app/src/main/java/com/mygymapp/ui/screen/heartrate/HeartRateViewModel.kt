@@ -191,6 +191,12 @@ class HeartRateViewModel @Inject constructor(
     fun connectToDevice(deviceId: String) = polarManager.connectToDevice(deviceId)
     fun disconnect() = polarManager.disconnect()
 
+    /** Leaves HR standby and resumes live BPM (no-op unless connected). */
+    fun resumeLiveHr() = polarManager.resumeLiveHr()
+
+    /** Manual "I changed the CR2025" reset, from the battery-indicator dialog. */
+    fun resetBatteryCell() = polarManager.resetBatteryCell()
+
     /** Records the user's 1..5 sleep-quality rating on today's readiness measurement. */
     fun setSleepQuality(value: Int) = polarManager.setSleepQuality(value)
 

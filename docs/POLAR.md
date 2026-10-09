@@ -35,12 +35,12 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 |---|---|---|---|
 | `connectionState` | `DISCONNECTED` / `CONNECTING` / `CONNECTED` | SDK callbacks | raw BLE state; prefer `linkStatus` in UI |
 | `receivingData` | `Boolean` | HR sample (`true`) / data watchdog after `DATA_STALE_MS` 5s (`false`) | display hint only — never touches the connection |
-| `linkStatus` | `PolarLinkStatus` = `CONNECTED` / `NO_SIGNAL` / `CONNECTING` / `DISCONNECTED` | `combine(connectionState, receivingData)` | every Polar-aware screen, via shared `PolarLinkStatusIcon`. `NO_SIGNAL` = link up but strap silent (taken off / powered off); Android still owns the real BLE teardown/reconnect |
+| `linkStatus` | `PolarLinkStatus` = `CONNECTED` / `NO_SIGNAL` / `CONNECTING` / `STANDBY` / `DISCONNECTED` | `combine(connectionState, receivingData, hrStandby)` | every Polar-aware screen, via shared `PolarLinkStatusIcon`. `NO_SIGNAL` = link up but strap silent (taken off / powered off); Android still owns the real BLE teardown/reconnect. `STANDBY` = link up but streams intentionally paused to save battery (see "HR-stream standby" below) |
 | `discoveredDevices` | `List<PolarDeviceInfo>` | During scan | Device picker |
 | `isScanning` | `Boolean` | `startScan` / `stopScan` | Spinner |
 | `heartRate` | `Int?` | Every HR sample | HeartRateBar, status-bar notification |
 | `batteryLevel` | `Int?` | SDK callback | UI indicator |
-| `batteryLife` | `BatteryLifeState?` | Every battery callback | Connection-screen "N h attive · N gg" next to the % ([BatteryLifeRepository](../app/src/main/java/com/mygymapp/data/polar/BatteryLifeRepository.kt)) |
+| `batteryLife` | `BatteryLifeState?` | Seeded on battery callback; advanced by connected-time spans (disconnect flush + 5-min heartbeat) | Connection-screen "N h attive · N gg" next to the % ([BatteryLifeRepository](../app/src/main/java/com/mygymapp/data/polar/BatteryLifeRepository.kt)) |
 | `rmssd` | `Double?` | During recovery tracking | HR bar secondary line |
 | `sessionCalories` | `Double` | Every HR sample (Keytel) | Session summary + session save (not shown during exercise execution) |
 | `sessionTrimp` | `Double` | Every HR sample (Banister) | HR bar + session save |
@@ -58,6 +58,33 @@ ui/components/CardioTrendSection.kt — 4-week cardio self-diagnosis card
 All flows are hot and survive the `HeartRateViewModel` lifecycle — they live on the `@Singleton` manager, not on the VM.
 
 ## Lifecycle flows
+
+### HR-stream standby (battery saving)
+
+Outside the two windows that actually need live data — the 60 s readiness measurement and
+an active session — the strap used to keep pushing HR notifications (~1 Hz) for nothing
+(ECG was already session-only). `PolarManager` now parks the HR stream automatically while
+keeping the BLE link up:
+
+- `enterHrStandby()` unsubscribes from HR notifications when CONNECTED and fully idle; it
+  is called when readiness finishes (both the success and the not-enough-data paths), on
+  both auto-readiness skip paths (already measured today / afternoon past the cutoff), and
+  in `stopHrSeriesCapture()`. It never interrupts readiness or a session, and never touches
+  the link itself.
+- `ensureHrStreaming()` (re)subscribes on `startHrSeriesCapture()` and
+  `startReadinessMeasurement()`; `resumeLiveHr()` is the manual entry point behind the HR
+  screen's "Riattiva BPM live" button. Opening the HR screen does *not* resume by itself,
+  or standby would never hold. A reconnect whose `FEATURE_HR` becomes ready while idle
+  stays parked; with a session/readiness in progress it subscribes as before.
+- The state surfaces as a new `PolarLinkStatus.STANDBY` (wins over the data flag, so idle
+  never renders as the ⚠️ `NO_SIGNAL` fault) with its own icon/label; `HeartRateBar` and
+  `LiveEcgCard` stay hidden in standby, and the foreground-service notification switches
+  to "Standby · stream in pausa" without ever resurrecting a notification `forceStop()`
+  just removed (guarded by an `isRunning` flag).
+- Explicit live-data requests always resume first: session/readiness start, the HR
+  screen's "Riattiva BPM live" button (`resumeLiveHr()`), and both Options debug actions
+  (debug ECG recording, Polar self-test — the latter would otherwise collect zero samples
+  and misreport a parked strap as silent).
 
 ### Scan → connect → session
 

@@ -24,6 +24,14 @@ enum class PolarLinkStatus {
     /** First handshake, or Android/SDK retrying after an unexpected drop mid-session. */
     CONNECTING,
 
+    /**
+     * BLE link is up but both streams are intentionally paused to save the H10's CR2025:
+     * readiness is done (or skipped) and no session is running. Unlike NO_SIGNAL this is
+     * not a fault — the strap is worn and reachable, the app just unsubscribed from HR
+     * notifications. Cleared automatically on session/readiness start, or manually.
+     */
+    STANDBY,
+
     /** No link — never connected, user disconnected, or Android gave up (grace expired). */
     DISCONNECTED,
 }
@@ -43,10 +51,14 @@ fun linkStatusOf(
     state: ConnectionState,
     receivingData: Boolean,
     noSignalGrace: Boolean = false,
+    hrStandby: Boolean = false,
 ): PolarLinkStatus =
     when (state) {
         ConnectionState.CONNECTED ->
-            if (receivingData) PolarLinkStatus.CONNECTED else PolarLinkStatus.NO_SIGNAL
+            // Intentional stream pause wins over the data flag: without it a standby strap
+            // would render as NO_SIGNAL ⚠️, i.e. a fault that isn't one.
+            if (hrStandby) PolarLinkStatus.STANDBY
+            else if (receivingData) PolarLinkStatus.CONNECTED else PolarLinkStatus.NO_SIGNAL
         ConnectionState.CONNECTING ->
             if (noSignalGrace) PolarLinkStatus.NO_SIGNAL else PolarLinkStatus.CONNECTING
         ConnectionState.DISCONNECTED ->

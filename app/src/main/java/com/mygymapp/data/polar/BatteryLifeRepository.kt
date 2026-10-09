@@ -25,23 +25,32 @@ import javax.inject.Singleton
  * Everything is a local-only computation aid, never synced. Persisted as
  * `gymdata/_sync/battery_life.yml`.
  *
- * ## Automatic install detection
+ * ## Automatic install detection (plus a manual fallback)
  *
- * There is no "I changed the battery" button. Instead [onBatteryLevel] watches the reported
+ * [onBatteryLevel] watches the reported
  * percentage across readings: a rise of more than [JUMP_RESET_THRESHOLD_PCT] points versus the
  * last reading can only mean a fresh cell went in (a coin cell under load never recovers >5%
  * on its own). On that transition the *outgoing* cell's `activeSeconds` is appended to
  * [BatteryLifeState.pastLifeSeconds] (the history behind the average), then the install date
  * resets to today and the active-hours counter to zero.
  *
+ * The jump detector is blind when old and new cell report nearly the same level (both read
+ * ~100% — the percentage is a flat voltage proxy), so the HR screen's battery indicator is
+ * tappable and offers a manual "ho cambiato batteria" reset via [resetForNewBattery], with
+ * the same history/counter bookkeeping as an auto-detected swap.
+ *
  * ## Active-time accumulation
  *
- * The H10 pushes a battery-level callback shortly after every connect and periodically while
- * connected. The elapsed wall-clock time between two consecutive callbacks is counted as
- * active use — unless the gap exceeds [MAX_SESSION_GAP_SEC], which means the strap was off
- * between them (so that span is not active use and is skipped, re-anchoring from the new
- * reading). This deliberately under-counts by at most one inter-callback interval per
- * session; it never over-counts.
+ * Active use is *connected* time, not battery-callback gaps. The H10 pushes a battery
+ * level essentially once per connect (the voltage-derived percentage barely moves, so the
+ * SDK has nothing new to report mid-session) — accumulating "time between consecutive
+ * callbacks" therefore measured ~0 h forever: every inter-session gap exceeded the old
+ * 30-minute cap and was discarded. Instead [PolarManager] anchors a timestamp on every
+ * BLE connect, adds the elapsed span on every disconnect, and checkpoints it every
+ * [PolarManager.BATTERY_HEARTBEAT_MS] while connected via [addActiveSeconds] (so a
+ * process death loses at most one heartbeat interval, and the tail of a session is never
+ * lost). Connected radio-on time is the honest wear gauge for a coin cell, regardless of
+ * whether HR/ECG streams were flowing.
  */
 @Singleton
 class BatteryLifeRepository @Inject constructor(
@@ -68,6 +77,67 @@ class BatteryLifeRepository @Inject constructor(
 
     /** Current persisted stats, or null if no reading has ever been recorded. */
     suspend fun peek(): BatteryLifeState? = mutex.withLock { readUnlocked() }
+
+    /**
+     * Add a connected-time span (seconds) to the current cell's counter. Called by
+     * [PolarManager] on disconnect and on every in-connection heartbeat. Non-positive spans
+     * are ignored (clock skew); the caller caps abnormally large spans (missed heartbeats,
+     * forward clock jumps) before calling. Returns null when no cell has ever been seeded
+     * by [onBatteryLevel] — with no install baseline there is nothing to attribute the
+     * span to, so it is dropped rather than inventing a cell.
+     */
+    suspend fun addActiveSeconds(seconds: Long): BatteryLifeState? = mutex.withLock {
+        if (seconds <= 0) return readUnlocked()
+        val prev = readUnlocked() ?: return null
+        val next = prev.copy(activeSeconds = prev.activeSeconds + seconds)
+        writeUnlocked(next)
+        next
+    }
+
+    /**
+     * Manual "I changed the CR2025" reset, for when the automatic jump detection can't see
+     * the swap (a fresh cell and a spent one both report ~100% — the H10 percentage is a
+     * flat voltage proxy, so `level - lastLevel` may stay within noise). Same bookkeeping
+     * as an auto-detected swap: the outgoing cell's hours join the lifespan history only if
+     * credible ([MIN_CREDIBLE_LIFE_SEC]), then install date / counter restart. With no prior
+     * state and a known [currentLevel] this seeds the first cell instead of failing.
+     */
+    suspend fun resetForNewBattery(
+        currentLevel: Int?,
+        nowEpochSec: Long = System.currentTimeMillis() / 1000,
+        today: LocalDate = LocalDate.now(),
+    ): BatteryLifeState? = mutex.withLock {
+        val prev = readUnlocked()
+        if (prev == null) {
+            val level = currentLevel ?: return null
+            val next = BatteryLifeState(
+                installedAtDate = today,
+                installedAtLevel = level,
+                activeSeconds = 0L,
+                lastLevel = level,
+                lastReadingEpochSec = nowEpochSec,
+                pastLifeSeconds = emptyList(),
+            )
+            writeUnlocked(next)
+            return next
+        }
+        val level = currentLevel ?: prev.lastLevel
+        val history = if (prev.activeSeconds >= MIN_CREDIBLE_LIFE_SEC) {
+            prev.pastLifeSeconds + prev.activeSeconds
+        } else {
+            prev.pastLifeSeconds
+        }
+        val next = BatteryLifeState(
+            installedAtDate = today,
+            installedAtLevel = level,
+            activeSeconds = 0L,
+            lastLevel = level,
+            lastReadingEpochSec = nowEpochSec,
+            pastLifeSeconds = history,
+        )
+        writeUnlocked(next)
+        next
+    }
 
     private fun readUnlocked(): BatteryLifeState? {
         val f = file()
@@ -121,8 +191,18 @@ class BatteryLifeRepository @Inject constructor(
         /** A reported rise larger than this (percentage points) versus the last reading is a swap. */
         const val JUMP_RESET_THRESHOLD_PCT = 5
 
-        /** Gap between two readings beyond this (seconds) is not counted as active use. 30 min. */
-        const val MAX_SESSION_GAP_SEC = 30L * 60L
+        /**
+         * Pure state transition — all the logic, no I/O, so it is unit-tested directly.
+         *
+         * - No prior state (first reading ever): start fresh, install date = [today].
+         * - `level - prev.lastLevel > JUMP_RESET_THRESHOLD_PCT`: battery was swapped. The
+         *   outgoing cell's `activeSeconds` is appended to `pastLifeSeconds` (only if it clears
+         *   [MIN_CREDIBLE_LIFE_SEC]), then install date / counter reset.
+         * - Otherwise: bookkeeping only (`lastLevel` / `lastReadingEpochSec` advance). Time
+         *   accumulation deliberately does NOT happen here — battery callbacks arrive ~once
+         *   per connect, so gap-based counting measured 0 h forever (every inter-session gap
+         *   exceeded any sane cap). Connected spans are added via [addActiveSeconds] instead.
+         */
 
         /**
          * A swap is only folded into the lifespan average if the outgoing cell logged at least
@@ -133,14 +213,15 @@ class BatteryLifeRepository @Inject constructor(
         const val MIN_CREDIBLE_LIFE_SEC = 2L * 3600L
 
         /**
-         * Pure state transition — all the logic, no I/O, so it is unit-tested directly.
+         * Pure state transition for a battery-level reading — swap detection + bookkeeping,
+         * no I/O, so it is unit-tested directly.
          *
          * - No prior state (first reading ever): start fresh, install date = [today].
          * - `level - prev.lastLevel > JUMP_RESET_THRESHOLD_PCT`: battery was swapped. The
          *   outgoing cell's `activeSeconds` is appended to `pastLifeSeconds` (only if it clears
          *   [MIN_CREDIBLE_LIFE_SEC]), then install date / counter reset.
-         * - Otherwise: accumulate the wall-clock gap since the last reading (capped by
-         *   [MAX_SESSION_GAP_SEC]), and advance `lastLevel` / `lastReadingEpochSec`.
+         * - Otherwise: advance `lastLevel` / `lastReadingEpochSec`, leave `activeSeconds`
+         *   untouched (spans arrive via [addActiveSeconds]).
          */
         fun reduce(
             prev: BatteryLifeState?,
@@ -173,10 +254,7 @@ class BatteryLifeRepository @Inject constructor(
                     pastLifeSeconds = history,
                 )
             }
-            val gap = nowEpochSec - prev.lastReadingEpochSec
-            val add = if (gap in 1..MAX_SESSION_GAP_SEC) gap else 0L
             return prev.copy(
-                activeSeconds = prev.activeSeconds + add,
                 lastLevel = level,
                 lastReadingEpochSec = nowEpochSec,
             )
