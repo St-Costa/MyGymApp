@@ -1336,7 +1336,7 @@ class PolarManager @Inject constructor(
         ecgDisposable = api.requestStreamSettings(deviceId, PolarBleApi.PolarDeviceDataType.ECG)
             .map { it.maxSettings() }
             .flatMapPublisher { settings: PolarSensorSetting ->
-                ecgRecorder.start(sessionId, sampleRate = 130, startTimestampNs = System.nanoTime())
+                ecgRecorder.start(sessionId, sampleRate = 130, startTimestampNs = EcgRecorder.epochTimestampNs())
                 Log.d(TAG, "ECG streaming started for session $sessionId")
                 appLogger.i(TAG, "ECG streaming started: session=$sessionId settings=${settings.settings}")
                 api.startEcgStreaming(deviceId, settings)

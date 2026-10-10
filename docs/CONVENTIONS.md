@@ -637,6 +637,8 @@ Raw `.ecg` file handling is now a simple send-then-delete, with no "keep for off
 
 Gzip temp-file cleanup: `EcgSyncWorker` compresses in-memory (`ByteArrayOutputStream` + `GZIPOutputStream`), not via a temp file on disk, specifically to avoid needing a `try/finally` cleanup step — simpler than the alternative and there's no leaked file to worry about if the worker is killed mid-run.
 
+Header timestamp is wall-clock ns-since-epoch via `EcgRecorder.epochTimestampNs()` (`currentTimeMillis × 10⁶`) — never `System.nanoTime()`, which is monotonic-since-boot and shifted every recording by an arbitrary per-boot offset the server can't undo (it derives cardio-block ranges from `startTimestamp + sampleRate`).
+
 ## R-peak threshold must be local, not global-max
 
 `EcgAnalyzer.panTompkinsDetect` used to derive its adaptive threshold from `integrated.max()` over the **whole** recording (`threshold = maxVal * 0.3`, floor `maxVal * 0.1`). A gym session almost always contains a single motion artifact (strap shift, a heavy rep, adjusting the strap) whose integrated value is an order of magnitude above any real QRS complex — confirmed on real `.ecg` files pulled off-device (`adb shell run-as com.mygymapp cat files/gymdata/ecg/{id}.ecg`) where the ratio of global-max to the p99.99 percentile was ~18x on a failing recording vs ~2.7x on a working one. Once that one artifact set the global max, the threshold was pinned far above any real beat for the rest of the multi-hour session, so `analyzeSessionEcg` returned `null` (peaks < 2) on essentially every registered session — every `.ecg` file on the test device back to May had been kept as a failure.
