@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 181 — Backlog scritto: `docs/BACKLOG.md`
+
+Lista del lavoro noto-pendente (check device, merge restore, major dipendenze, split collector, ricorrenti) con motivi e punti di partenza, così le analisi future la trovano invece di riscoprirla. Linkata da `CLAUDE.md` e `README.md`. Suite verde (JDK 21).
+
 ## Phase 180 — Smoke release: self-test 10/10 su build R8
 
 Release (`assembleRelease` + R8) firmata e installata sul telefono con backup verificato: Polar self-test **10/10 OK** su build minificata, nessun crash. Strada facendo: `verification-metadata.xml` esteso alle dipendenze di lint (falliva `lintVitalAnalyzeRelease`), sintassi `apksigner` corretta in `CONVENTIONS.md` (`pass:android`), pulsante "Test Polar" → "Polar self-test" (ambiguo). Suite verde (JDK 21).

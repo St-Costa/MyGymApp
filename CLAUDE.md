@@ -74,6 +74,7 @@ above) rather than chaining `gradlew`/`adb install` by hand.
 | "How does the heart rate / ECG / readiness stuff work?" | [docs/POLAR.md](docs/POLAR.md) |
 | "How was old VitaFit scale history imported? Is there an official export?" | [docs/vitafit-cloud-api.md](docs/vitafit-cloud-api.md) |
 | "There's an odd pattern — is this intentional?" | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) |
+| "What's still to do?" | [docs/BACKLOG.md](docs/BACKLOG.md) |
 | "What happened over time?" | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 | "How does syncing sessions/readiness/scale/ECG to the self-hosted server work?" | [docs/SYNC.md](docs/SYNC.md) (phone + server sides implemented; server lives in `MyGymApp_server`) |
 | "How does the git-style full-store backup (exercises + routines too) work?" | [docs/BACKUP.md](docs/BACKUP.md) (phone + server side implemented) + [docs/backup-server-brief.md](docs/backup-server-brief.md) (the brief the server repo was built from) |
