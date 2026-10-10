@@ -181,6 +181,7 @@ private fun ProfileSection(
                         buttonStep = 1.0,
                         isModified = profile.birthYear != null,
                         modifier = Modifier.width(120.dp),
+                        fieldName = "anno di nascita",
                     )
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -191,6 +192,7 @@ private fun ProfileSection(
                         buttonStep = 1.0,
                         isModified = true,
                         modifier = Modifier.width(120.dp),
+                        fieldName = "altezza",
                     )
                 }
             }

@@ -674,6 +674,7 @@ private fun RoutineExerciseItem(
                         minValue = 0.0,
                         longPressRepeatStep = 10.0,
                         enableScroll = false,
+                        fieldName = "durata",
                     )
                 }
             } else {

@@ -477,6 +477,7 @@ private fun SupersetSetItem(
                                 longPressRepeatStep = 5.0,
                                 onConfirm = onConfirmReps,
                                 modifier = Modifier.fillMaxWidth(),
+                                fieldName = "ripetizioni",
                             )
                         }
                         if (!isBodyweight) {
@@ -499,6 +500,7 @@ private fun SupersetSetItem(
                                     longPressRepeatStep = 10.0,
                                     onConfirm = onConfirmWeight,
                                     modifier = Modifier.fillMaxWidth(),
+                                    fieldName = "peso",
                                 )
                             }
                         }

@@ -23,11 +23,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
+
+/**
+ * TalkBack label for a picker stepper, e.g. "Aumenta peso". Pure so it is unit-testable
+ * (there is no Compose UI-test harness in this repo); the button wires it into both the
+ * content description and the accessibility click action.
+ */
+internal fun pickerButtonDescription(increase: Boolean, fieldName: String): String {
+    val verb = if (increase) "Aumenta" else "Diminuisci"
+    return "$verb ${fieldName.ifBlank { "valore" }}"
+}
 
 /**
  * +/− button with optional long-press repeat.
@@ -50,6 +65,7 @@ import kotlin.math.roundToInt
 @Composable
 private fun PickerButton(
     label: String,
+    actionDescription: String,
     onClick: () -> Unit,
     onLongPressRepeat: (() -> Unit)? = null,
 ) {
@@ -60,11 +76,22 @@ private fun PickerButton(
     // never restarted) always performs on the current tick lambda.
     val currentPerformTick = rememberUpdatedState(hapticTick)
 
+    // Outer 48dp box: the minimum touch target. The visible circle stays 32dp; the
+    // gesture handler lives on the full 48dp so the padding ring is tappable too.
+    // Semantics (not clickable()): the accessibility click action drives the same tap
+    // lambda for TalkBack/switch access, while finger taps keep going through
+    // pointerInput — clickable() would fire onClick a second time on every tap.
     Box(
         modifier = Modifier
-            .size(32.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            .clip(CircleShape)
+            .size(48.dp)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = actionDescription
+                onClick(label = actionDescription) {
+                    currentOnClick.value()
+                    true
+                }
+            }
             .pointerInput(Unit) {
                 // PointerInputScope level: @RestrictsSuspension does NOT apply here,
                 // so kotlinx.coroutines.withTimeoutOrNull is callable.
@@ -117,7 +144,15 @@ private fun PickerButton(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
@@ -134,6 +169,8 @@ fun ScrollPickerInput(
     longPressRepeatStep: Double = 0.0,
     onConfirm: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** TalkBack field name, e.g. "peso" → buttons announce "Aumenta peso"/"Diminuisci peso". */
+    fieldName: String = "",
 ) {
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
     val sensitivity = 20f
@@ -176,10 +213,11 @@ fun ScrollPickerInput(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PickerButton(
-            label = "\u2212",
-            onClick = { applyChange(-buttonStep) },
+            label = "+",
+            actionDescription = pickerButtonDescription(increase = true, fieldName = fieldName),
+            onClick = { applyChange(buttonStep) },
             onLongPressRepeat = if (longPressRepeatStep > 0) {
-                { applyChange(-longPressRepeatStep) }
+                { applyChange(longPressRepeatStep) }
             } else null,
         )
 
@@ -195,10 +233,11 @@ fun ScrollPickerInput(
         )
 
         PickerButton(
-            label = "+",
-            onClick = { applyChange(buttonStep) },
+            label = "−",
+            actionDescription = pickerButtonDescription(increase = false, fieldName = fieldName),
+            onClick = { applyChange(-buttonStep) },
             onLongPressRepeat = if (longPressRepeatStep > 0) {
-                { applyChange(longPressRepeatStep) }
+                { applyChange(-longPressRepeatStep) }
             } else null,
         )
     }
