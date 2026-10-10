@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 152 — Sprint 4 versioning: bump 113→152 + gate sul max Phase
+
+27 phase spedite senza bump (`versionCode` fermo a 113 mentre il CHANGELOG era a 140): versione in tar di backup, log, `appVersion` di sync e schermata Debug non identificavano più il codice. Ora 152/1.152 e `AppVersionTest` fallisce se `versionCode != max Phase` del CHANGELOG — il gate pre-commit lo impone d'ora in poi (codice, nome e changelog viaggiano insieme). Suite verde (JDK 21).
+
 ## Phase 151 — Sprint 3 process-death: bozze testi editor in SavedStateHandle
 
 I testi digitati nei due editor (nome/bodypart/link/note esercizio, nome/giorno routine) vivevano solo in memoria: un kill di sistema li perdeva. Ora ogni keystroke è specchiato in `SavedStateHandle` e riapplicato sopra lo stato da repo all'init — al massimo si perdono stepper/numerici (step 2). Helper puri testati (`EditorDraftsTest`, 5 test: round-trip, overlay, all-null); suite verde (JDK 21).
