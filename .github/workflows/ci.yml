@@ -25,6 +25,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default package list still contains the long-removed
+          # `tools` package and fails; platform + build-tools come next step.
+          packages: platform-tools
 
       - name: Install platform + build-tools
         run: |
