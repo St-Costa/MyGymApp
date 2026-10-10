@@ -217,7 +217,10 @@ is configured):
 1. `GET /v1/manifest` → `{ "files": { "<relPath>": "sha256:…", … } }` covering **every**
    record type on the server (sessions, readiness, scale, ecg, exercises, routines).
 2. For each `relPath` the phone is missing, or whose local hash differs:
-   `GET /v1/file?relPath=<relPath>` → raw bytes → write to disk at that path.
+   `GET /v1/file?relPath=<relPath>` → raw bytes → write to disk at that path — but only
+   if `RestorePathPolicy.isAllowedRestorePath()` accepts it (known record-type paths
+   only; `_sync/`, logs, caches, derived sidecars and traversal paths are rejected and
+   counted as failures, so a compromised server can't overwrite phone state).
 3. After writing, rebuild the ledger entry (`status=SENT, contentHash=<server's>`), so the
    next push doesn't re-send what was just restored.
 4. Restart / let the app rebuild `_idx`, `_stats`, `_gitgraph.yaml` lazily.
@@ -411,8 +414,11 @@ dup, edit-after-SENT, schema drift, partial multipart). Two additions:
   ledger entries, `delete` then `upsert`, delivered in order; the server's `git mv` to
   `deleted/` then a fresh write. History shows both. No data lost.
 - **Restore onto a phone that has local-only drafts**: §3.6 is pull-only and hash-diffed —
-  it never overwrites a local file whose content already matches, and never deletes. A
-  draft the phone made offline survives the restore and syncs up on the next push.
+  it never deletes, and skips files whose content already matches. But a path the server
+  holds with *different* bytes **is** overwritten — a same-path local draft newer than
+  the server copy is destroyed, with no merge and no conflict UI (known gap, no backup
+  `.bak` is written pre-overwrite yet). A draft survives the restore only when the server
+  lacks that path (or matches it) and syncs up on the next push.
 
 ---
 

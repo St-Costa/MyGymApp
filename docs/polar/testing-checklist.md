@@ -2,9 +2,15 @@
 
 Da testare durante il prossimo allenamento con il Polar H10 connesso.
 
+> Nota on-device vs server: le sezioni "Cardio Trend", "Semaforo sensato", "Sezione Ritmo"
+> e "Alerts" descrivono la griglia RMSSD/SDNN/Poincaré/AFib con semafori e sparkline, che
+> **non esiste sul telefono** — sul device il trend cardio sono 3 line-chart (Resting HR,
+> HRR 60s, VO2max in `CardioMetricsTrendSection`); l'analisi profonda è solo server-side.
+> Quelle voci restano come specifica del server, non come checklist del telefono.
+
 ## Connessione e base
 - [ ] Connessione stabile per tutta la durata della sessione (no disconnessioni random)
-- [ ] Notifica persistente con BPM aggiornato in tempo reale
+- [ ] Notifica persistente con BPM aggiornato (throttle ~5 s / salto ≥5 BPM, non più ogni campione)
 - [ ] HR continua a funzionare a schermo spento (foreground service)
 - [ ] Disconnessione pulita (notifica sparisce, stato si resetta)
 
