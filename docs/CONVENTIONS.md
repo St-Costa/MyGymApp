@@ -400,8 +400,10 @@ Two boot-time entry points in `MainViewModel.init`, in order:
    `history/` for any `.md` with blank `completedAt`, deletes it plus its `ecg/{id}.ecg`.
    This is what guarantees "closed the app mid-session ⇒ gone at next start" — it must not
    wait on a throttle. Cheap: only unfinalized sessions are touched (normally zero or one).
-2. **`WorkoutRepository.runMaintenance()` — throttled to once per 12h** via an mtime sentinel
-   (`history/_idx/.last_maintenance`). The expensive pass: prunes sessions older than 3
+2. **`WorkoutRepository.runMaintenance()` — throttled to once per 12h** via a sentinel
+   (`history/_idx/.last_maintenance`) holding the last-run epoch millis in its content
+   (mtime fallback for pre-Phase-173 sentinels; a future-dated stamp fails open and runs
+   rather than locking cleanup out on a backwards clock). The expensive pass: prunes sessions older than 3
    months and removes `gymdata/ecg/*.ecg` whose `sessionId` has no matching `history/**/*.md`,
    in one walk that parses each session file once (merged from three walks in Phase 68). It
    still reaps any unfinalized session it sees as a cheap backstop, but step 1 is the guarantee.

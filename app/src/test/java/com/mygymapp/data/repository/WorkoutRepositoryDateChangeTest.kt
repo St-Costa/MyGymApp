@@ -13,6 +13,37 @@ import java.nio.file.Files
 import java.time.LocalDate
 
 /**
+ * Sprint 8: the 12h maintenance throttle keys off the sentinel's *content* (last-run
+ * epoch millis), failing open on clock jumps — never locking cleanup out.
+ */
+class MaintenanceThrottleTest {
+
+    @Test
+    fun `never ran means run`() {
+        assertTrue(shouldRunMaintenance(null, 1_000_000L))
+    }
+
+    @Test
+    fun `old run means run`() {
+        val now = 1_700_000_000_000L
+        assertTrue(shouldRunMaintenance(now - 13 * 3_600_000L, now))
+        assertTrue(shouldRunMaintenance(now - 12 * 3_600_000L, now))
+    }
+
+    @Test
+    fun `recent run means skip`() {
+        val now = 1_700_000_000_000L
+        assertFalse(shouldRunMaintenance(now - 1 * 3_600_000L, now))
+    }
+
+    @Test
+    fun `future stamp means run (fail open on backwards clock)`() {
+        val now = 1_700_000_000_000L
+        assertTrue(shouldRunMaintenance(now + 3_600_000L, now))
+    }
+}
+
+/**
  * Sprint 1 regression: re-saving a session with a different `date` must MOVE the file,
  * not fork it. The old code derived the path from `session.date` and only ever ADDED to
  * the index, so the stale file survived on disk and in range scans (double tonnage).
@@ -74,5 +105,22 @@ class WorkoutRepositoryDateChangeTest {
         val saved = repo.save(session("", "2026-10-01"))
         assertEquals(8, saved.id.length)
         assertTrue(saved.id.all { it in '0'..'9' || it in 'a'..'f' })
+    }
+
+    @Test
+    fun `second immediate maintenance is throttled and sentinel holds epoch millis`() = runBlocking {
+        val cutoff = LocalDate.parse("2020-01-01")
+        repo.runMaintenance(cutoff, force = true)
+
+        val sentinel = File(tmp, "history/_idx/.last_maintenance")
+        assertTrue(sentinel.exists())
+        // Content-based (Sprint 8), not mtime: parseable epoch millis.
+        val contentMs = sentinel.readText().trim().toLong()
+        assertTrue(contentMs > 0)
+
+        val second = repo.runMaintenance(cutoff, force = false)
+        assertEquals(0, second.ghostsDeleted)
+        assertEquals(0, second.prunedDeleted)
+        assertEquals(0, second.orphanEcgDeleted)
     }
 }

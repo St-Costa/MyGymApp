@@ -824,7 +824,9 @@ class WorkoutRepository @Inject constructor(
      * Throttled boot maintenance: old-session pruning (>3 months) and orphan-ECG cleanup, in a
      * SINGLE walk over `history/` that parses each `.md` once. This is the expensive pass —
      * it re-parses the whole session history and can rebuild stats sidecars — so it is
-     * throttled to at most once every [MIN_INTERVAL_HOURS] hours via an mtime sentinel.
+     * throttled to at most once every [MIN_INTERVAL_HOURS] hours via a sentinel file
+     * holding the last-run epoch millis (content, not mtime — tar restores and clock
+     * jumps make mtime unreliable; a future-dated sentinel fails open and runs).
      *
      * Ghost-session cleanup is NOT throttled and does not live here — see
      * [deleteUnfinalizedSessions], which runs on every launch. This pass still reaps any
@@ -838,9 +840,8 @@ class WorkoutRepository @Inject constructor(
         force: Boolean = false,
     ): MaintenanceResult = withContext(Dispatchers.IO) {
         val sentinel = File(indexDir().also { it.mkdirs() }, ".last_maintenance")
-        if (!force && sentinel.exists()) {
-            val ageHours = (System.currentTimeMillis() - sentinel.lastModified()) / 3_600_000.0
-            if (ageHours < MIN_INTERVAL_HOURS) return@withContext MaintenanceResult(0, 0, 0)
+        if (!force && !shouldRunMaintenance(readLastMaintenanceMs(sentinel), System.currentTimeMillis())) {
+            return@withContext MaintenanceResult(0, 0, 0)
         }
 
         mutex.withLock {
@@ -915,13 +916,25 @@ class WorkoutRepository @Inject constructor(
             // never can. Drop the cache only when something was actually pruned.
             if (prunedDeleted > 0) deleteGitgraphCache()
 
-            AtomicFiles.writeTextAtomically(sentinel, "")
+            AtomicFiles.writeTextAtomically(sentinel, System.currentTimeMillis().toString())
             MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)
         }
     }
 
     companion object {
-        private const val MIN_INTERVAL_HOURS = 12
+        internal const val MIN_INTERVAL_HOURS = 12
+    }
+
+    /**
+     * Last-run epoch millis from the maintenance sentinel: its content when parseable,
+     * else the file mtime (pre-Phase-173 sentinels hold an empty body), else null when
+     * the sentinel doesn't exist. Must be called with [mutex] held or before any
+     * concurrent writer exists — in practice only [runMaintenance] reads it.
+     */
+    private fun readLastMaintenanceMs(sentinel: File): Long? {
+        if (!sentinel.exists()) return null
+        runCatching { sentinel.readText().trim().toLong() }.getOrNull()?.let { return it }
+        return sentinel.lastModified().takeIf { it > 0 }
     }
 
     /**
@@ -980,4 +993,20 @@ class WorkoutRepository @Inject constructor(
                 if (anyChanged) deleteGitgraphCache()
             }
         }
+}
+
+/**
+ * Maintenance throttle decision (Sprint 8): run when never ran, when the last run is at
+ * least [minIntervalHours] old, or when the stored time is in the future — a backwards
+ * clock jump must fail open (an extra maintenance pass is cheap and safe) rather than
+ * lock cleanup out indefinitely. Pure, unit-tested.
+ */
+internal fun shouldRunMaintenance(
+    lastRunEpochMs: Long?,
+    nowMs: Long,
+    minIntervalHours: Int = WorkoutRepository.MIN_INTERVAL_HOURS,
+): Boolean {
+    if (lastRunEpochMs == null) return true
+    if (nowMs < lastRunEpochMs) return true
+    return (nowMs - lastRunEpochMs) / 3_600_000.0 >= minIntervalHours
 }
