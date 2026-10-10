@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 155 — Sprint 4 script: backup check veri + wrapper baseline-profile
+
+Il check "tar non vuoto" di `install-debug.sh` passava sempre (il tar contiene la entry `gymdata/` anche senza dati): ora integrity via exit code di `tar -tf` + almeno 1 file vero (niente dir sole), `.sha256` sidecar, warning con 10s per Ctrl-C su crollo >50% vs backup precedente, hint anti-wipe su `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, `adb wait-for-device`, auto-`JAVA_HOME` JDK 21. Nuovo `scripts/generate-baseline-profile.sh` (backup verificato → generate → reinstall → restore gymdata+prefs con conteggio, prune a 5): il run manuale aveva già wipato dati reali una volta — `CONVENTIONS.md` ora manda allo script. Verifica: `bash -n` + suite verde (JDK 21), run su device rimandato al prossimo regen.
+
 ## Phase 154 — Sprint 4 rete/backup OS: cleartext coerente + extraction rules
 
 Il preflight permetteva HTTP verso host privati (LAN/Tailscale) ma il manifest non dichiarava nulla: su API 28+ l'OS bloccava tutto il cleartext prima di OkHttp, quindi quel ramo era morto. Ora `usesCleartextTraffic="true"` esplicito (l'OS non sa esprimere range IP) con il rifiuto del cleartext pubblico lasciato al gate in codice (`SyncUrlValidator`, testato) — documentato in `SYNC.md §1.6`. In più `dataExtractionRules` exclude-all come controparte esplicita di `allowBackup=false` su API 31+. Verifica: build + suite verdi; `assembleRelease` nel Phase 156.

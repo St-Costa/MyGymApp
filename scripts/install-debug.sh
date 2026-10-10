@@ -20,6 +20,18 @@ if ! adb devices | awk 'NR>1 && $2=="device" {found=1} END {exit !found}'; then
   echo "ERROR: no device in 'device' state. Is it connected and authorized (adb devices)?" >&2
   exit 1
 fi
+adb wait-for-device
+
+# JDK 21 is required (the machine-default JDK 25 breaks Gradle). Honor an explicit
+# JAVA_HOME, otherwise pick up a local JDK 21 install when present.
+if [ -z "${JAVA_HOME:-}" ]; then
+  for candidate in /usr/lib/jvm/java-21-openjdk-amd64 /usr/lib/jvm/java-21-openjdk "$HOME/.jdks/jdk-21"; do
+    if [ -x "$candidate/bin/java" ]; then
+      export JAVA_HOME="$candidate"
+      break
+    fi
+  done
+fi
 
 mkdir -p "$BACKUP_DIR"
 timestamp="$(date +%Y%m%d-%H%M%S)"
@@ -39,12 +51,35 @@ if ! adb shell run-as "$APP_ID" tar -C /data/data/"$APP_ID"/files -cf - gymdata 
   exit 1
 fi
 
-file_count="$(tar -tf "$backup_file" | wc -l)"
-if [ "$file_count" -lt 1 ]; then
-  echo "ERROR: backup tar is empty ($backup_file) — refusing to proceed." >&2
+# Integrity first: tar -tf must exit 0 (catches truncation), then the archive must
+# hold at least one real file — the old `< 1 entries` check always passed because the
+# tar contains the top-level `gymdata/` dir entry even when there is no data at all.
+if ! tar -tf "$backup_file" > /tmp/install-debug-backup-list.txt 2>/tmp/install-debug-backup-err.log; then
+  echo "ERROR: backup tar failed its integrity check (truncated?) — refusing to proceed. Details:" >&2
+  cat /tmp/install-debug-backup-err.log >&2
+  rm -f "$backup_file"
   exit 1
 fi
-echo "    backup OK: $backup_file ($file_count entries, $(du -h "$backup_file" | cut -f1))"
+file_count="$(grep -c -v '/$' /tmp/install-debug-backup-list.txt || true)"
+if [ "${file_count:-0}" -lt 1 ]; then
+  echo "ERROR: backup tar holds no files, only directories ($backup_file) — refusing to proceed." >&2
+  rm -f "$backup_file"
+  exit 1
+fi
+sha256sum "$backup_file" > "$backup_file.sha256"
+echo "    backup OK: $backup_file ($file_count files, $(du -h "$backup_file" | cut -f1))"
+# Suspicious-drop tripwire (warn, don't abort): a legitimate prune never halves the
+# file count between consecutive backups — a >50% drop usually means the backup ran
+# against the wrong profile/empty dir. 10s to Ctrl-C.
+prev_backup="$(ls -t "$BACKUP_DIR"/gymdata-backup-*.tar 2>/dev/null | grep -v "$backup_file" | head -n 1 || true)"
+if [ -n "${prev_backup:-}" ]; then
+  prev_count="$(tar -tf "$prev_backup" 2>/dev/null | grep -c -v '/$' || true)"
+  if [ "${prev_count:-0}" -gt 0 ] && [ "$file_count" -lt $((prev_count / 2)) ]; then
+    echo "WARNING: this backup holds $file_count files vs $prev_count in $prev_backup." >&2
+    echo "WARNING: if that drop is unexpected, press Ctrl-C within 10s." >&2
+    sleep 10
+  fi
+fi
 
 echo "==> Pruning old backups (keeping last $KEEP_BACKUPS)"
 ls -t "$BACKUP_DIR"/gymdata-backup-*.tar 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -v
@@ -78,10 +113,19 @@ fi
 echo "==> Pruning old prefs backups (keeping last $KEEP_BACKUPS)"
 ls -t "$PREFS_BACKUP_DIR"/shared-prefs-backup-*.tar 2>/dev/null | tail -n +$((KEEP_BACKUPS + 1)) | xargs -r rm -v
 
-echo "==> Building debug APK"
-ANDROID_HOME="$ANDROID_HOME" ./gradlew assembleDebug
+echo "==> Building debug APK (JAVA_HOME=${JAVA_HOME:-unset})"
+JAVA_HOME="${JAVA_HOME:-}" ANDROID_HOME="$ANDROID_HOME" ./gradlew assembleDebug
 
 echo "==> Installing on device (adb install -r, data preserved)"
-adb install -r "$APK_PATH"
+if ! install_out="$(adb install -r "$APK_PATH" 2>&1)"; then
+  echo "$install_out" >&2
+  if echo "$install_out" | grep -q "INSTALL_FAILED_UPDATE_INCOMPATIBLE"; then
+    echo "HINT: signature mismatch — a differently-signed build is installed. A full" >&2
+    echo "HINT: uninstall would WIPE gymdata; restore it afterwards with:" >&2
+    echo "HINT:   adb shell run-as $APP_ID tar -C /data/data/$APP_ID/files -xf - < $backup_file" >&2
+  fi
+  exit 1
+fi
+echo "$install_out"
 
-echo "==> Done. Backup kept at: $backup_file"
+echo "==> Done. Backup kept at: $backup_file (+ .sha256)"

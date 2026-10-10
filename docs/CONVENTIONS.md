@@ -776,23 +776,19 @@ open, which ART's own `speed-profile` then absorbs). If those screens ever need 
 coverage, add a *separate* non-startup `BaselineProfileRule`, don't bloat the startup
 journey.
 
-Regenerate after a large refactor of the startup path or a dependency bump:
+Regenerate after a large refactor of the startup path or a dependency bump — with the
+wrapper script, never by hand (a manual run already cost real user data once, Phase 118):
 
 ```bash
-# ⛔ FIRST back up the on-device data — generateBaselineProfile UNINSTALLS the app
-#    (uninstall_after_test: true), which destroys /data/data/com.mygymapp/files/gymdata/.
-#    See the banner at the top of CLAUDE.md. Do not skip this.
-adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -cf - gymdata \
-  > gymdata-backup-$(date +%Y%m%d-%H%M%S).tar   # needs a debuggable build installed
-tar -tvf gymdata-backup-*.tar | head            # verify non-empty BEFORE continuing
-
-adb shell pm uninstall com.mygymapp             # start from a clean install
-./gradlew :app:generateBaselineProfile          # ~20–30 min on the phone
-
-# afterwards, reinstall the user's normal build and restore:
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell run-as com.mygymapp tar -C /data/data/com.mygymapp/files -xf - < gymdata-backup-*.tar
+scripts/generate-baseline-profile.sh   # backup → generate → reinstall → restore (~20–30 min)
 ```
+
+The script aborts before generating unless a verified gymdata tar exists, prunes to the
+last 5 backups, and reminds you to re-enter the sync token (Keystore dies with the
+uninstall) and commit the new `baseline-prof.txt`. Manual fallback if the script ever
+breaks: `run-as … tar -cf - gymdata` out, verify with `tar -tf` (must exit 0 and list
+files, not just the top dir), `:app:generateBaselineProfile`, reinstall debug,
+`run-as … tar -xf -` back in.
 
 Gotchas that cost time here:
 
