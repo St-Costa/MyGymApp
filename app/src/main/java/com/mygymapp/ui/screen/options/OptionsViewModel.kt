@@ -3,6 +3,7 @@ package com.mygymapp.ui.screen.options
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mygymapp.data.BeepVolumeRepository
 import com.mygymapp.data.PowerliftingScheduleRepository
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.PolarManager
@@ -56,6 +57,8 @@ data class OptionsUiState(
     /** Monday of the selected powerlifting anchor week, or null if not set. */
     val anchorMonday: LocalDate? = null,
     val intervalWeeks: Int = 4,
+    /** Readiness-beep volume 0–100 (local `SharedPreferences("sound")`, never synced). */
+    val beepVolume: Int = BeepVolumeRepository.DEFAULT_BEEP_VOLUME,
     // Server sync (docs/SYNC.md)
     val syncServerUrl: String = "",
     val syncBearerToken: String = "",
@@ -97,6 +100,7 @@ data class OptionsUiState(
 @HiltViewModel
 class OptionsViewModel @Inject constructor(
     private val scheduleRepository: PowerliftingScheduleRepository,
+    private val beepVolumeRepository: BeepVolumeRepository,
     private val profileRepo: UserProfileRepository,
     private val syncConfigRepository: SyncConfigRepository,
     private val syncLedgerRepository: SyncLedgerRepository,
@@ -122,6 +126,7 @@ class OptionsViewModel @Inject constructor(
             profile = profileRepo.get(),
             anchorMonday = scheduleRepository.anchorMonday(),
             intervalWeeks = scheduleRepository.intervalWeeks(),
+            beepVolume = beepVolumeRepository.volume(),
             syncServerUrl = syncConfigRepository.serverUrl(),
             syncBearerToken = syncConfigRepository.bearerToken(),
             syncEnabled = syncConfigRepository.isEnabled(),
@@ -218,6 +223,18 @@ class OptionsViewModel @Inject constructor(
     fun clearSchedule() {
         _uiState.value = _uiState.value.copy(anchorMonday = null)
         persist()
+    }
+
+    /** Slider drag: persist immediately so a kill loses nothing; preview on release. */
+    fun onBeepVolumeChange(volume: Int) {
+        val coerced = BeepVolumeRepository.coerceBeepVolume(volume)
+        beepVolumeRepository.setVolume(coerced)
+        _uiState.value = _uiState.value.copy(beepVolume = coerced)
+    }
+
+    /** Slider release: play one beep at the just-set volume (hear what you picked). */
+    fun previewBeepVolume() {
+        polarManager.previewBeep(_uiState.value.beepVolume)
     }
 
     private fun persist() {

@@ -34,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import com.mygymapp.BuildConfig
 import androidx.compose.material3.Text
@@ -96,6 +97,11 @@ fun OptionsScreen(
                 onGenderChange = viewModel::updateGender,
                 onHeightChange = viewModel::updateHeight,
                 onBirthYearChange = viewModel::updateBirthYear,
+            )
+            SoundSection(
+                volume = uiState.beepVolume,
+                onVolumeChange = viewModel::onBeepVolumeChange,
+                onVolumeChangeFinished = viewModel::previewBeepVolume,
             )
             ServerSettingsSection(
                 uiState = uiState,
@@ -199,10 +205,58 @@ private fun ProfileSection(
 
             Text(
                 if (profile.birthYear != null) {
-                    "HRmax: ${profile.hrMax} BPM (media Fox/Tanaka/Gulati)"
+                    "HRmax: ${profile.hrMax} BPM (Fox/Tanaka/Gulati average)"
                 } else {
                     "Set your birth year for accurate results (estimated HRmax: ${profile.hrMax} BPM)"
                 },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Readiness-beep volume (0–100). Dragging persists immediately; releasing plays one
+ * beep at the just-set volume so the user hears exactly what they picked.
+ */
+@Composable
+private fun SoundSection(
+    volume: Int,
+    onVolumeChange: (Int) -> Unit,
+    onVolumeChangeFinished: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Beep volume", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Slider(
+                    value = volume.toFloat(),
+                    onValueChange = { onVolumeChange(it.toInt()) },
+                    onValueChangeFinished = onVolumeChangeFinished,
+                    valueRange = 0f..100f,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "$volume",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.width(48.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Text(
+                "Readiness beep loudness. Releasing the slider plays a preview.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

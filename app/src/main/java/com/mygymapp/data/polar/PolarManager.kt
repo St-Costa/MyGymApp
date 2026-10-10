@@ -127,6 +127,7 @@ class PolarManager @Inject constructor(
     private val stepLedgerRepository: com.mygymapp.data.steps.StepLedgerRepository,
     private val healthConnectStepsReader: com.mygymapp.data.steps.HealthConnectStepsReader,
     private val batteryLifeRepository: BatteryLifeRepository,
+    private val beepVolumeRepository: com.mygymapp.data.BeepVolumeRepository,
 ) {
     // Fire-and-forget scope for persisting + syncing a readiness measurement the moment
     // it's computed. PolarManager is a singleton (app-lifetime), so this never needs
@@ -1830,11 +1831,24 @@ class PolarManager @Inject constructor(
         } catch (t: Throwable) {
             Log.w(TAG, "Readiness vibration failed: $t")
         }
-        // Volume 100 is deliberate (readiness beep must cut through gym noise);
-        // making it a setting is deferred, not forgotten.
+        playBeep(beepVolumeRepository.volume())
+    }
+
+    /**
+     * Preview for the Options volume slider: the same beep at [volume], no vibration.
+     * Called on slider release so the user hears exactly what they just set.
+     */
+    fun previewBeep(volume: Int) {
+        playBeep(volume)
+    }
+
+    private fun playBeep(volume: Int) {
         var tone: ToneGenerator? = null
         try {
-            tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            tone = ToneGenerator(
+                AudioManager.STREAM_NOTIFICATION,
+                com.mygymapp.data.BeepVolumeRepository.coerceBeepVolume(volume),
+            )
             tone.startTone(ToneGenerator.TONE_PROP_BEEP, 200)
             val started = tone
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
