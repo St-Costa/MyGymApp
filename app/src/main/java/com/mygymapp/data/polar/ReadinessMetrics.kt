@@ -20,6 +20,10 @@ object ReadinessMetrics {
      * Drops implausible RR intervals: outside 300..2000 ms, or deviating ≥20% from the
      * median of the in-range samples. Passes through untouched when fewer than 3
      * in-range samples exist (nothing to take a median of).
+     *
+     * The 300..2000 window is deliberately narrower than LiveEcgAnalyzer's 300..2500:
+     * this feeds RMSSD math (a >2000 ms gap is a pause/artifact here), while the live
+     * detector counts slow beats and classifies >2000 as PAUSE itself.
      */
     fun filterArtifacts(rrIntervals: List<Int>): List<Int> {
         val filtered = rrIntervals.filter { it in 300..2000 }

@@ -1,5 +1,7 @@
 package com.mygymapp.data.polar
 
+import kotlin.math.roundToInt
+
 /**
  * Pure logic for the HRR60s monotonicity/rebound check, split out of [PolarManager] so it can
  * be unit-tested without the rest of that class's Android/Hilt/BLE dependencies.
@@ -33,4 +35,21 @@ fun isMonotonicHrRecovery(
         if (hrSample - runningMin > toleranceBpm) return false
     }
     return true
+}
+
+/**
+ * Mean HR over the trailing [windowMs] of [series] ending at [nowElapsedMs] (same
+ * (elapsedMs, hr) shape as [isMonotonicHrRecovery]'s input). Sprint 5: the HRR +60s delta
+ * uses this instead of the single instantaneous sample, which a lone noisy beat could
+ * swing by several BPM. Null when the window holds no samples (caller falls back to the
+ * instantaneous sample).
+ */
+fun hrrWindowAverage(
+    series: Iterable<Pair<Long, Int>>,
+    nowElapsedMs: Long,
+    windowMs: Long = 5_000L,
+): Int? {
+    val window = series.filter { (elapsed, _) -> elapsed >= nowElapsedMs - windowMs }
+    if (window.isEmpty()) return null
+    return window.map { it.second }.average().roundToInt()
 }
