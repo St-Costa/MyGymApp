@@ -36,7 +36,8 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
 
     data class Snapshot(
         val beats: Int,
-        val regularPct: Double,   // 0..100
+        /** 0..100 once beats exist; NaN until the first beat (never a fake 100%). */
+        val regularPct: Double,
         val premature: Int,
         val pauses: Int,
         val uneven: Int,
@@ -215,7 +216,9 @@ class LiveEcgAnalyzer(private val sampleRate: Int = 130) {
         val irregularities = pauses + premature + uneven
         val regularPct = if (beats > 0) {
             ((beats - irregularities).toDouble() / beats) * 100.0
-        } else 100.0
+        } else {
+            Double.NaN
+        }
         return Snapshot(
             beats = beats,
             regularPct = regularPct,

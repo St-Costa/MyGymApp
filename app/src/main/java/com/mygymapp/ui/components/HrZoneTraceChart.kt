@@ -25,10 +25,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.polar.HrZone
 import com.mygymapp.data.polar.HrZoneCalculator
 import com.mygymapp.data.polar.HrZoneMinutes
+import com.mygymapp.data.polar.PolarLinkStatus
 import com.mygymapp.data.polar.PolarManager
 
 /**
@@ -57,13 +57,15 @@ fun HrZoneTraceChart(
     viewModel: HeartRateBarViewModel = hiltViewModel(),
 ) {
     val polarManager = viewModel.polarManager
-    val connectionState by polarManager.connectionState.collectAsState()
+    // Gate on linkStatus like HeartRateBar/LiveEcgCard — connectionState alone leaves a
+    // frozen trace visible in NO_SIGNAL/STANDBY (Sprint 5).
+    val linkStatus by polarManager.linkStatus.collectAsState()
     val trace by polarManager.hrZoneTracePercents.collectAsState()
     val currentZone by polarManager.currentHrZone.collectAsState()
     val boundaries by polarManager.hrZoneBoundaries.collectAsState()
     val zoneMinutes by polarManager.hrZoneMinutes.collectAsState()
 
-    if (connectionState != ConnectionState.CONNECTED) return
+    if (linkStatus != PolarLinkStatus.CONNECTED) return
     if (trace.isEmpty()) return
 
     HrZoneTraceChartContent(

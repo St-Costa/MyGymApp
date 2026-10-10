@@ -39,6 +39,9 @@ private val SemaphoreGreen = Color(0xFF66BB6A)
 private val SemaphoreYellow = Color(0xFFFFCA28)
 private val SemaphoreRed = Color(0xFFEF5350)
 
+/** Beats needed before the regular-% semaphore gets a verdict color (Sprint 5). */
+private const val MIN_BEATS_FOR_REGULAR_PCT = 10
+
 @Composable
 fun LiveEcgCard(
     modifier: Modifier = Modifier,
@@ -90,13 +93,27 @@ fun LiveEcgCard(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // No verdict before the statistics mean anything: "—" with no beats,
+                    // value with a neutral dot below MIN_BEATS (a single uneven beat out
+                    // of 3 would otherwise paint an unjustified red).
+                    val statsReady = snapshot.beats >= MIN_BEATS_FOR_REGULAR_PCT
                     Text(
-                        text = "Regular: %.1f%%".format(snapshot.regularPct),
+                        text = if (snapshot.beats == 0) {
+                            "Regular: —"
+                        } else {
+                            "Regular: %.1f%%".format(snapshot.regularPct)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    SemaphoreDot(color = regularColor(snapshot.regularPct))
+                    SemaphoreDot(
+                        color = if (statsReady) {
+                            regularColor(snapshot.regularPct)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        },
+                    )
                 }
             }
         }
