@@ -42,6 +42,8 @@ import com.mygymapp.data.polar.DropCause
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.TonnageLineChart
 import com.mygymapp.ui.components.trimpColor
+import com.mygymapp.ui.theme.GitgraphGreen
+import com.mygymapp.ui.theme.SignalOrange
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,7 +135,7 @@ fun SessionProgressScreen(
                             Text(
                                 "${uiState.sessionCalories.toInt()}",
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = Color(0xFFFF9800),
+                                color = SignalOrange,
                             )
                             Text("kcal", style = MaterialTheme.typography.bodySmall)
                         }
@@ -304,7 +306,7 @@ internal fun SyncStatusBox(
                 "duplicate" -> "Il server aveva già questa versione: nessuna riscrittura."
                 else -> "Il server ha confermato la ricezione e l'ha salvata."
             },
-            Color(0xFF4CAF50),
+            GitgraphGreen,
         )
         SessionSyncStatus.FAILED -> Spec(
             Icons.Default.Error,
@@ -402,11 +404,11 @@ internal fun PolarConnectionBox(stats: DisconnectStats) {
                 Icon(
                     Icons.Default.BluetoothDisabled,
                     contentDescription = null,
-                    tint = Color(0xFFFF9800),
+                    tint = SignalOrange,
                     modifier = Modifier.size(32.dp),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(header, style = MaterialTheme.typography.titleMedium, color = Color(0xFFFF9800))
+                    Text(header, style = MaterialTheme.typography.titleMedium, color = SignalOrange)
                     Text(
                         recovery,
                         style = MaterialTheme.typography.bodyMedium,

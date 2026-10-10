@@ -47,6 +47,10 @@ import androidx.compose.ui.unit.sp
 import com.mygymapp.data.polar.BatteryLifeState
 import com.mygymapp.data.polar.Readiness
 import com.mygymapp.data.polar.ReadinessResult
+import com.mygymapp.ui.theme.SignalAmber
+import com.mygymapp.ui.theme.SignalGreen
+import com.mygymapp.ui.theme.SignalRed
+import com.mygymapp.ui.theme.TrendBlue
 
 /** Groups the digits of a non-negative number with a "." thousands separator: 12641 -> "12.641". */
 private fun groupThousands(n: Long): String {
@@ -95,10 +99,10 @@ fun SleepQualitySelector(
             // neutral middle, light green, then a distinct teal-green for the top so it
             // doesn't read as "just a darker #4".
             val selectedColors = listOf(
-                Color(0xFFEF5350),                  // 1 — couldn't have gone worse
-                Color(0xFFFFCA28),                  // 2 — bad, but could've been worse
+                SignalRed,                          // 1 — couldn't have gone worse
+                SignalAmber,                        // 2 — bad, but could've been worse
                 MaterialTheme.colorScheme.primary,  // 3 — neutral
-                Color(0xFF66BB6A),                  // 4 — good, but could've been better
+                SignalGreen,                        // 4 — good, but could've been better
                 Color(0xFF00BFA5),                  // 5 — couldn't have gone better
             )
             for (value in 1..5) {
@@ -213,9 +217,9 @@ fun ReadinessCard(
                 )
             } else {
                 val readinessColor = when (readiness.readiness) {
-                    Readiness.DELOAD_RECOMMENDED -> Color(0xFFEF5350)
-                    Readiness.LIGHT_DAY -> Color(0xFFFFCA28)
-                    Readiness.NORMAL -> Color(0xFF66BB6A)
+                    Readiness.DELOAD_RECOMMENDED -> SignalRed
+                    Readiness.LIGHT_DAY -> SignalAmber
+                    Readiness.NORMAL -> SignalGreen
                     Readiness.GOOD -> Color(0xFF4CAF50)
                     Readiness.PEAK -> Color(0xFF2196F3)
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -285,12 +289,12 @@ fun ReadinessCard(
                     }
                     if (vo2max != null) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.Air,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color(0xFF4FC3F7),
-                            )
+                                Icon(
+                                    Icons.Default.Air,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = TrendBlue,
+                                )
                             Text(
                                 buildAnnotatedString {
                                     append("%.1f VO".format(vo2max))

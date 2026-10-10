@@ -9,17 +9,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mygymapp.data.repository.CardioMetricsTrendReport
 import com.mygymapp.data.repository.averageWeeklyDelta
+import com.mygymapp.ui.theme.SignalGreen
+import com.mygymapp.ui.theme.SignalOrange
+import com.mygymapp.ui.theme.TrendBlue
 
-private val RestingHrColor = Color(0xFF4FC3F7)
-private val Hrr60sColor = Color(0xFF66BB6A)
-private val Vo2maxColor = Color(0xFFFFA726)
-private val GoodDirectionColor = Color(0xFF66BB6A)
+private val RestingHrColor = TrendBlue
+private val Hrr60sColor = SignalGreen
+private val Vo2maxColor = SignalOrange
+private val GoodDirectionColor = SignalGreen
 
 @Composable
 fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {

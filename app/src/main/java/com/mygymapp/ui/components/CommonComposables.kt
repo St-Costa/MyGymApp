@@ -114,7 +114,8 @@ fun RoundStepButton(text: String, modifier: Modifier = Modifier, onClick: () -> 
 @Composable
 internal fun WeeklyDeltaLabel(delta: Double) {
     Text(
-        "μ = %+.1f".format(delta),
+        // Explicit US locale: the default IT locale would render "+1,2" with a comma.
+        "μ = %+.1f".format(java.util.Locale.US, delta),
         style = MaterialTheme.typography.bodyMedium,
         fontWeight = FontWeight.Bold,
         color = Color.White,

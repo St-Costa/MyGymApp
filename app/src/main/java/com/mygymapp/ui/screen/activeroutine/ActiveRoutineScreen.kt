@@ -61,6 +61,7 @@ import com.mygymapp.ui.components.trimpColor
 import com.mygymapp.ui.theme.accentColor
 import com.mygymapp.ui.theme.GitgraphGreen
 import com.mygymapp.ui.theme.GitgraphRed
+import com.mygymapp.ui.theme.SignalOrange
 import com.mygymapp.ui.theme.SkippedColor
 import com.mygymapp.ui.util.groupSupersets
 
@@ -687,7 +688,7 @@ private fun ProgressSection(
                     Text(
                         "${sessionCalories.toInt()}",
                         style = MaterialTheme.typography.headlineMedium,
-                        color = androidx.compose.ui.graphics.Color(0xFFFF9800),
+                        color = SignalOrange,
                     )
                     Text("kcal", style = MaterialTheme.typography.bodySmall)
                 }
@@ -744,42 +745,56 @@ private fun ProgressSection(
                 }
 
                 val isCrossRoutine = selectedFilter in crossRoutineFilters
-                val chartData: List<Double>
-                val chartLabels: List<String>
-                val chartTitle: String
-
-                when (selectedFilter) {
-                    "kcal" -> {
-                        chartData = allSessionCalories
-                        chartLabels = allSessionLabels
-                        val current = chartData.lastOrNull() ?: 0.0
-                        chartTitle = "kcal: ${current.toInt()} (all routines)"
+                // Computed once per input change, not on every recomposition (this section
+                // recomposes with the whole screen — zip/filter/format on every pass is
+                // pure waste when nothing it reads changed).
+                val (chartData, chartLabels, chartTitle) = remember(
+                    selectedFilter,
+                    allSessionCalories,
+                    allSessionLabels,
+                    allSessionTrimp,
+                    allSessionVo2max,
+                    sessionTonnage,
+                    sessionLabels,
+                    sessionTonnageByBodypart,
+                ) {
+                    val data: List<Double>
+                    val labels: List<String>
+                    val title: String
+                    when (selectedFilter) {
+                        "kcal" -> {
+                            data = allSessionCalories
+                            labels = allSessionLabels
+                            val current = data.lastOrNull() ?: 0.0
+                            title = "kcal: ${current.toInt()} (all routines)"
+                        }
+                        "TRIMP" -> {
+                            data = allSessionTrimp
+                            labels = allSessionLabels
+                            val current = data.lastOrNull() ?: 0.0
+                            title = "TRIMP: ${current.toInt()} (all routines)"
+                        }
+                        "VO2max" -> {
+                            data = allSessionVo2max.filter { it > 0 }
+                            labels = allSessionLabels.zip(allSessionVo2max)
+                                .filter { it.second > 0 }.map { it.first }
+                            val current = data.lastOrNull() ?: 0.0
+                            title = "VO2max: %.1f (all routines)".format(current)
+                        }
+                        "Totale" -> {
+                            data = sessionTonnage
+                            labels = sessionLabels
+                            val current = data.lastOrNull() ?: 0.0
+                            title = "Totale: %.1f kg".format(current)
+                        }
+                        else -> {
+                            data = sessionTonnageByBodypart[selectedFilter] ?: sessionTonnage
+                            labels = sessionLabels
+                            val current = data.lastOrNull() ?: 0.0
+                            title = "$selectedFilter: %.1f kg".format(current)
+                        }
                     }
-                    "TRIMP" -> {
-                        chartData = allSessionTrimp
-                        chartLabels = allSessionLabels
-                        val current = chartData.lastOrNull() ?: 0.0
-                        chartTitle = "TRIMP: ${current.toInt()} (all routines)"
-                    }
-                    "VO2max" -> {
-                        chartData = allSessionVo2max.filter { it > 0 }
-                        chartLabels = allSessionLabels.zip(allSessionVo2max)
-                            .filter { it.second > 0 }.map { it.first }
-                        val current = chartData.lastOrNull() ?: 0.0
-                        chartTitle = "VO2max: %.1f (all routines)".format(current)
-                    }
-                    "Totale" -> {
-                        chartData = sessionTonnage
-                        chartLabels = sessionLabels
-                        val current = chartData.lastOrNull() ?: 0.0
-                        chartTitle = "Totale: %.1f kg".format(current)
-                    }
-                    else -> {
-                        chartData = sessionTonnageByBodypart[selectedFilter] ?: sessionTonnage
-                        chartLabels = sessionLabels
-                        val current = chartData.lastOrNull() ?: 0.0
-                        chartTitle = "$selectedFilter: %.1f kg".format(current)
-                    }
+                    Triple(data, labels, title)
                 }
 
                 Text(

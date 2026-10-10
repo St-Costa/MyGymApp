@@ -24,6 +24,21 @@ val GitgraphEmpty = Color(0xFF2C2C2C)
  * warning color as CardioColor or a negative tonnage/RM change (both use GitgraphRed). */
 val SkippedColor = Color(0xFF9E9E9E)
 
+/** Text on [SkippedColor] buttons ("Salta") — near-black for contrast on the mid gray. */
+val OnSkipped = Color(0xFF1E1E1E)
+
+/**
+ * Shared signal colors (Sprint 6): one value per meaning instead of the same hex
+ * copy-pasted across a dozen UI files. Canvas-ink neutrals (White/Black + alpha) and
+ * chart-local series hues stay inline where they are used — only meanings shared by
+ * several screens live here.
+ */
+val SignalGreen = Color(0xFF66BB6A)
+val SignalAmber = Color(0xFFFFCA28)
+val SignalRed = Color(0xFFEF5350)
+val SignalOrange = Color(0xFFFF9800)
+val TrendBlue = Color(0xFF4FC3F7)
+
 /** Border / accent color associated with an exercise type. */
 fun ExerciseType.accentColor(): Color = when (this) {
     ExerciseType.FORZA -> ForzaColor

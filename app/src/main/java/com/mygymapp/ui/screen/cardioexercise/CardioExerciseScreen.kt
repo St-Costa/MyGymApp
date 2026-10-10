@@ -25,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,6 +32,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.HrZoneTraceChart
+import com.mygymapp.ui.theme.OnSkipped
 import com.mygymapp.ui.theme.SkippedColor
 
 /**
@@ -183,7 +183,7 @@ fun CardioExerciseScreen(
                         modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = SkippedColor,
-                            contentColor = Color(0xFF1E1E1E),
+                            contentColor = OnSkipped,
                         ),
                     ) {
                         com.mygymapp.ui.components.ActionButtonText("Salta")
