@@ -93,7 +93,7 @@ data class SupersetUiState(
 
 @HiltViewModel
 class SupersetViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
@@ -279,9 +279,18 @@ class SupersetViewModel @Inject constructor(
                 perMemberSets.forEach { sets -> sets.getOrNull(round)?.let(interleaved::add) }
             }
 
+            // Process-death restore: unsaved keystrokes survive in the SavedStateHandle —
+            // overlay them over the just-loaded sets (previous/PR references always come
+            // from the fresh load above, never the draft). Timers are deliberately NOT
+            // restored (see StretchExerciseViewModel).
+            val restoredSets = applySupersetDraft(
+                interleaved,
+                decodeSupersetDraft(savedStateHandle.get<ArrayList<String>>(DRAFT_SUPERSET_SETS)),
+            )
+
             _uiState.value = SupersetUiState(
                 members = members,
-                sets = interleaved,
+                sets = restoredSets,
                 isLoading = false,
                 excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
@@ -339,6 +348,8 @@ class SupersetViewModel @Inject constructor(
         if (listIndex in sets.indices) {
             sets[listIndex] = transform(sets[listIndex])
             _uiState.value = _uiState.value.copy(sets = sets)
+            // Single choke point for set mutations — mirror for process-death restore.
+            savedStateHandle[DRAFT_SUPERSET_SETS] = encodeSupersetDraft(sets)
         }
     }
 
@@ -522,5 +533,74 @@ class SupersetViewModel @Inject constructor(
             )
         }
         return copy(exercises = updatedExercises)
+    }
+}
+
+/**
+ * Process-death drafts for superset sets (Sprint 9): one row per set,
+ * `"exerciseIndex|setIndex|reps|weight|repsTouched|weightTouched|timeSeconds|done"`.
+ * Previous-set references stay out — they reload fresh from the sidecar every init.
+ * A length mismatch (chain edited between death and restore) ignores the draft rather
+ * than misaligning sets. Pure helpers, unit-tested.
+ */
+internal const val DRAFT_SUPERSET_SETS = "draft_superset_sets"
+
+internal data class SupersetSetDraft(
+    val exerciseIndex: Int,
+    val setIndex: Int,
+    val reps: Int,
+    val weight: Double,
+    val repsTouched: Boolean,
+    val weightTouched: Boolean,
+    val timeSeconds: Int,
+    val done: Boolean,
+)
+
+internal fun encodeSupersetDraft(sets: List<SupersetSetUi>): ArrayList<String> =
+    ArrayList(
+        sets.map {
+            "${it.exerciseIndex}|${it.setIndex}|${it.reps}|${it.weight}|" +
+                "${it.repsTouched}|${it.weightTouched}|${it.timeSeconds}|${it.done}"
+        },
+    )
+
+internal fun decodeSupersetDraft(raw: List<String>?): List<SupersetSetDraft>? {
+    if (raw == null) return null
+    return raw.map { row ->
+        val p = row.split("|")
+        if (p.size != 8) return null
+        SupersetSetDraft(
+            exerciseIndex = p[0].toIntOrNull() ?: return null,
+            setIndex = p[1].toIntOrNull() ?: return null,
+            reps = p[2].toIntOrNull() ?: return null,
+            weight = p[3].toDoubleOrNull() ?: return null,
+            repsTouched = p[4].toBooleanStrictOrNull() ?: return null,
+            weightTouched = p[5].toBooleanStrictOrNull() ?: return null,
+            timeSeconds = p[6].toIntOrNull() ?: return null,
+            done = p[7].toBooleanStrictOrNull() ?: return null,
+        )
+    }
+}
+
+internal fun applySupersetDraft(
+    base: List<SupersetSetUi>,
+    draft: List<SupersetSetDraft>?,
+): List<SupersetSetUi> {
+    if (draft == null || draft.size != base.size) return base
+    return base.mapIndexed { i, s ->
+        val d = draft[i]
+        // Positional (same slot, same handle): a member switch re-navigates to a fresh
+        // entry with an empty handle, so positions can't straddle different members.
+        // Derived flags recompute against the fresh previous, like the loaders do.
+        s.copy(
+            reps = d.reps,
+            weight = d.weight,
+            repsTouched = d.repsTouched,
+            weightTouched = d.weightTouched,
+            repsModified = d.reps != s.previousReps,
+            weightModified = d.weight != s.previousWeight,
+            timeSeconds = d.timeSeconds,
+            done = d.done,
+        )
     }
 }
