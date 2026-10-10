@@ -34,9 +34,11 @@ class VtrumpSenheProtocolTest {
 
     @Test
     fun `weight frame with weightType other than 3 is not stable`() {
+        // [7] = 0x01 -> accuracy=0, unit=1 (KG): raw 100 -> 100.0 kg. (0x00 would be JIN,
+        // which toKg now halves — the stability flag is what this test pins, not the unit.)
         val payload = byteArrayOf(
             byte(0x5A), byte(0), byte(0), byte(0x10), byte(1),
-            byte(0), byte(0), byte(0x00), byte(0x00), byte(0x64),
+            byte(0), byte(0), byte(0x01), byte(0x00), byte(0x64),
         )
 
         val reading = VtrumpSenheProtocol.parse(payload)
@@ -107,6 +109,59 @@ class VtrumpSenheProtocolTest {
         val payload = byteArrayOf(byte(0x5A), byte(0), byte(0), byte(0x10), byte(3), byte(0), byte(0), byte(0))
 
         assertNull(VtrumpSenheProtocol.parse(payload))
+    }
+
+    @Test
+    fun `weight frame in LB is converted to kg`() {
+        // [7] = 0x12 -> accuracy=1, unit=2 (LB). weightRaw = 0x06 0x75 = 1653 -> 165.3 lb.
+        val payload = byteArrayOf(
+            byte(0x5A), byte(0), byte(0), byte(0x10), byte(3),
+            byte(0), byte(0), byte(0x12), byte(0x06), byte(0x75),
+        )
+
+        val reading = VtrumpSenheProtocol.parse(payload)
+
+        requireNotNull(reading)
+        assertEquals(DisplayUnit.LB, reading.displayUnit)
+        assertEquals(165.3 * 0.45359237, reading.weightKg!!, 0.01)
+    }
+
+    @Test
+    fun `weight frame in STONE is converted to kg`() {
+        // [7] = 0x13 -> accuracy=1, unit=3 (STONE). raw 0x00 0x75 = 117 -> 11.7 st.
+        val payload = byteArrayOf(
+            byte(0x5A), byte(0), byte(0), byte(0x10), byte(3),
+            byte(0), byte(0), byte(0x13), byte(0x00), byte(0x75),
+        )
+
+        val reading = VtrumpSenheProtocol.parse(payload)
+
+        requireNotNull(reading)
+        assertEquals(DisplayUnit.STONE, reading.displayUnit)
+        assertEquals(11.7 * 6.35029318, reading.weightKg!!, 0.01)
+    }
+
+    @Test
+    fun `weight frame in JIN is converted to kg`() {
+        // [7] = 0x10 -> accuracy=1, unit=0 (JIN). raw 0x05 0xDC = 1500 -> 150.0 jin.
+        val payload = byteArrayOf(
+            byte(0x5A), byte(0), byte(0), byte(0x10), byte(3),
+            byte(0), byte(0), byte(0x10), byte(0x05), byte(0xDC),
+        )
+
+        val reading = VtrumpSenheProtocol.parse(payload)
+
+        requireNotNull(reading)
+        assertEquals(DisplayUnit.JIN, reading.displayUnit)
+        assertEquals(75.0, reading.weightKg!!, 0.001)
+    }
+
+    @Test
+    fun `toKg is identity for KG`() {
+        assertEquals(75.0, DisplayUnit.KG.toKg(75.0), 0.0)
+        assertEquals(165.3 * 0.45359237, DisplayUnit.LB.toKg(165.3), 1e-9)
+        assertEquals(150.0 * 0.5, DisplayUnit.JIN.toKg(150.0), 1e-9)
+        assertEquals(11.7 * 6.35029318, DisplayUnit.STONE.toKg(11.7), 1e-9)
     }
 
     @Test
