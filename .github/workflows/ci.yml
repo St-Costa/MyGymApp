@@ -1,0 +1,42 @@
+# CI (Phase 167): unit tests + debug/release builds on every push and PR.
+#
+# Deliberately device-free: no baseline-profile generation, no instrumented tests,
+# no emulator — those need real hardware and stay local (see
+# docs/CONVENTIONS.md#baseline-profile). What CI guarantees instead: a clean-machine
+# build (catches forgotten files, JDK drift, broken dependencies) and the full JVM
+# suite behind the same `./gradlew test` gate the pre-commit hook runs locally.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform + build-tools
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew test --console=plain
+
+      - name: Debug APK
+        run: ./gradlew assembleDebug --console=plain
+
+      - name: Release APK (unsigned, R8 included)
+        run: ./gradlew assembleRelease --console=plain

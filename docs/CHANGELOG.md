@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 167 — Sprint 7 CI: GitHub Actions su push/PR
+
+`.github/workflows/ci.yml`: JDK 21 pinnato, SDK via `setup-android`, `./gradlew test` + `assembleDebug` + `assembleRelease` unsigned. Niente device (baseline/emulator restano locali per scelta), così resta veloce ed ermetico; il free tier basta e avanza. `CONVENTIONS.md#local-test-gate` aggiornato (hook + CI). Da verificare al primo push (mai girata qui).
+
 ## Phase 166 — Sprint 7 beep: volume con preview al rilascio
 
 Nuovo `BeepVolumeRepository` (prefs locali `sound`, mai syncate) + slider in Options: il drag persiste subito, il rilascio suona un beep a quel volume (`PolarManager.previewBeep`, senza vibrazione) così si sente ciò che si è scelto. `signalReadiness` legge il volume salvato (100 invariato di default). `BeepVolumeTest` (3 test sul coerce); suite verde (JDK 21).
