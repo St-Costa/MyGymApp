@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 175 — Decisione: niente layout adaptive
+
+Registrata in `CONVENTIONS.md` (Non-goals): niente `WindowSizeClass`/two-pane senza decisione prodotto — degrado senza crash accettato. Suite verde (JDK 21).
+
 ## Phase 174 — Sprint 8 dipendenze: verification-metadata sha256
 
 `gradle/verification-metadata.xml` (1012 artefatti): ogni futura build fallisce su artefatto manomesso/inatteso, JitPack/Polar incluso. Rigenerare con `--write-verification-metadata sha256` a ogni cambio dipendenze (workflow in `CONVENTIONS.md`). Risoluzione verificata verde; suite verde (JDK 21).
