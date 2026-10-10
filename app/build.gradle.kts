@@ -40,6 +40,13 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    // Phase 153: pin compilation to JDK 21 (the machine default JDK 25 breaks Gradle;
+    // Gradle provisions/detects a 21 toolchain automatically when missing). This covers
+    // compilation — the Gradle daemon itself still needs a compatible JVM, which the
+    // pre-commit hook guarantees via JAVA_HOME (see docs/CONVENTIONS.md#local-test-gate).
+    kotlin {
+        jvmToolchain(21)
+    }
     buildFeatures {
         compose = true
         buildConfig = true

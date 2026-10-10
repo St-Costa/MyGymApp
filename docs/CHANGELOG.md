@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 153 — Sprint 4 JDK: toolchain 21 pinnata + hook auto-JDK
+
+La build richiedeva JDK 21 ma niente lo diceva al tooling: default di macchina 25 = Gradle morto prima di compilare, e l'hook falliva il gate per motivi ambientali. Ora `kotlin { jvmToolchain(21) }` in `:app` e `:baseline-profile` (provisioning/detect automatico) e il pre-commit esporta `JAVA_HOME` su un JDK 21 locale se non impostato (rispetta un `JAVA_HOME` esplicito). Suite verde (JDK 21).
+
 ## Phase 152 — Sprint 4 versioning: bump 113→152 + gate sul max Phase
 
 27 phase spedite senza bump (`versionCode` fermo a 113 mentre il CHANGELOG era a 140): versione in tar di backup, log, `appVersion` di sync e schermata Debug non identificavano più il codice. Ora 152/1.152 e `AppVersionTest` fallisce se `versionCode != max Phase` del CHANGELOG — il gate pre-commit lo impone d'ora in poi (codice, nome e changelog viaggiano insieme). Suite verde (JDK 21).
