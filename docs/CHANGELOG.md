@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 166 — Sprint 7 beep: volume con preview al rilascio
+
+Nuovo `BeepVolumeRepository` (prefs locali `sound`, mai syncate) + slider in Options: il drag persiste subito, il rilascio suona un beep a quel volume (`PolarManager.previewBeep`, senza vibrazione) così si sente ciò che si è scelto. `signalReadiness` legge il volume salvato (100 invariato di default). `BeepVolumeTest` (3 test sul coerce); suite verde (JDK 21).
+
 ## Phase 165 — Sprint 7 English-only: tutta la UI in inglese
 
 Niente i18n multi-lingua per decisione: la UI mescolava EN/IT, ora è tutta inglese (pulsanti, dialog, stati sync, debug screen, contentDescription TalkBack, errori BLE/sync, date). Mesi/giorni da `Locale.US`/ISO (niente più dipendenza dalla lingua del telefono), numeri col `.` (i delta usano già `Locale.US`). Scelta deliberata: stringhe hardcodate, niente `strings.xml` — estrarre le risorse senza poter verificare overflow su schermo non è sicuro; code comment e docs storici restano misti (dev-facing). Test aggiornati (`PickerButtonDescriptionTest`); suite verde (JDK 21).
