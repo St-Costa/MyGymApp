@@ -17,13 +17,21 @@ data class BodyComposition(
  * (MIT), itself a from-scratch implementation of the well-known formula family.
  */
 object BodyCompositionCalculator {
+    /**
+     * Null when [impedanceOhm] is not a real measurement (≤ 0: partial contact — the
+     * sentinels are already filtered to null upstream). The old code divided by it
+     * (`500.0 / 0` = Infinity → −Infinity clamped to exactly 5.0%) and saved that as a
+     * valid weigh-in, poisoning body-fat trends with a floor value. Callers skip the
+     * save on null and wait for a real reading.
+     */
     fun calculate(
         weightKg: Double,
         heightCm: Int,
         age: Int,
         isMale: Boolean,
         impedanceOhm: Int,
-    ): BodyComposition {
+    ): BodyComposition? {
+        if (impedanceOhm <= 0) return null
         val heightM = heightCm / 100.0
         val bmi = weightKg / (heightM * heightM)
 

@@ -64,6 +64,20 @@ class VtrumpSenheProtocolTest {
     }
 
     @Test
+    fun `body composition frame carries no stability claim`() {
+        val payload = byteArrayOf(
+            byte(0x5A), byte(0), byte(0), byte(0x11), byte(0),
+            byte(0), byte(0), byte(0), byte(0), byte(0x01), byte(0x2C),
+        )
+
+        val reading = VtrumpSenheProtocol.parse(payload)
+
+        requireNotNull(reading)
+        // Stability belongs to the weight frame's lock flag, not to impedance frames.
+        assertEquals(false, reading.weightStable)
+    }
+
+    @Test
     fun `body composition frame treats 0xFFFF and 0x55AA impedance as no reading yet`() {
         val sentinelFfff = byteArrayOf(
             byte(0x5A), byte(0), byte(0), byte(0x11), byte(0),
