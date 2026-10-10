@@ -13,6 +13,7 @@ import com.mygymapp.data.DataChangedSignal
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.sync.EcgSyncLedgerRepository
 import com.mygymapp.data.util.AppLogger
 import com.mygymapp.ui.components.DayStatus
 import com.mygymapp.ui.components.ScheduleCell
@@ -74,6 +75,7 @@ class MainViewModel @Inject constructor(
     private val dataChangedSignal: DataChangedSignal,
     private val appLogger: AppLogger,
     private val homeStateLoader: HomeStateLoader,
+    private val ecgSyncLedgerRepository: EcgSyncLedgerRepository,
 ) : ViewModel() {
 
     companion object {
@@ -101,6 +103,11 @@ class MainViewModel @Inject constructor(
             // mid-workout, no "Termina" tap) is deleted now — it must not linger to the next
             // day. Cheap: only unfinalized sessions are touched.
             val ghosts = workoutRepository.deleteUnfinalizedSessions()
+            // A swept ghost's ECG ledger row (if any) can never upload — dead-letter it
+            // now instead of letting the 4h worker retry a file that no longer exists.
+            ghosts.deletedSessionIds.forEach { id ->
+                ecgSyncLedgerRepository.markDead(id, "ghost session deleted at boot")
+            }
             // Throttled (~12h): the expensive re-walk — old-session pruning + orphan-ECG cleanup.
             val result = workoutRepository.runMaintenance(LocalDate.now().minusMonths(3))
             appLogger.i(

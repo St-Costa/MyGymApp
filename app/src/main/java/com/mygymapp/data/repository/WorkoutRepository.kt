@@ -754,8 +754,26 @@ class WorkoutRepository @Inject constructor(
     private fun isGhostSession(session: WorkoutSession): Boolean =
         session.completedAt.isBlank()
 
-    /** Result of [deleteUnfinalizedSessions]: how many ghost `.md` (and paired `.ecg`) went. */
-    data class GhostSweepResult(val ghostsDeleted: Int, val ecgDeleted: Int)
+    /**
+     * Result of [deleteUnfinalizedSessions]: how many ghost `.md` (and paired `.ecg`) went,
+     * plus the deleted session ids so callers can dead-letter their sync-ledger rows
+     * (an ECG entry for a swept session must not retry forever — see `markDead`).
+     */
+    data class GhostSweepResult(
+        val ghostsDeleted: Int,
+        val ecgDeleted: Int,
+        val deletedSessionIds: Set<String> = emptySet(),
+    )
+
+    /**
+     * True when ANY session file for [sessionId] exists (`_*_[sessionId].md`), without
+     * parsing. Used by the ECG sync worker to tell "file transiently missing" (retry)
+     * from "session gone" (dead-letter). Cheap filename scan, no YAML parsing.
+     */
+    suspend fun sessionFileExists(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        if (sessionId.isBlank()) return@withContext false
+        mutex.withLock { findSessionFileById(sessionId) != null }
+    }
 
     /**
      * Unthrottled boot sweep: delete EVERY session with a blank `completedAt`, plus its
@@ -798,7 +816,7 @@ class WorkoutRepository @Inject constructor(
             }
 
             if (ghostsDeleted > 0) deleteGitgraphCache()
-            GhostSweepResult(ghostsDeleted, ecgDeleted)
+            GhostSweepResult(ghostsDeleted, ecgDeleted, deletedSessionIds.toSet())
         }
     }
 

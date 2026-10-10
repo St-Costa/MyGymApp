@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 145 — Sprint 2 ECG: dead-letter al posto del retry infinito
+
+`EcgSyncWorker` faceva `markFailed("not found")` + `retry()` per sempre (wakeup/radio ogni 4h) su un file che non tornerà mai — il ghost-sweep cancella l'`.ecg` senza toccare il ledger. Ora `markDead()` (→ `EXPIRED`, fuori da `getPending`) quando il raw manca, con reason che distingue sessione presente/assente (`WorkoutRepository.sessionFileExists`, scan per suffisso senza parse); il boot sweep marca morti gli id spazzati (`GhostSweepResult.deletedSessionIds`, loop in `MainViewModel`). Nuovo `EcgLedgerDeadTest` (4 test); suite verde (JDK 21).
+
 ## Phase 144 — Sprint 2 bilancia: peso convertito in kg da lb/jin/stone
 
 `parseWeight` divideva il raw per `10^accuracy` e lo salvava così com'è, ignorando l'unità del frame: con la bilancia in lb il peso risultava sballato di 2.2x e l'errore si propagava a `UserProfile.weightKg` e alle kcal Keytel. Ora `DisplayUnit.toKg` converte (lb ×0.45359237, jin ×0.5, stone ×6.35029318), `displayUnit` resta per la UI. `VtrumpSenheProtocolTest` +4 test (lb/stone/jin/toKg); suite verde (JDK 21).
