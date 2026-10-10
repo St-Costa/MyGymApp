@@ -9,8 +9,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,7 +49,10 @@ class ReadinessRepository @Inject constructor(
         mutex.withLock {
             val event = ReadinessEvent(
                 id = GymIds.newReadinessId { fileFor(it).exists() },
-                measuredAt = LocalDateTime.now().toString(),
+                // Offset-bearing (Sprint 5): a bare LocalDateTime misattributes the
+                // measurement's day across DST/travel. Legacy files stay parseable —
+                // see measuredDateOf/measuredInstantOf below.
+                measuredAt = OffsetDateTime.now().toString(),
                 readiness = readiness,
                 lnRmssd = lnRmssd,
                 restingHr = restingHr,
@@ -94,7 +101,7 @@ class ReadinessRepository @Inject constructor(
     suspend fun getAll(): List<ReadinessEvent> = withContext(Dispatchers.IO) {
         dir().listFiles()?.filter { it.extension == "md" }?.mapNotNull { file ->
             runCatching { fromMarkdown(file.readText(), file.nameWithoutExtension) }.getOrNull()
-        }?.sortedBy { it.measuredAt } ?: emptyList()
+        }?.sortedBy { measuredInstantOf(it.measuredAt) } ?: emptyList()
     }
 
     /**
@@ -104,10 +111,7 @@ class ReadinessRepository @Inject constructor(
      * there's at most one file per day in practice.
      */
     suspend fun getLatestForDate(date: LocalDate = LocalDate.now()): ReadinessEvent? =
-        getAll().lastOrNull { event ->
-            runCatching { LocalDateTime.parse(event.measuredAt).toLocalDate() == date }
-                .getOrDefault(false)
-        }
+        getAll().lastOrNull { event -> measuredDateOf(event.measuredAt) == date }
 
     /**
      * Chronological LnRMSSD history (oldest first), one value per persisted measurement,
@@ -135,8 +139,8 @@ class ReadinessRepository @Inject constructor(
     suspend fun getRecentAverageRestingHr(days: Long = 7): Int? {
         val cutoff = LocalDate.now().minusDays(days)
         val recent = getAll().filter { event ->
-            runCatching { !LocalDateTime.parse(event.measuredAt).toLocalDate().isBefore(cutoff) }
-                .getOrDefault(false) && event.restingHr > 0
+            val date = measuredDateOf(event.measuredAt)
+            (date != null && !date.isBefore(cutoff)) && event.restingHr > 0
         }
         if (recent.isEmpty()) return null
         return recent.map { it.restingHr }.average().toInt()
@@ -177,3 +181,19 @@ class ReadinessRepository @Inject constructor(
         )
     }
 }
+
+/**
+ * Timezone-safe readers for `ReadinessEvent.measuredAt` (Sprint 5). New files carry an
+ * `OffsetDateTime` string; pre-Phase-159 files carry a bare `LocalDateTime` — both parse,
+ * garbage yields null/`Instant.MIN` instead of throwing into callers. Pure, unit-tested.
+ */
+internal fun measuredDateOf(measuredAt: String): LocalDate? =
+    runCatching { OffsetDateTime.parse(measuredAt).toLocalDate() }.getOrNull()
+        ?: runCatching { LocalDateTime.parse(measuredAt).toLocalDate() }.getOrNull()
+
+internal fun measuredInstantOf(measuredAt: String): Instant =
+    runCatching { OffsetDateTime.parse(measuredAt).toInstant() }.getOrNull()
+        ?: runCatching {
+            LocalDateTime.parse(measuredAt).atZone(ZoneId.systemDefault()).toInstant()
+        }.getOrNull()
+        ?: Instant.MIN
