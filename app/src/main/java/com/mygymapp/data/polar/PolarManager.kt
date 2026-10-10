@@ -156,6 +156,9 @@ class PolarManager @Inject constructor(
         // Safety cap on the session HR series: 8 hours at 1 Hz. Real workouts are well under this;
         // the cap only bounds memory if a lifecycle bug forgets to call stopHrSeriesCapture().
         private const val HR_SERIES_MAX_ENTRIES = 28800
+        // Live ECG UI emit throttle: waveform + snapshot collectors (and their recompositions)
+        // run at most this often instead of on every ~100 ms BLE block.
+        private const val ECG_EMIT_THROTTLE_MS = 200L
         // Live zone-trace window: 90 samples ≈ 90s at the H10's ~1 Hz HR rate. Long enough
         // to show a full ramp into zone during a cardio block without flattening detail.
         // Public because HrZoneTraceChart needs the same value to right-anchor "now" at the
@@ -323,7 +326,7 @@ class PolarManager @Inject constructor(
     private val liveAnalyzer = LiveEcgAnalyzer(sampleRate = 130)
     private val waveformBuffer = ArrayDeque<Int>() // last ~4s of ECG samples (µV)
     private val waveformCapacity = 130 * 4
-    private var samplesSinceLastEmit = 0
+    private var lastEcgEmitMs = 0L
 
     private val _ecgWaveform = MutableStateFlow<IntArray>(IntArray(0))
     val ecgWaveform: StateFlow<IntArray> = _ecgWaveform
@@ -1285,6 +1288,13 @@ class PolarManager @Inject constructor(
         }
     }
 
+    /**
+     * Suspends until the ECG writer has drained everything submitted so far — call before
+     * reading a just-stopped `.ecg` file, otherwise the read can miss the final tail.
+     * See [EcgRecorder.awaitIdle].
+     */
+    suspend fun awaitEcgIdle() = ecgRecorder.awaitIdle()
+
     fun stopEcgRecording() {
         ecgDisposable?.dispose()
         ecgDisposable = null
@@ -1333,7 +1343,7 @@ class PolarManager @Inject constructor(
         waveformBuffer.clear()
         _ecgWaveform.value = IntArray(0)
         _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, Double.NaN, 0, 0, 0)
-        samplesSinceLastEmit = 0
+        lastEcgEmitMs = 0L
         lastEcgSampleAtMs = 0L
         ecgStreamStartedAt = System.currentTimeMillis()
         // Remember which session this ECG belongs to, so we can auto-restart on error
@@ -1359,7 +1369,8 @@ class PolarManager @Inject constructor(
             }
             .subscribe(
                 { ecgData ->
-                    lastEcgSampleAtMs = System.currentTimeMillis()
+                    val nowMs = System.currentTimeMillis()
+                    lastEcgSampleAtMs = nowMs
                     // A real sample arrived: the stream is healthy again.
                     ecgRestartAttempts = 0
                     for (sample in ecgData.samples) {
@@ -1370,14 +1381,17 @@ class PolarManager @Inject constructor(
                             // Waveform buffer
                             waveformBuffer.addLast(v)
                             if (waveformBuffer.size > waveformCapacity) waveformBuffer.removeFirst()
-                            samplesSinceLastEmit++
                         }
                     }
-                    // Emit waveform + snapshot on every block so the UI stays fresh
-                    // even when BLE delivers small batches infrequently (e.g. screen off).
-                    _ecgWaveform.value = waveformBuffer.toIntArray()
-                    _liveEcgSnapshot.value = liveAnalyzer.snapshot()
-                    samplesSinceLastEmit = 0
+                    // Throttled UI emit (Sprint 5): the old every-block emit allocated a
+                    // 520-int array at ~10 Hz and recomposed collectors even with the card
+                    // off-screen. 5 Hz stays visually fresh (also with infrequent batches
+                    // at screen-off) at half the churn.
+                    if (nowMs - lastEcgEmitMs >= ECG_EMIT_THROTTLE_MS) {
+                        lastEcgEmitMs = nowMs
+                        _ecgWaveform.value = waveformBuffer.toIntArray()
+                        _liveEcgSnapshot.value = liveAnalyzer.snapshot()
+                    }
                 },
                 { error ->
                     Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")

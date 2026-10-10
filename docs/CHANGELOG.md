@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 162 — Sprint 5 ECG: writer su IO + emit UI a 5 Hz
+
+`writeSample` scriveva + flushava sul thread callback BLE (un flush su flash occupata ritardava anche l'HR): ora coda UNLIMITED con consumer su `Dispatchers.IO`, `stop()` chiude il canale e il writer svuota prima di chiudere. Emit waveform/snapshot da ~10 Hz a 5 Hz (stessa freschezza, metà churn; rimosso il contatore morto `samplesSinceLastEmit`). Nuovo `EcgRecorderTest` (header + N campioni + restart, con attesa deadline invece di sleep fissi); suite verde (JDK 21).
+
 ## Phase 161 — Sprint 5 HRR: delta su media 5s + soglie RR documentate
 
 Il delta HRR usava il singolo campione istantaneo a +60s (un beat rumoroso spostava il risultato di vari BPM) e i delta fuori range sparivano senza conteggio: ora media mobile 5s da `hrSeries` (`hrrWindowAverage` pura) e ogni scarto incrementa `hrrDeltasDiscarded`. Le finestre RR diverse (readiness 300–2000, live 300–2500) sono intenzionali — non unificate, ma documentate in codice (HRV vs conteggio beat + flag PAUSE). `HrRecoveryMonotonicityTest` +3 test; suite verde (JDK 21).
