@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 151 — Sprint 3 process-death: bozze testi editor in SavedStateHandle
+
+I testi digitati nei due editor (nome/bodypart/link/note esercizio, nome/giorno routine) vivevano solo in memoria: un kill di sistema li perdeva. Ora ogni keystroke è specchiato in `SavedStateHandle` e riapplicato sopra lo stato da repo all'init — al massimo si perdono stepper/numerici (step 2). Helper puri testati (`EditorDraftsTest`, 5 test: round-trip, overlay, all-null); suite verde (JDK 21).
+
 ## Phase 150 — Sprint 3 a11y: stepper usabili con TalkBack
 
 Gli stepper +/− (`ScrollPickerInput`, il controllo più usato dell'app) erano `Box` da 32dp con solo `pointerInput`: invisibili a TalkBack e sotto il target minimo. Ora target 48dp (cerchio visivo invariato a 32dp), `role = Button` + action "Aumenta/Diminuisci ‹campo›" via semantics (niente `clickable()`: scatenerebbe un doppio `onClick` a ogni tap, il path touch resta su pointerInput), `fieldName` passato da tutti i 7 call site. Label pura e testata (`PickerButtonDescriptionTest`); semantics non copribile senza harness Compose (assente nel repo). Suite verde (JDK 21).

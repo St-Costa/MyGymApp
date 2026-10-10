@@ -89,7 +89,7 @@ fun canEnableSupersetLink(segments: List<ExerciseSegment>, index: Int, count: In
 
 @HiltViewModel
 class RoutineEditViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val routineRepository: RoutineRepository,
     private val exerciseRepository: ExerciseRepository,
     private val dataChangedSignal: DataChangedSignal,
@@ -140,15 +140,20 @@ class RoutineEditViewModel @Inject constructor(
                     )
                 }
             }
+            // Process-death restore: keystrokes newer than the last disk save survive in
+            // the SavedStateHandle — overlay them over whatever the repo just loaded.
+            _uiState.value = _uiState.value.withTextDraft(readRoutineTextDraft(savedStateHandle))
         }
     }
 
     fun onNameChange(value: String) {
         _uiState.value = _uiState.value.copy(name = value)
+        savedStateHandle[DRAFT_ROUTINE_NAME] = value
     }
 
     fun onDayChange(day: String) {
         _uiState.value = _uiState.value.copy(day = day)
+        savedStateHandle[DRAFT_ROUTINE_DAY] = day
     }
 
     fun addExercise(exerciseId: String) {
@@ -380,3 +385,23 @@ class RoutineEditViewModel @Inject constructor(
         },
     )
 }
+
+/**
+ * Process-death drafts (Sprint 3): the name/day keystrokes are mirrored into the
+ * [SavedStateHandle] on every change and overlaid over the repo-loaded state at init.
+ * Strings only — the exercise list can't ride the handle. Pure helpers, unit-tested.
+ */
+internal const val DRAFT_ROUTINE_NAME = "draft_routine_name"
+internal const val DRAFT_ROUTINE_DAY = "draft_routine_day"
+
+internal data class RoutineTextDraft(val name: String?, val day: String?)
+
+internal fun readRoutineTextDraft(handle: SavedStateHandle): RoutineTextDraft = RoutineTextDraft(
+    name = handle.get<String>(DRAFT_ROUTINE_NAME),
+    day = handle.get<String>(DRAFT_ROUTINE_DAY),
+)
+
+internal fun RoutineEditUiState.withTextDraft(draft: RoutineTextDraft): RoutineEditUiState = copy(
+    name = draft.name ?: name,
+    day = draft.day ?: day,
+)
