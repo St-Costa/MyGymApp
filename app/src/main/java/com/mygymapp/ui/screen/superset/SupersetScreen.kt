@@ -68,10 +68,11 @@ fun SupersetScreen(
     viewModel: SupersetViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val completionSaved by viewModel.completionSaved.collectAsState()
     val context = LocalContext.current
-    LaunchedEffect(completionSaved) {
-        if (completionSaved) onComplete()
+    // One-shot: collect the completion event, don't observe the boolean flag (a
+    // LaunchedEffect(flag) can re-fire navigation on recompositions with flag=true).
+    LaunchedEffect(Unit) {
+        viewModel.completionEvent.collect { onComplete() }
     }
     val switchedMember by viewModel.switchedMember.collectAsState()
     LaunchedEffect(switchedMember) {

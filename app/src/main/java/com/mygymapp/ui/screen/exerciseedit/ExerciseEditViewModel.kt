@@ -13,8 +13,11 @@ import com.mygymapp.data.model.TempoDuration
 import com.mygymapp.data.model.stepped
 import com.mygymapp.data.repository.ExerciseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -62,6 +65,14 @@ class ExerciseEditViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ExerciseEditUiState())
     val uiState: StateFlow<ExerciseEditUiState> = _uiState
+
+    /**
+     * One-shot navigation event for deletion, sent alongside the `deleted` flag.
+     * The screen collects this (not the boolean) — same reasoning as
+     * `ExerciseSessionViewModel.completionEvent` (channel-backed, consumed exactly once).
+     */
+    private val _deletedEvent = Channel<Unit>(Channel.BUFFERED)
+    val deletedEvent: Flow<Unit> = _deletedEvent.receiveAsFlow()
 
     init {
         viewModelScope.launch {
@@ -167,6 +178,7 @@ class ExerciseEditViewModel @Inject constructor(
             exerciseRepository.delete(id)
             dataChangedSignal.notifyExercisesChanged()
             _uiState.value = _uiState.value.copy(deleted = true)
+            _deletedEvent.send(Unit)
         }
     }
 

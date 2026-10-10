@@ -63,9 +63,10 @@ fun CardioExerciseScreen(
     viewModel: CardioExerciseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val completionSaved by viewModel.completionSaved.collectAsState()
-    LaunchedEffect(completionSaved) {
-        if (completionSaved) onComplete()
+    // One-shot: collect the completion event, don't observe the boolean flag (a
+    // LaunchedEffect(flag) can re-fire navigation on recompositions with flag=true).
+    LaunchedEffect(Unit) {
+        viewModel.completionEvent.collect { onComplete() }
     }
 
     // Tieni lo schermo acceso solo mentre il blocco cardio è in corso (isBlockRunning).

@@ -52,9 +52,10 @@ fun StrengthExerciseScreen(
     viewModel: StrengthExerciseViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val completionSaved by viewModel.completionSaved.collectAsState()
-    LaunchedEffect(completionSaved) {
-        if (completionSaved) onComplete()
+    // One-shot: collect the completion event, don't observe the boolean flag (a
+    // LaunchedEffect(flag) can re-fire navigation on recompositions with flag=true).
+    LaunchedEffect(Unit) {
+        viewModel.completionEvent.collect { onComplete() }
     }
     val switchedExerciseId by viewModel.switchedExerciseId.collectAsState()
     LaunchedEffect(switchedExerciseId) {

@@ -79,8 +79,9 @@ fun ExerciseEditScreen(
         }
     }
 
-    LaunchedEffect(uiState.deleted) {
-        if (uiState.deleted) onBack()
+    // One-shot: collect the deletion event, don't observe the boolean flag.
+    LaunchedEffect(Unit) {
+        viewModel.deletedEvent.collect { onBack() }
     }
 
     if (showDeleteDialog) {

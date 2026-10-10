@@ -34,8 +34,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -186,6 +189,16 @@ class ActiveRoutineViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ActiveRoutineUiState())
     val uiState: StateFlow<ActiveRoutineUiState> = _uiState
+
+    /**
+     * One-shot navigation event for session registration, sent alongside the
+     * `sessionRegistered` flag. The screen collects this (not the boolean) — same
+     * reasoning as `ExerciseSessionViewModel.completionEvent`. Channel-backed (not
+     * `SharedFlow` extra-buffer: extra slots don't reach late subscribers, replay would
+     * re-fire after rotation) so the pair is consumed exactly once.
+     */
+    private val _sessionRegisteredEvent = Channel<Pair<String, String>>(Channel.BUFFERED)
+    val sessionRegisteredEvent: Flow<Pair<String, String>> = _sessionRegisteredEvent.receiveAsFlow()
 
     private var currentSession: WorkoutSession? = null
     private var previousTonnageByExercise: Map<String, Double> = emptyMap()
@@ -788,11 +801,14 @@ class ActiveRoutineViewModel @Inject constructor(
                 }
             }
             appLogger.i(TAG, "Session registered: id=${session?.id} tonnage=${session?.totalTonnage} kcal=${"%.1f".format(session?.sessionCalories ?: 0.0)} trimp=${"%.1f".format(session?.sessionTrimp ?: 0.0)}")
+            val registeredId = session?.id ?: ""
+            val registeredDate = session?.date ?: ""
             _uiState.value = _uiState.value.copy(
                 sessionRegistered = true,
-                registeredSessionId = session?.id ?: "",
-                registeredSessionDate = session?.date ?: "",
+                registeredSessionId = registeredId,
+                registeredSessionDate = registeredDate,
             )
+            _sessionRegisteredEvent.send(registeredId to registeredDate)
         }
     }
 
