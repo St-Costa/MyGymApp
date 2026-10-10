@@ -1,6 +1,8 @@
 package com.mygymapp.data.polar
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -85,5 +87,39 @@ class HrRecoveryMonotonicityTest {
         )
 
         assertTrue(result)
+    }
+
+    @Test
+    fun `window average means the trailing 5s`() {
+        val series = listOf(
+            50_000L to 200, // outside the window: ignored
+            55_000L to 120,
+            57_000L to 110,
+            60_000L to 100,
+        )
+
+        assertEquals(110, hrrWindowAverage(series, nowElapsedMs = 60_000L))
+    }
+
+    @Test
+    fun `window average is null when the window is empty`() {
+        assertNull(hrrWindowAverage(emptyList(), nowElapsedMs = 60_000L))
+        assertNull(
+            hrrWindowAverage(listOf(0L to 150), nowElapsedMs = 60_000L),
+        )
+    }
+
+    @Test
+    fun `window average smooths a single noisy sample`() {
+        // Instantaneous +60s sample reads 104, but the trailing 5s average 109 —
+        // the delta uses the average, not the lone noisy beat.
+        val series = listOf(
+            55_000L to 112,
+            57_000L to 111,
+            59_000L to 109,
+            60_000L to 104,
+        )
+
+        assertEquals(109, hrrWindowAverage(series, nowElapsedMs = 60_000L))
     }
 }

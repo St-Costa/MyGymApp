@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 161 — Sprint 5 HRR: delta su media 5s + soglie RR documentate
+
+Il delta HRR usava il singolo campione istantaneo a +60s (un beat rumoroso spostava il risultato di vari BPM) e i delta fuori range sparivano senza conteggio: ora media mobile 5s da `hrSeries` (`hrrWindowAverage` pura) e ogni scarto incrementa `hrrDeltasDiscarded`. Le finestre RR diverse (readiness 300–2000, live 300–2500) sono intenzionali — non unificate, ma documentate in codice (HRV vs conteggio beat + flag PAUSE). `HrRecoveryMonotonicityTest` +3 test; suite verde (JDK 21).
+
 ## Phase 160 — Sprint 5 ECG live: percentuali oneste + gate coerenti
 
 Tre bug estetici con effetto misleading: `regularPct` 100% a 0 beat (ora NaN → "—"), semaforo rosso con 3 beat per un singolo uneven (verdetto solo da 10 beat, prima pallino neutro), traccia zone congelata in NO_SIGNAL/STANDBY (gate su `linkStatus` come le altre card). Nuovo `LiveEcgSnapshotTest`; suite verde (JDK 21).

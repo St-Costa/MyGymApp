@@ -914,7 +914,10 @@ class PolarManager @Inject constructor(
                         val hrMaxFrac = sample.hr.toFloat() / userProfile.hrMax.coerceAtLeast(1)
                         liveAnalyzer.setUnevenGate(active = hrMaxFrac >= 0.70f)
 
-                        // Process RR intervals
+                        // Process RR intervals. 300..2000 on purpose (not the live
+                        // analyzer's 300..2500): these buffers feed RMSSD/readiness math,
+                        // where >2000 ms means pause/artifact, while LiveEcgAnalyzer
+                        // counts slower beats and flags >2000 as PAUSE itself.
                         for (rr in sample.rrsMs) {
                             if (rr in 300..2000) {
                                 // Recovery buffer
@@ -1057,26 +1060,34 @@ class PolarManager @Inject constructor(
         }
         hrWasRising = isRising
 
-        // Check if any queued peak has reached +60s → record the delta
+        // Check if any queued peak has reached +60s → record the delta. The +60s HR
+        // is a trailing-5s mean from hrSeries, not the single instantaneous sample:
+        // a lone noisy sample could swing the delta by several BPM either way.
         val now = System.currentTimeMillis()
         val iter = pendingHrrPeaks.iterator()
         while (iter.hasNext()) {
             val (peakHr, peakTs) = iter.next()
             if (now - peakTs >= 60_000) {
-                val delta = peakHr - hr
-                if (delta in 0..120) {
-                    if (isMonotonicRecovery(peakHr, peakTs, now)) {
-                        hrrDeltas.add(delta)
-                        _liveHrrLast.value = delta
-                    } else {
-                        hrrDeltasDiscarded++
-                        Log.d(
-                            TAG,
-                            "HRR delta discarded (rebound > $HRR_REBOUND_TOLERANCE_BPM bpm " +
-                                "within peak+60s window): peak=$peakHr delta=$delta " +
-                                "totalDiscarded=$hrrDeltasDiscarded"
-                        )
-                    }
+                val hrAt60 = hrrWindowAverage(hrSeries.toList(), now - hrSeriesStart) ?: hr
+                val delta = peakHr - hrAt60
+                if (delta !in 0..120) {
+                    hrrDeltasDiscarded++
+                    Log.d(
+                        TAG,
+                        "HRR delta out of range, discarded: peak=$peakHr hrAt60=$hrAt60 " +
+                            "totalDiscarded=$hrrDeltasDiscarded"
+                    )
+                } else if (isMonotonicRecovery(peakHr, peakTs, now)) {
+                    hrrDeltas.add(delta)
+                    _liveHrrLast.value = delta
+                } else {
+                    hrrDeltasDiscarded++
+                    Log.d(
+                        TAG,
+                        "HRR delta discarded (rebound > $HRR_REBOUND_TOLERANCE_BPM bpm " +
+                            "within peak+60s window): peak=$peakHr delta=$delta " +
+                            "totalDiscarded=$hrrDeltasDiscarded"
+                    )
                 }
                 iter.remove()
             }
