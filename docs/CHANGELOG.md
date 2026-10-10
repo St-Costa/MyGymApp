@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 177 — Regen baseline profile (SM-A556B, primo run col wrapper)
+
+Profilo rigenerato dopo gli Sprint 1–8 (nuovi path: AtomicFiles, Channel, writer IO). Il wrapper ha funzionato end-to-end: backup verificato, uninstall, generate, reinstall, restore 534/534 + prefs — con un intoppo istruttivo nel mezzo (primo run ucciso dal timeout + harness senza `-r`), da cui la fix Phase 176. Nota: `startup-prof.txt` resta byte-identico al baseline (è l'output del generator con `includeInStartupProfile=true`, non un errore di commit) — ~2,4 MB ×2 nell'APK. Suite verde (JDK 21).
+
 ## Phase 176 — Script baseline: uninstall pulita prima del generate
 
 Il primo run col wrapper è fallito con "Unable to find target package": l'harness installa SENZA `-r`, quindi qualunque `com.mygymapp` preesistente fa fallire il suo install in silenzio. Ora lo script disinstalla app + test-APK dopo il backup verificato (procedura storica già documentata). Trovato anche così: build non-debuggable a bordo = backup via `run-as` impossibile — reinstallare prima il debug con `install -r` (tiene i dati). Suite verde (JDK 21).
