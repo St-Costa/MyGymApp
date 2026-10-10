@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 148 — Sprint 3 nav: result reattivi + coda switch
+
+I result `savedStateHandle` erano letti con `get()` one-shot (se il set non triggerava un recompose, il `LaunchedEffect` non ripartiva e il result andava perso): ora tutti via `getStateFlow(...).collectAsState()`. E `switchedExerciseIds` era uno slot singolo (due switch consecutivi si sovrascrivevano): ora coda `"old,new;old,new"` accodata dai 3 producer e applicata in ordine (`appendSwitchResult`/`parseSwitchResults` puri in `AppNavigation.kt`). Nuovo `SwitchResultQueueTest` (4 test); suite verde (JDK 21).
+
 ## Phase 147 — Sprint 3 nav: eventi one-shot al posto dei flag booleani
 
 `LaunchedEffect(flag)` con flag già `true` può rieseguire `onComplete/onBack` durante transizioni animate o pop lenti (doppia navigazione). Ora i trigger di navigazione sono `SharedFlow` senza replay consumati una sola volta (`completionEvent` nella base dei 4 exercise VM, `sessionRegisteredEvent` con id+data, `deletedEvent` nei due editor), mentre i booleani restano come stato durevole. Nuovo `CompletionEventTest` (esattamente-una-volta inclusa); suite verde (JDK 21).

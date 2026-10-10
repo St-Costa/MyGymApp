@@ -478,10 +478,14 @@ had the old `exerciseId`. Reproduced and fixed on-device (not caught by the buil
 automated test coverage here, see "Piano di verifica" in the feature's design doc).
 
 The fix: the exercise screen, right before re-navigating, also writes
-`previousBackStackEntry?.savedStateHandle?.set("switchedExerciseIds", "$oldId,$newId")` — same
+`previousBackStackEntry?.savedStateHandle` `"switchedExerciseIds"` — same
 `savedStateHandle`-result pattern `completedExerciseId` already uses — onto the `ActiveRoutine`
-back-stack entry specifically (not its own). `AppNavigation`'s `ActiveRoutine` composable
-observes that key with a `LaunchedEffect` and calls
+back-stack entry specifically (not its own). The value is a **queue** of `"old,new"` pairs
+joined by `";"` (`appendSwitchResult`/`parseSwitchResults` in `AppNavigation.kt`, pure and
+tested): two switches before returning to the list must not overwrite each other, and every
+key is observed via `getStateFlow(...).collectAsState()` (a one-shot `get()` can miss a result
+that lands without a recompose). `AppNavigation`'s `ActiveRoutine` composable
+applies each pair in order via
 `ActiveRoutineViewModel.applyExerciseSwitch(oldId, newId)`, which does **not** touch disk (the
 exercise screen already did) — it only re-reads the already-saved session file to catch
 `currentSession` up, then patches the matching `_uiState.exercises` entry in place (same

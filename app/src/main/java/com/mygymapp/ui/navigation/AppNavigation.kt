@@ -1,6 +1,8 @@
 package com.mygymapp.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -27,6 +29,30 @@ import com.mygymapp.ui.screen.sessionprogress.SessionProgressScreen
 import com.mygymapp.ui.screen.heartrate.HeartRateScreen
 import com.mygymapp.ui.screen.options.OptionsScreen
 import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
+
+/**
+ * `savedStateHandle`-result plumbing (Sprint 3).
+ *
+ * Two rules every result key in this file follows:
+ * 1. **Reactive reads.** Consumers observe keys via `getStateFlow(key, null).collectAsState()`,
+ *    never a one-shot `get()` + `LaunchedEffect(key)`: `NavHost` does not always recompose the
+ *    target entry when its `SavedStateHandle` is set, so the `get()` snapshot can miss a result
+ *    that landed without a recompose and the effect never restarts.
+ * 2. **Switch results are a queue, not a slot.** Two switches before returning to the list
+ *    must not overwrite each other (`"old,new"` pairs joined by `";"`, applied in order).
+ */
+internal fun appendSwitchResult(existing: String?, oldId: String, newId: String): String =
+    if (existing.isNullOrBlank()) "$oldId,$newId" else "$existing;$oldId,$newId"
+
+internal fun parseSwitchResults(value: String): List<Pair<String, String>> =
+    value.split(";").mapNotNull { pair ->
+        val parts = pair.split(",", limit = 2)
+        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+            parts[0] to parts[1]
+        } else {
+            null
+        }
+    }
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -100,11 +126,12 @@ fun AppNavigation(navController: NavHostController) {
             val id = backStackEntry.arguments?.getString("id")?.takeIf { it.isNotBlank() }
             val viewModel: RoutineEditViewModel = hiltViewModel()
 
-            // Observe picker result
-            val pickedId = backStackEntry.savedStateHandle.get<String>("pickedExerciseId")
+            // Observe picker result (reactive: getStateFlow, not a one-shot get()).
+            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>("pickedExerciseId", null).collectAsState()
             LaunchedEffect(pickedId) {
-                if (pickedId != null) {
-                    viewModel.addExercise(pickedId)
+                val id = pickedId
+                if (id != null) {
+                    viewModel.addExercise(id)
                     backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
                 }
             }
@@ -125,38 +152,42 @@ fun AppNavigation(navController: NavHostController) {
         ) { backStackEntry ->
             val viewModel: com.mygymapp.ui.screen.activeroutine.ActiveRoutineViewModel = hiltViewModel()
 
-            // Observe single-exercise completion result
-            val completedExId = backStackEntry.savedStateHandle.get<String>("completedExerciseId")
+            // Observe single-exercise completion result (reactive: getStateFlow).
+            val completedExId by backStackEntry.savedStateHandle.getStateFlow<String?>("completedExerciseId", null).collectAsState()
             LaunchedEffect(completedExId) {
-                if (completedExId != null) {
-                    viewModel.markExerciseCompleted(completedExId)
+                val id = completedExId
+                if (id != null) {
+                    viewModel.markExerciseCompleted(id)
                     backStackEntry.savedStateHandle.remove<String>("completedExerciseId")
                 }
             }
 
             // Observe superset completion result (comma-separated chain member exerciseIds)
-            val completedSupersetIds = backStackEntry.savedStateHandle.get<String>("completedSupersetIds")
+            val completedSupersetIds by backStackEntry.savedStateHandle.getStateFlow<String?>("completedSupersetIds", null).collectAsState()
             LaunchedEffect(completedSupersetIds) {
-                if (completedSupersetIds != null) {
-                    completedSupersetIds.split(",").forEach { id ->
+                val ids = completedSupersetIds
+                if (ids != null) {
+                    ids.split(",").forEach { id ->
                         viewModel.markExerciseCompleted(id)
                     }
                     backStackEntry.savedStateHandle.remove<String>("completedSupersetIds")
                 }
             }
 
-            // Observe "Switch exercise" results (docs/CONVENTIONS.md#switch-exercise), format
-            // "oldExerciseId,newExerciseId" — the exercise screen already applied the switch to
+            // Observe "Switch exercise" results (docs/CONVENTIONS.md#switch-exercise), queued
+            // "old,new;old,new" pairs — the exercise screen already applied each switch to
             // the session file itself (via its own switchExercise call), but this VM's in-memory
             // _uiState.exercises list still shows the old exercise until told about the swap, so
             // it never reflects the new one when the user navigates back. One key covers both
             // Strength/Stretch and each Superset side, since they're all the same "one slot
             // changed exerciseId" event from this screen's point of view.
-            val switchedIds = backStackEntry.savedStateHandle.get<String>("switchedExerciseIds")
+            val switchedIds by backStackEntry.savedStateHandle.getStateFlow<String?>("switchedExerciseIds", null).collectAsState()
             LaunchedEffect(switchedIds) {
-                if (switchedIds != null) {
-                    val (oldId, newId) = switchedIds.split(",", limit = 2)
-                    viewModel.applyExerciseSwitch(oldId, newId)
+                val queued = switchedIds
+                if (queued != null) {
+                    parseSwitchResults(queued).forEach { (oldId, newId) ->
+                        viewModel.applyExerciseSwitch(oldId, newId)
+                    }
                     backStackEntry.savedStateHandle.remove<String>("switchedExerciseIds")
                 }
             }
@@ -198,10 +229,11 @@ fun AppNavigation(navController: NavHostController) {
 
             // Observe the filtered picker's result (see ExercisePicker composable below) and
             // apply the switch on this screen's own VM before re-navigating.
-            val pickedId = backStackEntry.savedStateHandle.get<String>("pickedExerciseId")
+            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>("pickedExerciseId", null).collectAsState()
             LaunchedEffect(pickedId) {
-                if (pickedId != null) {
-                    viewModel.switchExercise(pickedId)
+                val id = pickedId
+                if (id != null) {
+                    viewModel.switchExercise(id)
                     backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
                 }
             }
@@ -221,9 +253,14 @@ fun AppNavigation(navController: NavHostController) {
                     // Tell the ActiveRoutine screen (previous back-stack entry) about the swap
                     // before re-navigating — its _uiState.exercises was built once at session
                     // start and won't otherwise learn the slot's exerciseId changed.
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("switchedExerciseIds", "$exerciseId,$newExerciseId")
+                    // Appended (queue), never overwritten: two switches before returning
+                    // must both survive.
+                    navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
+                        handle.set(
+                            "switchedExerciseIds",
+                            appendSwitchResult(handle.get<String>("switchedExerciseIds"), exerciseId, newExerciseId),
+                        )
+                    }
                     // Re-navigate to the same screen with the new exerciseId: init{} loads all
                     // state (history, rep range, name) one-shot from SavedStateHandle, so a
                     // fresh VM instance is simpler and safer than mutating state in place.
@@ -246,10 +283,11 @@ fun AppNavigation(navController: NavHostController) {
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
             val viewModel: com.mygymapp.ui.screen.stretchexercise.StretchExerciseViewModel = hiltViewModel()
 
-            val pickedId = backStackEntry.savedStateHandle.get<String>("pickedExerciseId")
+            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>("pickedExerciseId", null).collectAsState()
             LaunchedEffect(pickedId) {
-                if (pickedId != null) {
-                    viewModel.switchExercise(pickedId)
+                val id = pickedId
+                if (id != null) {
+                    viewModel.switchExercise(id)
                     backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
                 }
             }
@@ -266,9 +304,12 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(Screen.ExercisePicker.createRoute(bodypart, type, excludeIds))
                 },
                 onSwitched = { newExerciseId ->
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("switchedExerciseIds", "$exerciseId,$newExerciseId")
+                    navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
+                        handle.set(
+                            "switchedExerciseIds",
+                            appendSwitchResult(handle.get<String>("switchedExerciseIds"), exerciseId, newExerciseId),
+                        )
+                    }
                     navController.navigate(Screen.StretchExercise.createRoute(sessionId, newExerciseId)) {
                         popUpTo(Screen.StretchExercise.createRoute(sessionId, exerciseId)) { inclusive = true }
                     }
@@ -313,10 +354,11 @@ fun AppNavigation(navController: NavHostController) {
             // so a switch on one member can never be misapplied to another member's slot.
             exerciseIds.indices.forEach { i ->
                 val key = "pickedExerciseIdSide${i + 1}"
-                val picked = backStackEntry.savedStateHandle.get<String>(key)
+                val picked by backStackEntry.savedStateHandle.getStateFlow<String?>(key, null).collectAsState()
                 LaunchedEffect(picked) {
-                    if (picked != null) {
-                        viewModel.switchExerciseAt(i, picked)
+                    val id = picked
+                    if (id != null) {
+                        viewModel.switchExerciseAt(i, id)
                         backStackEntry.savedStateHandle.remove<String>(key)
                     }
                 }
@@ -340,9 +382,12 @@ fun AppNavigation(navController: NavHostController) {
                     // Strength/Stretch onSwitched above. `side` is 1-based.
                     val memberIndex = side - 1
                     val oldExerciseId = exerciseIds.getOrNull(memberIndex) ?: return@onSwitched
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("switchedExerciseIds", "$oldExerciseId,$newExerciseId")
+                    navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
+                        handle.set(
+                            "switchedExerciseIds",
+                            appendSwitchResult(handle.get<String>("switchedExerciseIds"), oldExerciseId, newExerciseId),
+                        )
+                    }
                     // Re-navigate to the same Superset route with only the switched member's id
                     // replaced — the other members' ids (and thus their own VM state) are unaffected.
                     val newIds = exerciseIds.toMutableList().also { it[memberIndex] = newExerciseId }
