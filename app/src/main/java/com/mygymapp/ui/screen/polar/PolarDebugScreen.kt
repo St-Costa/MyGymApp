@@ -131,7 +131,7 @@ fun PolarDebugScreen(
 
             Text("Dispositivi trovati:")
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(uiState.discoveredDevices) { device ->
+                items(uiState.discoveredDevices, key = { it.deviceId }) { device ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(device.name)

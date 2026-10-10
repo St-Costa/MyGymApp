@@ -131,7 +131,7 @@ fun ScaleDebugScreen(
 
             Text("Dispositivi trovati:")
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(uiState.discoveredDevices) { device ->
+                items(uiState.discoveredDevices, key = { it.address }) { device ->
                     Card(
                         modifier = Modifier.fillMaxSize(),
                     ) {

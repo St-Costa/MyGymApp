@@ -734,7 +734,7 @@ private fun ProgressSection(
                 // Filter chips: routine-specific tonnage + cross-routine metrics
                 val filters = listOf("Totale") + sessionTonnageByBodypart.keys.toList() + crossRoutineFilters
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(filters) { filter ->
+                    items(filters, key = { it }) { filter ->
                         FilterChip(
                             selected = filter == selectedFilter,
                             onClick = { onFilterSelected(filter) },
