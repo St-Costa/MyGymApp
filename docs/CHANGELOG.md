@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 158 — Sprint 5 passi: media su giorni-calendario
+
+`DAYS.between` tronca (36h → 1 giorno): dopo un giorno saltato la "media giornaliera" era gonfiata fino a 2x. Ora divisore = giorni di calendario toccati in zona locale (`calendarDaysSpanned`, stessa mezzanotte di `previousDayTotal`). Nuovo `CalendarDaysSpannedTest` (6 test, incl. fuso). Suite verde (JDK 21).
+
 ## Phase 157 — Sprint 5 metriche: HRmax da un'unica fonte
 
 Zone live (media Fox/Tanaka/Gulati) e TRIMP/gate/VO2max (solo Tanaka) divergevano di 2–4 BPM dal server, che usa la media. Ora `UserProfile.hrMax` delega a `HrZoneCalculator.estimatedMaxHr`: un'unica fonte per tutto. Nuovo `UserProfileHrMaxTest` (3 test); label Options e checklist aggiornate. Suite verde (JDK 21).
