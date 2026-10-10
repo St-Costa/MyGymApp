@@ -220,7 +220,12 @@ is configured):
    `GET /v1/file?relPath=<relPath>` → raw bytes → write to disk at that path — but only
    if `RestorePathPolicy.isAllowedRestorePath()` accepts it (known record-type paths
    only; `_sync/`, logs, caches, derived sidecars and traversal paths are rejected and
-   counted as failures, so a compromised server can't overwrite phone state).
+   counted as failures, so a compromised server can't overwrite phone state). When the
+   local file exists with different bytes, those bytes are stashed first at
+   `gymdata/_conflicts/<timestamp>/<relPath>` (best-effort) and the file counts as
+   *overwritten* in the summary — recoverable by hand, never silently destroyed. There
+   is no merge UI; `_conflicts/` is local-only (never enqueued, allowlist-rejected on
+   read) and rides the tar backup. Prune it by hand if it grows.
 3. After writing, rebuild the ledger entry (`status=SENT, contentHash=<server's>`), so the
    next push doesn't re-send what was just restored.
 4. Restart / let the app rebuild `_idx`, `_stats`, `_gitgraph.yaml` lazily.
@@ -414,11 +419,12 @@ dup, edit-after-SENT, schema drift, partial multipart). Two additions:
   ledger entries, `delete` then `upsert`, delivered in order; the server's `git mv` to
   `deleted/` then a fresh write. History shows both. No data lost.
 - **Restore onto a phone that has local-only drafts**: §3.6 is pull-only and hash-diffed —
-  it never deletes, and skips files whose content already matches. But a path the server
-  holds with *different* bytes **is** overwritten — a same-path local draft newer than
-  the server copy is destroyed, with no merge and no conflict UI (known gap, no backup
-  `.bak` is written pre-overwrite yet). A draft survives the restore only when the server
-  lacks that path (or matches it) and syncs up on the next push.
+  it never deletes, and skips files whose content already matches. A path the server
+  holds with *different* bytes **is** overwritten — but since Phase 172 the local bytes
+  are stashed first under `gymdata/_conflicts/<timestamp>/` and the summary counts the
+  file as overwritten, so a same-path local draft newer than the server copy is
+  recoverable by hand. There is still no merge UI. A draft survives the restore untouched
+  when the server lacks that path (or matches it) and syncs up on the next push.
 
 ---
 

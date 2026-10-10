@@ -35,6 +35,7 @@ import com.mygymapp.data.steps.HealthConnectStepsReader
 import com.mygymapp.data.steps.StepLedgerRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncWorker
+import com.mygymapp.data.util.AppLogger
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -116,6 +117,7 @@ class OptionsViewModel @Inject constructor(
     private val backupVerifier: BackupVerifier,
     private val fileManager: FileManager,
     private val polarManager: PolarManager,
+    private val appLogger: AppLogger,
     private val stepLedgerRepository: StepLedgerRepository,
     private val healthConnectStepsReader: HealthConnectStepsReader,
     @ApplicationContext private val appContext: Context,
@@ -498,35 +500,79 @@ class OptionsViewModel @Inject constructor(
      * Write pulled files to disk, pull-only: never delete a local file the server lacks,
      * skip one whose bytes already match, and set the repo ledger to SENT for
      * exercises/routines so the next push doesn't bounce them back. Returns the summary line.
+     *
+     * Overwriting a same-path local file with different bytes stashes the local bytes
+     * first under `gymdata/_conflicts/<timestamp>/` (best-effort, never fails the
+     * restore) and counts the file as overwritten — a same-path local draft newer than
+     * the server copy is recoverable by hand instead of silently destroyed. There is no
+     * merge UI; `_conflicts/` is local-only (never enqueued, never matched by the
+     * restore allowlist) and rides the tar backup. Prune it by hand if it grows.
      */
     private suspend fun applyRestoredFiles(files: List<Pair<String, ByteArray>>): String {
         var restoredExercises = 0
         var restoredRoutines = 0
         var restoredOther = 0
+        var overwritten = 0
         var failed = 0
+        val conflictStamp = java.time.LocalDateTime.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
         for ((relPath, bytes) in files) {
             // Allowlist, not just traversal check: the server must never make the phone
             // overwrite sync ledgers, logs, caches or derived sidecars (Sprint 1).
             if (!RestorePathPolicy.isAllowedRestorePath(relPath)) { failed++; continue }
             val target = java.io.File(fileManager.root, relPath)
             // Hash + file I/O off the Main thread — restore batches can be hundreds of files.
-            val (hash, localHash, wrote) = withContext(Dispatchers.IO) {
+            val write = withContext(Dispatchers.IO) {
                 val h = "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
                     .digest(bytes).joinToString("") { "%02x".format(it) }
-                val lh = if (target.exists()) {
-                    runCatching {
-                        "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
-                            .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
-                    }.getOrNull()
+                val localBytes = if (target.exists()) {
+                    runCatching { target.readBytes() }.getOrNull()
                 } else null
-                val w = if (lh == h) true else runCatching {
+                val lh = localBytes?.let {
+                    "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(it).joinToString("") { "%02x".format(it) }
+                }
+                if (lh == h) {
+                    return@withContext RestoreWrite(
+                        hash = h,
+                        unchanged = true,
+                        overwroteLocal = false,
+                        wrote = true,
+                    )
+                }
+                if (localBytes != null) {
+                    val bak = java.io.File(
+                        fileManager.root,
+                        conflictBackupRelPath(relPath, conflictStamp),
+                    )
+                    val stashed = runCatching {
+                        bak.parentFile?.mkdirs()
+                        AtomicFiles.writeBytesAtomically(bak, localBytes)
+                    }
+                    if (stashed.isSuccess) {
+                        appLogger.w(
+                            TAG,
+                            "Restore overwrote $relPath (local $lh → server $h); " +
+                                "local copy stashed at ${conflictBackupRelPath(relPath, conflictStamp)}",
+                        )
+                    } else {
+                        appLogger.w(TAG, "Restore overwrote $relPath but the local stash failed")
+                    }
+                }
+                val w = runCatching {
                     target.parentFile?.mkdirs()
                     AtomicFiles.writeBytesAtomically(target, bytes)
                 }.isSuccess
-                Triple(h, lh, w)
+                RestoreWrite(
+                    hash = h,
+                    unchanged = false,
+                    overwroteLocal = localBytes != null,
+                    wrote = w,
+                )
             }
-            if (localHash == hash) continue
-            if (!wrote) { failed++; continue }
+            if (write.unchanged) continue
+            if (!write.wrote) { failed++; continue }
+            if (write.overwroteLocal) overwritten++
             when {
                 relPath.startsWith("exercises/") -> {
                     // exercises/_settings.md is the file-backed user profile, not an
@@ -534,20 +580,16 @@ class OptionsViewModel @Inject constructor(
                     // like everything else, just counted separately.
                     if (relPath.substringAfterLast('/').startsWith("_")) restoredOther++
                     else restoredExercises++
-                    repoLedgerRepository.markRestored(relPath, hash)
+                    repoLedgerRepository.markRestored(relPath, write.hash)
                 }
                 relPath.startsWith("routines/") -> {
                     restoredRoutines++
-                    repoLedgerRepository.markRestored(relPath, hash)
+                    repoLedgerRepository.markRestored(relPath, write.hash)
                 }
                 else -> restoredOther++
             }
         }
-        return buildString {
-            append("Restored $restoredExercises exercises, $restoredRoutines routines")
-            if (restoredOther > 0) append(", $restoredOther other files")
-            if (failed > 0) append(" ($failed failed)")
-        }
+        return buildRestoreSummary(restoredExercises, restoredRoutines, restoredOther, overwritten, failed)
     }
 
     /** Fallback restore: `GET /v1/manifest`, then batched `POST /v1/repo/files`. */
@@ -731,6 +773,7 @@ class OptionsViewModel @Inject constructor(
     }
 
     companion object {
+        private const val TAG = "OptionsViewModel"
         private const val DEBUG_ECG_RECORD_MILLIS = 10_000L
         private const val RESYNC_PROGRESS_TIMEOUT_MILLIS = 60_000L
         /** Live HR sampling window for the Polar self-test below. */
@@ -738,6 +781,14 @@ class OptionsViewModel @Inject constructor(
         /** How long the self-test hunts the strap before giving up. */
         private const val POLAR_SEARCH_TIMEOUT_SECONDS = 30
     }
+
+    /** Outcome of one pulled file's disk write in [applyRestoredFiles]. */
+    private data class RestoreWrite(
+        val hash: String,
+        val unchanged: Boolean,
+        val overwroteLocal: Boolean,
+        val wrote: Boolean,
+    )
 
     // ─── Polar self-test (Options → Debug) ───────────────────────────────────────
 
@@ -867,4 +918,25 @@ class OptionsViewModel @Inject constructor(
                 android.content.pm.PackageManager.PERMISSION_GRANTED
         }
     }
+}
+
+/**
+ * RelPath (under `gymdata/`) where a locally-overwritten file's bytes are stashed before
+ * a restore overwrites them — one timestamped dir per restore run. Pure, unit-tested.
+ */
+internal fun conflictBackupRelPath(relPath: String, conflictStamp: String): String =
+    "_conflicts/$conflictStamp/$relPath"
+
+/** Summary line for [OptionsViewModel.applyRestoredFiles] — pure, unit-tested. */
+internal fun buildRestoreSummary(
+    exercises: Int,
+    routines: Int,
+    other: Int,
+    overwritten: Int,
+    failed: Int,
+): String = buildString {
+    append("Restored $exercises exercises, $routines routines")
+    if (other > 0) append(", $other other files")
+    if (overwritten > 0) append(", $overwritten overwritten (local copy in _conflicts/)")
+    if (failed > 0) append(" ($failed failed)")
 }
