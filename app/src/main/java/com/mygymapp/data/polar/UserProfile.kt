@@ -28,8 +28,8 @@ data class UserProfile(
     val weightKg: Double = 75.0,
     val isMale: Boolean = true,
     val heightCm: Int = 175,
-    // Real birth year — the sole source of age for every formula (Keytel calories, Tanaka
-    // HRmax, TRIMP, VO2max, BIA body-fat %). Null until the user fills it in (ProfileSection);
+    // Real birth year — the sole source of age for every formula (Keytel calories,
+    // estimated HRmax, TRIMP, VO2max, BIA body-fat %). Null until the user fills it in (ProfileSection);
     // effectiveAge falls back to DEFAULT_AGE until then.
     val birthYear: Int? = null,
 ) {
@@ -37,8 +37,15 @@ data class UserProfile(
      *  manually-entered plain age field would be) — [DEFAULT_AGE] until birthYear is set. */
     val effectiveAge: Int get() = birthYear?.let { Year.now().value - it } ?: DEFAULT_AGE
 
-    /** Tanaka formula: more accurate than 220-age. */
-    val hrMax: Int get() = (208 - (0.7 * effectiveAge)).toInt()
+    /**
+     * Single source of truth for estimated max HR: the unweighted mean of the Fox, Tanaka
+     * and Gulati formulas ([HrZoneCalculator.estimatedMaxHr], mirroring the server's
+     * `_estimated_max_hr`). Everything that needs an max HR — live zone boundaries, the
+     * uneven-detection gate, Banister TRIMP, Uth VO2max — reads this, so the live values
+     * agree with the server's retrospective computation instead of diverging by 2–4 BPM
+     * (the old Tanaka-only value).
+     */
+    val hrMax: Int get() = HrZoneCalculator.estimatedMaxHr(effectiveAge)
 }
 
 /**

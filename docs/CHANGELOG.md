@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 157 — Sprint 5 metriche: HRmax da un'unica fonte
+
+Zone live (media Fox/Tanaka/Gulati) e TRIMP/gate/VO2max (solo Tanaka) divergevano di 2–4 BPM dal server, che usa la media. Ora `UserProfile.hrMax` delega a `HrZoneCalculator.estimatedMaxHr`: un'unica fonte per tutto. Nuovo `UserProfileHrMaxTest` (3 test); label Options e checklist aggiornate. Suite verde (JDK 21).
+
 ## Phase 156 — Sprint 4 release: keep HiltWorker + `assembleRelease` verde
 
 I 5 `@HiltWorker` di sync oggi sopravvivono a R8 solo perché la `HiltWorkerFactory` generata li referenzia: un keep esplicito (`-keep @androidx.hilt.work.HiltWorker`) li blinda da qualunque path riflessivo futuro. Verifica: `assembleRelease` verde (R8 + manifest con extraction rules e cleartext). Suite verde (JDK 21).

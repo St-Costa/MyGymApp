@@ -199,7 +199,7 @@ private fun ProfileSection(
 
             Text(
                 if (profile.birthYear != null) {
-                    "HRmax: ${profile.hrMax} BPM (Tanaka formula)"
+                    "HRmax: ${profile.hrMax} BPM (media Fox/Tanaka/Gulati)"
                 } else {
                     "Imposta l'anno di nascita per calcoli accurati (HRmax stimato: ${profile.hrMax} BPM)"
                 },
