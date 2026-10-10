@@ -14,6 +14,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mygymapp.BuildConfig
 import com.mygymapp.data.polar.PolarManager
+import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.util.AppLogger
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -57,6 +58,7 @@ class EcgSyncWorker @AssistedInject constructor(
     private val config: SyncConfigRepository,
     private val api: EcgSyncApi,
     private val polarManager: PolarManager,
+    private val workoutRepository: WorkoutRepository,
     private val appLogger: AppLogger,
     private val healthProbe: SyncHealthProbe,
 ) : CoroutineWorker(context, params) {
@@ -104,9 +106,16 @@ class EcgSyncWorker @AssistedInject constructor(
         for (entry in pending) {
             val file = polarManager.ecgFileFor(entry.sessionId)
             if (!file.exists()) {
-                appLogger.w(TAG, "Sync skip: ECG file for ${entry.sessionId} not found on disk")
-                ledger.markFailed(entry.sessionId, "ecg file not found on disk")
-                anyFailure = true
+                // The raw is gone: it can never come back (recording ends at finalize,
+                // ghost-sweep/prune/hand-delete took the session with it). Dead-letter
+                // instead of markFailed + retry forever on the 4h period.
+                val reason = if (workoutRepository.sessionFileExists(entry.sessionId)) {
+                    "ecg file missing, session kept"
+                } else {
+                    "ecg file and session not found on disk"
+                }
+                appLogger.w(TAG, "Sync dead: ECG ${entry.sessionId} ($reason) — dropping ledger entry")
+                ledger.markDead(entry.sessionId, reason)
                 continue
             }
 

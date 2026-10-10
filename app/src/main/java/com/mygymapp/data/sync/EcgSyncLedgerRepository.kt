@@ -147,6 +147,26 @@ class EcgSyncLedgerRepository @Inject constructor(
         }
     }
 
+    /**
+     * Dead-letter for entries whose source can never come back (the `.ecg` file is gone
+     * and the session with it — ghost-swept, pruned, or hand-deleted). Moves to `EXPIRED`
+     * (out of `getPending`, like the 30-day age cap) with the reason recorded, instead of
+     * `markFailed` + `Result.retry()` forever on the 4h period. No-op for unknown ids.
+     */
+    suspend fun markDead(id: String, reason: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val all = readAllUnlocked()
+            val existing = all[id] ?: return@withLock
+            all[id] = existing.copy(
+                status = SyncStatus.EXPIRED,
+                attempts = existing.attempts + 1,
+                lastAttemptAt = LocalDateTime.now().toString(),
+                lastError = reason.take(500).replace(Regex("[\\r\\n]+"), " "),
+            )
+            writeAllUnlocked(all)
+        }
+    }
+
     suspend fun markFailed(id: String, error: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val all = readAllUnlocked()
