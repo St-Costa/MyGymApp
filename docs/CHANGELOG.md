@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 174 — Sprint 8 dipendenze: verification-metadata sha256
+
+`gradle/verification-metadata.xml` (1012 artefatti): ogni futura build fallisce su artefatto manomesso/inatteso, JitPack/Polar incluso. Rigenerare con `--write-verification-metadata sha256` a ogni cambio dipendenze (workflow in `CONVENTIONS.md`). Risoluzione verificata verde; suite verde (JDK 21).
+
 ## Phase 173 — Sprint 8 throttle: sentinel con contenuto + fail-open
 
 Il throttle di `runMaintenance` leggeva l'mtime (restore tar e salti d'orologio lo falsano; indietro = cleanup bloccato a lungo). Ora il sentinel tiene l'epoch millis nel contenuto (fallback mtime per i vecchi), e un timestamp futuro fa girare invece di bloccare. `shouldRunMaintenance` pura + test (`MaintenanceThrottleTest`, integrazione nel date-change test); `CONVENTIONS.md` aggiornato. Suite verde (JDK 21).
