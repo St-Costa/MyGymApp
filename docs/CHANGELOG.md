@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 146 — Sprint 3 nav: la toolbar non bypassa più il prompt RPE
+
+Il `BackHandler` era disabilitato durante il prompt RPE obbligatorio, ma il pulsante back della toolbar chiamava `abandonSession()+onBack()` incondizionatamente: un tap aggirava il prompt "non skippabile". Ora stessa guard anche lì (`if (!showRpePrompt)`). Suite verde (JDK 21).
+
 ## Phase 145 — Sprint 2 ECG: dead-letter al posto del retry infinito
 
 `EcgSyncWorker` faceva `markFailed("not found")` + `retry()` per sempre (wakeup/radio ogni 4h) su un file che non tornerà mai — il ghost-sweep cancella l'`.ecg` senza toccare il ledger. Ora `markDead()` (→ `EXPIRED`, fuori da `getPending`) quando il raw manca, con reason che distingue sessione presente/assente (`WorkoutRepository.sessionFileExists`, scan per suffisso senza parse); il boot sweep marca morti gli id spazzati (`GhostSweepResult.deletedSessionIds`, loop in `MainViewModel`). Nuovo `EcgLedgerDeadTest` (4 test); suite verde (JDK 21).

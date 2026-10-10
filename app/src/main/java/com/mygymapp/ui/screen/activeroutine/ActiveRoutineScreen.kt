@@ -146,9 +146,13 @@ fun ActiveRoutineScreen(
             TopAppBar(
                 title = {},
                 navigationIcon = {
+                    // Same guard as the BackHandler above: while the mandatory RPE prompt
+                    // is up, neither the gesture nor the toolbar button may bypass it.
                     IconButton(onClick = {
-                        viewModel.abandonSession()
-                        onBack()
+                        if (!uiState.showRpePrompt) {
+                            viewModel.abandonSession()
+                            onBack()
+                        }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
