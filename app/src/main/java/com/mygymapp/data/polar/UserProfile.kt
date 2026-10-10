@@ -7,6 +7,7 @@ import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.util.AppLogger
+import com.mygymapp.data.util.AtomicFiles
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.time.Year
@@ -91,7 +92,7 @@ class UserProfileRepository @Inject constructor(
     suspend fun save(profile: UserProfile) = withContext(Dispatchers.IO) {
         val file = settingsFile()
         file.parentFile?.mkdirs()
-        file.writeText(UserProfileParser.toMarkdown(profile))
+        AtomicFiles.writeTextAtomically(file, UserProfileParser.toMarkdown(profile))
         synchronized(lock) { cached = profile }
         queueForBackup()
     }
@@ -119,7 +120,7 @@ class UserProfileRepository @Inject constructor(
             runCatching {
                 val file = settingsFile()
                 file.parentFile?.mkdirs()
-                file.writeText(UserProfileParser.toMarkdown(profile))
+                AtomicFiles.writeTextAtomically(file, UserProfileParser.toMarkdown(profile))
                 context.deleteSharedPreferences(LEGACY_PREFS)
             }.onSuccess {
                 appLogger.i(TAG, "Migrated user profile to $SETTINGS_REL_PATH")

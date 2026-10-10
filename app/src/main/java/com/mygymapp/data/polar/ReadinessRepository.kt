@@ -2,6 +2,8 @@ package com.mygymapp.data.polar
 
 import com.mygymapp.data.parser.MarkdownParser
 import com.mygymapp.data.repository.FileManager
+import com.mygymapp.data.util.AtomicFiles
+import com.mygymapp.data.util.GymIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -9,7 +11,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,7 +44,7 @@ class ReadinessRepository @Inject constructor(
     ): ReadinessEvent = withContext(Dispatchers.IO) {
         mutex.withLock {
             val event = ReadinessEvent(
-                id = UUID.randomUUID().toString().take(8),
+                id = GymIds.newReadinessId { fileFor(it).exists() },
                 measuredAt = LocalDateTime.now().toString(),
                 readiness = readiness,
                 lnRmssd = lnRmssd,
@@ -55,7 +56,7 @@ class ReadinessRepository @Inject constructor(
                 stepsPreviousDay = stepsPreviousDay,
                 sleepQuality = sleepQuality,
             )
-            fileFor(event.id).writeText(toMarkdown(event))
+            AtomicFiles.writeTextAtomically(fileFor(event.id), toMarkdown(event))
             event
         }
     }
@@ -76,7 +77,7 @@ class ReadinessRepository @Inject constructor(
                 val current = runCatching { fromMarkdown(file.readText(), id) }.getOrNull()
                     ?: return@withContext null
                 val updated = current.copy(sleepQuality = sleepQuality)
-                file.writeText(toMarkdown(updated))
+                AtomicFiles.writeTextAtomically(file, toMarkdown(updated))
                 updated
             }
         }

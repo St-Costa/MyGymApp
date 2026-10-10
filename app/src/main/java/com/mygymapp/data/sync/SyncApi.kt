@@ -82,15 +82,19 @@ class SyncApi @Inject constructor() {
             )
             .build()
 
-        val request = Request.Builder()
-            .url("$serverUrl/v1/sessions")
-            .header("Authorization", "Bearer $bearerToken")
-            .post(body)
-            .build()
-
         val bytesSent = file.length()
         val startedAt = System.currentTimeMillis()
         return try {
+            // URL building INSIDE the try: a malformed serverUrl must come back as a
+            // clean Failure, never as an IllegalArgumentException escaping the worker.
+            SyncUrlValidator.errorFor(serverUrl)?.let { return SyncResult.Failure(it) }
+            val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "sessions")
+                ?: return SyncResult.Failure("URL non valido")
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $bearerToken")
+                .post(body)
+                .build()
             client.newCall(request).execute().use { response ->
                 val durationMs = System.currentTimeMillis() - startedAt
                 if (response.isSuccessful) {
@@ -110,9 +114,11 @@ class SyncApi @Inject constructor() {
 
     /** `GET /health` — used by the Options screen to verify reachability without a real payload. */
     fun checkHealth(serverUrl: String): SyncResult {
-        if (serverUrl.isBlank()) return SyncResult.Failure("URL vuoto")
-        val request = Request.Builder().url("$serverUrl/health").get().build()
         return try {
+            SyncUrlValidator.errorFor(serverUrl)?.let { return SyncResult.Failure(it) }
+            val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "health")
+                ?: return SyncResult.Failure("URL non valido")
+            val request = Request.Builder().url(url).get().build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     SyncResult.Success(response.code.toString())

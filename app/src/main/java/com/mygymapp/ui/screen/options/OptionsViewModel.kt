@@ -23,7 +23,9 @@ import com.mygymapp.data.sync.BackupVerifyReport
 import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.RestoreApi
+import com.mygymapp.data.sync.RestorePathPolicy
 import com.mygymapp.data.sync.RestoreResult
+import com.mygymapp.data.util.AtomicFiles
 import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncApi
@@ -486,19 +488,23 @@ class OptionsViewModel @Inject constructor(
         var restoredOther = 0
         var failed = 0
         for ((relPath, bytes) in files) {
-            if (relPath.contains("..") || relPath.startsWith("/")) { failed++; continue }
+            // Allowlist, not just traversal check: the server must never make the phone
+            // overwrite sync ledgers, logs, caches or derived sidecars (Sprint 1).
+            if (!RestorePathPolicy.isAllowedRestorePath(relPath)) { failed++; continue }
             val target = java.io.File(fileManager.root, relPath)
             // Hash + file I/O off the Main thread — restore batches can be hundreds of files.
             val (hash, localHash, wrote) = withContext(Dispatchers.IO) {
                 val h = "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
                     .digest(bytes).joinToString("") { "%02x".format(it) }
                 val lh = if (target.exists()) {
-                    "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
-                        .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+                    runCatching {
+                        "sha256:" + java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+                    }.getOrNull()
                 } else null
                 val w = if (lh == h) true else runCatching {
                     target.parentFile?.mkdirs()
-                    target.writeBytes(bytes)
+                    AtomicFiles.writeBytesAtomically(target, bytes)
                 }.isSuccess
                 Triple(h, lh, w)
             }
@@ -534,7 +540,7 @@ class OptionsViewModel @Inject constructor(
         // Only pull what's missing or hash-mismatched (file reads on IO dispatcher).
         val wanted = withContext(Dispatchers.IO) {
             manifest.entries.filter { entry ->
-                if (entry.relPath.contains("..") || entry.relPath.startsWith("/")) return@filter false
+                if (!RestorePathPolicy.isAllowedRestorePath(entry.relPath)) return@filter false
                 val target = java.io.File(fileManager.root, entry.relPath)
                 val localHash = if (target.exists()) {
                     "sha256:" + java.security.MessageDigest.getInstance("SHA-256")

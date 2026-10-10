@@ -57,12 +57,15 @@ class RestoreApi @Inject constructor() {
     private val client = SyncHttpClients.restore
 
     fun fetchManifest(serverUrl: String, bearerToken: String): RestoreResult {
-        val request = Request.Builder()
-            .url("$serverUrl/v1/manifest")
-            .header("Authorization", "Bearer $bearerToken")
-            .get()
-            .build()
         return try {
+            SyncUrlValidator.errorFor(serverUrl)?.let { return RestoreResult.Failure(it) }
+            val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "manifest")
+                ?: return RestoreResult.Failure("URL non valido")
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $bearerToken")
+                .get()
+                .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     return RestoreResult.Failure("HTTP ${response.code}: ${response.body?.string()?.take(200)}")
@@ -115,12 +118,15 @@ class RestoreApi @Inject constructor() {
     fun fetchFiles(serverUrl: String, bearerToken: String, relPaths: List<String>): RestoreResult {
         if (relPaths.isEmpty()) return RestoreResult.Files(emptyList())
         val body = JSONObject().put("relPaths", JSONArray(relPaths)).toString()
-        val request = Request.Builder()
-            .url("$serverUrl/v1/repo/files")
-            .header("Authorization", "Bearer $bearerToken")
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
         return try {
+            SyncUrlValidator.errorFor(serverUrl)?.let { return RestoreResult.Failure(it) }
+            val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "repo", "files")
+                ?: return RestoreResult.Failure("URL non valido")
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $bearerToken")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     return RestoreResult.Failure("HTTP ${response.code}: ${response.body?.string()?.take(200)}")

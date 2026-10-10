@@ -87,7 +87,7 @@ class SyncConfigRepository @Inject constructor(
 
     fun save(serverUrl: String, bearerToken: String, enabled: Boolean) {
         prefs.edit()
-            .putString("serverUrl", serverUrl.trim().trimEnd('/'))
+            .putString("serverUrl", SyncUrlValidator.normalize(serverUrl))
             .putString("bearerToken", bearerToken.trim())
             .putBoolean("enabled", enabled)
             .apply()
