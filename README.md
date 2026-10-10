@@ -78,6 +78,7 @@ Developer documentation lives in [`docs/`](docs/):
 | [backup-speed-plan.md](docs/backup-speed-plan.md) | Backup throughput plan/notes |
 | [vitafit-cloud-api.md](docs/vitafit-cloud-api.md) | VitaFit scale history import / cloud API notes |
 | [CHANGELOG.md](docs/CHANGELOG.md) | Phase history |
+| [BACKLOG.md](docs/BACKLOG.md) | Known-pending work (device checks, deferred items) |
 | [FUNCTIONAL_SPEC.md](docs/FUNCTIONAL_SPEC.md) | Original Italian functional spec |
 | [polar/implementation-guide.md](docs/polar/implementation-guide.md) | Deep-dive on the Polar subsystem (formulas, references) |
 | [polar/testing-checklist.md](docs/polar/testing-checklist.md) | Manual test checklist for a Polar session |
