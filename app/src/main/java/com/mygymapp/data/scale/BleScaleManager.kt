@@ -202,6 +202,10 @@ class BleScaleManager @Inject constructor(
      * (the scale's own stability flag doesn't reliably line up with impedance arrival).
      */
     private fun maybeSaveWeighIn(impedanceOhm: Int) {
+        // Non-positive impedance is partial contact, not a measurement (the sentinels
+        // never reach here — they parse to null upstream). Wait for a real reading
+        // instead of persisting a clamped floor value; see BodyCompositionCalculator.
+        if (impedanceOhm <= 0) return
         val weightKg = synchronized(weightSamples) {
             ScaleWeightAverager.average(weightSamples)
         } ?: return
@@ -213,7 +217,7 @@ class BleScaleManager @Inject constructor(
             age = profile.effectiveAge,
             isMale = profile.isMale,
             impedanceOhm = impedanceOhm,
-        )
+        ) ?: return
         // Keep UserProfile.weightKg in sync with the scale — it's the only
         // source of body weight now (no manual entry), and PolarManager reads
         // it for calorie-burn calculations during heart-rate sessions.

@@ -80,7 +80,11 @@ object VtrumpSenheProtocol {
         }
         return ScaleReading(
             weightKg = null,
-            weightStable = true,
+            // No stability claim on a composition frame: stability belongs to the weight
+            // frame's lock flag (weightType == 3). (Previously hardcoded true, inert —
+            // the merge in BleScaleManager only reads weightStable off weight frames —
+            // but semantically false.)
+            weightStable = false,
             impedanceOhm = impedance,
             displayUnit = null,
         )

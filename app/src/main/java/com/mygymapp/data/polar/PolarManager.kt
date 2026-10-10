@@ -1830,13 +1830,20 @@ class PolarManager @Inject constructor(
         } catch (t: Throwable) {
             Log.w(TAG, "Readiness vibration failed: $t")
         }
+        // Volume 100 is deliberate (readiness beep must cut through gym noise);
+        // making it a setting is deferred, not forgotten.
+        var tone: ToneGenerator? = null
         try {
-            val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
             tone.startTone(ToneGenerator.TONE_PROP_BEEP, 200)
+            val started = tone
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                tone.release()
+                started.release()
             }, 300)
         } catch (t: Throwable) {
+            // Anything threw before the delayed release was scheduled: release now,
+            // otherwise the native player leaks.
+            runCatching { tone?.release() }
             Log.w(TAG, "Readiness beep failed: $t")
         }
     }

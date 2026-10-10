@@ -76,7 +76,7 @@ class ScaleDebugViewModel @Inject constructor(
                     age = profile.effectiveAge,
                     isMale = profile.isMale,
                     impedanceOhm = impedance,
-                )
+                ) ?: continue // seeded impedance is 400..650, always valid — defensive only
                 scaleHistoryRepository.saveForDate(
                     recordedAt = today.minusDays(daysAgo.toLong()),
                     weightKg = weight,

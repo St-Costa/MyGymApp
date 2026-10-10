@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 163 — Sprint 5 bilancia/beep: niente misure fantasma + release nativa
+
+Impedenza ≤ 0 (contatto parziale) finiva in `500/0 = -Inf` clampato a 5.0% e salvato come misura vera: ora `calculate` ritorna null e `maybeSaveWeighIn` aspetta una lettura reale. `weightStable=true` hardcoded nei frame impedenza (semanticamente falso, per ora inerte) → false. Beep readiness: release immediata se `startTone` lancia (prima leak del player nativo); volume 100 volutamente invariato. `BodyCompositionCalculatorTest` +1, `VtrumpSenheProtocolTest` +1; suite verde (JDK 21).
+
 ## Phase 162 — Sprint 5 ECG: writer su IO + emit UI a 5 Hz
 
 `writeSample` scriveva + flushava sul thread callback BLE (un flush su flash occupata ritardava anche l'HR): ora coda UNLIMITED con consumer su `Dispatchers.IO`, `stop()` chiude il canale e il writer svuota prima di chiudere. Emit waveform/snapshot da ~10 Hz a 5 Hz (stessa freschezza, metà churn; rimosso il contatore morto `samplesSinceLastEmit`). Nuovo `EcgRecorderTest` (header + N campioni + restart, con attesa deadline invece di sleep fissi); suite verde (JDK 21).
