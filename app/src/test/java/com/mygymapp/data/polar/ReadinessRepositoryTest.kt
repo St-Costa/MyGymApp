@@ -3,11 +3,15 @@ package com.mygymapp.data.polar
 import com.mygymapp.data.repository.FileManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.time.LocalDate
+import java.time.OffsetDateTime
 
 /**
  * Round-trip coverage for [ReadinessRepository]'s Markdown+YAML persistence, focused on the
@@ -92,5 +96,38 @@ class ReadinessRepositoryTest {
     @Test
     fun `updateSleepQuality returns null for an unknown id`() = runBlocking {
         assertNull(repo.updateSleepQuality("deadbeef", 3))
+    }
+
+    @Test
+    fun `save stamps an offset-bearing measuredAt`() = runBlocking {
+        val saved = repo.save(
+            readiness = "NORMAL",
+            lnRmssd = 4.0,
+            restingHr = 55,
+            vo2max = 47.0,
+            recommendation = "",
+        )
+
+        // Parses as OffsetDateTime — the bare LocalDateTime of older files would throw here.
+        assertNotNull(runCatching { OffsetDateTime.parse(saved.measuredAt) }.getOrNull())
+        // ...and the new readers resolve it to today.
+        assertEquals(LocalDate.now(), measuredDateOf(saved.measuredAt))
+        assertNotNull(repo.getLatestForDate(LocalDate.now()))
+    }
+
+    @Test
+    fun `measuredDateOf reads legacy bare LocalDateTime too`() {
+        assertEquals(LocalDate.of(2026, 8, 5), measuredDateOf("2026-08-05T07:04:10.123"))
+        assertEquals(LocalDate.of(2026, 8, 5), measuredDateOf("2026-08-05T07:04:10.123+02:00"))
+        assertNull(measuredDateOf("not-a-date"))
+        assertNull(measuredDateOf(""))
+    }
+
+    @Test
+    fun `measuredInstantOf orders mixed old and new formats chronologically`() {
+        val legacy = measuredInstantOf("2026-08-05T07:04:10.123")
+        val newer = measuredInstantOf("2026-08-06T07:04:10.123+02:00")
+
+        assertTrue(legacy < newer)
     }
 }

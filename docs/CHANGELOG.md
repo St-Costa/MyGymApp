@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 159 — Sprint 5 readiness: timestamp con offset
+
+`measuredAt` era `LocalDateTime` senza zona: un cambio fuso/DST spostava la misura sul giorno sbagliato (skip/rimisura errati, server senza ordinamento). Ora `OffsetDateTime`; lettori tolleranti (`measuredDateOf`/`measuredInstantOf`: nuovo formato, fallback legacy, mai throw) per data, media 7gg e ordinamento. `ReadinessRepositoryTest` +3 test; suite verde (JDK 21).
+
 ## Phase 158 — Sprint 5 passi: media su giorni-calendario
 
 `DAYS.between` tronca (36h → 1 giorno): dopo un giorno saltato la "media giornaliera" era gonfiata fino a 2x. Ora divisore = giorni di calendario toccati in zona locale (`calendarDaysSpanned`, stessa mezzanotte di `previousDayTotal`). Nuovo `CalendarDaysSpannedTest` (6 test, incl. fuso). Suite verde (JDK 21).
