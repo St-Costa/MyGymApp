@@ -137,7 +137,7 @@ Touch tracking: each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `re
 The three exercise screens take two distinct navigation callbacks:
 
 - `onBack` — plain `popBackStack()`, no completion signal. User walked away mid-exercise.
-- `onComplete` — fired via the `completionSaved` flow. Sets `completedExerciseId` (or `completedSupersetIds` for supersets) on `previousBackStackEntry.savedStateHandle`. `AppNavigation` reads that and calls `markExerciseCompleted`.
+- `onComplete` — fired via the one-shot `completionEvent` (the `completionSaved` flag flips alongside it as durable state). Sets `completedExerciseId` (or `completedSupersetIds` for supersets) on `previousBackStackEntry.savedStateHandle`. `AppNavigation` reads that (via `getStateFlow`) and calls `markExerciseCompleted`.
 
 Do not collapse them into one callback — the side effects are different.
 
@@ -244,7 +244,7 @@ A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: "
 
 - **Seeded, not created by the user**: `RoutineRepository.ensureFixedDailyRoutine()` runs inside `ensureLoaded()` (after the directory scan, under the mutex). Idempotent — once written it's reloaded from disk.
 - **Non-deletable / non-disableable**: `delete()` early-returns for the reserved id; `getAll()` pins it first via `compareByDescending { it.id == FIXED_DAILY_ROUTINE_ID }`. The list screen hides the enabled switch (shows a lock), the edit screen hides the day picker + delete and makes the name read-only. `RoutineListViewModel` has defensive guards too.
-- **Container only, not startable**: it has no `day` so WeekView (the only start path) never lists it; `ActiveRoutineViewModel.init` also early-returns for the reserved id.
+- **Container only, not startable**: it has no `day` so the Main schedule row (the only start path — there is no separate week screen) never lists it; `ActiveRoutineViewModel.init` also early-returns for the reserved id.
 - **Injected into every session**: `ActiveRoutineViewModel.init` builds the session as `fixed-daily → normal → warmup`, skipping a fixed-daily exercise whose `exerciseId` already appears in the started routine (the exercise-detail flow keys by `exerciseId`, so duplicate ids in one session are unsupported). Warmup was moved to the bottom (was: first) so the session screen leads with the exercises that actually count.
 
 ## Warmup exercises & `excludeFromTonnage`
@@ -813,8 +813,10 @@ Gotchas that cost time here:
   string, so match `By.res("gitgraph")`, not `By.res("com.mygymapp:id/gitgraph")`.
 - Don't run the generator in the normal `./gradlew test` / instrumented job — it's slow and
   device-specific. It has no CI wiring on purpose.
-- If R8/minify is ever turned on for `release` (it isn't today), regenerate the profile
-  afterwards — a profile recorded pre-shrink references stale method signatures.
+- `release` has `isMinifyEnabled = true` + `isShrinkResources = true` (on since Phase 111),
+  so regenerate the profile **after** enabling/changing shrink rules — a profile recorded
+  pre-shrink references stale method signatures (this ordering is enforced by the
+  release-minify protocol below).
 
 ## Gradle wrapper
 
@@ -836,6 +838,11 @@ ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
 ```
 
 Skip it for one commit with `git commit --no-verify` (e.g. a WIP commit on a feature branch).
+
+**The hook and every Gradle invocation need JDK 21**: the machine default JDK 25 breaks
+Gradle before compilation, so prefix with `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`
+(or the hook fails the gate for environmental reasons, not code ones). Sprint 4 pins the
+toolchain in the build itself so the prefix stops being necessary.
 
 Unit tests live under `app/src/test/` (pure JVM, no Android framework — no Robolectric/instrumentation
 set up yet). Favor testing pure logic classes here: parsers (`data/parser/`), calculators
