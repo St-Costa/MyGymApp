@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 170 — Decisione: UI solo inglese, niente i18n
+
+Registrata in `CONVENTIONS.md`: niente `strings.xml`, niente risorse per-locale, date in `Locale.US`/ISO. Tradurre i letterali è fatto (Phase 165); estrarre le risorse senza verifica overflow su schermo non è sicuro. Suite verde (JDK 21).
+
 ## Phase 169 — CI: action majors (checkout/setup-java v5)
 
 La CI è verde al secondo run (test + debug + release su runner pulito). Chiudo i warning di deprecation con i major noti (`checkout@v5`, `setup-java@v5`). Suite verde locale (JDK 21).
