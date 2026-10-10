@@ -11,13 +11,13 @@ class PickerButtonDescriptionTest {
 
     @Test
     fun `increase and decrease with field name`() {
-        assertEquals("Aumenta peso", pickerButtonDescription(increase = true, fieldName = "peso"))
-        assertEquals("Diminuisci ripetizioni", pickerButtonDescription(increase = false, fieldName = "ripetizioni"))
+        assertEquals("Increase weight", pickerButtonDescription(increase = true, fieldName = "weight"))
+        assertEquals("Decrease reps", pickerButtonDescription(increase = false, fieldName = "reps"))
     }
 
     @Test
-    fun `blank field falls back to generic valore`() {
-        assertEquals("Aumenta valore", pickerButtonDescription(increase = true, fieldName = ""))
-        assertEquals("Diminuisci valore", pickerButtonDescription(increase = false, fieldName = "  "))
+    fun `blank field falls back to generic value`() {
+        assertEquals("Increase value", pickerButtonDescription(increase = true, fieldName = ""))
+        assertEquals("Decrease value", pickerButtonDescription(increase = false, fieldName = "  "))
     }
 }

@@ -269,7 +269,7 @@ fun ActiveRoutineScreen(
                                 .fillMaxWidth(0.85f)
                                 .padding(top = 8.dp, bottom = 8.dp),
                         ) {
-                            com.mygymapp.ui.components.ActionButtonText("Registra")
+                            com.mygymapp.ui.components.ActionButtonText("Finish")
                         }
                     }
                 }
@@ -330,11 +330,11 @@ private fun SessionRpeDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = {}, // mandatory — no dismiss via outside tap or back press
-        title = { Text("Quanto è stata dura questa sessione?") },
+        title = { Text("How hard was this session?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Da 0 (nessuno sforzo) a 9 (massimale)",
+                    "From 0 (no effort) to 9 (maximal)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 )
@@ -387,7 +387,7 @@ private fun PowerliftingWeekOverlay(onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 Text(
-                    "SETTIMANA POWERLIFTING",
+                    "POWERLIFTING WEEK",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimary,
@@ -452,7 +452,7 @@ private fun ExerciseRow(
                 )
                 if (exercise.substitutedForName != null) {
                     Text(
-                        text = "Sostituito: ${exercise.substitutedForName}",
+                        text = "Switched: ${exercise.substitutedForName}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -476,7 +476,7 @@ private fun ExerciseTrailingBadge(exercise: ActiveExerciseUi) {
     if (exercise.completedEmpty) {
         Icon(
             imageVector = Icons.Filled.Close,
-            contentDescription = "Saltato",
+            contentDescription = "Skipped",
             tint = SkippedColor,
         )
     } else if (exercise.completed && exercise.tonnageChangePct != null) {
@@ -494,7 +494,7 @@ private fun ExerciseTrailingBadge(exercise: ActiveExerciseUi) {
         )
     } else if (exercise.completed && exercise.isFirstTimeTonnage) {
         Text(
-            text = "primo dato",
+            text = "first data",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
         )
@@ -578,7 +578,7 @@ private fun SupersetExerciseEntry(exercise: ActiveExerciseUi) {
             )
             if (exercise.substitutedForName != null) {
                 Text(
-                    text = "Sostituito: ${exercise.substitutedForName}",
+                    text = "Switched: ${exercise.substitutedForName}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )

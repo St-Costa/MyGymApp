@@ -89,7 +89,7 @@ class SyncApi @Inject constructor() {
             // clean Failure, never as an IllegalArgumentException escaping the worker.
             SyncUrlValidator.errorFor(serverUrl)?.let { return SyncResult.Failure(it) }
             val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "sessions")
-                ?: return SyncResult.Failure("URL non valido")
+                ?: return SyncResult.Failure("Invalid URL")
             val request = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $bearerToken")
@@ -117,7 +117,7 @@ class SyncApi @Inject constructor() {
         return try {
             SyncUrlValidator.errorFor(serverUrl)?.let { return SyncResult.Failure(it) }
             val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "health")
-                ?: return SyncResult.Failure("URL non valido")
+                ?: return SyncResult.Failure("Invalid URL")
             val request = Request.Builder().url(url).get().build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {

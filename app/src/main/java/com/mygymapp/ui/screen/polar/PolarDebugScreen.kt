@@ -81,7 +81,7 @@ fun PolarDebugScreen(
                 title = { Text("Polar BLE Debug") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -96,40 +96,40 @@ fun PolarDebugScreen(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PolarLinkStatusIcon(uiState.linkStatus)
-                Text("Stato: ${polarLinkStatusLabel(uiState.linkStatus)}")
+                Text("Status: ${polarLinkStatusLabel(uiState.linkStatus)}")
             }
-            Text("Stato BLE grezzo: ${uiState.connectionState}")
+            Text("Raw BLE state: ${uiState.connectionState}")
             Text(
                 "Dispositivo salvato: ${uiState.knownDeviceId ?: "nessuno"}",
             )
-            uiState.connectedDeviceId?.let { Text("Connesso a: $it") }
+            uiState.connectedDeviceId?.let { Text("Connected to: $it") }
             uiState.heartRate?.let { Text("HR: $it bpm") }
-            uiState.batteryLevel?.let { Text("Batteria: $it%") }
+            uiState.batteryLevel?.let { Text("Battery: $it%") }
 
             if (uiState.isScanning) {
                 Button(onClick = { viewModel.stopScan() }) {
-                    Text("Ferma")
+                    Text("Stop")
                 }
             } else {
                 when (uiState.connectionState) {
                     ConnectionState.CONNECTING, ConnectionState.CONNECTED -> {
                         Button(onClick = { viewModel.disconnect() }) {
-                            Text("Disconnetti")
+                            Text("Disconnect")
                         }
                     }
                     ConnectionState.DISCONNECTED -> {
                         Button(onClick = { startScanWithPermissionCheck() }) {
-                            Text("Avvia")
+                            Text("Start")
                         }
                     }
                 }
             }
 
             OutlinedButton(onClick = { viewModel.forgetKnownDevice() }) {
-                Text("Dimentica")
+                Text("Forget")
             }
 
-            Text("Dispositivi trovati:")
+            Text("Found devices:")
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(uiState.discoveredDevices, key = { it.deviceId }) { device ->
                     Card(modifier = Modifier.fillMaxWidth()) {
@@ -137,7 +137,7 @@ fun PolarDebugScreen(
                             Text(device.name)
                             Text("${device.deviceId}  (RSSI ${device.rssi})")
                             Button(onClick = { viewModel.connectToDevice(device.deviceId) }) {
-                                Text("Connetti")
+                                Text("Connect")
                             }
                         }
                     }

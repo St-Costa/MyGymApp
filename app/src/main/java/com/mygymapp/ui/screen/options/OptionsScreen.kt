@@ -74,10 +74,10 @@ fun OptionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Opzioni") },
+                title = { Text("Options") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -181,7 +181,7 @@ private fun ProfileSection(
                         buttonStep = 1.0,
                         isModified = profile.birthYear != null,
                         modifier = Modifier.width(120.dp),
-                        fieldName = "anno di nascita",
+                        fieldName = "birth year",
                     )
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -192,7 +192,7 @@ private fun ProfileSection(
                         buttonStep = 1.0,
                         isModified = true,
                         modifier = Modifier.width(120.dp),
-                        fieldName = "altezza",
+                        fieldName = "height",
                     )
                 }
             }
@@ -201,7 +201,7 @@ private fun ProfileSection(
                 if (profile.birthYear != null) {
                     "HRmax: ${profile.hrMax} BPM (media Fox/Tanaka/Gulati)"
                 } else {
-                    "Imposta l'anno di nascita per calcoli accurati (HRmax stimato: ${profile.hrMax} BPM)"
+                    "Set your birth year for accurate results (estimated HRmax: ${profile.hrMax} BPM)"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -238,15 +238,15 @@ private fun ServerSettingsSection(
         ) {
             Text("Server", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Invia i dati al tuo server self-hosted via Tailscale.",
+                "Send your data to your self-hosted server via Tailscale.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
             OutlinedTextField(
                 value = uiState.syncServerUrl,
                 onValueChange = onServerUrlChange,
-                label = { Text("URL server (Tailscale)") },
-                placeholder = { Text("https://tuo-host.tailnet.ts.net") },
+                label = { Text("Server URL (Tailscale)") },
+                placeholder = { Text("https://your-host.tailnet.ts.net") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -254,7 +254,7 @@ private fun ServerSettingsSection(
             OutlinedTextField(
                 value = uiState.syncBearerToken,
                 onValueChange = onBearerTokenChange,
-                label = { Text("Token condiviso (bearer)") },
+                label = { Text("Shared token (bearer)") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -266,7 +266,7 @@ private fun ServerSettingsSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Sincronizzazione attiva", style = MaterialTheme.typography.bodyLarge)
+                Text("Sync enabled", style = MaterialTheme.typography.bodyLarge)
                 Switch(checked = uiState.syncEnabled, onCheckedChange = onEnabledChange, enabled = configured)
             }
 
@@ -282,18 +282,18 @@ private fun ServerSettingsSection(
                     if (uiState.syncIsTestingConnection) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Verifica")
+                        Text("Check")
                     }
                 }
                 when (uiState.syncConnectionTestResult) {
                     true -> Icon(
                         Icons.Default.CheckCircle,
-                        contentDescription = "Raggiungibile",
+                        contentDescription = "Reachable",
                         tint = MaterialTheme.colorScheme.primary,
                     )
                     false -> Icon(
                         Icons.Default.Error,
-                        contentDescription = "Non raggiungibile",
+                        contentDescription = "Unreachable",
                         tint = MaterialTheme.colorScheme.error,
                     )
                     null -> {}
@@ -302,7 +302,7 @@ private fun ServerSettingsSection(
 
             // Full-store backup round-trip: keep this with the server connection controls.
             Text(
-                "Invia gli esercizi/routine non ancora sul server, poi li riscarica e verifica che siano identici.",
+                "Push exercises/routines not yet on the server, then re-download and verify they are identical.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -314,7 +314,7 @@ private fun ServerSettingsSection(
                 if (uiState.backupVerifyRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    com.mygymapp.ui.components.ActionButtonText("Verifica backup")
+                    com.mygymapp.ui.components.ActionButtonText("Verify backup")
                 }
             }
             if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
@@ -343,13 +343,13 @@ private fun ServerSettingsSection(
                         )
                         Column {
                             Text(
-                                "Tutto sincronizzato",
+                                "All synced",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (uiState.syncLastSuccessAt != null) {
                                 Text(
-                                    "Ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
+                                    "Last send: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -372,9 +372,9 @@ private fun ServerSettingsSection(
                 modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
             ) {
                 if (uiState.syncIsResyncing) {
-                    com.mygymapp.ui.components.ActionButtonText("Invio… ${(uiState.syncResyncProgress * 100).toInt()}%")
+                    com.mygymapp.ui.components.ActionButtonText("Sending… ${(uiState.syncResyncProgress * 100).toInt()}%")
                 } else {
-                    com.mygymapp.ui.components.ActionButtonText("Invia")
+                    com.mygymapp.ui.components.ActionButtonText("Send")
                 }
             }
             if (uiState.syncIsResyncing) {
@@ -394,7 +394,7 @@ private fun ServerSettingsSection(
                     enabled = !uiState.syncIsRestoring,
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (uiState.syncIsRestoring) "Ripristino…" else "Ripristina")
+                    com.mygymapp.ui.components.ActionButtonText(if (uiState.syncIsRestoring) "Restoring…" else "Restore")
                 }
                 uiState.syncRestoreResult?.let {
                     Text(
@@ -410,21 +410,21 @@ private fun ServerSettingsSection(
     if (showRestoreConfirm) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showRestoreConfirm = false },
-            title = { Text("Ripristina dal server") },
+            title = { Text("Restore from server") },
             text = {
                 Text(
-                    "Scarica dal server ogni file mancante o diverso (schede, esercizi, " +
-                        "sessioni, pesate…). Non cancella nulla in locale.",
+                    "Download every missing or different file from the server (routines, " +
+                        "exercises, sessions, weigh-ins…). Deletes nothing locally.",
                 )
             },
             confirmButton = {
                 Button(onClick = {
                     showRestoreConfirm = false
                     onRestoreFromServer()
-                }) { Text("Ripristina") }
+                }) { Text("Restore") }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showRestoreConfirm = false }) { Text("Annulla") }
+                OutlinedButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
             },
         )
     }
@@ -434,12 +434,12 @@ private fun ServerSettingsSection(
 @Composable
 private fun PendingItemsList(uiState: OptionsUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("In coda:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Queued:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         listOf(
-            "Sessioni" to uiState.syncSessionsPending,
-            "Pesate" to uiState.syncScalePending,
+            "Sessions" to uiState.syncSessionsPending,
+            "Weigh-ins" to uiState.syncScalePending,
             "ECG" to uiState.syncEcgPending,
-            "Schede/esercizi" to uiState.syncRepoPending,
+            "Routines/exercises" to uiState.syncRepoPending,
         ).forEach { (label, count) ->
             Text(
                 "• $label: $count",
@@ -449,7 +449,7 @@ private fun PendingItemsList(uiState: OptionsUiState) {
         }
         if (uiState.syncLastSuccessAt != null) {
             Text(
-                "Ultimo invio: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
+                "Last send: ${uiState.syncLastSuccessAt.take(16).replace('T', ' ')}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -485,7 +485,7 @@ private fun DebugSection(
 
             // Installed build, for support/diagnostics (which code produced this log/backup).
             Text(
-                "Versione app ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})",
+                "App version ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -494,7 +494,7 @@ private fun DebugSection(
 
             // Bilancia
             Text(
-                "Verifica la connessione BLE alla bilancia.",
+                "Check the BLE connection to the scale.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -508,7 +508,7 @@ private fun DebugSection(
             // The first successful connect re-saves the device ID so future scans auto-connect
             // to it again — needed after a reinstall/data-wipe clears that pref.
             Text(
-                "Cerca il Polar e collegalo. La prima connessione lo salva per il collegamento automatico futuro.",
+                "Find your Polar and connect it. The first connection saves it for future auto-connect.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -522,12 +522,12 @@ private fun DebugSection(
             // disconnessioni Polar), con dati finti — per controllarne l'aspetto senza dover
             // fare una sessione reale con la fascia che si scollega.
             Text(
-                "Mostra i riquadri di fine routine (server + disconnessioni Polar) con dati di esempio.",
+                "Show the end-of-routine boxes (server + Polar disconnects) with sample data.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onSummaryPreviewClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Anteprima riepilogo")
+                Text("Summary preview")
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -538,7 +538,7 @@ private fun DebugSection(
             // CHANGELOG Phase 42. "Ultime 24h" is loose phrasing for "since the last saved
             // checkpoint" — see OptionsViewModel.checkStepCounterDebug.
             Text(
-                "Verifica sensore e permesso leggendo i passi delle ultime 24h.",
+                "Check the sensor and permission by reading the last 24h of steps.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -550,7 +550,7 @@ private fun DebugSection(
                 if (uiState.stepDebugRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("Passi 24h")
+                    Text("24h steps")
                 }
             }
             if (uiState.stepDebugResult != null) {
@@ -568,7 +568,7 @@ private fun DebugSection(
             // POST /v1/ecg end to end without needing a full session (docs/SYNC.md "Fourth
             // record type: raw ECG").
             Text(
-                "Registra ~10s di ECG dal Polar connesso e la invia al server.",
+                "Record ~10s of ECG from the connected Polar and send it to the server.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -580,7 +580,7 @@ private fun DebugSection(
                 if (uiState.ecgDebugRecording) {
                     Text("ECG… ${uiState.ecgDebugSecondsLeft}s")
                 } else {
-                    Text("ECG debug")
+                    Text("Debug ECG")
                 }
             }
             if (uiState.ecgDebugResult != null) {
@@ -599,7 +599,7 @@ private fun DebugSection(
             // regole di picco). Read-only: non crea sessioni, non scrive history, non
             // accoda sync — la lista delle sessioni resta intatta.
             Text(
-                "Tutto da qui: cerca il Polar, campiona 60s di HR live + check formule, senza sporcare le sessioni.",
+                "Everything from here: find the Polar, sample 60s of live HR + formula checks, without dirtying sessions.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -610,12 +610,12 @@ private fun DebugSection(
             ) {
                 if (uiState.polarSelfTestRunning) {
                     if (uiState.polarSelfTestSearching) {
-                        Text("Ricerca… ${uiState.polarSelfTestSecondsLeft}s")
+                        Text("Searching… ${uiState.polarSelfTestSecondsLeft}s")
                     } else {
-                        Text("Test… ${uiState.polarSelfTestSecondsLeft}s")
+                        Text("Testing… ${uiState.polarSelfTestSecondsLeft}s")
                     }
                 } else {
-                    Text("Test Polar")
+                    Text("Polar test")
                 }
             }
             if (uiState.polarSelfTestResult != null) {
@@ -646,9 +646,9 @@ private fun PowerliftingSection(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Settimana powerlifting", style = MaterialTheme.typography.titleMedium)
+            Text("Powerlifting week", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Seleziona settimana e intervallo per l'avviso periodico in sessione.",
+                "Select week and interval for the periodic in-session notice.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -662,7 +662,7 @@ private fun PowerliftingSection(
 
             if (anchorMonday != null) {
                 OutlinedButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
-                    Text("Disattiva avviso")
+                    Text("Disable notice")
                 }
             }
         }
@@ -688,10 +688,10 @@ private fun WeekCalendar(
                 onClick = { displayedMonth = displayedMonth.minusMonths(1) },
                 modifier = Modifier.size(32.dp),
             ) {
-                Icon(Icons.Default.ChevronLeft, contentDescription = "Mese precedente")
+                Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month")
             }
             val monthName = displayedMonth.month
-                .getDisplayName(TextStyle.FULL, Locale.getDefault())
+                .getDisplayName(TextStyle.FULL, java.util.Locale.US)
                 .replaceFirstChar { it.uppercase() }
             Text(
                 "$monthName ${displayedMonth.year}",
@@ -702,13 +702,13 @@ private fun WeekCalendar(
                 onClick = { displayedMonth = displayedMonth.plusMonths(1) },
                 modifier = Modifier.size(32.dp),
             ) {
-                Icon(Icons.Default.ChevronRight, contentDescription = "Mese successivo")
+                Icon(Icons.Default.ChevronRight, contentDescription = "Next month")
             }
         }
 
         // Weekday headers (Mon..Sun)
         Row(modifier = Modifier.fillMaxWidth()) {
-            val labels = listOf("L", "M", "M", "G", "V", "S", "D")
+            val labels = listOf("M", "T", "W", "T", "F", "S", "S")
             labels.forEach { label ->
                 Text(
                     label,
@@ -784,13 +784,13 @@ private fun IntervalSelector(intervalWeeks: Int, onSetInterval: (Int) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text("Ogni", style = MaterialTheme.typography.bodyLarge)
+        Text("Every", style = MaterialTheme.typography.bodyLarge)
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = { onSetInterval(intervalWeeks - 1) },
                 enabled = intervalWeeks > 1,
             ) {
-                Icon(Icons.Default.ChevronLeft, contentDescription = "Diminuisci")
+                Icon(Icons.Default.ChevronLeft, contentDescription = "Decrease")
             }
             Text(
                 "$intervalWeeks",
@@ -799,9 +799,9 @@ private fun IntervalSelector(intervalWeeks: Int, onSetInterval: (Int) -> Unit) {
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
             IconButton(onClick = { onSetInterval(intervalWeeks + 1) }) {
-                Icon(Icons.Default.ChevronRight, contentDescription = "Aumenta")
+                Icon(Icons.Default.ChevronRight, contentDescription = "Increase")
             }
         }
-        Text("settimane", style = MaterialTheme.typography.bodyLarge)
+        Text("weeks", style = MaterialTheme.typography.bodyLarge)
     }
 }

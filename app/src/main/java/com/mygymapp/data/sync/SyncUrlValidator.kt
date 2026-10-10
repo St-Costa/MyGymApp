@@ -24,11 +24,11 @@ object SyncUrlValidator {
      */
     fun errorFor(raw: String): String? {
         val url = normalize(raw)
-        if (url.isBlank()) return "URL vuoto"
-        val httpUrl = url.toHttpUrlOrNull() ?: return "URL non valido"
-        if (httpUrl.scheme != "https" && httpUrl.scheme != "http") return "URL non valido"
+        if (url.isBlank()) return "Empty URL"
+        val httpUrl = url.toHttpUrlOrNull() ?: return "Invalid URL"
+        if (httpUrl.scheme != "https" && httpUrl.scheme != "http") return "Invalid URL"
         if (isCleartextToPublicHost(url)) {
-            return "HTTP in chiaro verso host pubblico — usa l'URL HTTPS Tailscale"
+            return "Cleartext HTTP to a public host — use the Tailscale HTTPS URL"
         }
         return null
     }

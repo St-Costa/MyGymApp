@@ -38,7 +38,7 @@ private val FatColor = SignalRed
 private val WeightColor = Color(0xFF42A5F5)
 private val BmiColor = Color(0xFFAB47BC)
 
-private val dayInitials = listOf("L", "M", "M", "G", "V", "S", "D")
+private val dayInitials = listOf("M", "T", "W", "T", "F", "S", "S")
 
 @Composable
 fun ScaleTrendSection(report: ScaleTrendReport) {
@@ -50,7 +50,7 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
             ),
         ) {
             Text(
-                "Nessuna pesata registrata ancora.",
+                "No weigh-ins recorded yet.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(16.dp),
@@ -64,7 +64,7 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
         if (currentWeekSlots.any { it != null }) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Peso settimanale", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("Weekly weight", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
                         report.currentWeekMedianBmi?.let { bmi ->
                             Text(
@@ -99,7 +99,7 @@ fun ScaleTrendSection(report: ScaleTrendReport) {
         if (weeklyMedians.isNotEmpty()) {
             ChartCard {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Peso - 2 mesi", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("Weight - 2 months", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     weeklyMedians.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 PointLineChart(

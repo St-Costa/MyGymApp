@@ -166,9 +166,9 @@ fun CardioExerciseScreen(
                 ) {
                     com.mygymapp.ui.components.ActionButtonText(
                         when (buttonState) {
-                            CardioButtonState.IDLE -> "Inizia"
-                            CardioButtonState.RUNNING -> "Termina"
-                            CardioButtonState.DONE -> "Completa"
+                            CardioButtonState.IDLE -> "Start"
+                            CardioButtonState.RUNNING -> "Finish"
+                            CardioButtonState.DONE -> "Complete"
                         }
                     )
                 }
@@ -186,7 +186,7 @@ fun CardioExerciseScreen(
                             contentColor = OnSkipped,
                         ),
                     ) {
-                        com.mygymapp.ui.components.ActionButtonText("Salta")
+                        com.mygymapp.ui.components.ActionButtonText("Skip")
                     }
                 }
             }

@@ -39,7 +39,7 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
                     report.restingHrWeekly.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 Text(
-                    "Mediana settimanale delle sessioni registrate",
+                    "Weekly median of recorded sessions",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -60,7 +60,7 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
                     report.hrr60sWeekly.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 Text(
-                    "Mediana settimanale del recupero HR a 60s dal picco",
+                    "Weekly median of 60s post-peak HR recovery",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -81,7 +81,7 @@ fun CardioMetricsTrendSection(report: CardioMetricsTrendReport) {
                     report.vo2maxMonthly.averageWeeklyDelta()?.let { delta -> WeeklyDeltaLabel(delta) }
                 }
                 Text(
-                    "Mediana su finestre di 4 settimane",
+                    "Median over 4-week windows",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -111,7 +111,7 @@ class BleScaleManager @Inject constructor(
     @SuppressLint("MissingPermission")
     fun startScan() {
         val scanner = adapter?.bluetoothLeScanner ?: run {
-            _lastError.value = "Bluetooth non disponibile o disattivato"
+            _lastError.value = "Bluetooth unavailable or turned off"
             return
         }
         if (_connectionState.value != ScaleConnectionState.DISCONNECTED) return
@@ -142,7 +142,7 @@ class BleScaleManager @Inject constructor(
             }
 
             override fun onScanFailed(errorCode: Int) {
-                _lastError.value = "Scan BLE fallito (codice $errorCode)"
+                _lastError.value = "BLE scan failed (code $errorCode)"
                 _connectionState.value = ScaleConnectionState.DISCONNECTED
             }
         }
@@ -173,7 +173,7 @@ class BleScaleManager @Inject constructor(
     fun connectToDevice(address: String) {
         stopScan()
         val device: BluetoothDevice = adapter?.getRemoteDevice(address) ?: run {
-            _lastError.value = "Indirizzo dispositivo non valido"
+            _lastError.value = "Invalid device address"
             return
         }
         _connectionState.value = ScaleConnectionState.CONNECTING
@@ -278,7 +278,7 @@ class BleScaleManager @Inject constructor(
             mainHandler.post {
                 Log.d(TAG, "onServicesDiscovered status=$status services=${g.services.map { it.uuid }}")
                 if (status != BluetoothGatt.GATT_SUCCESS) {
-                    _lastError.value = "Scoperta servizi GATT fallita (status $status)"
+                    _lastError.value = "GATT service discovery failed (status $status)"
                     g.disconnect()
                     return@post
                 }
@@ -286,7 +286,7 @@ class BleScaleManager @Inject constructor(
                 Log.d(TAG, "fff0 service=${service?.uuid} chars=${service?.characteristics?.map { it.uuid }}")
                 val notifyChar = service?.getCharacteristic(VtrumpSenheProtocol.NOTIFY_CHARACTERISTIC_UUID)
                 if (notifyChar == null) {
-                    _lastError.value = "Servizio/caratteristica attesi non trovati sul dispositivo"
+                    _lastError.value = "Expected service/characteristic not found on the device"
                     g.disconnect()
                     return@post
                 }

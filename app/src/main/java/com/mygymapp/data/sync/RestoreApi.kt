@@ -60,7 +60,7 @@ class RestoreApi @Inject constructor() {
         return try {
             SyncUrlValidator.errorFor(serverUrl)?.let { return RestoreResult.Failure(it) }
             val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "manifest")
-                ?: return RestoreResult.Failure("URL non valido")
+                ?: return RestoreResult.Failure("Invalid URL")
             val request = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $bearerToken")
@@ -84,7 +84,7 @@ class RestoreApi @Inject constructor() {
     }
 
     fun fetchFile(serverUrl: String, bearerToken: String, relPath: String): RestoreResult {
-        val httpUrl = (serverUrl.toHttpUrlOrNull() ?: return RestoreResult.Failure("URL non valido"))
+        val httpUrl = (serverUrl.toHttpUrlOrNull() ?: return RestoreResult.Failure("Invalid URL"))
             .newBuilder()
             .addPathSegments("v1/file")
             .addQueryParameter("relPath", relPath)
@@ -121,7 +121,7 @@ class RestoreApi @Inject constructor() {
         return try {
             SyncUrlValidator.errorFor(serverUrl)?.let { return RestoreResult.Failure(it) }
             val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "repo", "files")
-                ?: return RestoreResult.Failure("URL non valido")
+                ?: return RestoreResult.Failure("Invalid URL")
             val request = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $bearerToken")
@@ -131,7 +131,7 @@ class RestoreApi @Inject constructor() {
                 if (!response.isSuccessful) {
                     return RestoreResult.Failure("HTTP ${response.code}: ${response.body?.string()?.take(200)}")
                 }
-                val respBody = response.body ?: return RestoreResult.Failure("Risposta vuota da /v1/repo/files")
+                val respBody = response.body ?: return RestoreResult.Failure("Empty response from /v1/repo/files")
                 val out = ArrayList<BatchFile>(relPaths.size)
                 MultipartReader(respBody).use { reader ->
                     var part = reader.nextPart()
@@ -170,7 +170,7 @@ class RestoreApi @Inject constructor() {
      * PAX/GNU long-name headers handled).
      */
     fun fetchTarball(serverUrl: String, bearerToken: String, since: String?): RestoreResult {
-        val httpUrl = (serverUrl.toHttpUrlOrNull() ?: return RestoreResult.Failure("URL non valido"))
+        val httpUrl = (serverUrl.toHttpUrlOrNull() ?: return RestoreResult.Failure("Invalid URL"))
             .newBuilder()
             .addPathSegments("v1/repo/tarball")
             .apply { if (!since.isNullOrBlank()) addQueryParameter("since", since) }
@@ -187,7 +187,7 @@ class RestoreApi @Inject constructor() {
                 }
                 val manifestSha = response.header("X-Manifest-SHA256").orEmpty()
                 val stream = response.body?.byteStream()
-                    ?: return RestoreResult.Failure("Risposta tarball vuota")
+                    ?: return RestoreResult.Failure("Empty tarball response")
                 val members = GZIPInputStream(stream).use { gz -> UstarReader.readAll(gz) }
                 RestoreResult.Tarball(manifestSha, members)
             }

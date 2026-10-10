@@ -106,7 +106,7 @@ fun CollapsibleAutoSaveDescription(
                     IconButton(onClick = { expanded = false }) {
                         Icon(
                             Icons.Filled.ExpandLess,
-                            contentDescription = "Riduci descrizione",
+                            contentDescription = "Collapse description",
                         )
                     }
                 }
@@ -160,7 +160,7 @@ fun CollapsibleNotesField(
                     IconButton(onClick = { expanded = false }) {
                         Icon(
                             Icons.Filled.ExpandLess,
-                            contentDescription = "Riduci descrizione",
+                            contentDescription = "Collapse description",
                         )
                     }
                 }

@@ -38,11 +38,11 @@ private val RED = Color(0xFFF85149)
 /**
  * git-diffstat-style rendering of a full-store backup round-trip (docs/BACKUP.md §3.7).
  *
- * Header "Backup sul server" — centred, `titleMedium`, with a server icon on the left.
- * Sections **Esercizi** / **Routine** / **Sessioni** (`titleSmall`, bold) each carry a
- * `(X/Y allineate)` suffix in the header colour, turning red when not all aligned. Each
+ * Header "Server backup" — centred, `titleMedium`, with a server icon on the left.
+ * Sections **Exercises** / **Routines** / **Sessions** (`titleSmall`, bold) each carry a
+ * `(X/Y aligned)` suffix in the header colour, turning red when not all aligned. Each
  * changed item is `<name>  -++` in JetBrains Mono at `bodyMedium` — name in the normal text
- * colour, only the `-`/`+` runs coloured. "ERRORI" (raw filenames) shows only on failure.
+ * colour, only the `-`/`+` runs coloured. "ERRORS" (raw filenames) shows only on failure.
  *
  * Pass exactly one meaningful state: [running] / [error] / [report].
  */
@@ -91,7 +91,7 @@ fun BackupVerifyBox(
             running -> Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.size(8.dp))
-                Text(progressText ?: "Verifica in corso…", style = MaterialTheme.typography.bodyMedium)
+                Text(progressText ?: "Checking…", style = MaterialTheme.typography.bodyMedium)
             }
             error != null -> Text(
                 error,
@@ -101,7 +101,7 @@ fun BackupVerifyBox(
             )
             report != null -> ReportBody(report)
             else -> Text(
-                "In attesa…",
+                "Waiting…",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -109,7 +109,7 @@ fun BackupVerifyBox(
     }
 }
 
-/** "📤 1,4 KB inviati   ⏱ 0,8 s" — one centred line under the title. */
+/** "📤 1.4 KB sent   ⏱ 0.8 s" — one centred line under the title. */
 @Composable
 private fun MetricsRow(r: BackupVerifyReport) {
     Row(
@@ -118,7 +118,7 @@ private fun MetricsRow(r: BackupVerifyReport) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "📤 ${humanBytes(r.bytesUploaded)} inviati",
+            "📤 ${humanBytes(r.bytesUploaded)} sent",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -145,7 +145,7 @@ private fun humanMillis(ms: Long): String =
 private fun ReportBody(r: BackupVerifyReport) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         RecordSection(
-            title = "Esercizi",
+            title = "Exercises",
             local = r.exercisesLocal,
             matching = r.exercisesMatching,
             diffs = r.exercises,
@@ -154,7 +154,7 @@ private fun ReportBody(r: BackupVerifyReport) {
 
         Spacer(Modifier.height(8.dp))
         RecordSection(
-            title = "Routine",
+            title = "Routines",
             local = r.routinesLocal,
             matching = r.routinesMatching,
             diffs = r.routines,
@@ -163,19 +163,19 @@ private fun ReportBody(r: BackupVerifyReport) {
 
         Spacer(Modifier.height(8.dp))
         RecordSection(
-            title = "Sessioni",
+            title = "Sessions",
             local = r.sessionsLocal,
             matching = r.sessionsMatching,
             diffs = emptyList(),
             errors = r.errorsOf(BackupErrorCategory.SESSION),
             extraRows = r.sessionsChanged.takeIf { it.isNotEmpty() }
-                ?.let { listOf("da inviare: " + it.joinToString(", ")) }.orEmpty(),
+                ?.let { listOf("to send: " + it.joinToString(", ")) }.orEmpty(),
         )
     }
 }
 
 /** One record-type block. The **title** stays in the normal colour; only the
- *  `(X/Y allineate · N errori)` suffix goes red when the count is off / there are errors.
+ *  `(X/Y aligned · N errors)` suffix goes red when the count is off / there are errors.
  *  Then the diff rows, then any error rows for this category (raw filename → reason, red). */
 @Composable
 private fun RecordSection(
@@ -189,8 +189,8 @@ private fun RecordSection(
     val base = MaterialTheme.colorScheme.onSurface
     val off = matching != local || errors.isNotEmpty()
     val count = buildString {
-        append("$matching/$local allineat${plural(local)}")
-        if (errors.isNotEmpty()) append(" - ${errors.size} error${if (errors.size == 1) "e" else "i"}")
+        append("$matching/$local aligned")
+        if (errors.isNotEmpty()) append(" - ${errors.size} error${if (errors.size == 1) "" else "s"}")
     }
     Text(
         buildAnnotatedString {
@@ -205,9 +205,6 @@ private fun RecordSection(
     extraRows.forEach { FileRow(it, RED) }
     errors.forEach { e -> FileRow("${e.fileName} → ${e.detail}", RED) }
 }
-
-/** "o" for exactly one, "e" otherwise (allineato / allineate). */
-private fun plural(n: Int) = if (n == 1) "o" else "e"
 
 /** One `<name>  -++` diff row in JetBrains Mono — name normal colour, `-` red, `+` green. */
 @Composable

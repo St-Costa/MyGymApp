@@ -132,7 +132,7 @@ fun MainScreen(
                         modifier = Modifier.weight(1f),
                     )
                     MainMenuTile(
-                        label = "Opzioni",
+                        label = "Options",
                         icon = Icons.Default.Settings,
                         onClick = onNavigateToOptions,
                         isLoading = uiState.isSeedingData,

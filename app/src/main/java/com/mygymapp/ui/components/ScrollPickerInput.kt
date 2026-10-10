@@ -35,13 +35,13 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 
 /**
- * TalkBack label for a picker stepper, e.g. "Aumenta peso". Pure so it is unit-testable
+ * TalkBack label for a picker stepper, e.g. "Increase weight". Pure so it is unit-testable
  * (there is no Compose UI-test harness in this repo); the button wires it into both the
  * content description and the accessibility click action.
  */
 internal fun pickerButtonDescription(increase: Boolean, fieldName: String): String {
-    val verb = if (increase) "Aumenta" else "Diminuisci"
-    return "$verb ${fieldName.ifBlank { "valore" }}"
+    val verb = if (increase) "Increase" else "Decrease"
+    return "$verb ${fieldName.ifBlank { "value" }}"
 }
 
 /**
@@ -169,7 +169,7 @@ fun ScrollPickerInput(
     longPressRepeatStep: Double = 0.0,
     onConfirm: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    /** TalkBack field name, e.g. "peso" → buttons announce "Aumenta peso"/"Diminuisci peso". */
+    /** TalkBack field name, e.g. "weight" → buttons announce "Increase weight"/"Decrease weight". */
     fieldName: String = "",
 ) {
     var dragAccumulator by remember { mutableFloatStateOf(0f) }

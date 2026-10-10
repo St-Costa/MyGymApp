@@ -437,7 +437,7 @@ class OptionsViewModel @Inject constructor(
     fun restoreFromServer() {
         if (_uiState.value.syncIsRestoring) return
         if (!syncConfigRepository.isConfigured()) {
-            _uiState.value = _uiState.value.copy(syncRestoreResult = "Server sync non configurato")
+            _uiState.value = _uiState.value.copy(syncRestoreResult = "Server sync not configured")
             return
         }
         _uiState.value = _uiState.value.copy(syncIsRestoring = true, syncRestoreResult = null)
@@ -459,9 +459,9 @@ class OptionsViewModel @Inject constructor(
                         // Fallback: manifest + batched /v1/repo/files (older server, or the
                         // tarball endpoint unavailable).
                         restoreViaManifest(serverUrl, token)
-                            ?: "Ripristino non riuscito: ${tar.reason}"
+                            ?: "Restore failed: ${tar.reason}"
                     }
-                    else -> "Risposta inattesa dal server (tarball)."
+                    else -> "Unexpected server response (tarball)."
                 }
             }
             // The restore may have (re)written exercises/_settings.md bypassing
@@ -527,9 +527,9 @@ class OptionsViewModel @Inject constructor(
             }
         }
         return buildString {
-            append("Ripristinati $restoredExercises esercizi, $restoredRoutines routine")
-            if (restoredOther > 0) append(", $restoredOther altri file")
-            if (failed > 0) append(" ($failed non riusciti)")
+            append("Restored $restoredExercises exercises, $restoredRoutines routines")
+            if (restoredOther > 0) append(", $restoredOther other files")
+            if (failed > 0) append(" ($failed failed)")
         }
     }
 
@@ -549,7 +549,7 @@ class OptionsViewModel @Inject constructor(
                 localHash != entry.contentHash
             }.map { it.relPath }
         }
-        if (wanted.isEmpty()) return "Tutto già allineato, niente da ripristinare"
+        if (wanted.isEmpty()) return "Already in sync, nothing to restore"
 
         val pulled = mutableListOf<Pair<String, ByteArray>>()
         wanted.chunked(500).forEach { chunk ->
@@ -573,7 +573,7 @@ class OptionsViewModel @Inject constructor(
         if (_uiState.value.backupVerifyRunning) return
         _uiState.value = _uiState.value.copy(
             backupVerifyRunning = true,
-            backupVerifyProgress = "Avvio verifica backup…",
+            backupVerifyProgress = "Starting backup check…",
             backupVerifyError = null,
             backupVerifyReport = null,
         )
@@ -615,11 +615,11 @@ class OptionsViewModel @Inject constructor(
      */
     fun sendDebugEcg() {
         if (polarManager.connectionState.value != ConnectionState.CONNECTED) {
-            _uiState.value = _uiState.value.copy(ecgDebugResult = "Polar non connesso")
+            _uiState.value = _uiState.value.copy(ecgDebugResult = "Polar not connected")
             return
         }
         if (!syncConfigRepository.isConfigured()) {
-            _uiState.value = _uiState.value.copy(ecgDebugResult = "Server sync non configurato")
+            _uiState.value = _uiState.value.copy(ecgDebugResult = "Server sync not configured")
             return
         }
 
@@ -647,7 +647,7 @@ class OptionsViewModel @Inject constructor(
             if (fileSize <= 0L) {
                 _uiState.value = _uiState.value.copy(
                     ecgDebugRecording = false,
-                    ecgDebugResult = "Nessun dato registrato (Polar non ha inviato campioni ECG)",
+                    ecgDebugResult = "No data recorded (Polar sent no ECG samples)",
                 )
                 return@launch
             }
@@ -662,7 +662,7 @@ class OptionsViewModel @Inject constructor(
 
             _uiState.value = _uiState.value.copy(
                 ecgDebugRecording = false,
-                ecgDebugResult = "Registrati $fileSize byte, in coda per l'invio ($debugId)",
+                    ecgDebugResult = "Recorded $fileSize bytes, queued for upload ($debugId)",
             )
         }
     }
@@ -690,24 +690,24 @@ class OptionsViewModel @Inject constructor(
             if (!healthConnectStepsReader.isAvailable()) {
                 _uiState.value = _uiState.value.copy(
                     stepDebugRunning = false,
-                    stepDebugResult = "Health Connect non disponibile su questo dispositivo",
+                    stepDebugResult = "Health Connect not available on this device",
                 )
                 return@launch
             }
             if (!healthConnectStepsReader.hasReadPermission()) {
                 _uiState.value = _uiState.value.copy(
                     stepDebugRunning = false,
-                    stepDebugResult = "Permesso passi (Health Connect) non concesso — riapri la schermata Cuore per richiederlo",
+                    stepDebugResult = "Steps permission (Health Connect) not granted — reopen the Heart screen to request it",
                 )
                 return@launch
             }
 
             val reading = stepLedgerRepository.peek(healthConnectStepsReader)
             val resultText = if (reading != null) {
-                "OK — passi dall'ultimo checkpoint: ${reading.avgStepsPerDay.toInt()}" +
-                    if (reading.daysSpanned == 1) " (1 giorno)." else " su ${reading.daysSpanned} giorni (media)."
+                "OK — steps since last checkpoint: ${reading.avgStepsPerDay.toInt()}" +
+                    if (reading.daysSpanned == 1) " (1 day)." else " over ${reading.daysSpanned} days (average)."
             } else {
-                "OK, permesso concesso, ma nessun checkpoint precedente da confrontare (primo test readiness non ancora fatto)."
+                "OK, permission granted, but no previous checkpoint to compare (first readiness test not done yet)."
             }
             _uiState.value = _uiState.value.copy(stepDebugRunning = false, stepDebugResult = resultText)
         }
@@ -751,7 +751,7 @@ class OptionsViewModel @Inject constructor(
                 if (!hasBlePermissions()) {
                     _uiState.value = _uiState.value.copy(
                         polarSelfTestRunning = false,
-                        polarSelfTestResult = "Permessi Bluetooth mancanti — apri la schermata principale per concederli e riprova",
+                        polarSelfTestResult = "Missing Bluetooth permissions — open the main screen to grant them and retry",
                     )
                     return@launch
                 }
@@ -766,7 +766,7 @@ class OptionsViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         polarSelfTestRunning = false,
                         polarSelfTestSearching = false,
-                        polarSelfTestResult = "Permessi Bluetooth mancanti — apri la schermata principale per concederli e riprova",
+                        polarSelfTestResult = "Missing Bluetooth permissions — open the main screen to grant them and retry",
                     )
                     return@launch
                 }
@@ -786,9 +786,9 @@ class OptionsViewModel @Inject constructor(
                 }
                 if (!connected) {
                     val hint = if (polarManager.hasKnownDevice()) {
-                        "Polar non trovato entro ${searchSeconds}s — accendilo, avvicinalo e riprova"
+                        "Polar not found within ${searchSeconds}s — turn it on, bring it closer and retry"
                     } else {
-                        "Nessuna fascia mai collegata — apri la schermata Cuore per la prima connessione, poi riprova da qui"
+                        "No strap ever connected — open the Heart screen for the first connection, then retry from here"
                     }
                     _uiState.value = _uiState.value.copy(
                         polarSelfTestRunning = false,
@@ -822,9 +822,9 @@ class OptionsViewModel @Inject constructor(
                 collectJob.cancel()
             }
             val liveSummary = if (samples.isEmpty()) {
-                "Live: nessun campione HR in ${totalSeconds}s (fascia connessa ma silenziosa)"
+                "Live: no HR samples in ${totalSeconds}s (strap connected but silent)"
             } else {
-                "Live: ${samples.size} campioni, media ${samples.average().toInt()}, " +
+                "Live: ${samples.size} samples, avg ${samples.average().toInt()}, " +
                     "min ${samples.min()}, max ${samples.max()}"
             }
             val report = PolarSelfTest.formatReport(liveSummary, PolarSelfTest.runOfflineChecks())
