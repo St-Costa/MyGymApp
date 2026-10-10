@@ -309,6 +309,8 @@ fun ActiveRoutineScreen(
 
     if (uiState.showRpePrompt) {
         SessionRpeDialog(
+            selected = uiState.selectedRpe,
+            onSelect = viewModel::onRpeSelected,
             onSubmit = { rpe -> viewModel.submitSessionRpe(rpe) },
         )
     }
@@ -324,10 +326,10 @@ fun ActiveRoutineScreen(
  */
 @Composable
 private fun SessionRpeDialog(
+    selected: Int?,
+    onSelect: (Int) -> Unit,
     onSubmit: (Int) -> Boolean,
 ) {
-    var selected by remember { mutableStateOf<Int?>(null) }
-
     androidx.compose.material3.AlertDialog(
         onDismissRequest = {}, // mandatory — no dismiss via outside tap or back press
         title = { Text("How hard was this session?") },
@@ -348,7 +350,7 @@ private fun SessionRpeDialog(
                             val value = row * 5 + col
                             FilterChip(
                                 selected = selected == value,
-                                onClick = { selected = value },
+                                onClick = { onSelect(value) },
                                 label = { Text(value.toString()) },
                                 modifier = Modifier.weight(1f),
                             )

@@ -74,6 +74,10 @@ data class ActiveRoutineUiState(
     // Session-RPE prompt: shown once, right after "Registra" is tapped and before
     // the session is actually finalized/synced. Skippable — see docs/CONVENTIONS.md.
     val showRpePrompt: Boolean = false,
+    // The RPE chip selection (0-9, null = nothing picked yet). Lives in the VM — not a
+    // local composable remember — so a process kill with the prompt open loses only the
+    // dialog, not the pick (mirrored to the SavedStateHandle, Sprint 9).
+    val selectedRpe: Int? = null,
     // Cross-routine charts (all sessions, not filtered by routine)
     val allSessionCalories: List<Double> = emptyList(),
     val allSessionTrimp: List<Double> = emptyList(),
@@ -166,9 +170,12 @@ data class ActiveExerciseUi(
     val substitutedForName: String? = null,
 )
 
+/** SavedStateHandle key for the staged RPE pick (Sprint 9 process-death drafts). */
+internal const val DRAFT_RPE = "draft_rpe"
+
 @HiltViewModel
 class ActiveRoutineViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val routineRepository: RoutineRepository,
     private val exerciseRepository: ExerciseRepository,
     private val workoutRepository: WorkoutRepository,
@@ -187,7 +194,9 @@ class ActiveRoutineViewModel @Inject constructor(
 
     private val routineId: String = savedStateHandle["routineId"] ?: ""
 
-    private val _uiState = MutableStateFlow(ActiveRoutineUiState())
+    private val _uiState = MutableStateFlow(
+        ActiveRoutineUiState(selectedRpe = savedStateHandle.get<Int>(DRAFT_RPE)),
+    )
     val uiState: StateFlow<ActiveRoutineUiState> = _uiState
 
     /**
@@ -679,6 +688,13 @@ class ActiveRoutineViewModel @Inject constructor(
      * prompt stays open rather than silently clamping or dropping the rating.
      * @return true if accepted, false if invalid (caller should keep the prompt open).
      */
+    /** RPE chip tap: staged in state (and the handle) until [submitSessionRpe]. */
+    fun onRpeSelected(value: Int) {
+        val coerced = value.coerceIn(0, 9)
+        _uiState.value = _uiState.value.copy(selectedRpe = coerced)
+        savedStateHandle[DRAFT_RPE] = coerced
+    }
+
     fun submitSessionRpe(rpe: Int): Boolean {
         if (rpe !in 0..9) return false
         _uiState.value = _uiState.value.copy(showRpePrompt = false)

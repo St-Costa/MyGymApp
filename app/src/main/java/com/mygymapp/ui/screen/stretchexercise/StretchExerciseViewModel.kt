@@ -42,7 +42,7 @@ data class StretchExerciseUiState(
 
 @HiltViewModel
 class StretchExerciseViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
     private val workoutRepository: WorkoutRepository,
 ) : ExerciseSessionViewModel() {
@@ -75,6 +75,15 @@ class StretchExerciseViewModel @Inject constructor(
                 listOf(StretchSetUi(timeSeconds = 60))
             }
 
+            // Process-death restore: done-toggles newer than the last disk save survive
+            // in the SavedStateHandle — overlay them over the just-loaded sets. Running
+            // timers are deliberately NOT restored (a mid-countdown kill restarts the
+            // countdown from full on next open; fabricating elapsed time would lie).
+            val restoredSets = applyStretchDraft(
+                sets,
+                decodeStretchDraft(savedStateHandle.get<ArrayList<String>>(DRAFT_STRETCH_SETS)),
+            )
+
             // Switch is offered only for a plain NORMAL slot — not warmup/fixed-daily —
             // matching WorkoutExercise.isSwitchEligible().
             val isDaily = workoutExercise?.isDaily ?: false
@@ -87,7 +96,7 @@ class StretchExerciseViewModel @Inject constructor(
 
             _uiState.value = StretchExerciseUiState(
                 exercise = exercise,
-                sets = sets,
+                sets = restoredSets,
                 description = exercise.notes,
                 isLoading = false,
                 countdownDuration = duration,
@@ -103,6 +112,8 @@ class StretchExerciseViewModel @Inject constructor(
         if (setIndex in sets.indices && !sets[setIndex].done) {
             sets[setIndex] = sets[setIndex].copy(done = true)
             _uiState.value = _uiState.value.copy(sets = sets)
+            // Single choke point for set mutations — mirror for process-death restore.
+            savedStateHandle[DRAFT_STRETCH_SETS] = encodeStretchDraft(sets)
         }
     }
 
@@ -226,4 +237,30 @@ class StretchExerciseViewModel @Inject constructor(
             clearScope.cancel()
         }
     }
+}
+
+/**
+ * Process-death drafts for stretch sets (Sprint 9): one `"done"` flag row per set —
+ * durations reload fresh from the session every init, only the toggles need saving.
+ * Size mismatch ignores the draft rather than misaligning sets. Pure, unit-tested.
+ */
+internal const val DRAFT_STRETCH_SETS = "draft_stretch_sets"
+
+internal fun encodeStretchDraft(sets: List<StretchSetUi>): ArrayList<String> =
+    ArrayList(sets.map { if (it.done) "1" else "0" })
+
+internal fun decodeStretchDraft(raw: List<String>?): List<Boolean>? {
+    if (raw == null) return null
+    return raw.map {
+        when (it) {
+            "1" -> true
+            "0" -> false
+            else -> return null
+        }
+    }
+}
+
+internal fun applyStretchDraft(base: List<StretchSetUi>, draft: List<Boolean>?): List<StretchSetUi> {
+    if (draft == null || draft.size != base.size) return base
+    return base.mapIndexed { i, s -> s.copy(done = draft[i]) }
 }

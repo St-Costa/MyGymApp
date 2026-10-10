@@ -91,7 +91,7 @@ data class StrengthExerciseUiState(
 
 @HiltViewModel
 class StrengthExerciseViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
     private val routineRepository: RoutineRepository,
     private val workoutRepository: WorkoutRepository,
@@ -186,6 +186,17 @@ class StrengthExerciseViewModel @Inject constructor(
                 )
             }
 
+            // Process-death restore: keystrokes newer than the last disk save survive in
+            // the SavedStateHandle — overlay them over the just-loaded sets. Previous-set
+            // references and PRs always come from the fresh load above, never the draft.
+            val draft = decodeStrengthDraft(
+                savedStateHandle.get<ArrayList<String>>(DRAFT_STRENGTH_SETS),
+            )
+            val restoredSets = applyStrengthDraft(sets, draft)
+            val loadModeForFill = exercise.loadMode
+            val weightOptional =
+                loadModeForFill == LoadMode.BODYWEIGHT || loadModeForFill == LoadMode.ASSISTED
+
             // All-time PRs (highest reps*weight set, and highest estimated-1RM set, in this
             // slot context) — also from the sidecar, same as "previous" above. The two can be
             // different sets; both badges show that set's reps x weight, RM on top.
@@ -219,11 +230,15 @@ class StrengthExerciseViewModel @Inject constructor(
 
             _uiState.value = StrengthExerciseUiState(
                 exercise = exercise,
-                sets = sets,
+                sets = restoredSets,
                 repRangeMin = repMin,
                 repRangeMax = repMax,
                 description = exercise.notes,
                 isLoading = false,
+                // Only meaningful when a draft was actually restored — a fresh load keeps
+                // the default until the lifter touches something (see updateSet).
+                allSetsFilled = draft != null &&
+                    restoredSets.all { it.reps > 0 && (it.weight > 0 || weightOptional) },
                 tonnagePr = tonnagePr,
                 rmPr = rmPr,
                 previousSessionDate = previousDate,
@@ -418,6 +433,62 @@ class StrengthExerciseViewModel @Inject constructor(
             val weightOptional = loadMode == LoadMode.BODYWEIGHT || loadMode == LoadMode.ASSISTED
             val allFilled = sets.all { it.reps > 0 && (it.weight > 0 || weightOptional) }
             _uiState.value = _uiState.value.copy(sets = sets, allSetsFilled = allFilled)
+            // Mirror into the SavedStateHandle so a process kill loses at most the
+            // in-flight keystroke, never the typed sets (single choke point: every
+            // reps/weight/confirm path funnels through here).
+            savedStateHandle[DRAFT_STRENGTH_SETS] = encodeStrengthDraft(sets)
         }
+    }
+}
+
+/**
+ * Process-death drafts for strength sets (Sprint 9): `"reps|weight|repsTouched|weightTouched"`
+ * rows, one per set. Previous-set references stay out — they reload fresh from the sidecar
+ * every init. Size mismatch (routine edited between death and restore) ignores the draft
+ * rather than misaligning sets. Pure helpers, unit-tested.
+ */
+internal const val DRAFT_STRENGTH_SETS = "draft_strength_sets"
+
+internal data class StrengthSetDraft(
+    val reps: Int,
+    val weight: Double,
+    val repsTouched: Boolean,
+    val weightTouched: Boolean,
+)
+
+internal fun encodeStrengthDraft(sets: List<StrengthSetUi>): ArrayList<String> =
+    ArrayList(sets.map { "${it.reps}|${it.weight}|${it.repsTouched}|${it.weightTouched}" })
+
+internal fun decodeStrengthDraft(raw: List<String>?): List<StrengthSetDraft>? {
+    if (raw == null) return null
+    return raw.map { row ->
+        val p = row.split("|")
+        if (p.size != 4) return null
+        StrengthSetDraft(
+            reps = p[0].toIntOrNull() ?: return null,
+            weight = p[1].toDoubleOrNull() ?: return null,
+            repsTouched = p[2].toBooleanStrictOrNull() ?: return null,
+            weightTouched = p[3].toBooleanStrictOrNull() ?: return null,
+        )
+    }
+}
+
+internal fun applyStrengthDraft(
+    base: List<StrengthSetUi>,
+    draft: List<StrengthSetDraft>?,
+): List<StrengthSetUi> {
+    if (draft == null || draft.size != base.size) return base
+    return base.mapIndexed { i, s ->
+        val d = draft[i]
+        s.copy(
+            reps = d.reps,
+            weight = d.weight,
+            repsTouched = d.repsTouched,
+            weightTouched = d.weightTouched,
+            // Recomputed against the fresh previous like init does — the draft carries
+            // values + touches, never derived flags.
+            repsModified = d.reps != s.previousReps,
+            weightModified = d.weight != s.previousWeight,
+        )
     }
 }

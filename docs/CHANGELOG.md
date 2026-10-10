@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 179 — Sprint 9 process-death: bozze set/timer/RPE
+
+I set digitati (strength/superset/superset-stretch), i done degli stretch e la scelta RPE ora sopravvivono al kill: codec puri in `SavedStateHandle` + overlay all'init (previous/PR sempre da load fresco, mai dal draft; mismatch di taglia = draft ignorato). Timer in corso esclusi di proposito (un countdown ripartito da capo mentirebbe; il blocco cardio aperto resta chiuso dal disco come prima). RPE spostato nel VM. Nuovo `ExerciseSetDraftsTest` (9 test); suite verde (JDK 21).
+
 ## Phase 178 — Sprint 9 delete: rebuild sidecar fuori dal mutex
 
 `delete()` e la coda di `runMaintenance()` ricostruivano i sidecar dentro il lock (full scan per esercizio, ~2.4s per 15) bloccando il save successivo. Ora `rebuildStatsSidecars`: snapshot mtime in lock, compute fuori, persist in lock con re-check (fallback a rebuild fresco se un save concorrente ha scritto nel mentre — stessa disciplina di `getExerciseStats`). Contratto invariato, pinnato da un nuovo test (delete della PR → sidecar dai sopravvissuti). Suite verde (JDK 21).
