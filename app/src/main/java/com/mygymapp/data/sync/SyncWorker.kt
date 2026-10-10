@@ -82,9 +82,10 @@ class SyncWorker @AssistedInject constructor(
 
             val file = session?.let { workoutRepository.fileFor(it) }
             if (session == null || file == null || !file.exists()) {
-                appLogger.w(TAG, "Sync skip: session ${entry.sessionId} file not found on disk")
-                ledger.markFailed(entry.sessionId, "session file not found on disk")
-                anyFailure = true
+                // Gone for good (hand-deleted, reaped, or an unresolvable relPath) — it
+                // can never come back, so dead-letter instead of retrying forever.
+                appLogger.w(TAG, "Sync dead: session ${entry.sessionId} file not found on disk")
+                ledger.markDead(entry.sessionId, "session file not found on disk")
                 continue
             }
 

@@ -3,10 +3,10 @@ package com.mygymapp.data.sync
 /**
  * Delivery state of one queued session in the sync ledger (`gymdata/_sync/state.yml`).
  *
- * [EXPIRED] is only ever produced by [EcgSyncLedgerRepository.expireStale] — the raw ECG
- * pipeline is the only one whose source file is ephemeral, so it's the only one that needs
- * a terminal "gave up" state distinct from `FAILED` (still retryable). The other three
- * pipelines (sessions/readiness/scale) never assign this value.
+ * [EXPIRED] is produced by [EcgSyncLedgerRepository.expireStale] (30-day age cap on the
+ * ephemeral raw ECG) and by every pipeline's `markDead()` for entries whose source file
+ * is gone for good (hand-deleted or reaped): a terminal "gave up" state distinct from
+ * `FAILED` (still retryable), excluded from every `getPending()`.
  *
  * [DELETED_PENDING] / [DELETED_SENT] are only ever produced by [RepoLedgerRepository] — the
  * fifth pipeline (exercises/routines, see `docs/BACKUP.md`) is the only one that syncs

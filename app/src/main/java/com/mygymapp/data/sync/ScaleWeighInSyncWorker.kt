@@ -69,9 +69,8 @@ class ScaleWeighInSyncWorker @AssistedInject constructor(
             val weighIn = scaleHistoryRepository.getById(entry.sessionId)
             val file = weighIn?.let { scaleHistoryRepository.fileFor(it.id) }
             if (weighIn == null || file == null || !file.exists()) {
-                appLogger.w(TAG, "Sync skip: weigh-in ${entry.sessionId} file not found on disk")
-                ledger.markFailed(entry.sessionId, "weigh-in file not found on disk")
-                anyFailure = true
+                appLogger.w(TAG, "Sync dead: weigh-in ${entry.sessionId} file not found on disk")
+                ledger.markDead(entry.sessionId, "weigh-in file not found on disk")
                 continue
             }
 
