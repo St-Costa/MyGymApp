@@ -141,6 +141,15 @@ The three exercise screens take two distinct navigation callbacks:
 
 Do not collapse them into one callback — the side effects are different.
 
+## UI language: English-only, no i18n framework
+
+The UI is English-only by product decision (Phase 165; earlier builds mixed EN/IT).
+There is deliberately no `strings.xml` extraction and no per-locale resources: month/day
+labels use `Locale.US`/ISO explicitly so they stay English whatever the phone language
+is. Code comments and historical docs stay mixed-language (dev-facing, not worth the
+churn). If multi-language ever comes back, it starts by extracting `strings.xml` and
+verifying overflow on-device (German runs ~30% longer) — not by translating literals.
+
 ## `AutoSaveTextField` flush on dispose
 
 [AutoSaveTextField](../app/src/main/java/com/mygymapp/ui/components/AutoSaveTextField.kt) debounces writes by 500 ms. If the composable leaves composition mid-debounce (user taps back quickly), the pending save would be lost. A `DisposableEffect(Unit) { onDispose { pendingSave?.let(currentOnSave) } }` flushes it. `rememberUpdatedState(onSave)` prevents capturing a stale callback.
