@@ -37,6 +37,15 @@ class EcgRecorder @Inject constructor(
         private const val TAG = "EcgRecorder"
         private const val MAGIC = "MYGMECG1"
         private const val FLUSH_EVERY_SAMPLES = 260 // ~2 seconds at 130Hz
+
+        /**
+         * Wall-clock ns-since-epoch for the file header. Must be derived from
+         * `currentTimeMillis`, NEVER `System.nanoTime()`: nanoTime is monotonic-since-boot
+         * (no epoch), and the server correlates cardio blocks to ECG samples via
+         * `startTimestamp + sampleRate` — a boot-relative base shifted every offset by an
+         * arbitrary amount. Pure seam (`nowMs` injectable) for unit tests.
+         */
+        fun epochTimestampNs(nowMs: Long = System.currentTimeMillis()): Long = nowMs * 1_000_000L
     }
 
     private var output: DataOutputStream? = null

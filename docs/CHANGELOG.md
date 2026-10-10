@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 143 — Sprint 2 ECG: header timestamp epoch, non nanoTime
+
+`startEcgStreamingInternal` scriveva `System.nanoTime()` (monotonico da boot, senza epoch) nel campo header documentato come "ns since epoch": il server derivava offset insensati per ogni blocco cardio (`startTimestamp + sampleRate`). Ora `EcgRecorder.epochTimestampNs()` (`currentTimeMillis × 10⁶`, seam puro testabile). I file già registrati non sono correggibili — annotato per il server. Nuovo `EcgTimestampTest` (3 test); suite verde (JDK 21).
+
 ## Phase 142 — Sprint 2 FGS: background-safe + throttle notifica HR
 
 `PolarStreamingService.start/updateHr/setReconnecting` ora ingoiano `BackgroundServiceStartNotAllowedException` come già facevano `stop/setStandby`, e `updateHr/setReconnecting` sono no-op a servizio spento (mai resurrezioni dopo `forceStop`). La notifica BPM passa per il puro `HrNotificationThrottle` (primo campione, poi solo su cambio E (≥5s OPPURE salto ≥5 BPM)): da ~3600 a ~700 intent/ora, e ogni intent in background era un potenziale restart-loop da 2s dentro `onNext` Rx. Nuovo `HrNotificationThrottleTest` (5 test); suite verde (JDK 21).
