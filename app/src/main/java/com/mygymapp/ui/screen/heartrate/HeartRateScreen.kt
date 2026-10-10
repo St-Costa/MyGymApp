@@ -229,9 +229,9 @@ fun HeartRateScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             if (!isBluetoothEnabled()) {
-                RadioWarningBox("Attiva il Bluetooth per collegare i dispositivi")
+                RadioWarningBox("Turn on Bluetooth to connect devices")
             } else if (isLocationRequiredAndDisabled()) {
-                RadioWarningBox("Attiva la posizione per cercare dispositivi Bluetooth")
+                RadioWarningBox("Turn on location to scan for Bluetooth devices")
             } else {
                 DeviceStatusHeader(
                     heartRateLinkStatus = uiState.linkStatus,
@@ -336,8 +336,8 @@ private fun DeviceStatusHeader(
         scaleReading.impedanceOhm != null
     if (weighInComplete) {
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "Pesata completata, puoi scendere ✓",
+            Text(
+                "Weigh-in complete, you can step off ✓",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             color = SignalGreen,
@@ -358,12 +358,12 @@ private fun ScaleStatusIcon(
     when (connectionState) {
         ScaleConnectionState.DISCONNECTED -> Icon(
             Icons.Default.LinkOff,
-            contentDescription = "Non connessa",
+            contentDescription = "Not connected",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         ScaleConnectionState.SCANNING, ScaleConnectionState.CONNECTING -> Icon(
             Icons.Default.Sync,
-            contentDescription = "Connessione in corso",
+            contentDescription = "Connecting",
             tint = SignalAmber,
         )
         ScaleConnectionState.CONNECTED -> {
@@ -371,14 +371,14 @@ private fun ScaleStatusIcon(
             if (weighInComplete) {
                 Icon(
                     Icons.Default.TaskAlt,
-                    contentDescription = "Pesata completata, puoi scendere",
+                    contentDescription = "Weigh-in complete, you can step off",
                     modifier = Modifier.size(32.dp),
                     tint = SignalGreen,
                 )
             } else {
                 Icon(
                     Icons.AutoMirrored.Filled.BluetoothSearching,
-                    contentDescription = "Connessa",
+                    contentDescription = "Connected",
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -416,13 +416,13 @@ private fun ColumnScope.ConnectedContent(
     if (uiState.linkStatus == com.mygymapp.data.polar.PolarLinkStatus.STANDBY) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "Fascia in standby per risparmiare batteria — stream HR in pausa.",
+            "Strap on standby to save battery — HR stream paused.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(4.dp))
         OutlinedButton(onClick = onResumeLiveHr) {
-            Text("Riattiva BPM live")
+            Text("Resume live BPM")
         }
     }
 
@@ -464,11 +464,11 @@ private fun ColumnScope.ConnectedContent(
     if (showBatteryDialog) {
         AlertDialog(
             onDismissRequest = { showBatteryDialog = false },
-            title = { Text("Hai cambiato la batteria?") },
+                title = { Text("Did you replace the battery?") },
             text = {
                 Text(
-                    "Conferma solo se hai appena inserito una CR2025 nuova: il contatore " +
-                        "ore riparte da zero e le ore della cella vecchia entrano nella media.",
+                    "Confirm only if you just inserted a fresh CR2025: the hours counter " +
+                        "restarts from zero and the old cell's hours join the average.",
                 )
             },
             confirmButton = {
@@ -478,7 +478,7 @@ private fun ColumnScope.ConnectedContent(
                         onBatteryReset()
                     },
                 ) {
-                    Text("Sì, cambiata")
+                    Text("Yes, replaced")
                 }
             },
             dismissButton = {
@@ -505,7 +505,7 @@ private fun ColumnScope.ConnectedContent(
                 tint = MaterialTheme.colorScheme.error,
             )
             Text(
-                "Batteria fascia al ${uiState.batteryLevel}% — sostituisci la CR2025 a breve",
+                "Strap battery at ${uiState.batteryLevel}% — replace the CR2025 soon",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )

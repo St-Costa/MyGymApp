@@ -65,7 +65,7 @@ fun SessionProgressScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (justCompleted) "Sessione completata" else uiState.routineName) },
+                title = { Text(if (justCompleted) "Session completed" else uiState.routineName) },
                 navigationIcon = {
                     if (!justCompleted) {
                         IconButton(onClick = onBack) {
@@ -186,7 +186,7 @@ fun SessionProgressScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            text = "Tonnellaggio totale: ${"%.1f".format(uiState.sessionTonnage.lastOrNull() ?: 0.0)} kg",
+                            text = "Total tonnage: ${"%.1f".format(uiState.sessionTonnage.lastOrNull() ?: 0.0)} kg",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         TonnageLineChart(
@@ -204,14 +204,14 @@ fun SessionProgressScreen(
                     modifier = Modifier.fillMaxWidth().padding(32.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Nessun dato disponibile", style = MaterialTheme.typography.bodyLarge)
+                    Text("No data available", style = MaterialTheme.typography.bodyLarge)
                 }
             }
 
             // Stretch-time trend — only when this session actually had stretch work.
             if ((uiState.sessionStretchMinutes.lastOrNull() ?: 0.0) > 0.0) {
                 MinutesTrendCard(
-                    title = "Tempo stretch",
+                    title = "Stretch time",
                     minutes = uiState.sessionStretchMinutes,
                     labels = uiState.sessionLabels,
                 )
@@ -220,7 +220,7 @@ fun SessionProgressScreen(
             // Cardio-time trend — only when this session actually had cardio.
             if ((uiState.sessionCardioMinutes.lastOrNull() ?: 0.0) > 0.0) {
                 MinutesTrendCard(
-                    title = "Tempo cardio",
+                    title = "Cardio time",
                     minutes = uiState.sessionCardioMinutes,
                     labels = uiState.sessionLabels,
                 )
@@ -231,7 +231,7 @@ fun SessionProgressScreen(
                     onClick = onDone,
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally).padding(top = 8.dp),
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText("Fatto")
+                    com.mygymapp.ui.components.ActionButtonText("Done")
                 }
             }
         }
@@ -293,37 +293,37 @@ internal fun SyncStatusBox(
             // Static two-arrows-in-a-circle glyph, not the animated spinner (null icon) —
             // conveys "sync check" without motion.
             Icons.Default.Sync,
-            "Verifica connessione al server…",
-            "Sto controllando che il salvataggio remoto sia raggiungibile.",
+            "Checking server connection…",
+            "Checking that remote storage is reachable.",
             MaterialTheme.colorScheme.onSurfaceVariant,
         )
         SessionSyncStatus.SENT -> Spec(
             Icons.Default.CheckCircle,
-            "Sessione ricevuta dal server",
+            "Session received by the server",
             // The ledger only flips to SENT on a confirmed 2xx (docs/SYNC.md §1.3 step 4),
             // and the server echoes what it did — so this really is a delivery receipt.
             when (serverStatus) {
-                "duplicate" -> "Il server aveva già questa versione: nessuna riscrittura."
-                else -> "Il server ha confermato la ricezione e l'ha salvata."
+                "duplicate" -> "The server already had this version: no rewrite."
+                else -> "The server confirmed receipt and saved it."
             },
             GitgraphGreen,
         )
         SessionSyncStatus.FAILED -> Spec(
             Icons.Default.Error,
-            "Invio al server fallito",
-            "Verrà ritentato automaticamente in background.",
+            "Server upload failed",
+            "Will be retried automatically in the background.",
             MaterialTheme.colorScheme.error,
         )
         SessionSyncStatus.PENDING -> Spec(
             null,
-            "Invio al server in corso…",
-            "Attendi qualche secondo.",
+            "Uploading to server…",
+            "Wait a few seconds.",
             MaterialTheme.colorScheme.onSurfaceVariant,
         )
         SessionSyncStatus.SYNC_OFF -> Spec(
             Icons.Default.CloudOff,
-            "Sync col server disattivata",
-            "La sessione resta salvata solo su questo telefono.",
+            "Server sync off",
+            "The session stays saved only on this phone.",
             MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -385,11 +385,11 @@ private fun formatTransferDuration(ms: Long): String = when {
 @Composable
 internal fun PolarConnectionBox(stats: DisconnectStats) {
     val n = stats.count
-    val header = if (n == 1) "Fascia Polar — 1 disconnessione" else "Fascia Polar — $n disconnessioni"
+    val header = if (n == 1) "Polar strap — 1 disconnect" else "Polar strap — $n disconnects"
     val recovery = if (stats.everyDropAutoRecovered) {
-        "Riconnessa da sola ogni volta: i dati della sessione sono completi."
+        "Reconnected by itself every time: session data is complete."
     } else {
-        "L'ultima disconnessione non si è ripristinata prima della fine della sessione."
+        "The last disconnect did not recover before the session ended."
     }
 
     Card(
@@ -421,8 +421,8 @@ internal fun PolarConnectionBox(stats: DisconnectStats) {
                 DropRow(index = i + 1, drop = drop)
             }
             Text(
-                "RSSI = potenza del segnale della fascia (più vicino a 0 = più forte). " +
-                    "Il tempo senza battiti prima del calo indica la causa probabile.",
+                "RSSI = strap signal strength (closer to 0 = stronger). " +
+                    "The beat-less time before the drop hints at the likely cause.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -432,16 +432,16 @@ internal fun PolarConnectionBox(stats: DisconnectStats) {
 
 @Composable
 internal fun DropRow(index: Int, drop: DisconnectStats.SessionDrop) {
-    val rssi = if (drop.rssi != 0) "${drop.rssi} dBm" else "n/d"
-    val gap = if (drop.hrGapSec > 0) "${drop.hrGapSec}s senza battiti prima del calo"
-              else "battito ricevuto fino all'istante del calo"
+    val rssi = if (drop.rssi != 0) "${drop.rssi} dBm" else "n/a"
+    val gap = if (drop.hrGapSec > 0) "${drop.hrGapSec}s with no beats before the drop"
+              else "beats received right up to the drop"
     val cause = when (drop.cause) {
-        DropCause.RANGE_OR_FADE -> "distanza o telefono coperto dal corpo"
-        DropCause.INTERFERENCE -> "interferenza radio o contatto elettrodo intermittente"
+        DropCause.RANGE_OR_FADE -> "distance or phone covered by the body"
+        DropCause.INTERFERENCE -> "radio interference or flaky electrode contact"
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            "$index)  a ${formatMmSs(drop.atElapsedSec)} dall'inizio  ·  RSSI $rssi",
+            "$index)  at ${formatMmSs(drop.atElapsedSec)} in  ·  RSSI $rssi",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )

@@ -112,7 +112,7 @@ class SessionProgressViewModel @Inject constructor(
         SessionProgressUiState(
             // Reserve the box immediately when arriving from a completed session.
             backupVerifyRunning = justCompleted,
-            backupVerifyProgress = if (justCompleted) "Avvio verifica backup…" else null,
+            backupVerifyProgress = if (justCompleted) "Starting backup check…" else null,
         )
     )
     val uiState: StateFlow<SessionProgressUiState> = _uiState
@@ -138,13 +138,13 @@ class SessionProgressViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 backupVerifyRunning = false,
                 backupVerifyProgress = null,
-                backupVerifyError = "Server sync non configurato",
+                backupVerifyError = "Server sync not configured",
             )
             return
         }
         _uiState.value = _uiState.value.copy(
             backupVerifyRunning = true,
-            backupVerifyProgress = "Avvio verifica backup…",
+            backupVerifyProgress = "Starting backup check…",
             backupVerifyError = null,
             backupVerifyReport = null,
         )

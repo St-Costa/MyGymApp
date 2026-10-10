@@ -222,7 +222,7 @@ fun StrengthExerciseScreen(
                             longPressRepeatStep = 5.0,
                             onConfirm = { viewModel.confirmReps(index) },
                             modifier = Modifier.weight(1f),
-                            fieldName = "ripetizioni",
+                            fieldName = "reps",
                         )
 
                         // Weight picker — hidden for bodyweight exercises (load is estimated).
@@ -238,7 +238,7 @@ fun StrengthExerciseScreen(
                                 longPressRepeatStep = 10.0,
                                 onConfirm = { viewModel.confirmWeight(index) },
                                 modifier = Modifier.weight(1f),
-                                fieldName = "peso",
+                                fieldName = "weight",
                             )
                         }
                     }
@@ -270,7 +270,7 @@ fun StrengthExerciseScreen(
                         )
                     },
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Completa" else "Salta")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Complete" else "Skip")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

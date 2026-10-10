@@ -70,10 +70,10 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Anteprima riepilogo") },
+                title = { Text("Summary preview") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -87,7 +87,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Box invio al server", style = MaterialTheme.typography.titleSmall)
+            Text("Server send box", style = MaterialTheme.typography.titleSmall)
             SyncStatusBox(SessionSyncStatus.CHECKING)
             SyncStatusBox(
                 SessionSyncStatus.SENT,
@@ -99,8 +99,8 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             SyncStatusBox(SessionSyncStatus.FAILED)
             SyncStatusBox(SessionSyncStatus.SYNC_OFF)
 
-            Text("Box backup sul server (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
-            BackupVerifyBox(running = true, progressText = "Invio 3 file al server…")
+            Text("Server backup box (docs/BACKUP.md §3.7)", style = MaterialTheme.typography.titleSmall)
+            BackupVerifyBox(running = true, progressText = "Sending 3 files to the server…")
             // Clean: a range edit (one line -, one line +) plus a brand-new exercise.
             BackupVerifyBox(
                 report = BackupVerifyReport(
@@ -139,16 +139,16 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                     elapsedMs = 3_120, bytesUploaded = 2_890_000,
                 ),
             )
-            BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")
+            BackupVerifyBox(error = "Manifest not retrieved: HTTP 404: not found")
 
-            Text("Box qualità del sonno", style = MaterialTheme.typography.titleSmall)
+            Text("Sleep quality box", style = MaterialTheme.typography.titleSmall)
             var sleepQuality by rememberSaveable { mutableStateOf<Int?>(3) }
             SleepQualitySelector(
                 selected = sleepQuality,
                 onSelect = { sleepQuality = it },
             )
 
-            Text("Scheda readiness", style = MaterialTheme.typography.titleSmall)
+            Text("Readiness card", style = MaterialTheme.typography.titleSmall)
             ReadinessCard(
                 readiness = ReadinessResult(
                     readiness = Readiness.NORMAL,
@@ -162,7 +162,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                 vo2max = 48.2,
             )
 
-            Text("Grafico zone cardio (linea in Z3)", style = MaterialTheme.typography.titleSmall)
+            Text("Cardio zone chart (line in Z3)", style = MaterialTheme.typography.titleSmall)
             HrZoneTraceChartContent(
                 // %HRR trace climbing out of Z2 and settling mid-Z3 (70–80% band).
                 trace = listOf(
@@ -183,7 +183,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                 modifier = Modifier.height(220.dp),
             )
 
-            Text("Box connessione Polar", style = MaterialTheme.typography.titleSmall)
+            Text("Polar connection box", style = MaterialTheme.typography.titleSmall)
             PolarDeviceBox(
                 deviceId = "Polar H10 B79A5D2A",
                 batteryLevel = 88,
@@ -198,7 +198,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                 ),
             )
 
-            Text("Box disconnessioni Polar", style = MaterialTheme.typography.titleSmall)
+            Text("Polar disconnects box", style = MaterialTheme.typography.titleSmall)
             PolarConnectionBox(sampleDrops)
             PolarConnectionBox(
                 DisconnectStats(
@@ -209,7 +209,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
                 ),
             )
 
-            Text("Box Poliquin animati", style = MaterialTheme.typography.titleSmall)
+            Text("Animated Poliquin boxes", style = MaterialTheme.typography.titleSmall)
             TempoAnimation(tempo = Tempo.default())
             TempoAnimation(tempo = Tempo.fromFileString("3-1-X-0") ?: Tempo.default())
             TempoAnimation(tempo = Tempo.fromFileString("2-2-2-2") ?: Tempo.default())

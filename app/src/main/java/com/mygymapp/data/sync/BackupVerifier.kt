@@ -109,16 +109,16 @@ class BackupVerifier @Inject constructor(
     suspend fun run(onProgress: (String) -> Unit = {}): BackupVerifyOutcome = withContext(Dispatchers.IO) {
         RepoSyncCoordinator.withLock {
         val startedAt = System.currentTimeMillis()
-        onProgress("Controllo i file locali…")
+        onProgress("Checking local files…")
         if (!config.isConfigured()) {
-            return@withLock BackupVerifyOutcome.HardFail("Server sync non configurato")
+            return@withLock BackupVerifyOutcome.HardFail("Server sync not configured")
         }
         val serverUrl = config.serverUrl()
         val token = config.bearerToken()
         val appVersion = BuildConfig.VERSION_NAME
         val preflight = healthProbe.check(serverUrl, token)
         if (!preflight.available) {
-            return@withLock BackupVerifyOutcome.HardFail("Server non raggiungibile: ${preflight.reason}")
+            return@withLock BackupVerifyOutcome.HardFail("Server unreachable: ${preflight.reason}")
         }
 
         val exerciseFiles = fileManager.getDir("exercises").listFiles { f -> f.extension == "md" }?.toList().orEmpty()
@@ -126,7 +126,7 @@ class BackupVerifier @Inject constructor(
         val sessionFiles = collectSessionFiles()
         val repoFiles = (exerciseFiles + routineFiles).filter { it.isFile }
         if (repoFiles.isEmpty() && sessionFiles.isEmpty()) {
-            return@withLock BackupVerifyOutcome.HardFail("Niente da verificare.")
+            return@withLock BackupVerifyOutcome.HardFail("Nothing to verify.")
         }
 
         fun cat(f: File) = f.parentFile?.name ?: ""
@@ -135,11 +135,11 @@ class BackupVerifier @Inject constructor(
             if (cat(f) == "exercises") BackupErrorCategory.EXERCISE else BackupErrorCategory.ROUTINE
 
         // 1. Diff against the current manifest.
-        onProgress("Controllo cosa è già presente sul server…")
+        onProgress("Checking what is already on the server…")
         val manifest0 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
-            is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail("Manifest non recuperato: ${m.reason}")
-            else -> return@withLock BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+            is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail("Manifest not retrieved: ${m.reason}")
+            else -> return@withLock BackupVerifyOutcome.HardFail("Unexpected server response (manifest).")
         }
 
         data class Local(val file: File, val bytes: ByteArray, val hash: String)
@@ -157,7 +157,7 @@ class BackupVerifier @Inject constructor(
         val pushedRel = mutableSetOf<String>()
         var bytesUploaded = 0L
 
-        onProgress(if (toPush.isEmpty()) "Nessun file nuovo da inviare…" else "Preparo ${toPush.size} file da inviare…")
+        onProgress(if (toPush.isEmpty()) "No new files to send…" else "Preparing ${toPush.size} files to send…")
         val changedOnServer = toPush.map { rel(it.file) }.filter { manifest0.containsKey(it) }
         val prevBytes: Map<String, ByteArray> = if (changedOnServer.isEmpty()) emptyMap() else
             when (val f = restoreApi.fetchFiles(serverUrl, token, changedOnServer)) {
@@ -166,7 +166,7 @@ class BackupVerifier @Inject constructor(
             }
 
         if (toPush.isNotEmpty()) {
-            onProgress("Invio ${toPush.size} file al server…")
+            onProgress("Sending ${toPush.size} files to the server…")
             val tmpDir = File(appContext.cacheDir, "repo-verify-${System.nanoTime()}").apply { mkdirs() }
             try {
                 val bulkEntries = toPush.map { l ->
@@ -209,13 +209,13 @@ class BackupVerifier @Inject constructor(
         }
 
         // 3. Re-fetch the manifest, verify exercise/routine bytes, count sessions.
-        onProgress("Rileggo e verifico i file inviati…")
+        onProgress("Re-reading and verifying sent files…")
         val manifest1 = when (val m = restoreApi.fetchManifest(serverUrl, token)) {
             is RestoreResult.Manifest -> m.entries.associate { it.relPath to it.contentHash }
             is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail(
-                "Push completato ma manifest di verifica non recuperato: ${m.reason}"
+                "Push done but verification manifest not retrieved: ${m.reason}"
             )
-            else -> return@withLock BackupVerifyOutcome.HardFail("Risposta inattesa dal server (manifest).")
+            else -> return@withLock BackupVerifyOutcome.HardFail("Unexpected server response (manifest).")
         }
 
         // Read every exercise/routine back in ONE batch request and compare bytes.
@@ -223,9 +223,9 @@ class BackupVerifier @Inject constructor(
             when (val f = restoreApi.fetchFiles(serverUrl, token, locals.map { rel(it.file) })) {
                 is RestoreResult.Files -> f.files.mapNotNull { bf -> bf.bytes?.let { bf.relPath to it } }.toMap()
                 is RestoreResult.Failure -> return@withLock BackupVerifyOutcome.HardFail(
-                    "Push completato ma rilettura non riuscita: ${f.reason}"
+                    "Push done but read-back failed: ${f.reason}"
                 )
-                else -> return@withLock BackupVerifyOutcome.HardFail("Risposta inattesa dal server (rilettura).")
+                else -> return@withLock BackupVerifyOutcome.HardFail("Unexpected server response (read-back).")
             }
 
         var exMatching = 0
@@ -235,10 +235,10 @@ class BackupVerifier @Inject constructor(
             val serverHash = manifest1[relPath]
             val ok = when {
                 serverHash == null -> {
-                    errors += BackupError(errCat(l.file), l.file.name, "assente dal manifest dopo il push"); false
+                    errors += BackupError(errCat(l.file), l.file.name, "absent from manifest after push"); false
                 }
                 serverHash != l.hash -> {
-                    errors += BackupError(errCat(l.file), l.file.name, "hash sul server diverso da quello locale"); false
+                    errors += BackupError(errCat(l.file), l.file.name, "server hash differs from local"); false
                 }
                 else -> {
                     val got = readBack[relPath]
@@ -246,7 +246,7 @@ class BackupVerifier @Inject constructor(
                     else {
                         errors += BackupError(
                             errCat(l.file), l.file.name,
-                            if (got == null) "assente nella rilettura batch" else "rilettura non identica",
+                            if (got == null) "absent from batch read-back" else "read-back not identical",
                         )
                         false
                     }
@@ -256,7 +256,7 @@ class BackupVerifier @Inject constructor(
         }
 
         // Sessions — count-only, matched by manifest hash.
-        onProgress("Controllo le sessioni…")
+        onProgress("Checking sessions…")
         val sessionLocalByRel = sessionFiles.associate { f ->
             sessionRel(f) to repoLedgerRepository.hashOf(f.readBytes())
         }

@@ -74,7 +74,7 @@ fun ScaleDebugScreen(
                 title = { Text("Scale BLE Debug") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
@@ -87,26 +87,26 @@ fun ScaleDebugScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Stato: ${uiState.connectionState}")
+            Text("Status: ${uiState.connectionState}")
 
             uiState.lastError?.let { error ->
-                Text("Errore: $error")
+                Text("Error: $error")
             }
 
             when (uiState.connectionState) {
                 ScaleConnectionState.DISCONNECTED -> {
                     Button(onClick = { startScanWithPermissionCheck() }) {
-                        Text("Avvia")
+                        Text("Start")
                     }
                 }
                 ScaleConnectionState.SCANNING -> {
                     Button(onClick = { viewModel.stopScan() }) {
-                        Text("Ferma")
+                        Text("Stop")
                     }
                 }
                 ScaleConnectionState.CONNECTING, ScaleConnectionState.CONNECTED -> {
                     Button(onClick = { viewModel.disconnect() }) {
-                        Text("Disconnetti")
+                        Text("Disconnect")
                     }
                 }
             }
@@ -114,22 +114,22 @@ fun ScaleDebugScreen(
             uiState.lastReading?.let { reading ->
                 Card(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Peso: ${reading.weightKg?.let { "$it kg" } ?: "n/d"} (stabile: ${reading.weightStable})")
-                        Text("Impedenza: ${reading.impedanceOhm?.let { "$it Ω" } ?: "n/d"}")
-                        Text("Unità display: ${reading.displayUnit ?: "n/d"}")
+                        Text("Weight: ${reading.weightKg?.let { "$it kg" } ?: "n/a"} (stable: ${reading.weightStable})")
+                        Text("Impedance: ${reading.impedanceOhm?.let { "$it Ω" } ?: "n/a"}")
+                        Text("Display unit: ${reading.displayUnit ?: "n/a"}")
                     }
                 }
             }
 
             OutlinedButton(onClick = { viewModel.forgetKnownScale() }) {
-                Text("Dimentica")
+                Text("Forget")
             }
 
             OutlinedButton(onClick = { viewModel.seedDebugWeighIns() }) {
-                Text("Pesate debug")
+                Text("Debug weigh-ins")
             }
 
-            Text("Dispositivi trovati:")
+            Text("Found devices:")
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(uiState.discoveredDevices, key = { it.address }) { device ->
                     Card(
@@ -142,7 +142,7 @@ fun ScaleDebugScreen(
                             Text(device.name ?: "(senza nome)")
                             Text(device.address)
                             Button(onClick = { viewModel.connectToDevice(device.address) }) {
-                                Text("Connetti")
+                                Text("Connect")
                             }
                         }
                     }

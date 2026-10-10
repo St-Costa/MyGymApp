@@ -35,42 +35,42 @@ fun PolarLinkStatusIcon(
     when (status) {
         PolarLinkStatus.CONNECTED -> Icon(
             Icons.AutoMirrored.Filled.BluetoothSearching,
-            contentDescription = "Connesso",
+            contentDescription = "Connected",
             tint = Green,
             modifier = modifier,
         )
         PolarLinkStatus.NO_SIGNAL -> Icon(
             Icons.Default.Warning,
-            contentDescription = "Nessun segnale dal Polar",
+            contentDescription = "No signal from the Polar",
             tint = Amber,
             modifier = modifier,
         )
         PolarLinkStatus.CONNECTING -> Icon(
             Icons.Default.Sync,
-            contentDescription = "Connessione in corso",
+            contentDescription = "Connecting",
             tint = Amber,
             modifier = modifier,
         )
         PolarLinkStatus.STANDBY -> Icon(
             Icons.AutoMirrored.Filled.BluetoothSearching,
-            contentDescription = "In standby per risparmiare batteria",
+            contentDescription = "On standby to save battery",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = modifier,
         )
         PolarLinkStatus.DISCONNECTED -> Icon(
             Icons.Default.LinkOff,
-            contentDescription = "Non connesso",
+            contentDescription = "Not connected",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = modifier,
         )
     }
 }
 
-/** Short Italian label matching [PolarLinkStatusIcon], for places that show text too. */
+/** Short English label matching [PolarLinkStatusIcon], for places that show text too. */
 fun polarLinkStatusLabel(status: PolarLinkStatus): String = when (status) {
-    PolarLinkStatus.CONNECTED -> "Connesso"
-    PolarLinkStatus.NO_SIGNAL -> "Nessun segnale"
-    PolarLinkStatus.CONNECTING -> "Connessione…"
+    PolarLinkStatus.CONNECTED -> "Connected"
+    PolarLinkStatus.NO_SIGNAL -> "No signal"
+    PolarLinkStatus.CONNECTING -> "Connecting…"
     PolarLinkStatus.STANDBY -> "Standby"
-    PolarLinkStatus.DISCONNECTED -> "Disconnesso"
+    PolarLinkStatus.DISCONNECTED -> "Disconnected"
 }

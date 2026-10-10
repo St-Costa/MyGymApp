@@ -13,11 +13,13 @@ data class WeeklyPoint(
     val weekStart: LocalDate,
     val value: Double,
 ) {
-    val weekLabel: String get() = "W${weekStart.get(WeekFields.of(Locale.getDefault()).weekOfWeekBasedYear())}"
+    // ISO weeks (Monday-start, like the app's schedule row) with US-English month names —
+    // never the device locale, so labels stay English like the rest of the UI.
+    val weekLabel: String get() = "W${weekStart.get(WeekFields.ISO.weekOfWeekBasedYear())}"
 
-    /** Abbreviated month name (e.g. "Gen", "Feb") — used for multi-week windows where a week number is less readable. */
+    /** Abbreviated month name (e.g. "Jan", "Feb") — used for multi-week windows where a week number is less readable. */
     val monthLabel: String get() = weekStart.month
-        .getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault())
+        .getDisplayName(java.time.format.TextStyle.SHORT, Locale.US)
         .replaceFirstChar { it.uppercase() }
 }
 

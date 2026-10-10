@@ -128,7 +128,7 @@ class RepoSyncApi @Inject constructor() {
                     // failure as "retry the whole drain" — the already-applied results are
                     // idempotent on the next run (duplicate / already_absent).
                     return if (all.isEmpty()) r
-                    else RepoBulkOutcome.Failure("${r.reason} (dopo ${all.size} già applicati)")
+                    else RepoBulkOutcome.Failure("${r.reason} (after ${all.size} already applied)")
             }
         }
         return RepoBulkOutcome.Applied(all)
@@ -199,7 +199,7 @@ class RepoSyncApi @Inject constructor() {
                 return RepoBulkOutcome.Failure(it)
             }
             val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "repo", "bulk")
-                ?: return RepoBulkOutcome.Failure("URL non valido")
+                ?: return RepoBulkOutcome.Failure("Invalid URL")
             val request = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $bearerToken")
@@ -211,7 +211,7 @@ class RepoSyncApi @Inject constructor() {
                     return RepoBulkOutcome.Failure("HTTP ${response.code}: ${body.take(200)}")
                 }
                 val resultsJson = runCatching { JSONObject(body).getJSONArray("results") }
-                    .getOrElse { return RepoBulkOutcome.Failure("Risposta bulk illeggibile: ${body.take(200)}") }
+                    .getOrElse { return RepoBulkOutcome.Failure("Unreadable bulk response: ${body.take(200)}") }
                 val parsed = (0 until resultsJson.length()).map { idx ->
                     val o = resultsJson.getJSONObject(idx)
                     RepoBulkResult(
@@ -222,7 +222,7 @@ class RepoSyncApi @Inject constructor() {
                 }
                 if (parsed.size != chunk.size) {
                     return RepoBulkOutcome.Failure(
-                        "Risposta bulk incoerente: ${parsed.size} risultati per ${chunk.size} voci"
+                        "Inconsistent bulk response: ${parsed.size} results for ${chunk.size} entries"
                     )
                 }
                 RepoBulkOutcome.Applied(parsed)
@@ -274,7 +274,7 @@ class RepoSyncApi @Inject constructor() {
         return try {
             SyncUrlValidator.errorFor(serverUrl)?.let { return SyncResult.Failure(it) }
             val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "repo")
-                ?: return SyncResult.Failure("URL non valido")
+                ?: return SyncResult.Failure("Invalid URL")
             val request = Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer $bearerToken")

@@ -38,23 +38,23 @@ class PermissionsRationaleActivity : ComponentActivity() {
                             .padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Text("Passi e dati salute", style = MaterialTheme.typography.titleLarge)
+                        Text("Steps and health data", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "MyGymApp legge il numero di passi giornalieri tramite Health Connect, " +
-                                "una sola volta al giorno insieme al test di readiness mattutino con il " +
-                                "cardiofrequenzimetro Polar.",
+                            "MyGymApp reads your daily step count via Health Connect, " +
+                                "once a day together with the morning readiness test with the " +
+                                "Polar heart-rate strap.",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            "Questo dato resta sul dispositivo salvo che tu abbia configurato e attivato " +
-                                "la sincronizzazione verso il tuo server personale nelle Opzioni dell'app " +
-                                "(sincronizzazione self-hosted, non un servizio di terze parti). Nessun " +
-                                "dato viene condiviso con nessun altro soggetto.",
+                            "This data stays on the device unless you configured and enabled " +
+                                "syncing to your personal server in the app's Options " +
+                                "(self-hosted sync, not a third-party service). No " +
+                                "data is shared with anyone else.",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
-                            "Puoi revocare questo permesso in qualsiasi momento da Impostazioni → " +
-                                "Privacy → Permission manager, o dall'app Health Connect stessa.",
+                            "You can revoke this permission at any time from Settings → " +
+                                "Privacy → Permission manager, or from the Health Connect app itself.",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }

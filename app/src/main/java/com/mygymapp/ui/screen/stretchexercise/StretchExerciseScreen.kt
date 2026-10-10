@@ -231,7 +231,7 @@ fun StretchExerciseScreen(
                         )
                     },
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (anyDone) "Completa" else "Salta")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyDone) "Complete" else "Skip")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

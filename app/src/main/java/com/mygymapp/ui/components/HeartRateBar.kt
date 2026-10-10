@@ -128,7 +128,7 @@ fun HeartRateBar(
                 if (noSignal) {
                     Icon(
                         Icons.Default.Warning,
-                        contentDescription = "Nessun segnale dal Polar",
+                        contentDescription = "No signal from the Polar",
                         modifier = Modifier.size(22.dp),
                         tint = SignalAmber,
                     )
@@ -178,7 +178,7 @@ fun HeartRateBar(
                 if (noSignal) {
                     Icon(
                         Icons.Default.Warning,
-                        contentDescription = "Nessun segnale dal Polar",
+                        contentDescription = "No signal from the Polar",
                         modifier = Modifier.size(18.dp),
                         tint = SignalAmber,
                     )

@@ -282,7 +282,7 @@ class PolarStreamingService : Service() {
     private fun buildNotification(): Notification {
         val title = when {
             reconnecting -> "Reconnecting…"
-            standby -> "Standby · stream in pausa"
+            standby -> "Standby · stream paused"
             currentHr != null -> "${currentHr} BPM"
             else -> "Connecting…"
         }

@@ -279,7 +279,7 @@ fun SupersetScreen(
                         )
                     },
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Completa" else "Salta")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Complete" else "Skip")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))
@@ -477,7 +477,7 @@ private fun SupersetSetItem(
                                 longPressRepeatStep = 5.0,
                                 onConfirm = onConfirmReps,
                                 modifier = Modifier.fillMaxWidth(),
-                                fieldName = "ripetizioni",
+                                fieldName = "reps",
                             )
                         }
                         if (!isBodyweight) {
@@ -500,7 +500,7 @@ private fun SupersetSetItem(
                                     longPressRepeatStep = 10.0,
                                     onConfirm = onConfirmWeight,
                                     modifier = Modifier.fillMaxWidth(),
-                                    fieldName = "peso",
+                                    fieldName = "weight",
                                 )
                             }
                         }

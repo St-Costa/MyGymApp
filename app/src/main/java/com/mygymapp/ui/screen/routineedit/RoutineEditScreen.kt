@@ -664,7 +664,7 @@ private fun RoutineExerciseItem(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text("Durata cardio (min):", style = MaterialTheme.typography.bodyMedium)
+                    Text("Cardio duration (min):", style = MaterialTheme.typography.bodyMedium)
                     // Long-press either button to jump by 10 min at once — same widget/behavior
                     // as the weight picker on strength sets (SupersetScreen).
                     ScrollPickerInput(
@@ -674,7 +674,7 @@ private fun RoutineExerciseItem(
                         minValue = 0.0,
                         longPressRepeatStep = 10.0,
                         enableScroll = false,
-                        fieldName = "durata",
+                        fieldName = "duration",
                     )
                 }
             } else {

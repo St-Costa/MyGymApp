@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 165 — Sprint 7 English-only: tutta la UI in inglese
+
+Niente i18n multi-lingua per decisione: la UI mescolava EN/IT, ora è tutta inglese (pulsanti, dialog, stati sync, debug screen, contentDescription TalkBack, errori BLE/sync, date). Mesi/giorni da `Locale.US`/ISO (niente più dipendenza dalla lingua del telefono), numeri col `.` (i delta usano già `Locale.US`). Scelta deliberata: stringhe hardcodate, niente `strings.xml` — estrarre le risorse senza poter verificare overflow su schermo non è sicuro; code comment e docs storici restano misti (dev-facing). Test aggiornati (`PickerButtonDescriptionTest`); suite verde (JDK 21).
+
 ## Phase 164 — Sprint 6 igiene UI: colori in tema + micro-fix
 
 Gli stessi 5 hex erano copiati in 12 file (verde/ambra/rosso/arancio andavano già alla deriva): ora `SignalGreen/Amber/Red/Orange`, `TrendBlue`, `GitgraphGreen` e `OnSkipped` in `Color.kt`, stessi valori, zero cambi visivi. Neutri canvas (White/Black) e hue locali dei grafici restano inline per scelta (documentato in `Color.kt`). Micro-fix: calcoli chart in `remember()`, `applicationContext` negli haptics, `rememberSaveable` nel preview, `Locale.US` nei delta. Verifica: build + suite verdi (niente harness UI nel repo).

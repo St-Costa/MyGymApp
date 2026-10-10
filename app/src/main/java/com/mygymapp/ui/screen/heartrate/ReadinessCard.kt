@@ -453,7 +453,7 @@ fun PolarDeviceBox(
                     val batteryModifier = if (onBatteryClick != null) {
                         Modifier.clickable(
                             role = Role.Button,
-                            onClickLabel = "Batteria cambiata?",
+                            onClickLabel = "Battery replaced?",
                             onClick = onBatteryClick,
                         )
                     } else {
