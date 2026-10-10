@@ -150,6 +150,14 @@ is. Code comments and historical docs stay mixed-language (dev-facing, not worth
 churn). If multi-language ever comes back, it starts by extracting `strings.xml` and
 verifying overflow on-device (German runs ~30% longer) — not by translating literals.
 
+## Non-goals (explicitly out of scope)
+
+- **Adaptive tablet/foldable/landscape layouts.** The UI is single-column phone
+  portrait by product decision; layouts degrade without crashing on larger windows
+  (scroll + `BoxWithConstraints` where it matters) and that is accepted as-is. Do not
+  start a `WindowSizeClass`/two-pane rework without a product decision — it touches
+  every screen for a form factor nobody uses.
+
 ## `AutoSaveTextField` flush on dispose
 
 [AutoSaveTextField](../app/src/main/java/com/mygymapp/ui/components/AutoSaveTextField.kt) debounces writes by 500 ms. If the composable leaves composition mid-debounce (user taps back quickly), the pending save would be lost. A `DisposableEffect(Unit) { onDispose { pendingSave?.let(currentOnSave) } }` flushes it. `rememberUpdatedState(onSave)` prevents capturing a stale callback.
