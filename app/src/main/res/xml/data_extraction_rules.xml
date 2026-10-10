@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase 154: explicit counterpart of android:allowBackup="false" for API 31+, where the
+  OS backup granularity moved to these rules. Everything is excluded — sessions, ECG,
+  logs, SharedPreferences (sync bearer, schedule, paired-device MACs) — because the
+  bearer must never leave the device via the OS backup framework, and gymdata already
+  has its own backup story (install-debug.sh tar + server sync, docs/BACKUP.md).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>
