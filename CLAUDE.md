@@ -57,9 +57,9 @@ This file is the entry point for AI tooling. The details of the project live in 
 
 Android gym tracking app. Kotlin + Jetpack Compose, dark-only, single activity. File-based storage (no database): everything is Markdown + YAML in `filesDir/gymdata/`. Optional Polar H10 integration for live HR, ECG, HRV, VO2max.
 
-Build:
+Build (JDK 21 — the machine default JDK 25 breaks Gradle; Sprint 4 pins the toolchain):
 ```bash
-ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 ```
 
 Build **and install on the connected device**: use `scripts/install-debug.sh` (see the backup banner
@@ -90,10 +90,10 @@ Per-Polar deep dive: [docs/polar/implementation-guide.md](docs/polar/implementat
 - **Derived-data sidecars**: `history/_stats/{exerciseId}.yaml` (per-exercise "previous"/tonnage-PR/1RM-PR/has-prior-tonnage, split by slot context) and `history/_gitgraph.yaml` (home's 4 pre-week history rows). Caches over the `.md` files; `.md` stays source of truth. Pure `…Calculator` + round-tripping `…Parser` + `WorkoutRepository` lifecycle; schema mismatch ⇒ lazy rebuild, no migration code. Same shape for any future one. See [CONVENTIONS.md](docs/CONVENTIONS.md#derived-data-sidecars) and [STORAGE.md](docs/STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml).
 - **`ExerciseSessionViewModel`**: base class for all four exercise VMs (Strength/Stretch/Superset/Cardio) — owns `clearScope`, `markCompletionAndSave`, `markSwitched`, the `onCleared` template. See [CONVENTIONS.md](docs/CONVENTIONS.md#per-exercise-viewmodels-exercisesessionviewmodel).
 - **`onCleared()` save**: dedicated `clearScope`, cancel inside `finally`. Never `runBlocking`. See [CONVENTIONS.md](docs/CONVENTIONS.md#oncleared-save).
-- **`completionSaved` pattern**: exercise screens never call `onComplete()` from a button — flow through `_completionSaved` so disk writes land before navigation reads them. See [CONVENTIONS.md](docs/CONVENTIONS.md#completionsaved-pattern).
+- **`completionSaved` pattern**: exercise screens never call `onComplete()` from a button — the write lands on `clearScope`, flips `_completionSaved`, and fires the one-shot `completionEvent` (Channel + `receiveAsFlow`, consumed exactly once — never `LaunchedEffect(flag)`), so disk writes land before navigation reads them. See [CONVENTIONS.md](docs/CONVENTIONS.md#completionsaved-pattern).
 - **Polar facade**: everything flows through `@Singleton PolarManager`. Screens observe its StateFlows — they do not own Rx disposables.
 - **Two image caches**: `cache/images/` (ImageCacheRepository, persistent) and `image_cache/` (Coil LRU, 100 MB). Not interchangeable.
-- **Ghost-session guard**: `ActiveRoutineViewModel.onCleared()` + `WorkoutRepository.runMaintenance()`. Shell sessions (no data, no completed exercises) and their `.ecg` files get deleted both on back-out and at boot (throttled to once/12h). See [CONVENTIONS.md](docs/CONVENTIONS.md#ghost-session-prevention).
+- **Ghost-session guard**: `ActiveRoutineViewModel.onCleared()` + unthrottled `WorkoutRepository.deleteUnfinalizedSessions()` at every boot (+ 12h-throttled `runMaintenance()` for pruning). Shell sessions (no data, no completed exercises) and their `.ecg` files get deleted both on back-out and at boot; swept ids dead-letter their ECG ledger rows (`markDead`). See [CONVENTIONS.md](docs/CONVENTIONS.md#ghost-session-prevention).
 - **ECG raw file deletion**: `registerRoutine` no longer runs local ECG analysis at all (moved server-side) — if sync isn't configured, the raw `ecg/{id}.ecg` is deleted immediately (nothing local would ever consume it). If sync **is** configured, deletion is deferred to `EcgSyncWorker` — only after a confirmed server upload, or after 30 days pending. See [CONVENTIONS.md](docs/CONVENTIONS.md#ecg-raw-file-send-then-delete-no-local-analysis-fallback) and [SYNC.md](docs/SYNC.md#fourth-record-type-raw-ecg).
 
 ## Gotchas (the short list)
@@ -119,6 +119,6 @@ See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the complete set. The ones th
   `app/src/test/` in the same change — don't wait to be asked. Skip it only for pure UI/Compose
   layout changes or Android-framework-coupled code with no test harness yet (see
   [CONVENTIONS.md#local-test-gate](docs/CONVENTIONS.md#local-test-gate) for what's testable today
-  and the existing suite's shape). Run `ANDROID_HOME=~/Android/Sdk ./gradlew test` before
-  considering the change done — a local git hook also enforces this at commit time, see
-  [CONVENTIONS.md#local-test-gate](docs/CONVENTIONS.md#local-test-gate).
+   and the existing suite's shape). Run `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=~/Android/Sdk ./gradlew test` before
+   considering the change done — a local git hook also enforces this at commit time, see
+   [CONVENTIONS.md#local-test-gate](docs/CONVENTIONS.md#local-test-gate).
