@@ -76,14 +76,15 @@ override fun onCleared() {
     // …mid-exercise back case: save completed = false on clearScope, then clearScope.cancel()
 }
 
-// Screen
-val completionSaved by viewModel.completionSaved.collectAsState()
-LaunchedEffect(completionSaved) {
-    if (completionSaved) onComplete()
+// Screen — collect the one-shot event, never the boolean flag
+LaunchedEffect(Unit) {
+    viewModel.completionEvent.collect { onComplete() }
 }
 ```
 
 Navigation happens only after disk confirms the write.
+
+**One-shot events for navigation, boolean flags for state.** A `LaunchedEffect(flag)` re-fires its block on every recomposition where the flag is already `true` (animated transitions, slow pops → double `popBackStack`/`navigate`). Navigation triggers therefore go through `Channel`-backed flows (`ExerciseSessionViewModel.completionEvent`, `ActiveRoutineViewModel.sessionRegisteredEvent`, the editors' `deletedEvent`), collected once under `LaunchedEffect(Unit)`. It must be a `Channel` + `receiveAsFlow()`, NOT a `SharedFlow` with `extraBufferCapacity`: extra-buffer slots are only delivered to collectors that are *already* collecting — a value emitted before anyone subscribes is invisible to late subscribers (only the `replay` cache replays, and replay would wrongly re-fire after rotation). The boolean flags stay as the durable state (tests, conditional UI) — the event is the trigger. Same rule for `savedStateHandle` results in `AppNavigation`: read them via `getStateFlow(...).collectAsState()` (reactive) instead of a one-shot `get()` + `LaunchedEffect(key)` (misses sets that land without a recompose).
 
 **The completion save runs on `clearScope`, not `viewModelScope`.** Navigation tears the VM down almost immediately after the tap; if the save were on `viewModelScope` a process death (or fast enough teardown) mid-write would cancel it half-done and lose `completed = true` — and `onCleared()` can't recover it because `exerciseCompleted` is already set. `clearScope` (`SupervisorJob`, cancelled only by `onCleared`) survives VM teardown. `onCleared()` `join()`s `completionJob` before calling `clearScope.cancel()`, so the write always finishes. Applies to all three exercise VMs (`StrengthExerciseViewModel`, `StretchExerciseViewModel`, `SupersetViewModel`). The `switchExercise*()` paths still use `viewModelScope` — a separate, pre-existing race not covered here.
 

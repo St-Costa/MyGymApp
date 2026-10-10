@@ -127,9 +127,11 @@ fun ActiveRoutineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(uiState.sessionRegistered) {
-        if (uiState.sessionRegistered) {
-            onSessionRegistered(uiState.registeredSessionId, uiState.registeredSessionDate)
+    // One-shot: collect the registration event, don't observe the boolean flag (a
+    // LaunchedEffect(flag) can re-fire navigation on recompositions with flag=true).
+    LaunchedEffect(Unit) {
+        viewModel.sessionRegisteredEvent.collect { (sessionId, date) ->
+            onSessionRegistered(sessionId, date)
         }
     }
 

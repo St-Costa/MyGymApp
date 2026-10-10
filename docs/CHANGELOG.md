@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 147 — Sprint 3 nav: eventi one-shot al posto dei flag booleani
+
+`LaunchedEffect(flag)` con flag già `true` può rieseguire `onComplete/onBack` durante transizioni animate o pop lenti (doppia navigazione). Ora i trigger di navigazione sono `SharedFlow` senza replay consumati una sola volta (`completionEvent` nella base dei 4 exercise VM, `sessionRegisteredEvent` con id+data, `deletedEvent` nei due editor), mentre i booleani restano come stato durevole. Nuovo `CompletionEventTest` (esattamente-una-volta inclusa); suite verde (JDK 21).
+
 ## Phase 146 — Sprint 3 nav: la toolbar non bypassa più il prompt RPE
 
 Il `BackHandler` era disabilitato durante il prompt RPE obbligatorio, ma il pulsante back della toolbar chiamava `abandonSession()+onBack()` incondizionatamente: un tap aggirava il prompt "non skippabile". Ora stessa guard anche lì (`if (!showRpePrompt)`). Suite verde (JDK 21).

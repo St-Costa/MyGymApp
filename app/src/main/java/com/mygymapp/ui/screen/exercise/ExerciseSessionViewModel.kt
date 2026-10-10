@@ -7,8 +7,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -52,6 +55,23 @@ abstract class ExerciseSessionViewModel : ViewModel() {
     val completionSaved: StateFlow<Boolean> = _completionSaved
 
     /**
+     * One-shot navigation event, sent alongside [completionSaved]. Screens collect this
+     * (not the boolean) to trigger `onComplete()`: observing a `LaunchedEffect(flag)` can
+     * re-fire the navigation on recompositions where the flag is already true (animated
+     * transitions, slow pops).
+     *
+     * A `Channel` (not a `SharedFlow` with `extraBufferCapacity`) backs this on purpose:
+     * extra-buffer slots are only delivered to collectors that are *already* collecting —
+     * a value emitted before anyone subscribes is invisible to late subscribers (only the
+     * `replay` cache replays, and replay would wrongly re-fire after rotation). A buffered
+     * channel queues the event for the first collector and each value is consumed exactly
+     * once, in either order. Kept separate from the flag — the flag remains the durable
+     * state (tests, readers), the event is the trigger.
+     */
+    private val _completionEvent = Channel<Unit>(Channel.BUFFERED)
+    val completionEvent: Flow<Unit> = _completionEvent.receiveAsFlow()
+
+    /**
      * Runs [block] (the completion write) on [clearScope], then flips [completionSaved].
      * Idempotent-ish: a second call is ignored, since the screen navigates away on the first.
      */
@@ -61,6 +81,7 @@ abstract class ExerciseSessionViewModel : ViewModel() {
         completionJob = clearScope.launch {
             block()
             _completionSaved.value = true
+            _completionEvent.send(Unit)
         }
     }
 
