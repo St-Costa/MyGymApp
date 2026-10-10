@@ -785,8 +785,13 @@ class ActiveRoutineViewModel @Inject constructor(
                             // "queued"; EcgSyncWorker recomputes the hash over the actual
                             // gzip-compressed bytes it transmits and updates the entry
                             // (via markSent/markFailed) — see EcgSyncWorker.doWork().
-                            // readBytes() is ~1 MB of file I/O: off the Main thread.
-                            val ecgBytes = withContext(Dispatchers.IO) { ecgFile.readBytes() }
+                            // readBytes() is ~1 MB of file I/O: off the Main thread. The
+                            // await first: stopEcgRecording() above only *queues* the
+                            // drain, and reading before it lands would miss the tail.
+                            val ecgBytes = withContext(Dispatchers.IO) {
+                                polarManager.awaitEcgIdle()
+                                ecgFile.readBytes()
+                            }
                             ecgSyncLedgerRepository.enqueue(session.id, "ecg/${session.id}.ecg", ecgBytes)
                             EcgSyncWorker.Scheduler.runExpedited(appContext, force = true)
                         } catch (e: Throwable) {

@@ -9,8 +9,9 @@ import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
@@ -29,9 +30,33 @@ import kotlinx.coroutines.launch
  * configured/enabled — nothing would ever consume it) or queued for upload and deleted
  * only once EcgSyncWorker confirms the server received it (or after 30 days pending).
  */
+/**
+ * Minimal logging seam for [EcgRecorder]: `android.util.Log` throws in JVM unit tests, so
+ * the recorder talks to this instead. Production binding lives in `di/AppModule`.
+ */
+interface EcgRecordLogger {
+    fun d(message: String)
+    fun e(message: String, error: Throwable? = null)
+}
+
+class AndroidEcgRecordLogger @Inject constructor() : EcgRecordLogger {
+    override fun d(message: String) {
+        Log.d(TAG, message)
+    }
+
+    override fun e(message: String, error: Throwable?) {
+        if (error != null) Log.e(TAG, message, error) else Log.e(TAG, message)
+    }
+
+    companion object {
+        private const val TAG = "EcgRecorder"
+    }
+}
+
 @Singleton
 class EcgRecorder @Inject constructor(
     private val fileManager: FileManager,
+    private val logger: EcgRecordLogger,
 ) {
     companion object {
         private const val TAG = "EcgRecorder"
@@ -48,80 +73,107 @@ class EcgRecorder @Inject constructor(
         fun epochTimestampNs(nowMs: Long = System.currentTimeMillis()): Long = nowMs * 1_000_000L
     }
 
-    private var output: DataOutputStream? = null
+    private var sampleChannel: Channel<Int>? = null
     private var currentSessionId: String? = null
-    private var sampleCount = 0
-    private var samplesSinceFlush = 0
+    @Volatile private var sampleCount = 0
 
-    // Flush/close run here, never on the caller's thread: writeSample/stop are
-    // invoked on the Polar SDK's BLE callback thread, and blocking it stalls HR.
-    // App-lifetime singleton, so this scope is intentionally never cancelled.
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // All file I/O runs here, never on the caller's thread: start/writeSample/stop are
+    // invoked on the Polar SDK's BLE callback thread, and blocking it (even a ~2s-spaced
+    // flush on a busy flash) stalls HR delivery on the same scheduler. Samples travel
+    // through an UNLIMITED channel — trySend never blocks, drops nothing, and stop()
+    // closes the channel so the writer drains every queued sample before closing.
+    //
+    // Single-threaded on purpose, and the file OPEN lives inside the writer task too: a
+    // fast stop() → start() must not let the new recording's truncate+header land before
+    // the retired writer's final flush (that interleaving corrupts the new file's tail).
+    // FIFO order makes open/write/close of successive recordings strictly sequential with
+    // zero blocking on the caller side. App-lifetime singleton, so neither the scope nor
+    // the thread is ever shut down.
+    private val writerDispatcher =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ecg-writer") }
+            .asCoroutineDispatcher()
+    private val ioScope = CoroutineScope(SupervisorJob() + writerDispatcher)
 
     @Synchronized
     fun start(sessionId: String, sampleRate: Int, startTimestampNs: Long) {
         stop() // ensure any previous is closed
-        try {
-            val dir = fileManager.getDir("ecg")
-            val file = File(dir, "$sessionId.ecg")
-            val stream = DataOutputStream(BufferedOutputStream(FileOutputStream(file)))
-            stream.writeBytes(MAGIC)
-            stream.writeInt(sampleRate)
-            stream.writeLong(startTimestampNs)
-            output = stream
-            currentSessionId = sessionId
-            sampleCount = 0
-            samplesSinceFlush = 0
-            Log.d(TAG, "ECG recording started: ${file.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start ECG recording", e)
-            output = null
-            currentSessionId = null
+        val channel = Channel<Int>(Channel.UNLIMITED)
+        sampleChannel = channel
+        currentSessionId = sessionId
+        sampleCount = 0
+        logger.d("ECG recording started: $sessionId")
+        ioScope.launch {
+            val stream = try {
+                val dir = fileManager.getDir("ecg")
+                val file = File(dir, "$sessionId.ecg")
+                DataOutputStream(BufferedOutputStream(FileOutputStream(file))).also { s ->
+                    s.writeBytes(MAGIC)
+                    s.writeInt(sampleRate)
+                    s.writeLong(startTimestampNs)
+                    s.flush()
+                }
+            } catch (e: Exception) {
+                logger.e("Failed to start ECG recording", e)
+                return@launch
+            }
+            var sinceFlush = 0
+            try {
+                for (v in channel) {
+                    stream.writeShort(
+                        v.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()),
+                    )
+                    sampleCount++
+                    if (++sinceFlush >= FLUSH_EVERY_SAMPLES) {
+                        stream.flush()
+                        sinceFlush = 0
+                    }
+                }
+            } catch (e: Exception) {
+                logger.e("Failed to write ECG sample", e)
+            }
+            try {
+                stream.flush()
+                stream.close()
+                logger.d("ECG recording stopped: $sampleCount samples for session $sessionId")
+            } catch (e: Exception) {
+                logger.e("Failed to close ECG file", e)
+            }
         }
     }
 
     @Synchronized
     fun writeSample(voltageMicrovolts: Int) {
-        val stream = output ?: return
-        try {
-            val clamped = voltageMicrovolts.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            stream.writeShort(clamped)
-            sampleCount++
-            samplesSinceFlush++
-            if (samplesSinceFlush >= FLUSH_EVERY_SAMPLES) {
-                stream.flush()
-                samplesSinceFlush = 0
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to write ECG sample", e)
-            stop()
-        }
+        // Non-blocking by construction: UNLIMITED trySend always succeeds while recording.
+        sampleChannel?.trySend(voltageMicrovolts)
     }
 
     @Synchronized
     fun stop() {
-        val stream = output
-        val count = sampleCount
+        val channel = sampleChannel
         val session = currentSessionId
-        output = null
+        sampleChannel = null
         currentSessionId = null
-        sampleCount = 0
-        samplesSinceFlush = 0
-        if (stream != null) {
-            ioScope.launch {
-                try {
-                    stream.flush()
-                    stream.close()
-                    Log.d(TAG, "ECG recording stopped: $count samples for session $session")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to close ECG file", e)
-                }
-            }
+        // Closing lets the writer coroutine drain the queue, then flush + close the file.
+        // A fast stop→start only retires this recording; the new start() opens its own file
+        // (after the retired writer, by FIFO order — see writerDispatcher).
+        channel?.close()
+        if (channel != null) {
+            logger.d("ECG recording stopping for session $session (draining)")
         }
     }
 
+    /**
+     * Suspends until every recording task submitted so far (open/write/close) has run.
+     * Call before reading a just-stopped file (e.g. the end-of-session sync enqueue),
+     * otherwise the read can miss the final not-yet-flushed tail. FIFO order makes this
+     * a one-empty-task round-trip.
+     */
+    suspend fun awaitIdle() {
+        ioScope.launch { }.join()
+    }
+
     @Synchronized
-    fun isRecording(): Boolean = output != null
+    fun isRecording(): Boolean = sampleChannel != null
 
     fun fileFor(sessionId: String): File {
         return File(fileManager.getDir("ecg"), "$sessionId.ecg")
@@ -131,7 +183,7 @@ class EcgRecorder @Inject constructor(
         val file = fileFor(sessionId)
         if (file.exists()) {
             file.delete()
-            Log.d(TAG, "Deleted ECG file for session $sessionId")
+            logger.d("Deleted ECG file for session $sessionId")
         }
     }
 }
