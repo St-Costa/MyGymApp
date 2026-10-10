@@ -36,15 +36,19 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.HrZone
 import com.mygymapp.data.polar.PolarLinkStatus
 import com.mygymapp.data.polar.PolarManager
+import com.mygymapp.ui.theme.SignalAmber
+import com.mygymapp.ui.theme.SignalGreen
+import com.mygymapp.ui.theme.SignalOrange
+import com.mygymapp.ui.theme.SignalRed
 
 fun trimpColor(trimp: Double): Color = when {
-    trimp < 50 -> Color(0xFF66BB6A)   // green
-    trimp < 100 -> Color(0xFFFFCA28)  // yellow
-    trimp < 200 -> Color(0xFFFF9800)  // orange
-    else -> Color(0xFFEF5350)         // red
+    trimp < 50 -> SignalGreen
+    trimp < 100 -> SignalAmber
+    trimp < 200 -> SignalOrange
+    else -> SignalRed
 }
 
-private val RedLight = Color(0xFFEF5350)
+private val RedLight = SignalRed
 
 // Compose's default Text reserves extra space below the baseline for font metrics
 // (includeFontPadding), which reads as visibly lopsided next to a 22dp icon at this font
@@ -126,7 +130,7 @@ fun HeartRateBar(
                         Icons.Default.Warning,
                         contentDescription = "Nessun segnale dal Polar",
                         modifier = Modifier.size(22.dp),
-                        tint = Color(0xFFFFCA28),
+                        tint = SignalAmber,
                     )
                 } else {
                     Icon(
@@ -176,7 +180,7 @@ fun HeartRateBar(
                         Icons.Default.Warning,
                         contentDescription = "Nessun segnale dal Polar",
                         modifier = Modifier.size(18.dp),
-                        tint = Color(0xFFFFCA28),
+                        tint = SignalAmber,
                     )
                 } else {
                     currentZone?.let { zone ->

@@ -30,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.CollapsibleAutoSaveDescription
@@ -40,6 +39,7 @@ import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.PrBadge
 import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.components.TempoAnimation
+import com.mygymapp.ui.theme.OnSkipped
 import com.mygymapp.ui.theme.SkippedColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -266,7 +266,7 @@ fun StrengthExerciseScreen(
                     } else {
                         ButtonDefaults.buttonColors(
                             containerColor = SkippedColor,
-                            contentColor = Color(0xFF1E1E1E),
+                            contentColor = OnSkipped,
                         )
                     },
                 ) {

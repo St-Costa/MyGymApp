@@ -13,10 +13,13 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mygymapp.ui.theme.SignalGreen
+import com.mygymapp.ui.theme.SignalRed
+import com.mygymapp.ui.theme.TrendBlue
 
-private val ColorNeutral = Color(0xFF4FC3F7)
-private val ColorUp = Color(0xFF66BB6A)    // green
-private val ColorDown = Color(0xFFEF5350)  // red
+private val ColorNeutral = TrendBlue
+private val ColorUp = SignalGreen        // green
+private val ColorDown = SignalRed        // red
 private val ColorZero = Color(0xFF424242)  // dark gray for zero-value points
 private val GridColor = Color(0x33FFFFFF)
 private val LabelColor = Color(0xFFAAAAAA)

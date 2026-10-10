@@ -71,6 +71,7 @@ fun Context.performHapticTick(durationMs: Long = HAPTIC_TICK_MS) {
  */
 @Composable
 fun rememberHapticTick(): () -> Unit {
-    val context = LocalContext.current
+    // Application context: a remembered Activity would outlive configuration changes.
+    val context = LocalContext.current.applicationContext
     return remember(context) { { context.performHapticTick() } }
 }

@@ -34,10 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.polar.PolarLinkStatus
+import com.mygymapp.ui.theme.GitgraphGreen
+import com.mygymapp.ui.theme.SignalAmber
+import com.mygymapp.ui.theme.SignalGreen
+import com.mygymapp.ui.theme.SignalRed
 
-private val SemaphoreGreen = Color(0xFF66BB6A)
-private val SemaphoreYellow = Color(0xFFFFCA28)
-private val SemaphoreRed = Color(0xFFEF5350)
+private val SemaphoreGreen = SignalGreen
+private val SemaphoreYellow = SignalAmber
+private val SemaphoreRed = SignalRed
 
 /** Beats needed before the regular-% semaphore gets a verdict color (Sprint 5). */
 private const val MIN_BEATS_FOR_REGULAR_PCT = 10
@@ -166,7 +170,7 @@ private fun EcgWaveformView(
         }
         drawPath(
             path = path,
-            color = Color(0xFF4CAF50),
+            color = GitgraphGreen,
             style = Stroke(width = 2f),
         )
     }

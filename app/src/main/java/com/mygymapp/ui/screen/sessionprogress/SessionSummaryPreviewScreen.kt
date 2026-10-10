@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -141,7 +142,7 @@ fun SessionSummaryPreviewScreen(onBack: () -> Unit) {
             BackupVerifyBox(error = "Manifest non recuperato: HTTP 404: not found")
 
             Text("Box qualità del sonno", style = MaterialTheme.typography.titleSmall)
-            var sleepQuality by remember { mutableStateOf<Int?>(3) }
+            var sleepQuality by rememberSaveable { mutableStateOf<Int?>(3) }
             SleepQualitySelector(
                 selected = sleepQuality,
                 onSelect = { sleepQuality = it },

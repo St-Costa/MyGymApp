@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mygymapp.ui.theme.SignalRed
 import com.mygymapp.data.model.ScaleWeighIn
 import com.mygymapp.data.repository.ScaleTrendReport
 import com.mygymapp.data.repository.WeeklyPoint
@@ -33,7 +34,7 @@ import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
 import java.util.Locale
 
-private val FatColor = Color(0xFFEF5350)
+private val FatColor = SignalRed
 private val WeightColor = Color(0xFF42A5F5)
 private val BmiColor = Color(0xFFAB47BC)
 

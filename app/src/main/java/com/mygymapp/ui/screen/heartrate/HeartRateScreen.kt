@@ -56,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.mygymapp.ui.theme.SignalAmber
+import com.mygymapp.ui.theme.SignalGreen
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -261,7 +263,7 @@ fun HeartRateScreen(
 private fun RadioWarningBox(message: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFCA28).copy(alpha = 0.15f)),
+        colors = CardDefaults.cardColors(containerColor = SignalAmber.copy(alpha = 0.15f)),
     ) {
         Row(
             modifier = Modifier
@@ -270,7 +272,7 @@ private fun RadioWarningBox(message: String) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFCA28))
+            Icon(Icons.Default.Warning, contentDescription = null, tint = SignalAmber)
             Text(message, style = MaterialTheme.typography.bodyMedium)
         }
     }
@@ -338,7 +340,7 @@ private fun DeviceStatusHeader(
             "Pesata completata, puoi scendere ✓",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF66BB6A),
+            color = SignalGreen,
         )
     }
 }
@@ -362,7 +364,7 @@ private fun ScaleStatusIcon(
         ScaleConnectionState.SCANNING, ScaleConnectionState.CONNECTING -> Icon(
             Icons.Default.Sync,
             contentDescription = "Connessione in corso",
-            tint = Color(0xFFFFCA28),
+            tint = SignalAmber,
         )
         ScaleConnectionState.CONNECTED -> {
             val weighInComplete = reading?.weightKg != null && reading.impedanceOhm != null
@@ -371,7 +373,7 @@ private fun ScaleStatusIcon(
                     Icons.Default.TaskAlt,
                     contentDescription = "Pesata completata, puoi scendere",
                     modifier = Modifier.size(32.dp),
-                    tint = Color(0xFF66BB6A),
+                    tint = SignalGreen,
                 )
             } else {
                 Icon(

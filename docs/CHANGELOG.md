@@ -2,6 +2,12 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 164 — Sprint 6 igiene UI: colori in tema + micro-fix
+
+Gli stessi 5 hex erano copiati in 12 file (verde/ambra/rosso/arancio andavano già alla deriva): ora `SignalGreen/Amber/Red/Orange`, `TrendBlue`, `GitgraphGreen` e `OnSkipped` in `Color.kt`, stessi valori, zero cambi visivi. Neutri canvas (White/Black) e hue locali dei grafici restano inline per scelta (documentato in `Color.kt`). Micro-fix: calcoli chart in `remember()`, `applicationContext` negli haptics, `rememberSaveable` nel preview, `Locale.US` nei delta. Verifica: build + suite verdi (niente harness UI nel repo).
+
+Rimandato di proposito (serve device o decisione prodotto): i18n vera (l'app mescola EN/IT — estrarre `strings.xml` senza verificare overflow su schermo non è sicuro), layout adaptive, split dei collector caldi (senza misure è speculazione), pausa di `TempoAnimation` in background (manca `lifecycle-runtime-compose`).
+
 ## Phase 163 — Sprint 5 bilancia/beep: niente misure fantasma + release nativa
 
 Impedenza ≤ 0 (contatto parziale) finiva in `500/0 = -Inf` clampato a 5.0% e salvato come misura vera: ora `calculate` ritorna null e `maybeSaveWeighIn` aspetta una lettura reale. `weightStable=true` hardcoded nei frame impedenza (semanticamente falso, per ora inerte) → false. Beep readiness: release immediata se `startTone` lancia (prima leak del player nativo); volume 100 volutamente invariato. `BodyCompositionCalculatorTest` +1, `VtrumpSenheProtocolTest` +1; suite verde (JDK 21).

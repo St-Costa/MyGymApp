@@ -9,12 +9,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.mygymapp.data.polar.PolarLinkStatus
+import com.mygymapp.ui.theme.SignalAmber
+import com.mygymapp.ui.theme.SignalGreen
 
 /** Ambre used for both the "connecting" spinner and the "no signal" warning. */
-private val Amber = Color(0xFFFFCA28)
-private val Green = Color(0xFF66BB6A)
+private val Amber = SignalAmber
+private val Green = SignalGreen
 
 /**
  * Single source of truth for how a [PolarLinkStatus] looks, so every screen that shows the
