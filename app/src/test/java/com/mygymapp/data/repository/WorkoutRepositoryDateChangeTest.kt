@@ -1,5 +1,10 @@
 package com.mygymapp.data.repository
 
+import com.mygymapp.data.model.ExerciseSet
+import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.PreviousSet
+import com.mygymapp.data.model.SlotContext
+import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.sync.SyncLedgerRepository
 import kotlinx.coroutines.runBlocking
@@ -105,6 +110,44 @@ class WorkoutRepositoryDateChangeTest {
         val saved = repo.save(session("", "2026-10-01"))
         assertEquals(8, saved.id.length)
         assertTrue(saved.id.all { it in '0'..'9' || it in 'a'..'f' })
+    }
+
+    @Test
+    fun `delete of PR session rebuilds sidecar from survivors outside the lock`() = runBlocking {
+        // Sprint 9 regression: delete() rebuilds affected sidecars with the lock released
+        // (compute outside, persist inside with an mtime re-check). The visible contract —
+        // PR/previous reflect only surviving history — must hold exactly as before.
+        val ex = "ex-11112222"
+        fun sess(id: String, date: String, weight: Double) = WorkoutSession(
+            id = id,
+            routineId = "rt-11112222",
+            routineName = "R",
+            date = date,
+            startedAt = "${date}T09:00:00",
+            completedAt = "${date}T10:00:00",
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = ex,
+                    exerciseName = "Bench",
+                    bodypart = "chest",
+                    type = ExerciseType.FORZA,
+                    completed = true,
+                    sets = listOf(ExerciseSet.Strength(reps = 10, weight = weight)),
+                ),
+            ),
+        )
+        val big = sess("aaaa1111", "2026-10-01", 100.0)
+        sess("bbbb2222", "2026-10-02", 50.0).also { repo.save(it) }
+        repo.save(big)
+
+        val before = repo.getExerciseStats(ex).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(10, 100.0), before.pr)
+
+        repo.delete(big)
+
+        val after = repo.getExerciseStats(ex).forContext(SlotContext.NORMAL)!!
+        assertEquals(PreviousSet(10, 50.0), after.pr)
+        assertEquals("2026-10-02", after.previousSessionDate)
     }
 
     @Test

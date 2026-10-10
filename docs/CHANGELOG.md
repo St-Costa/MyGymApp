@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 178 — Sprint 9 delete: rebuild sidecar fuori dal mutex
+
+`delete()` e la coda di `runMaintenance()` ricostruivano i sidecar dentro il lock (full scan per esercizio, ~2.4s per 15) bloccando il save successivo. Ora `rebuildStatsSidecars`: snapshot mtime in lock, compute fuori, persist in lock con re-check (fallback a rebuild fresco se un save concorrente ha scritto nel mentre — stessa disciplina di `getExerciseStats`). Contratto invariato, pinnato da un nuovo test (delete della PR → sidecar dai sopravvissuti). Suite verde (JDK 21).
+
 ## Phase 177 — Regen baseline profile (SM-A556B, primo run col wrapper)
 
 Profilo rigenerato dopo gli Sprint 1–8 (nuovi path: AtomicFiles, Channel, writer IO). Il wrapper ha funzionato end-to-end: backup verificato, uninstall, generate, reinstall, restore 534/534 + prefs — con un intoppo istruttivo nel mezzo (primo run ucciso dal timeout + harness senza `-r`), da cui la fix Phase 176. Nota: `startup-prof.txt` resta byte-identico al baseline (è l'output del generator con `includeInStartupProfile=true`, non un errore di commit) — ~2,4 MB ×2 nell'APK. Suite verde (JDK 21).

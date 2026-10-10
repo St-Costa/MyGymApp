@@ -560,6 +560,7 @@ class WorkoutRepository @Inject constructor(
     }
 
     suspend fun delete(session: WorkoutSession) = withContext(Dispatchers.IO) {
+        val pendingRebuild: Set<String>
         mutex.withLock {
             val date = LocalDate.parse(session.date)
             val dir = fileManager.getHistoryDir(date.year, date.monthValue)
@@ -586,14 +587,45 @@ class WorkoutRepository @Inject constructor(
             // what's left on disk. Skip this for a session that was never completed: `save()`
             // only ever folds a completed session into a sidecar (see `merge`), so an
             // incomplete one — a ghost session backed out of, in particular — contributed
-            // nothing and its deletion invalidates nothing. This matters: ghost cleanup runs
-            // on every back-out, and a 15-exercise rebuild there (each a full history scan)
-            // was blocking the *next* routine open's save() on the shared mutex.
-            if (session.completedAt.isNotBlank()) {
-                session.exercises.map { it.exerciseId }.distinct().forEach { rebuildExerciseStats(it) }
-                invalidateGitgraphCacheIfInWindow(LocalDate.parse(session.date))
+            // nothing and its deletion invalidates nothing.
+            if (session.completedAt.isBlank()) return@withContext
+            invalidateGitgraphCacheIfInWindow(LocalDate.parse(session.date))
+            // Snapshot which sidecars to rebuild, then leave the lock: each rebuild is a
+            // full per-exercise history scan, and holding the mutex through N of them
+            // blocks the next routine open's save() (measured ~2.4s for 15 exercises).
+            // Rebuilds compute outside the lock and persist under it with a re-check —
+            // same discipline as getExerciseStats (see rebuildStatsSidecars).
+            pendingRebuild = session.exercises.map { it.exerciseId }.distinct().toSet()
+        }
+        if (pendingRebuild.isNotEmpty()) rebuildStatsSidecars(pendingRebuild)
+    }
+
+    /**
+     * Rebuilds [exerciseIds]' sidecars from disk without holding [mutex] during the
+     * scans: computes outside the lock, then persists under it, re-checking each
+     * sidecar's mtime first. If a concurrent save rewrote one meanwhile, that sidecar
+     * is rebuilt fresh instead so the concurrent write is never clobbered.
+     */
+    private suspend fun rebuildStatsSidecars(exerciseIds: Set<String>) {
+        if (exerciseIds.isEmpty()) return
+        val before: Map<String, Long> = mutex.withLock {
+            exerciseIds.associateWith { sidecarLastModified(it) }
+        }
+        val computed = exerciseIds.associateWith { computeExerciseStats(it) }
+        mutex.withLock {
+            computed.forEach { (exId, stats) ->
+                if (sidecarLastModified(exId) != before[exId]) {
+                    rebuildExerciseStats(exId)
+                } else {
+                    writeStatsSidecar(stats)
+                }
             }
         }
+    }
+
+    private fun sidecarLastModified(exerciseId: String): Long {
+        val f = statsFile(exerciseId)
+        return if (f.exists()) f.lastModified() else -1L
     }
 
     // ─── Queries ──────────────────────────────────────────────────────────────
@@ -844,11 +876,15 @@ class WorkoutRepository @Inject constructor(
             return@withContext MaintenanceResult(0, 0, 0)
         }
 
+        val pendingRebuild: Set<String>
+        val dropGitgraph: Boolean
+        val result: MaintenanceResult
         mutex.withLock {
             var ghostsDeleted = 0
             var prunedDeleted = 0
             val validSessionIds = mutableSetOf<String>()
-            // Exercises whose history shrank this run — their sidecars are rebuilt at the end.
+            // Exercises whose history shrank this run — their sidecars are rebuilt after
+            // the lock below (see delete()): each rebuild is a full history scan.
             val staleStatsExerciseIds = mutableSetOf<String>()
 
             run {
@@ -906,19 +942,23 @@ class WorkoutRepository @Inject constructor(
             }
 
             // Ghost/pruned sessions removed above may have been the source of a sidecar's PR or
-            // "previous" — rebuild each affected one from surviving history. A ghost session by
-            // definition has no completed work, so in practice this rarely changes anything,
-            // but pruning old sessions genuinely can.
-            staleStatsExerciseIds.forEach { rebuildExerciseStats(it) }
+            // "previous" — rebuilt from surviving history after the lock below (see delete()).
+            // A ghost session by definition has no completed work, so in practice this rarely
+            // changes anything, but pruning old sessions genuinely can.
+            pendingRebuild = staleStatsExerciseIds.toSet()
 
             // A pruned session (>3 months old) can fall in the gitgraph cache's 2-month
             // lookback and thus change the oldest visible days' "previous" comparison. Ghosts
             // never can. Drop the cache only when something was actually pruned.
-            if (prunedDeleted > 0) deleteGitgraphCache()
-
-            AtomicFiles.writeTextAtomically(sentinel, System.currentTimeMillis().toString())
-            MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)
+            dropGitgraph = prunedDeleted > 0
+            result = MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)
         }
+        if (pendingRebuild.isNotEmpty()) rebuildStatsSidecars(pendingRebuild)
+        mutex.withLock {
+            if (dropGitgraph) deleteGitgraphCache()
+            AtomicFiles.writeTextAtomically(sentinel, System.currentTimeMillis().toString())
+        }
+        result
     }
 
     companion object {
