@@ -32,7 +32,8 @@ object VtrumpSenheProtocol {
      * differs by command), trailing byte=0xaa.
      *
      * CMD_WEIGHT (0x10): [7] low nibble=unit, high nibble=decimal accuracy;
-     * [8:10]=weight as big-endian uint16, divided by 10^accuracy.
+     * [8:10]=weight as big-endian uint16, divided by 10^accuracy **in the frame's
+     * display unit, converted to kg** (see [DisplayUnit.toKg]).
      * weightStable is true when [4]==3 (locked/settled reading).
      *
      * CMD_BODY_COMPOSITION (0x11): [9:11]=impedance as big-endian uint16,
@@ -56,12 +57,16 @@ object VtrumpSenheProtocol {
         val accuracyRaw = (payload[7].toInt() and 0xFF) shr 4
         val unitCode = payload[7].toInt() and 0x0F
         val weightRaw = ((payload[8].toInt() and 0xFF) shl 8) or (payload[9].toInt() and 0xFF)
-        val weightKg = weightRaw / Math.pow(10.0, accuracyRaw.toDouble())
+        val unit = DisplayUnit.fromCode(unitCode)
+        // The raw value is expressed in the frame's display unit — convert to kg, since
+        // every downstream consumer (ScaleReading.weightKg, UserProfile.weightKg, Keytel
+        // calories) assumes kilograms. Saving an lb reading raw used to 2.2x the weight.
+        val weightKg = unit.toKg(weightRaw / Math.pow(10.0, accuracyRaw.toDouble()))
         return ScaleReading(
             weightKg = weightKg,
             weightStable = weightType == 3,
             impedanceOhm = null,
-            displayUnit = DisplayUnit.fromCode(unitCode),
+            displayUnit = unit,
         )
     }
 
@@ -96,6 +101,14 @@ enum class DisplayUnit {
             3 -> STONE
             else -> KG
         }
+    }
+
+    /** Converts a value expressed in this unit to kilograms. */
+    fun toKg(value: Double): Double = when (this) {
+        KG -> value
+        LB -> value * 0.45359237
+        JIN -> value * 0.5
+        STONE -> value * 6.35029318
     }
 }
 

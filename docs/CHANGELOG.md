@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 144 — Sprint 2 bilancia: peso convertito in kg da lb/jin/stone
+
+`parseWeight` divideva il raw per `10^accuracy` e lo salvava così com'è, ignorando l'unità del frame: con la bilancia in lb il peso risultava sballato di 2.2x e l'errore si propagava a `UserProfile.weightKg` e alle kcal Keytel. Ora `DisplayUnit.toKg` converte (lb ×0.45359237, jin ×0.5, stone ×6.35029318), `displayUnit` resta per la UI. `VtrumpSenheProtocolTest` +4 test (lb/stone/jin/toKg); suite verde (JDK 21).
+
 ## Phase 143 — Sprint 2 ECG: header timestamp epoch, non nanoTime
 
 `startEcgStreamingInternal` scriveva `System.nanoTime()` (monotonico da boot, senza epoch) nel campo header documentato come "ns since epoch": il server derivava offset insensati per ogni blocco cardio (`startTimestamp + sampleRate`). Ora `EcgRecorder.epochTimestampNs()` (`currentTimeMillis × 10⁶`, seam puro testabile). I file già registrati non sono correggibili — annotato per il server. Nuovo `EcgTimestampTest` (3 test); suite verde (JDK 21).
