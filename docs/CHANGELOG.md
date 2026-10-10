@@ -2,6 +2,12 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 156 — Sprint 4 release: keep HiltWorker + `assembleRelease` verde
+
+I 5 `@HiltWorker` di sync oggi sopravvivono a R8 solo perché la `HiltWorkerFactory` generata li referenzia: un keep esplicito (`-keep @androidx.hilt.work.HiltWorker`) li blinda da qualunque path riflessivo futuro. Verifica: `assembleRelease` verde (R8 + manifest con extraction rules e cleartext). Suite verde (JDK 21).
+
+Rimandato di proposito (serve device o decisione prodotto, non azzardato qui): `startup-prof.txt` byte-identico al baseline (rigenerare su device), major di dipendenze (Coil 3, OkHttp 5, security-crypto 1.1.x — la Keystore migration va testata sul telefono), CI/GitHub Actions (nel repo solo gate locale per scelta), `verification-metadata.xml` per JitPack/Polar.
+
 ## Phase 155 — Sprint 4 script: backup check veri + wrapper baseline-profile
 
 Il check "tar non vuoto" di `install-debug.sh` passava sempre (il tar contiene la entry `gymdata/` anche senza dati): ora integrity via exit code di `tar -tf` + almeno 1 file vero (niente dir sole), `.sha256` sidecar, warning con 10s per Ctrl-C su crollo >50% vs backup precedente, hint anti-wipe su `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, `adb wait-for-device`, auto-`JAVA_HOME` JDK 21. Nuovo `scripts/generate-baseline-profile.sh` (backup verificato → generate → reinstall → restore gymdata+prefs con conteggio, prune a 5): il run manuale aveva già wipato dati reali una volta — `CONVENTIONS.md` ora manda allo script. Verifica: `bash -n` + suite verde (JDK 21), run su device rimandato al prossimo regen.
