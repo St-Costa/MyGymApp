@@ -15,6 +15,10 @@
 -keep @dagger.hilt.android.HiltAndroidApp class * { *; }
 -keep @dagger.hilt.android.AndroidEntryPoint class * { *; }
 -keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }
+# Phase 156: the 5 sync @HiltWorker classes are built by Hilt's generated
+# HiltWorkerFactory today (R8 follows that graph), but a single reflective
+# instantiation path would silently break them in release — pin them explicitly.
+-keep @androidx.hilt.work.HiltWorker class * { *; }
 -keepclasseswithmembernames class * {
     @dagger.Provides <methods>;
 }
