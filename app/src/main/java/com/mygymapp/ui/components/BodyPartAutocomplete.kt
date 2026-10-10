@@ -59,7 +59,7 @@ fun BodyPartAutocomplete(
                         .fillMaxWidth()
                         .heightIn(max = 160.dp),
                 ) {
-                    itemsIndexed(filtered) { index, bodypart ->
+                    itemsIndexed(filtered, key = { _, bodypart -> bodypart }) { index, bodypart ->
                         Text(
                             text = bodypart,
                             style = MaterialTheme.typography.bodyLarge,

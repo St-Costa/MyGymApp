@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 149 — Sprint 3 UI: key stabili nelle Lazy list
+
+Quattro `items()` senza `key=` dove l'ordine cambia (chip filtro chart, riscoperte BLE nelle due debug screen, autocomplete bodypart): lo stato delle righe poteva saltare di riga al riordino. Ora `key = { it }` / `deviceId` / `address` / `bodypart`. Suite verde (JDK 21).
+
 ## Phase 148 — Sprint 3 nav: result reattivi + coda switch
 
 I result `savedStateHandle` erano letti con `get()` one-shot (se il set non triggerava un recompose, il `LaunchedEffect` non ripartiva e il result andava perso): ora tutti via `getStateFlow(...).collectAsState()`. E `switchedExerciseIds` era uno slot singolo (due switch consecutivi si sovrascrivevano): ora coda `"old,new;old,new"` accodata dai 3 producer e applicata in ordine (`appendSwitchResult`/`parseSwitchResults` puri in `AppNavigation.kt`). Nuovo `SwitchResultQueueTest` (4 test); suite verde (JDK 21).
