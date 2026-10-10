@@ -313,6 +313,21 @@ STORAGE.md's SharedPreferences table. Every API validates/normalizes the URL via
 `SyncUrlValidator` and builds request URLs inside the `try`, so a typo'd URL is a clean
 `Failure`, never a thrown `IllegalArgumentException` out of a worker.
 
+### 1.6 Cleartext policy (two layers)
+
+HTTP is allowed **only to private hosts** — LAN (`10/8`, `172.16/12`, `192.168/16`),
+Tailscale CGNAT (`100.64/10`), tailnet DNS (`.ts.net`), `.local`, loopback — and refused
+anywhere else, so the bearer never travels in cleartext over the public internet:
+
+- **Code gate (precise):** `isCleartextToPublicHost()` + `SyncUrlValidator.errorFor()`,
+  checked by every API entry point *and* the pre-work preflight
+  (`SyncHealthProbe.check()`), unit-tested in `SyncPreflightCleartextTest` /
+  `SyncUrlValidatorTest`. This is the layer that distinguishes private from public.
+- **OS layer (coarse):** the manifest sets `android:usesCleartextTraffic="true"` because
+  Android's network-security config cannot express IP ranges — without it the OS would
+  block *all* cleartext, including the LAN/Tailscale-IP sync the code gate deliberately
+  allows. The OS flag is intentionally dumb; the code gate is what keeps it safe.
+
 ---
 
 ## Part 2 — Server side

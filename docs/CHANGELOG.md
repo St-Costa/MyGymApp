@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 154 — Sprint 4 rete/backup OS: cleartext coerente + extraction rules
+
+Il preflight permetteva HTTP verso host privati (LAN/Tailscale) ma il manifest non dichiarava nulla: su API 28+ l'OS bloccava tutto il cleartext prima di OkHttp, quindi quel ramo era morto. Ora `usesCleartextTraffic="true"` esplicito (l'OS non sa esprimere range IP) con il rifiuto del cleartext pubblico lasciato al gate in codice (`SyncUrlValidator`, testato) — documentato in `SYNC.md §1.6`. In più `dataExtractionRules` exclude-all come controparte esplicita di `allowBackup=false` su API 31+. Verifica: build + suite verdi; `assembleRelease` nel Phase 156.
+
 ## Phase 153 — Sprint 4 JDK: toolchain 21 pinnata + hook auto-JDK
 
 La build richiedeva JDK 21 ma niente lo diceva al tooling: default di macchina 25 = Gradle morto prima di compilare, e l'hook falliva il gate per motivi ambientali. Ora `kotlin { jvmToolchain(21) }` in `:app` e `:baseline-profile` (provisioning/detect automatico) e il pre-commit esporta `JAVA_HOME` su un JDK 21 locale se non impostato (rispetta un `JAVA_HOME` esplicito). Suite verde (JDK 21).

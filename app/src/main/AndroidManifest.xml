@@ -29,10 +29,17 @@
          adb backup for filesDir + SharedPreferences (gymdata sessions, sync bearer,
          user profile). It does NOT affect the app's own network uploads to the
          self-hosted server (docs/SYNC.md, docs/BACKUP.md) — those are normal
-         app I/O over INTERNET, not the OS backup framework. -->
+         app I/O over INTERNET, not the OS backup framework.
+         dataExtractionRules is the explicit API-31+ counterpart (same exclude-all);
+         usesCleartextTraffic=true is intentional — Android's network-security config
+         cannot express IP ranges, so the OS would block even the LAN/Tailscale-IP
+         sync the code gate allows. Public-host cleartext stays refused in code by
+         SyncUrlValidator/isCleartextToPublicHost (tested) — see docs/SYNC.md §1.6. -->
     <application
         android:name=".MyGymApp"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
