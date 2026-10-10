@@ -824,8 +824,8 @@ Android Studio reads `sdk.dir` from `local.properties`. Command-line builds need
 
 ## Local test gate
 
-There is no CI in this repo (no `.github/workflows`). The only automated safety net is a local
-git hook: `scripts/git-hooks/pre-commit` runs `./gradlew test` before every commit and blocks
+Two safety nets, belt and braces. The local one is a git hook:
+`scripts/git-hooks/pre-commit` runs `./gradlew test` before every commit and blocks
 the commit on failure. It's tracked in the repo but git only reads `.git/hooks/`, which isn't
 tracked, so it must be installed once per clone:
 
@@ -834,6 +834,12 @@ ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
 ```
 
 Skip it for one commit with `git commit --no-verify` (e.g. a WIP commit on a feature branch).
+
+The remote one is GitHub Actions (`.github/workflows/ci.yml`, free tier is plenty):
+unit tests + `assembleDebug` + unsigned `assembleRelease` on every push/PR, with a
+pinned Temurin JDK 21. Deliberately device-free — no baseline-profile generation, no
+instrumented tests — so it stays fast and hermetic; anything needing hardware stays a
+local script (`scripts/generate-baseline-profile.sh`, `scripts/install-debug.sh`).
 
 **The hook and every Gradle invocation need JDK 21**: the machine default JDK 25 breaks
 Gradle before compilation, so prefix with `JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`
