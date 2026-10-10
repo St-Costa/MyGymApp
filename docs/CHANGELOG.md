@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 160 — Sprint 5 ECG live: percentuali oneste + gate coerenti
+
+Tre bug estetici con effetto misleading: `regularPct` 100% a 0 beat (ora NaN → "—"), semaforo rosso con 3 beat per un singolo uneven (verdetto solo da 10 beat, prima pallino neutro), traccia zone congelata in NO_SIGNAL/STANDBY (gate su `linkStatus` come le altre card). Nuovo `LiveEcgSnapshotTest`; suite verde (JDK 21).
+
 ## Phase 159 — Sprint 5 readiness: timestamp con offset
 
 `measuredAt` era `LocalDateTime` senza zona: un cambio fuso/DST spostava la misura sul giorno sbagliato (skip/rimisura errati, server senza ordinamento). Ora `OffsetDateTime`; lettori tolleranti (`measuredDateOf`/`measuredInstantOf`: nuovo formato, fallback legacy, mai throw) per data, media 7gg e ordinamento. `ReadinessRepositoryTest` +3 test; suite verde (JDK 21).

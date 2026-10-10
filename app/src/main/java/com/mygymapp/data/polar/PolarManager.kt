@@ -328,7 +328,7 @@ class PolarManager @Inject constructor(
     private val _ecgWaveform = MutableStateFlow<IntArray>(IntArray(0))
     val ecgWaveform: StateFlow<IntArray> = _ecgWaveform
 
-    private val _liveEcgSnapshot = MutableStateFlow(LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0))
+    private val _liveEcgSnapshot = MutableStateFlow(LiveEcgAnalyzer.Snapshot(0, Double.NaN, 0, 0, 0))
     val liveEcgSnapshot: StateFlow<LiveEcgAnalyzer.Snapshot> = _liveEcgSnapshot
 
     private val _liveCardiacDrift = MutableStateFlow(0.0)
@@ -1321,7 +1321,7 @@ class PolarManager @Inject constructor(
         liveAnalyzer.reset()
         waveformBuffer.clear()
         _ecgWaveform.value = IntArray(0)
-        _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, 100.0, 0, 0, 0)
+        _liveEcgSnapshot.value = LiveEcgAnalyzer.Snapshot(0, Double.NaN, 0, 0, 0)
         samplesSinceLastEmit = 0
         lastEcgSampleAtMs = 0L
         ecgStreamStartedAt = System.currentTimeMillis()
