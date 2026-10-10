@@ -10,6 +10,8 @@ import com.mygymapp.data.parser.GitgraphHistoryCalculator
 import com.mygymapp.data.parser.GitgraphHistoryParser
 import com.mygymapp.data.parser.WorkoutParser
 import com.mygymapp.data.sync.SyncLedgerRepository
+import com.mygymapp.data.util.AtomicFiles
+import com.mygymapp.data.util.GymIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -20,7 +22,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -112,7 +113,7 @@ class WorkoutRepository @Inject constructor(
         else
             mutableSetOf()
         if (lines.add(relPath)) {
-            idxFile.writeText(lines.joinToString("\n"))
+            AtomicFiles.writeTextAtomically(idxFile, lines.joinToString("\n"))
         }
     }
 
@@ -140,7 +141,7 @@ class WorkoutRepository @Inject constructor(
             val before = merged.size
             merged.addAll(newPaths)
             if (merged.size != before) {
-                idxFile.writeText(merged.joinToString("\n"))
+                AtomicFiles.writeTextAtomically(idxFile, merged.joinToString("\n"))
             }
         }
     }
@@ -153,7 +154,7 @@ class WorkoutRepository @Inject constructor(
         val idxFile = File(indexDir(), "$exerciseId.idx")
         if (!idxFile.exists()) return
         val updated = idxFile.readLines().filter { it.isNotBlank() && it != relPath }
-        idxFile.writeText(updated.joinToString("\n"))
+        AtomicFiles.writeTextAtomically(idxFile, updated.joinToString("\n"))
     }
 
     // ─── Exercise stats sidecar ──────────────────────────────────────────────
@@ -176,7 +177,10 @@ class WorkoutRepository @Inject constructor(
 
     private fun writeStatsSidecar(stats: ExerciseStats) {
         val dir = statsDir().also { it.mkdirs() }
-        File(dir, "${stats.exerciseId}.yaml").writeText(ExerciseStatsParser.toYaml(stats))
+        AtomicFiles.writeTextAtomically(
+            File(dir, "${stats.exerciseId}.yaml"),
+            ExerciseStatsParser.toYaml(stats),
+        )
     }
 
     /**
@@ -256,7 +260,7 @@ class WorkoutRepository @Inject constructor(
 
     private fun writeGitgraphCache(history: GitgraphHistory) {
         gitgraphCacheFile().parentFile?.mkdirs()
-        gitgraphCacheFile().writeText(GitgraphHistoryParser.toYaml(history))
+        AtomicFiles.writeTextAtomically(gitgraphCacheFile(), GitgraphHistoryParser.toYaml(history))
     }
 
     private fun deleteGitgraphCache() {
@@ -454,10 +458,29 @@ class WorkoutRepository @Inject constructor(
 
     // ─── Core CRUD ────────────────────────────────────────────────────────────
 
+    /**
+     * Locates the existing file for [sessionId] by filename suffix (`_*_[sessionId].md`),
+     * across all month dirs. Used by [save] to detect a date change (which moves the file)
+     * without parsing every session's YAML. Null when the session was never saved.
+     * Must be called with [mutex] held.
+     */
+    private fun findSessionFileById(sessionId: String): File? {
+        if (sessionId.isBlank()) return null
+        val suffix = "_$sessionId.md"
+        return historyMonthDirs().asSequence().flatMap { dir ->
+            dir.listFiles()?.asSequence() ?: emptySequence()
+        }.firstOrNull { it.extension == "md" && it.name.endsWith(suffix) }
+    }
+
     suspend fun save(session: WorkoutSession): WorkoutSession = withContext(Dispatchers.IO) {
         mutex.withLock {
             val updated = if (session.id.isBlank()) {
-                session.copy(id = UUID.randomUUID().toString().take(8))
+                // Collision-checked mint: a rare 32-bit collision must never take the
+                // "update" branch of the wrong record.
+                val freshId = GymIds.newSessionId { candidate ->
+                    findSessionFileById(candidate) != null
+                }
+                session.copy(id = freshId)
             } else {
                 session
             }
@@ -468,10 +491,35 @@ class WorkoutRepository @Inject constructor(
             val date = LocalDate.parse(updated.date)
             val dir = fileManager.getHistoryDir(date.year, date.monthValue)
             val fileName = sessionFileName(updated)
-            File(dir, fileName).writeText(WorkoutParser.toMarkdown(updated))
+            val target = File(dir, fileName)
+            val newRel = "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$fileName"
+
+            // Snapshot the pre-existing file BEFORE writing: a re-save with a changed
+            // `date` moves the file, and the lookup below must not find the file we are
+            // about to write (same `_$id.md` suffix) instead of the stale one.
+            val staleFile = findSessionFileById(updated.id)?.takeIf { it.absolutePath != target.absolutePath }
+
+            AtomicFiles.writeTextAtomically(target, WorkoutParser.toMarkdown(updated))
+
+            // Delete the stale file at the old path, otherwise the orphan stays on disk
+            // AND in range scans, double counting tonnage/history (the old save() only
+            // ever added to the index).
+            staleFile?.let { stale ->
+                val staleRel = runCatching {
+                    val monthDir = requireNotNull(stale.parentFile)
+                    val yearDir = requireNotNull(monthDir.parentFile)
+                    "${yearDir.name}/${monthDir.name}/${stale.name}"
+                }.getOrNull()
+                stale.delete()
+                if (staleRel != null && staleRel != newRel) {
+                    updated.exercises.forEach { ex ->
+                        removeFromExerciseIndex(ex.exerciseId, staleRel)
+                    }
+                }
+            }
 
             // Keep exercise index up to date — one read+write per distinct exerciseId
-            val rel = "${date.year}/${date.monthValue.toString().padStart(2, '0')}/$fileName"
+            val rel = newRel
             val batch = ExerciseIndexBatch()
             updated.exercises.forEach { ex -> batch.add(ex.exerciseId, rel) }
             flushExerciseIndexBatch(batch)
@@ -849,7 +897,7 @@ class WorkoutRepository @Inject constructor(
             // never can. Drop the cache only when something was actually pruned.
             if (prunedDeleted > 0) deleteGitgraphCache()
 
-            sentinel.writeText("")
+            AtomicFiles.writeTextAtomically(sentinel, "")
             MaintenanceResult(ghostsDeleted, prunedDeleted, orphanEcgDeleted)
         }
     }
@@ -876,7 +924,7 @@ class WorkoutRepository @Inject constructor(
                                     else ex
                                 }
                             )
-                            file.writeText(WorkoutParser.toMarkdown(updated))
+                            AtomicFiles.writeTextAtomically(file, WorkoutParser.toMarkdown(updated))
                             // Content changed under an already-synced session — requeue it
                             // so the server gets the renamed content too. See docs/SYNC.md §3.4.
                             syncLedgerRepository.requeueIfChanged(session.id, file)
@@ -900,7 +948,10 @@ class WorkoutRepository @Inject constructor(
                     try {
                         val session = WorkoutParser.fromMarkdown(file.readText())
                         if (session.routineName != newName) {
-                            file.writeText(WorkoutParser.toMarkdown(session.copy(routineName = newName)))
+                            AtomicFiles.writeTextAtomically(
+                                file,
+                                WorkoutParser.toMarkdown(session.copy(routineName = newName)),
+                            )
                             syncLedgerRepository.requeueIfChanged(session.id, file)
                             anyChanged = true
                         }

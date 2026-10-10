@@ -699,6 +699,16 @@ Two pre-computed caches now live under `history/` — the exercise-stats sidecar
 
 Traversing `history/` for these: use `WorkoutRepository.historyMonthDirs()` / `historySessionFiles()`, not an ad-hoc `listFiles()` walk — they're the one place the `_idx`/`_stats` reserved-name skip lives.
 
+## Atomic file writes + ledger quarantine + restore allowlist
+
+- **Never `File.writeText` a durable record directly** — use `AtomicFiles.writeTextAtomically` / `writeBytesAtomically` (`data/util/AtomicFiles.kt`: tmp file in the same dir + `fd.sync()` + rename). A kill mid-`writeText` used to leave truncated YAML that every reader's `catch { skip }` then silently dropped. The same helper covers sidecars, `.idx` files, ledgers, checkpoints and restore writes.
+- **Ledgers quarantine, never amnese**: a truncated/wrong-shape ledger YAML is renamed to `<name>.corrupt-<epochMs>.bak` via `quarantineCorruptFile` (same package) instead of returning an empty map and forgetting every pending entry. Applies to all five ledgers (`Sync`, `Readiness`, `ScaleWeighIn`, `Ecg`, `Repo`).
+- **Restore writes go through `RestorePathPolicy.isAllowedRestorePath`** (pure, tested): only `exercises/`, `routines/`, `history/YYYY/MM/`, `readiness/`, `scale/YYYY/MM/` `.md` files and `ecg/` `.ecg` files. Never `_sync/`, `logs/`, caches, `_idx`/`_stats`/`_gitgraph.yaml`, hidden files or anything with `..`/absolute/backslash/drive syntax. Both `applyRestoredFiles` and the manifest fallback filter with it.
+- **Server URLs never throw**: build request URLs with `SyncUrlValidator.requestUrlOrNull` / `errorFor` INSIDE the `try` — a typo'd URL returns `Failure("URL non valido")`, it must never escape as `IllegalArgumentException` from `Request.Builder.url(...)` and crash a worker. `SyncConfigRepository.save` normalizes with `SyncUrlValidator.normalize`.
+- **IDs are collision-checked**: mint with `GymIds.newSessionId/newExerciseId/newRoutineId/newReadinessId { exists }` (loops until unused) instead of a bare `UUID…take(8)`.
+- **Re-saving a session with a changed `date` moves the file**: `WorkoutRepository.save` snapshots the pre-existing `_*_id.md` file BEFORE writing, then deletes the stale path and removes it from the exercise index — otherwise the orphan double-counts tonnage/history.
+- Kotlin gotcha this work surfaced: **`/*` inside a `/** */` KDoc opens a nested block comment** (Kotlin nests them), so writing `_sync/*.yml` in a doc comment un-closes the comment and fails compilation. Spell paths without the glob (`sync ledgers`) in KDoc.
+
 ## HRV baseline is derived from the `.md` files, never stored on the side
 
 The rolling HRV-readiness baseline (14 LnRMSSD samples for the z-score, 7 resting-HR

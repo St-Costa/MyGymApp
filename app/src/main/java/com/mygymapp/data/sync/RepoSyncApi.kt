@@ -194,13 +194,17 @@ class RepoSyncApi @Inject constructor() {
             }
         }
 
-        val request = Request.Builder()
-            .url("$serverUrl/v1/repo/bulk")
-            .header("Authorization", "Bearer $bearerToken")
-            .post(bodyBuilder.build())
-            .build()
-
         return try {
+            SyncUrlValidator.errorFor(serverUrl)?.let {
+                return RepoBulkOutcome.Failure(it)
+            }
+            val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "repo", "bulk")
+                ?: return RepoBulkOutcome.Failure("URL non valido")
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $bearerToken")
+                .post(bodyBuilder.build())
+                .build()
             bulkClient.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
@@ -265,15 +269,17 @@ class RepoSyncApi @Inject constructor() {
             )
         }
 
-        val request = Request.Builder()
-            .url("$serverUrl/v1/repo")
-            .header("Authorization", "Bearer $bearerToken")
-            .post(bodyBuilder.build())
-            .build()
-
         val bytesSent = file?.length() ?: 0L
         val startedAt = System.currentTimeMillis()
         return try {
+            SyncUrlValidator.errorFor(serverUrl)?.let { return SyncResult.Failure(it) }
+            val url = SyncUrlValidator.requestUrlOrNull(serverUrl, "v1", "repo")
+                ?: return SyncResult.Failure("URL non valido")
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $bearerToken")
+                .post(bodyBuilder.build())
+                .build()
             client.newCall(request).execute().use { response ->
                 val durationMs = System.currentTimeMillis() - startedAt
                 if (response.isSuccessful) {

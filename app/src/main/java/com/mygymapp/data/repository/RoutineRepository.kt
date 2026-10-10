@@ -8,6 +8,8 @@ import com.mygymapp.data.parser.RoutineParser
 import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
+import com.mygymapp.data.util.AtomicFiles
+import com.mygymapp.data.util.GymIds
 import com.mygymapp.data.util.slugify
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +18,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDateTime
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -63,7 +64,7 @@ class RoutineRepository @Inject constructor(
             val now = LocalDateTime.now().toString()
             val updated = if (routine.id.isBlank()) {
                 routine.copy(
-                    id = "rt-" + UUID.randomUUID().toString().replace("-", "").take(8),
+                    id = GymIds.newRoutineId { cache.containsKey(it) },
                     created = now,
                     updated = now,
                 )
@@ -87,7 +88,7 @@ class RoutineRepository @Inject constructor(
             }
 
             val markdown = RoutineParser.toMarkdown(updated)
-            file.writeText(markdown)
+            AtomicFiles.writeTextAtomically(file, markdown)
             cache[updated.id] = updated
             newRelPath = "routines/$fileName.md"
             newBytes = markdown.toByteArray()
@@ -149,7 +150,7 @@ class RoutineRepository @Inject constructor(
                     val updated = routine.copy(exercises = updatedExercises)
                     val fileName = slugify(updated.name, updated.id)
                     val file = File(routinesDir(), "$fileName.md")
-                    file.writeText(RoutineParser.toMarkdown(updated))
+                    AtomicFiles.writeTextAtomically(file, RoutineParser.toMarkdown(updated))
                     cache[updated.id] = updated
                     fixedRoutines++
                 }
@@ -200,8 +201,10 @@ class RoutineRepository @Inject constructor(
             updated = now,
         )
         val dir = routinesDir().apply { mkdirs() }
-        File(dir, "${slugify(routine.name, routine.id)}.md")
-            .writeText(RoutineParser.toMarkdown(routine))
+        AtomicFiles.writeTextAtomically(
+            File(dir, "${slugify(routine.name, routine.id)}.md"),
+            RoutineParser.toMarkdown(routine),
+        )
         cache[routine.id] = routine
     }
 }

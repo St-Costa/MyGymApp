@@ -1,6 +1,7 @@
 package com.mygymapp.data.sync
 
 import com.mygymapp.data.repository.FileManager
+import com.mygymapp.data.util.AtomicFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -48,14 +49,27 @@ class SyncLedgerRepository @Inject constructor(
     private fun readAllUnlocked(): MutableMap<String, SyncLedgerEntry> {
         val file = ledgerFile()
         if (!file.exists()) return mutableMapOf()
-        val root = try {
-            Load(loadSettings).loadFromString(file.readText())
+        val raw = try {
+            file.readText()
         } catch (_: Exception) {
+            return mutableMapOf()
+        }
+        if (raw.isBlank()) return mutableMapOf()
+        val root = try {
+            Load(loadSettings).loadFromString(raw)
+        } catch (_: Exception) {
+            // Truncated write (pre-atomic) or hand-edit: preserve bytes for forensics
+            // instead of silently forgetting every pending entry.
+            quarantineCorruptFile(file)
             null
         }
         @Suppress("UNCHECKED_CAST")
         val sessionsMap = (root as? Map<*, Any?>)?.get("sessions") as? Map<*, Any?>
-            ?: return mutableMapOf()
+        if (sessionsMap == null) {
+            // Wrong top-level shape (e.g. half-written header): quarantine, don't amnese.
+            if (root != null) quarantineCorruptFile(file)
+            return mutableMapOf()
+        }
 
         val result = LinkedHashMap<String, SyncLedgerEntry>()
         for ((rawKey, raw) in sessionsMap) {
@@ -116,7 +130,7 @@ class SyncLedgerRepository @Inject constructor(
             sb.appendLine("    durationMs: ${entry.durationMs}")
             sb.appendLine("    serverStatus: \"${entry.serverStatus}\"")
         }
-        ledgerFile().writeText(sb.toString())
+        AtomicFiles.writeTextAtomically(ledgerFile(), sb.toString())
     }
 
     /**

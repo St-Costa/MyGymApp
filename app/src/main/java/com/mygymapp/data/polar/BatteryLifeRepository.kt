@@ -1,6 +1,7 @@
 package com.mygymapp.data.polar
 
 import com.mygymapp.data.repository.FileManager
+import com.mygymapp.data.util.AtomicFiles
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.snakeyaml.engine.v2.api.Load
@@ -170,7 +171,7 @@ class BatteryLifeRepository @Inject constructor(
     }
 
     private fun writeUnlocked(s: BatteryLifeState) {
-        file().writeText(
+        AtomicFiles.writeTextAtomically(file(),
             buildString {
                 append("installedAtDate: \"${s.installedAtDate}\"\n")
                 append("installedAtLevel: ${s.installedAtLevel}\n")

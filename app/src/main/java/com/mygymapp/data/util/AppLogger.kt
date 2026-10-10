@@ -71,7 +71,10 @@ class AppLogger @Inject constructor(
                 line.substring(0, DATE_PREFIX_LEN) >= cutoff
             }
             if (kept.size < lines.size) {
-                file.writeText(kept.joinToString("\n", postfix = if (kept.isNotEmpty()) "\n" else ""))
+                AtomicFiles.writeTextAtomically(
+                    file,
+                    kept.joinToString("\n", postfix = if (kept.isNotEmpty()) "\n" else ""),
+                )
                 Log.d(LOG_TAG, "Pruned ${lines.size - kept.size} log entries older than $cutoff")
             }
         } catch (t: Throwable) {

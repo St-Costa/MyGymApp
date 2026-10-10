@@ -1,6 +1,7 @@
 package com.mygymapp.data.steps
 
 import com.mygymapp.data.repository.FileManager
+import com.mygymapp.data.util.AtomicFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -42,7 +43,7 @@ class StepLedgerRepository @Inject constructor(
     }
 
     private fun writeUnlocked(at: Instant) {
-        checkpointFile().writeText("lastReadAt: \"$at\"\n")
+        AtomicFiles.writeTextAtomically(checkpointFile(), "lastReadAt: \"$at\"\n")
     }
 
     /**

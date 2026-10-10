@@ -1,6 +1,7 @@
 package com.mygymapp.data.sync
 
 import com.mygymapp.data.repository.FileManager
+import com.mygymapp.data.util.AtomicFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,13 +37,23 @@ class ReadinessLedgerRepository @Inject constructor(
     private fun readAllUnlocked(): MutableMap<String, SyncLedgerEntry> {
         val file = ledgerFile()
         if (!file.exists()) return mutableMapOf()
-        val root = try {
-            Load(loadSettings).loadFromString(file.readText())
+        val raw = try {
+            file.readText()
         } catch (_: Exception) {
+            return mutableMapOf()
+        }
+        if (raw.isBlank()) return mutableMapOf()
+        val root = try {
+            Load(loadSettings).loadFromString(raw)
+        } catch (_: Exception) {
+            quarantineCorruptFile(file)
             null
         }
         val eventsMap = (root as? Map<*, Any?>)?.get("events") as? Map<*, Any?>
-            ?: return mutableMapOf()
+        if (eventsMap == null) {
+            if (root != null) quarantineCorruptFile(file)
+            return mutableMapOf()
+        }
 
         val result = LinkedHashMap<String, SyncLedgerEntry>()
         for ((rawKey, raw) in eventsMap) {
@@ -82,7 +93,7 @@ class ReadinessLedgerRepository @Inject constructor(
             sb.appendLine("    lastError: \"${entry.lastError.replace("\"", "'")}\"")
             sb.appendLine("    contentHash: \"${entry.contentHash}\"")
         }
-        ledgerFile().writeText(sb.toString())
+        AtomicFiles.writeTextAtomically(ledgerFile(), sb.toString())
     }
 
     suspend fun enqueue(id: String, relPath: String, file: File) = withContext(Dispatchers.IO) {

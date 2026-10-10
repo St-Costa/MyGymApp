@@ -6,6 +6,8 @@ import com.mygymapp.data.parser.ExerciseParser
 import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
+import com.mygymapp.data.util.AtomicFiles
+import com.mygymapp.data.util.GymIds
 import com.mygymapp.data.util.slugify
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +16,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDateTime
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,7 +58,7 @@ class ExerciseRepository @Inject constructor(
             val now = LocalDateTime.now().toString()
             val updated = if (exercise.id.isBlank()) {
                 exercise.copy(
-                    id = "ex-" + UUID.randomUUID().toString().replace("-", "").take(8),
+                    id = GymIds.newExerciseId { cache.containsKey(it) },
                     created = now,
                     updated = now,
                 )
@@ -82,7 +83,7 @@ class ExerciseRepository @Inject constructor(
             }
 
             val markdown = ExerciseParser.toMarkdown(updated)
-            file.writeText(markdown)
+            AtomicFiles.writeTextAtomically(file, markdown)
             cache[updated.id] = updated
             bodypartsCache = null
             newRelPath = "exercises/$fileName.md"
@@ -143,7 +144,7 @@ class ExerciseRepository @Inject constructor(
                 val updated = ex.copy(defaultRepRangeMax = ex.defaultRepRangeMin)
                 val fileName = slugify(updated.name, updated.id)
                 val file = File(exercisesDir(), "$fileName.md")
-                file.writeText(ExerciseParser.toMarkdown(updated))
+                AtomicFiles.writeTextAtomically(file, ExerciseParser.toMarkdown(updated))
                 cache[updated.id] = updated
                 fixed++
             }

@@ -2,6 +2,7 @@ package com.mygymapp.data.repository
 
 import com.mygymapp.data.model.ScaleWeighIn
 import com.mygymapp.data.parser.ScaleWeighInParser
+import com.mygymapp.data.util.AtomicFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -63,7 +64,7 @@ class ScaleHistoryRepository @Inject constructor(
             leanMassPercent = leanMassPercent,
         )
         val file = File(dirFor(date), "$dateStr.md")
-        file.writeText(ScaleWeighInParser.toMarkdown(weighIn))
+        AtomicFiles.writeTextAtomically(file, ScaleWeighInParser.toMarkdown(weighIn))
         weighIn
     }
 
