@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 176 — Script baseline: uninstall pulita prima del generate
+
+Il primo run col wrapper è fallito con "Unable to find target package": l'harness installa SENZA `-r`, quindi qualunque `com.mygymapp` preesistente fa fallire il suo install in silenzio. Ora lo script disinstalla app + test-APK dopo il backup verificato (procedura storica già documentata). Trovato anche così: build non-debuggable a bordo = backup via `run-as` impossibile — reinstallare prima il debug con `install -r` (tiene i dati). Suite verde (JDK 21).
+
 ## Phase 175 — Decisione: niente layout adaptive
 
 Registrata in `CONVENTIONS.md` (Non-goals): niente `WindowSizeClass`/two-pane senza decisione prodotto — degrado senza crash accettato. Suite verde (JDK 21).
