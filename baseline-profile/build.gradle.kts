@@ -28,6 +28,10 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    // Same JDK-21 pin as :app (see docs/CONVENTIONS.md#local-test-gate).
+    kotlin {
+        jvmToolchain(21)
+    }
 
     defaultConfig {
         // Baseline-profile generation needs an API 28+ device where the profile can
