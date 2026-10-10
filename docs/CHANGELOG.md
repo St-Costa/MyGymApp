@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 173 — Sprint 8 throttle: sentinel con contenuto + fail-open
+
+Il throttle di `runMaintenance` leggeva l'mtime (restore tar e salti d'orologio lo falsano; indietro = cleanup bloccato a lungo). Ora il sentinel tiene l'epoch millis nel contenuto (fallback mtime per i vecchi), e un timestamp futuro fa girare invece di bloccare. `shouldRunMaintenance` pura + test (`MaintenanceThrottleTest`, integrazione nel date-change test); `CONVENTIONS.md` aggiornato. Suite verde (JDK 21).
+
 ## Phase 172 — Sprint 8 restore: overwrite con stash in `_conflicts/`
 
 Il restore sovrascriveva i file locali più nuovi in silenzio. Ora i byte locali vengono stivati prima in `gymdata/_conflicts/<timestamp>/` (best-effort, mai bloccante, dentro il tar, mai syncati) e il report conta gli "overwritten" a parte (`conflictBackupRelPath`/`buildRestoreSummary` puri). Niente merge UI — volutamente. Nuovo `RestoreSummaryTest`; `BACKUP.md §3.6/§5` aggiornati. Suite verde (JDK 21).
