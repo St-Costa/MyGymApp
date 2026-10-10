@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 168 — CI fix: pacchetto `tools` obsoleto rimosso dal setup
+
+Il primo run è fallito nello step SDK: `setup-android` installa di default anche il pacchetto `tools`, rimosso da Google anni fa (`Failed to find package 'tools'`). Ora `packages: platform-tools` + resto via `sdkmanager`. Suite verde locale (JDK 21).
+
 ## Phase 167 — Sprint 7 CI: GitHub Actions su push/PR
 
 `.github/workflows/ci.yml`: JDK 21 pinnato, SDK via `setup-android`, `./gradlew test` + `assembleDebug` + `assembleRelease` unsigned. Niente device (baseline/emulator restano locali per scelta), così resta veloce ed ermetico; il free tier basta e avanza. `CONVENTIONS.md#local-test-gate` aggiornato (hook + CI). Da verificare al primo push (mai girata qui).
