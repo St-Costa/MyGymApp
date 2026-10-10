@@ -2,6 +2,15 @@
 
 > **Purpose**: This document is a technical reference for implementing Polar H10 heart rate monitor integration into a custom Android gym app. It covers BLE connection setup, Polar SDK integration, and all planned features with implementation details.
 
+> **Historical reference, not as-built spec.** This was the research doc the subsystem was
+> built from; several sketched thresholds were tuned during implementation (e.g. the
+> readiness sketch below uses `< 40` clean RR samples, production uses `< 20` — see
+> `STORAGE.md` and `PolarManager.finishReadinessMeasurement()`), and whole sketched
+> features were never built (rep counting, BP surrogate) or moved server-side (deep ECG
+> analysis). For what the phone actually does today, read `POLAR.md` and `CONVENTIONS.md`;
+> the formulas themselves (Keytel, Banister, Uth, Pan-Tompkins) were verified to match this
+> guide exactly.
+
 ---
 
 ## Table of Contents

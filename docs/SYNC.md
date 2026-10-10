@@ -306,9 +306,12 @@ than inventing a new one):
   the phone always persists and queues locally regardless); and a manual nudge after a
   known outage. Works even with the enabled toggle off — see above.
 
-URL + token stored in `SharedPreferences` (`sync_config`, `MODE_PRIVATE`) — same tier of
-sensitivity as `user_profile`, already documented in STORAGE.md's SharedPreferences table;
-add a row there once implemented.
+URL + token stored encrypted at rest (`EncryptedSharedPreferences`, `sync_config_enc`,
+Keystore AES256 — the pre-Phase-107 plaintext `sync_config` file is migrated once, then
+deleted) — same sensitivity tier as the old `user_profile` prefs, documented in
+STORAGE.md's SharedPreferences table. Every API validates/normalizes the URL via
+`SyncUrlValidator` and builds request URLs inside the `try`, so a typo'd URL is a clean
+`Failure`, never a thrown `IllegalArgumentException` out of a worker.
 
 ---
 
@@ -809,11 +812,18 @@ changes **when** the file is deleted, not whether:
 - **New: a 30-day age cap.** `EcgSyncLedgerRepository.expireStale()` marks any
   `PENDING`/`FAILED` entry older than 30 days as `EXPIRED` and deletes its file — a
   deliberate departure from the other three pipelines' "never give up, retry forever"
-  philosophy (docs/SYNC.md §3.2). That philosophy only works when the source file is
-  permanent; here it would mean unbounded local storage growth during an extended outage
-  (the server has been observed offline for multi-day stretches in practice). Once expired,
-  that session's raw ECG is unrecoverable — only the phone-computed summary metrics survive
-  (in the session YAML, synced separately via `/v1/sessions`).
+   philosophy (docs/SYNC.md §3.2). That philosophy only works when the source file is
+   permanent; here it would mean unbounded local storage growth during an extended outage
+   (the server has been observed offline for multi-day stretches in practice). Once expired,
+   that session's raw ECG is unrecoverable — only the phone-computed summary metrics survive
+   (in the session YAML, synced separately via `/v1/sessions`).
+- **New: missing-file entries are dead-lettered, never retried.** `EcgSyncWorker` calls
+  `EcgSyncLedgerRepository.markDead()` (→ `EXPIRED`, out of `getPending`) when the `.ecg`
+  is gone — the recording window ends at finalize, so the file can never reappear and
+  `markFailed` + `retry()` would wake the radio every 4h forever (this is what the
+  ghost-sweep's `.ecg` cleanup used to cause). The reason records whether the session
+  file survives (`WorkoutRepository.sessionFileExists()`); swept sessions are additionally
+  marked dead at boot by `MainViewModel` (`GhostSweepResult.deletedSessionIds`).
 
 ### Sync path
 
@@ -930,7 +940,7 @@ pulls one `GET /v1/repo/tarball` (gzip + dependency-free `UstarReader`), falling
 ## Implementation status
 
 Phone side (this repo, package `data/sync/`):
-- [x] `SyncConfigRepository.kt` — server URL / bearer token / enabled flag, SharedPreferences (`sync_config`)
+- [x] `SyncConfigRepository.kt` — server URL / bearer token / enabled flag, `EncryptedSharedPreferences` (`sync_config_enc`, Keystore AES256; legacy plaintext `sync_config` migrated once, then deleted)
 - [x] `SyncLedgerEntry.kt` / `SyncLedgerRepository.kt` — ledger read/write (`gymdata/_sync/state.yml`)
 - [x] `SyncApi.kt` — OkHttp client for the multipart POST + `/health` check
 - [x] `SyncWorker.kt` (`@HiltWorker`) + `SyncWorker.Scheduler` — expedited one-off on
@@ -948,7 +958,7 @@ Phone side (this repo, package `data/sync/`):
       switch, "Verifica" (health check), pending-count/last-sync status line,
       "Rinvia tutte le sessioni" (resync-all, backed by
       `WorkoutRepository.getAllCompletedSessions()`).
-- [x] `STORAGE.md`'s SharedPreferences table updated with `sync_config`; new
+- [x] `STORAGE.md`'s SharedPreferences table updated with `sync_config_enc`; new
       `gymdata/_sync/` directory documented in the root layout.
 - [x] Session sync verified end-to-end against the live Tailscale server, including a
       58-session backfill via "Resync all" — see CHANGELOG.md for the debugging session
