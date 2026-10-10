@@ -93,7 +93,7 @@ class StepLedgerRepository @Inject constructor(
     private suspend fun fetchAndAverage(reader: HealthConnectStepsReader, since: Instant, now: Instant): StepReading? {
         if (!since.isBefore(now)) return null
         val total = reader.totalSteps(since, now) ?: return null
-        val days = ChronoUnit.DAYS.between(since, now).toInt().coerceAtLeast(1)
+        val days = calendarDaysSpanned(since, now, java.time.ZoneId.systemDefault())
         return StepReading(
             avgStepsPerDay = total.toDouble() / days,
             daysSpanned = days,
@@ -104,6 +104,20 @@ class StepLedgerRepository @Inject constructor(
     companion object {
         private val FIRST_READ_LOOKBACK = java.time.Duration.ofHours(24)
     }
+}
+
+/**
+ * Calendar days touched by `[since, now]` in [zone] — the divisor for the step average.
+ * `ChronoUnit.DAYS.between` truncates (36h → 1), inflating the "daily average" after any
+ * >24h gap; counting touched calendar days (36h across midnight → 2, same as
+ * `HealthConnectStepsReader.previousDayTotal`'s midnight-to-midnight day) keeps it honest.
+ * Pure, unit-tested.
+ */
+internal fun calendarDaysSpanned(since: Instant, now: Instant, zone: java.time.ZoneId): Int {
+    if (!since.isBefore(now)) return 1
+    val start = since.atZone(zone).toLocalDate()
+    val end = now.atZone(zone).toLocalDate()
+    return (ChronoUnit.DAYS.between(start, end).toInt() + 1).coerceAtLeast(1)
 }
 
 /**
