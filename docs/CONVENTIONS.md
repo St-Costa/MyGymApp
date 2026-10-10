@@ -833,6 +833,21 @@ Gotchas that cost time here:
 
 Android Studio reads `sdk.dir` from `local.properties`. Command-line builds need `ANDROID_HOME=~/Android/Sdk` — see [README.md](../README.md#building).
 
+## Dependency verification
+
+`gradle/verification-metadata.xml` pins sha256 checksums for every resolved artifact
+(including the JitPack-built Polar SDK — the highest supply-chain risk here, since
+JitPack compiles it from git on demand). Presence of the file turns verification on:
+a tampered or unexpected artifact fails the build. After any dependency change
+(add/bump/remove in `libs.versions.toml`), regenerate before committing:
+
+```bash
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=~/Android/Sdk \
+  ./gradlew --write-verification-metadata sha256 :app:assembleDebug
+```
+
+and commit the updated xml in the same change. sha256-only (no PGP keyring to maintain).
+
 ## Local test gate
 
 Two safety nets, belt and braces. The local one is a git hook:
