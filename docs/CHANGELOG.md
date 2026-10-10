@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 172 — Sprint 8 restore: overwrite con stash in `_conflicts/`
+
+Il restore sovrascriveva i file locali più nuovi in silenzio. Ora i byte locali vengono stivati prima in `gymdata/_conflicts/<timestamp>/` (best-effort, mai bloccante, dentro il tar, mai syncati) e il report conta gli "overwritten" a parte (`conflictBackupRelPath`/`buildRestoreSummary` puri). Niente merge UI — volutamente. Nuovo `RestoreSummaryTest`; `BACKUP.md §3.6/§5` aggiornati. Suite verde (JDK 21).
+
 ## Phase 171 — Sprint 8 dead-letter: anche gli altri 3 ledger
 
 Stesso veleno dell'ECG (Phase 145) negli altri worker: file cancellato a mano = `markFailed` + retry ogni 4h per sempre. Ora `markDead()` (→ `EXPIRED`) in sessioni/readiness/pesate, `getPending()` ristretto a PENDING/FAILED ovunque, più `getAll()` simmetrico dove mancava. Nuovo `LedgerDeadLetterTest` (5 test); `SYNC.md §1.3` aggiornato. Suite verde (JDK 21).
