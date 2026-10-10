@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 169 — CI: action majors (checkout/setup-java v5)
+
+La CI è verde al secondo run (test + debug + release su runner pulito). Chiudo i warning di deprecation con i major noti (`checkout@v5`, `setup-java@v5`). Suite verde locale (JDK 21).
+
 ## Phase 168 — CI fix: pacchetto `tools` obsoleto rimosso dal setup
 
 Il primo run è fallito nello step SDK: `setup-android` installa di default anche il pacchetto `tools`, rimosso da Google anni fa (`Failed to find package 'tools'`). Ora `packages: platform-tools` + resto via `sdkmanager`. Suite verde locale (JDK 21).
