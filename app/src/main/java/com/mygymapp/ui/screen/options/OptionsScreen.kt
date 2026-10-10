@@ -669,7 +669,7 @@ private fun DebugSection(
                         Text("Testing… ${uiState.polarSelfTestSecondsLeft}s")
                     }
                 } else {
-                    Text("Polar test")
+                    Text("Polar self-test")
                 }
             }
             if (uiState.polarSelfTestResult != null) {

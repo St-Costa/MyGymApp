@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 180 — Smoke release: self-test 10/10 su build R8
+
+Release (`assembleRelease` + R8) firmata e installata sul telefono con backup verificato: Polar self-test **10/10 OK** su build minificata, nessun crash. Strada facendo: `verification-metadata.xml` esteso alle dipendenze di lint (falliva `lintVitalAnalyzeRelease`), sintassi `apksigner` corretta in `CONVENTIONS.md` (`pass:android`), pulsante "Test Polar" → "Polar self-test" (ambiguo). Suite verde (JDK 21).
+
 ## Phase 179 — Sprint 9 process-death: bozze set/timer/RPE
 
 I set digitati (strength/superset/superset-stretch), i done degli stretch e la scelta RPE ora sopravvivono al kill: codec puri in `SavedStateHandle` + overlay all'init (previous/PR sempre da load fresco, mai dal draft; mismatch di taglia = draft ignorato). Timer in corso esclusi di proposito (un countdown ripartito da capo mentirebbe; il blocco cardio aperto resta chiuso dal disco come prima). RPE spostato nel VM. Nuovo `ExerciseSetDraftsTest` (9 test); suite verde (JDK 21).

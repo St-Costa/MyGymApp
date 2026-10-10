@@ -932,7 +932,8 @@ Validation protocol (every minify/rules change, no exceptions):
 
 1. `ANDROID_HOME=~/Android/Sdk ./gradlew assembleRelease` must be green with no new warnings.
 2. Sign the unsigned APK with the debug key (smoke only — no Play Store here):
-   `~/Android/Sdk/build-tools/36.0.0/apksigner sign --ks ~/.android/debug.keystore --ks-pass:android --out app-release-smoke.apk app/build/outputs/apk/release/app-release-unsigned.apk`
+   `~/Android/Sdk/build-tools/36.0.0/apksigner sign --ks ~/.android/debug.keystore --ks-pass pass:android --out app-release-smoke.apk app/build/outputs/apk/release/app-release-unsigned.apk`
+   (format is `pass:<password>` — `--ks-pass:android` is rejected as an unknown option)
 3. Back up `gymdata/` with the `run-as … tar` one-liner (CLAUDE.md banner), then
    `adb install -r app-release-smoke.apk`, open the app, and run Options → Debug →
    self-test to 10/10 (it doubles as post-R8 math validation) + one real sync.

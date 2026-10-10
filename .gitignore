@@ -21,3 +21,6 @@ local.properties
 /artifacts/
 gymdata-backup-*.tar
 /backups/
+# Smoke-test artifacts (CONVENTIONS.md#release-minify): signed release APK rebuilt
+# on demand, never committed.
+app-release-smoke.apk*
