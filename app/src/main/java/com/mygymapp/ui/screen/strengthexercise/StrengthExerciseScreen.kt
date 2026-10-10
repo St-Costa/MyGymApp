@@ -222,6 +222,7 @@ fun StrengthExerciseScreen(
                             longPressRepeatStep = 5.0,
                             onConfirm = { viewModel.confirmReps(index) },
                             modifier = Modifier.weight(1f),
+                            fieldName = "ripetizioni",
                         )
 
                         // Weight picker — hidden for bodyweight exercises (load is estimated).
@@ -237,6 +238,7 @@ fun StrengthExerciseScreen(
                                 longPressRepeatStep = 10.0,
                                 onConfirm = { viewModel.confirmWeight(index) },
                                 modifier = Modifier.weight(1f),
+                                fieldName = "peso",
                             )
                         }
                     }

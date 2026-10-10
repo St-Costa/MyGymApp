@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 150 — Sprint 3 a11y: stepper usabili con TalkBack
+
+Gli stepper +/− (`ScrollPickerInput`, il controllo più usato dell'app) erano `Box` da 32dp con solo `pointerInput`: invisibili a TalkBack e sotto il target minimo. Ora target 48dp (cerchio visivo invariato a 32dp), `role = Button` + action "Aumenta/Diminuisci ‹campo›" via semantics (niente `clickable()`: scatenerebbe un doppio `onClick` a ogni tap, il path touch resta su pointerInput), `fieldName` passato da tutti i 7 call site. Label pura e testata (`PickerButtonDescriptionTest`); semantics non copribile senza harness Compose (assente nel repo). Suite verde (JDK 21).
+
 ## Phase 149 — Sprint 3 UI: key stabili nelle Lazy list
 
 Quattro `items()` senza `key=` dove l'ordine cambia (chip filtro chart, riscoperte BLE nelle due debug screen, autocomplete bodypart): lo stato delle righe poteva saltare di riga al riordino. Ora `key = { it }` / `deviceId` / `address` / `bodypart`. Suite verde (JDK 21).
