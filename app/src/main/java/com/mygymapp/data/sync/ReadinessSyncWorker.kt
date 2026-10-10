@@ -72,9 +72,8 @@ class ReadinessSyncWorker @AssistedInject constructor(
             val event = readinessRepository.getById(entry.sessionId)
             val file = event?.let { readinessRepository.fileFor(it) }
             if (event == null || file == null || !file.exists()) {
-                appLogger.w(TAG, "Sync skip: readiness event ${entry.sessionId} file not found on disk")
-                ledger.markFailed(entry.sessionId, "readiness file not found on disk")
-                anyFailure = true
+                appLogger.w(TAG, "Sync dead: readiness event ${entry.sessionId} file not found on disk")
+                ledger.markDead(entry.sessionId, "readiness file not found on disk")
                 continue
             }
 

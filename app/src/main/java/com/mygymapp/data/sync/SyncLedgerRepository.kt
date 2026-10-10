@@ -104,7 +104,9 @@ class SyncLedgerRepository @Inject constructor(
 
     suspend fun getPending(): List<SyncLedgerEntry> = withContext(Dispatchers.IO) {
         mutex.withLock {
-            readAllUnlocked().values.filter { it.status != SyncStatus.SENT }
+            readAllUnlocked().values.filter {
+                it.status == SyncStatus.PENDING || it.status == SyncStatus.FAILED
+            }
         }
     }
 
@@ -191,6 +193,26 @@ class SyncLedgerRepository @Inject constructor(
                 bytesSent = bytesSent,
                 durationMs = durationMs,
                 serverStatus = serverStatus,
+            )
+            writeAllUnlocked(all)
+        }
+    }
+
+    /**
+     * Dead-letter for entries whose source file is gone for good (hand-deleted, reaped by
+     * maintenance, or an unresolvable relPath). Retrying every 4h forever would only burn
+     * radio on a file that can never come back — EXPIRED drops it from `getPending()` with
+     * the reason recorded. Same terminal state the ECG pipeline uses for missing files.
+     */
+    suspend fun markDead(sessionId: String, reason: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val all = readAllUnlocked()
+            val existing = all[sessionId] ?: return@withLock
+            all[sessionId] = existing.copy(
+                status = SyncStatus.EXPIRED,
+                attempts = existing.attempts + 1,
+                lastAttemptAt = java.time.LocalDateTime.now().toString(),
+                lastError = reason.take(500).replace(Regex("[\\r\\n]+"), " "),
             )
             writeAllUnlocked(all)
         }

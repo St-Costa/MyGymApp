@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 171 — Sprint 8 dead-letter: anche gli altri 3 ledger
+
+Stesso veleno dell'ECG (Phase 145) negli altri worker: file cancellato a mano = `markFailed` + retry ogni 4h per sempre. Ora `markDead()` (→ `EXPIRED`) in sessioni/readiness/pesate, `getPending()` ristretto a PENDING/FAILED ovunque, più `getAll()` simmetrico dove mancava. Nuovo `LedgerDeadLetterTest` (5 test); `SYNC.md §1.3` aggiornato. Suite verde (JDK 21).
+
 ## Phase 170 — Decisione: UI solo inglese, niente i18n
 
 Registrata in `CONVENTIONS.md`: niente `strings.xml`, niente risorse per-locale, date in `Locale.US`/ISO. Tradurre i letterali è fatto (Phase 165); estrarre le risorse senza verifica overflow su schermo non è sicuro. Suite verde (JDK 21).

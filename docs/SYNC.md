@@ -213,6 +213,9 @@ Worker logic per pending ledger entry:
    `FAILED` is still eligible for retry — it's a status for user-visible diagnostics, not a
    dead-letter state). No cap on retry count for v1 — a self-hosted personal server being
    down for a while is expected and should just catch up whenever it's back, not give up.
+   The one exception is a missing source file (hand-deleted or reaped): that entry is
+   dead-lettered via `markDead()` (→ `EXPIRED`, out of `getPending()`) instead of retried
+   every 4h forever — a file that can never come back. Same rule in all four workers.
 
 ### 1.4 Request shape
 

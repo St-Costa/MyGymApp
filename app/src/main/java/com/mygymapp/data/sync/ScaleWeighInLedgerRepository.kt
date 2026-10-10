@@ -83,8 +83,16 @@ class ScaleWeighInLedgerRepository @Inject constructor(
         return result
     }
 
+    suspend fun getAll(): List<SyncLedgerEntry> = withContext(Dispatchers.IO) {
+        mutex.withLock { readAllUnlocked().values.toList() }
+    }
+
     suspend fun getPending(): List<SyncLedgerEntry> = withContext(Dispatchers.IO) {
-        mutex.withLock { readAllUnlocked().values.filter { it.status != SyncStatus.SENT } }
+        mutex.withLock {
+            readAllUnlocked().values.filter {
+                it.status == SyncStatus.PENDING || it.status == SyncStatus.FAILED
+            }
+        }
     }
 
     private fun writeAllUnlocked(entries: Map<String, SyncLedgerEntry>) {
@@ -128,6 +136,24 @@ class ScaleWeighInLedgerRepository @Inject constructor(
                 attempts = existing.attempts + 1,
                 lastAttemptAt = java.time.LocalDateTime.now().toString(),
                 lastError = "",
+            )
+            writeAllUnlocked(all)
+        }
+    }
+
+    /**
+     * Dead-letter for entries whose source file is gone for good — same contract as
+     * [SyncLedgerRepository.markDead]: EXPIRED, out of `getPending()`, reason recorded.
+     */
+    suspend fun markDead(id: String, reason: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val all = readAllUnlocked()
+            val existing = all[id] ?: return@withLock
+            all[id] = existing.copy(
+                status = SyncStatus.EXPIRED,
+                attempts = existing.attempts + 1,
+                lastAttemptAt = java.time.LocalDateTime.now().toString(),
+                lastError = reason.take(500).replace(Regex("[\\r\\n]+"), " "),
             )
             writeAllUnlocked(all)
         }
