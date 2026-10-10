@@ -462,6 +462,10 @@ class PolarManager @Inject constructor(
     // Watchdog: timestamps of the most recent sample of each kind
     @Volatile private var lastEcgSampleAtMs = 0L
     @Volatile private var lastHrSampleAtMs = 0L
+    // FGS notification throttle: updateHr() used to fire ~1 Hz (~3600 intents/hour);
+    // each backgrounded startService risks BackgroundServiceStartNotAllowedException
+    // inside onNext (→ onError → futile restart loop). See HrNotificationThrottle.
+    private val hrNotifThrottle = HrNotificationThrottle()
     // When the current ECG stream was kicked off — used to detect silent "no data" hangs.
     @Volatile private var ecgStreamStartedAt = 0L
 
@@ -855,12 +859,15 @@ class PolarManager @Inject constructor(
             }
             .subscribe(
                 { hrData ->
-                    lastHrSampleAtMs = System.currentTimeMillis()
+                    val nowMs = System.currentTimeMillis()
+                    lastHrSampleAtMs = nowMs
                     val sample = hrData.samples.lastOrNull()
                     if (sample != null) {
                         _receivingData.value = true
                         _heartRate.value = sample.hr
-                        PolarStreamingService.updateHr(context, sample.hr)
+                        if (hrNotifThrottle.shouldSend(sample.hr, nowMs)) {
+                            PolarStreamingService.updateHr(context, sample.hr)
+                        }
 
                         // Live HR-zone widget: classify + accumulate time-in-zone
                         if (hrSeriesActive) {

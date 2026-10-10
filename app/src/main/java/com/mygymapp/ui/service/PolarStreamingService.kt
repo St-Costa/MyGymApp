@@ -40,12 +40,24 @@ class PolarStreamingService : Service() {
         @Volatile
         private var isRunning = false
 
+        /**
+         * Best-effort from any thread/state: a backgrounded caller on Android 12+ hits
+         * `ForegroundServiceStartNotAllowedException`, which must never escape into an Rx
+         * `onNext` (it would route to `onError` and spin the 2s stream-restart loop
+         * forever while backgrounded). Swallowed — the in-app link icon is the source
+         * of truth when the notification can't be (re)started.
+         */
         fun start(context: Context, deviceName: String?) {
-            val intent = Intent(context, PolarStreamingService::class.java).apply {
-                action = ACTION_START
-                putExtra(EXTRA_DEVICE, deviceName ?: "Polar H10")
+            try {
+                val intent = Intent(context, PolarStreamingService::class.java).apply {
+                    action = ACTION_START
+                    putExtra(EXTRA_DEVICE, deviceName ?: "Polar H10")
+                }
+                context.startForegroundService(intent)
+            } catch (t: Throwable) {
+                // Background start not allowed — BLE continues without the FGS; the OS
+                // may kill it while backgrounded, but that beats a crash/restart loop.
             }
-            context.startForegroundService(intent)
         }
 
         fun stop(context: Context) {
@@ -86,20 +98,36 @@ class PolarStreamingService : Service() {
             }
         }
 
+        /**
+         * No-op unless the service is running: never resurrects a notification that
+         * [forceStop] just removed, and never attempts a background start that would
+         * throw. Callers additionally throttle (see `HrNotificationThrottle`) so this
+         * fires at most every few seconds instead of on every ~1 Hz HR sample.
+         */
         fun updateHr(context: Context, hr: Int) {
-            val intent = Intent(context, PolarStreamingService::class.java).apply {
-                action = ACTION_UPDATE_HR
-                putExtra(EXTRA_HR, hr)
+            if (!isRunning) return
+            try {
+                val intent = Intent(context, PolarStreamingService::class.java).apply {
+                    action = ACTION_UPDATE_HR
+                    putExtra(EXTRA_HR, hr)
+                }
+                context.startService(intent)
+            } catch (t: Throwable) {
+                // BackgroundServiceStartNotAllowedException — notification keeps last text.
             }
-            context.startService(intent)
         }
 
         /** Switch the ongoing notification to a "Reconnecting…" state (sensor dropped). */
         fun setReconnecting(context: Context) {
-            val intent = Intent(context, PolarStreamingService::class.java).apply {
-                action = ACTION_RECONNECTING
+            if (!isRunning) return
+            try {
+                val intent = Intent(context, PolarStreamingService::class.java).apply {
+                    action = ACTION_RECONNECTING
+                }
+                context.startService(intent)
+            } catch (t: Throwable) {
+                // Background start not allowed — the in-app icon shows the drop instead.
             }
-            context.startService(intent)
         }
 
         /**

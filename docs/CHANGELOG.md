@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 142 — Sprint 2 FGS: background-safe + throttle notifica HR
+
+`PolarStreamingService.start/updateHr/setReconnecting` ora ingoiano `BackgroundServiceStartNotAllowedException` come già facevano `stop/setStandby`, e `updateHr/setReconnecting` sono no-op a servizio spento (mai resurrezioni dopo `forceStop`). La notifica BPM passa per il puro `HrNotificationThrottle` (primo campione, poi solo su cambio E (≥5s OPPURE salto ≥5 BPM)): da ~3600 a ~700 intent/ora, e ogni intent in background era un potenziale restart-loop da 2s dentro `onNext` Rx. Nuovo `HrNotificationThrottleTest` (5 test); suite verde (JDK 21).
+
 ## Phase 141 — Sprint 1 integrità dati: scritture atomiche, ledger anti-amnesia, restore allowlist
 
 Tutte le persistenza critiche (`Workout/Exercise/Routine/ScaleHistory/Readiness/UserProfile`, sidecar `_stats`/`_gitgraph`, `.idx`, checkpoint passi/batteria, log prune, restore) ora passano per `AtomicFiles` (tmp + fsync + rename) invece di `writeText` diretto: un kill a metà scrittura non lascia più YAML troncati persi in silenzio. I 5 ledger scrivono atomico e mettono in quarantena (`*.corrupt-*.bak`) gli YAML illeggibili invece di dimenticare ogni entry pending. `WorkoutRepository.save` con `date` cambiata sposta il file (cancellato l'orfano + indice ripulito, niente più doppi conteggi) e tutti gli ID 8hex sono minted con collision-check (`GymIds`). Lato rete: costruzione URL sempre dentro il `try` via `SyncUrlValidator` (URL errato = `Failure`, mai crash del worker) e restore filtrato da `RestorePathPolicy` (solo record-type noti, mai `_sync`/log/cache/sidecar). Nuovi test puri: `AtomicFilesTest`, `GymIdsTest`, `RestorePathPolicyTest`, `SyncUrlValidatorTest`, `WorkoutRepositoryDateChangeTest`, `LedgerCorruptionTest`; suite completa verde (JDK 21). Vedi `CONVENTIONS.md#atomic-file-writes`.
