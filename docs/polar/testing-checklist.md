@@ -59,7 +59,7 @@ Da testare durante il prossimo allenamento con il Polar H10 connesso.
 
 ## Profilo utente
 - [ ] Eta/peso/sesso salvati e mantenuti tra le sessioni (non si resettano)
-- [ ] HRmax calcolato correttamente (208 - 0.7 * eta)
+- [ ] HRmax = media Fox/Tanaka/Gulati (es. 40 anni → 176, non 180 del solo Tanaka)
 
 ## Calorie - sanity check
 - [ ] Sessione di ~60 min: atteso ~200-500 kcal (resistance training)
