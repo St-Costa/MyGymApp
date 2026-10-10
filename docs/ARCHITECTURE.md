@@ -49,8 +49,7 @@ Defined in [Screen.kt](../app/src/main/java/com/mygymapp/ui/navigation/Screen.kt
 
 | Screen | Route | Purpose |
 |---|---|---|
-| Main | `main` | Gitgraph dashboard (last 28 days) + nav buttons |
-| WeekView | `weekview` | 7-day grid with assigned routines |
+| Main | `main` | Gitgraph dashboard (last 28 days) + current-week schedule row (tap a cell to start that routine) + nav buttons |
 | ExerciseList | `exercises` | Grouped by bodypart; also picker mode |
 | ExerciseEdit | `exercises/edit?id={id}` | Create/edit exercise |
 | RoutineList | `routines` | List with enable/disable toggle |
@@ -66,9 +65,11 @@ Defined in [Screen.kt](../app/src/main/java/com/mygymapp/ui/navigation/Screen.kt
 ### Navigation graph
 
 ```
-Main ─┬─→ WeekView ──→ ActiveRoutine ─┬─→ StrengthExercise
-      │                               ├─→ StretchExercise
-      │                               └─→ Superset
+Main ─┬─→ ActiveRoutine ─┬─→ StrengthExercise
+      │                  ├─→ StretchExercise
+      │                  └─→ Superset
+      │                  (started by tapping a Main schedule-row cell — there is no
+      │                   separate week screen; the old `weekview` route is gone)
       ├─→ ExerciseList ──→ ExerciseEdit
       ├─→ RoutineList  ──→ RoutineEdit ──→ ExercisePicker ─(result)→ RoutineEdit
       ├─→ HeartRate
@@ -84,8 +85,8 @@ Every screen has one ViewModel (same package). A few non-obvious collaborators:
 | ViewModel | Key dependencies | Notes |
 |---|---|---|
 | `MainViewModel` | `HomeStateLoader`, WorkoutRepository, DataChangedSignal | Thin: exposes `HomeStateLoader.state` (+ debug-seed flag), runs boot maintenance. The home state (gitgraph rows + schedule row) is built by the `@Singleton` `HomeStateLoader`, kicked from `MyGymApp.onCreate` so it overlaps Activity/Compose creation; emits in two phases (history rows first, current-week outcomes ~a beat later) only on the first cold load. History rows come from the `_gitgraph.yaml` cache (see [STORAGE.md](STORAGE.md#home-gitgraph-cache-history_gitgraphyaml)). |
-| `ActiveRoutineViewModel` | WorkoutRepository, RoutineRepository, ExerciseRepository, PolarManager, EcgAnalyzer | Starts/stops ECG recording + HR series capture |
-| `SessionProgressViewModel` | WorkoutRepository, EcgAnalyzer, CardioTrendLoader | Post-workout charts and cardio analysis |
+| `ActiveRoutineViewModel` | WorkoutRepository, RoutineRepository, ExerciseRepository, PolarManager, PowerliftingScheduleRepository, session/ECG sync ledgers | Starts/stops ECG recording + HR series capture; registers + enqueues the session |
+| `SessionProgressViewModel` | WorkoutRepository, PolarManager, HealthConnectStepsReader, session sync ledger, BackupVerifier | Post-workout charts and backup round-trip report |
 | `HeartRateViewModel` | PolarManager, UserProfileRepository, CardioTrendLoader | Combines ~9 PolarManager StateFlows for the Heart Rate screen |
 | `HeartRateBarViewModel` | PolarManager | Lightweight VM for the in-workout HR/recovery bar |
 
@@ -131,7 +132,7 @@ Shared theme extensions (`theme/`):
 | `WorkoutRepository` | Session history | See [STORAGE.md](STORAGE.md#workout-history-and-exercise-index) for index structure. Exercise-index updates are batched per save/migration so each `.idx` file is read + written at most once per operation. Also maintains `history/_stats/{id}.yaml` — a per-exercise materialized view (previous sets + tonnage PR, by slot context) so the exercise screens skip the history scan; `getExerciseStats(id)` is the fast read. See [STORAGE.md](STORAGE.md#exercise-stats-sidecar-history_statsexerciseidyaml). |
 | `ImageCacheRepository` | URL → local file | SHA-256 hash, Google Drive URL rewrite |
 | `CardioTrendLoader` | 4-week cardio aggregates | Used by HeartRate and SessionProgress screens |
-| `UserProfileRepository` | Age / weight / sex | SharedPreferences; needed for calorie & TRIMP formulas |
+| `UserProfileRepository` | Age / weight / sex | File-backed `exercises/_settings.md` (in-memory cache); needed for calorie & TRIMP formulas |
 | `ScaleHistoryRepository` | VitaFit VT701 weigh-ins | One file per calendar day; see [STORAGE.md](STORAGE.md#scale-weigh-in-scaleyyyymmdatemd) and [vitafit-cloud-api.md](vitafit-cloud-api.md) |
 | `StepLedgerRepository` | Daily step counts | Backed by Health Connect via `HealthConnectStepsReader` (`data/steps/`) |
 

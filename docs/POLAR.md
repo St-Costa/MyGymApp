@@ -159,9 +159,10 @@ ActiveRoutineViewModel.init
     │
     └─► startEcgRecording(sessionId)
             │
-            ├─ feature ready?  yes ─► startEcgStreamingInternal(deviceId, sessionId)
-            │                          ├─ LiveEcgAnalyzer.reset()
-            │                          ├─ EcgRecorder.start(sessionId)
+           ├─ feature ready?  yes ─► startEcgStreamingInternal(deviceId, sessionId)
+           │                          ├─ LiveEcgAnalyzer.reset()
+           │                          ├─ EcgRecorder.start(sessionId, ts = wall-clock ns epoch —
+           │                          │   never nanoTime; the server maps cardio blocks via ts)
             │                          ├─ request max settings (130 Hz on H10)
             │                          └─ subscribe → for each sample:
             │                                 recorder.write(µV)
@@ -331,7 +332,7 @@ Both reset to 0 at session start (`startHrSeriesCapture()`) — not on connect, 
 
 ## Configuration & persistence
 
-- **User profile** (`SharedPreferences("user_profile")`): `birthYear` (Int, absent if unset — the sole source of age via `UserProfile.effectiveAge`, no separate age field), `weightKg` (Float), `isMale` (Boolean), `heightCm` (Int). Set `birthYear` before Keytel / TRIMP / VO2max / BIA body-fat % give sensible numbers — until then `effectiveAge` falls back to a fixed default (30) so formulas never crash, they just use a placeholder. See [UserProfile.kt](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt). `weightKg` is written only by the VitaFit scale integration (`BleScaleManager.maybeSaveWeighIn()`) — no manual entry exists. `PolarManager.userProfile` reads `UserProfileRepository.get()` fresh on every access (cheap — SharedPreferences is already in-memory-cached after the first read) rather than keeping a manually-synced cached copy, so Keytel calories always reflect the most recent scale weigh-in regardless of which screen is open when it happens.
+- **User profile** (`gymdata/exercises/_settings.md`, Phase 118 — the old `SharedPreferences("user_profile")` was wiped by a baseline-profile run and is only a one-time migration source now): `birthYear` (absent if unset — the sole source of age via `UserProfile.effectiveAge`, no separate age field), `weightKg`, `isMale`, `heightCm`. Set `birthYear` before Keytel / TRIMP / VO2max / BIA body-fat % give sensible numbers — until then `effectiveAge` falls back to a fixed default (30) so formulas never crash, they just use a placeholder. See [UserProfile.kt](../app/src/main/java/com/mygymapp/data/polar/UserProfile.kt). `weightKg` is written only by the VitaFit scale integration (`BleScaleManager.maybeSaveWeighIn()`) — no manual entry exists. `UserProfileRepository.get()` serves an in-memory cache (`refresh()` after a server restore), so Keytel calories always reflect the most recent scale weigh-in regardless of which screen is open when it happens.
 - **HRV baseline**: *no dedicated store* (Phase 94). Derived on demand from the persisted
   `readiness/*.md` files — last 14 `lnRmssd` values for the z-score, last 7 `restingHr` for
   the VO2max window. See `HrvBaselineCalculator`. A leftover `hrv_baseline.xml` from an old
@@ -346,11 +347,11 @@ Manifest ([AndroidManifest.xml](../app/src/main/AndroidManifest.xml)):
 - Legacy `BLUETOOTH` / `BLUETOOTH_ADMIN` / `ACCESS_FINE_LOCATION` with `maxSdkVersion="30"` for Android 8–11.
 - `FOREGROUND_SERVICE_CONNECTED_DEVICE` — required on API ≥ 34 for `PolarStreamingService`.
 
-[PolarStreamingService](../app/src/main/java/com/mygymapp/ui/service/PolarStreamingService.kt) keeps a persistent notification alive while a device is connected, so the BLE connection and HR logging survive screen-off. Notification text is updated by broadcasting an intent — no Binder.
+[PolarStreamingService](../app/src/main/java/com/mygymapp/ui/service/PolarStreamingService.kt) keeps a persistent notification alive while a device is connected, so the BLE connection and HR logging survive screen-off. Notification text is updated by broadcasting an intent — no Binder — throttled to at most every ~5 s (or a ≥5 BPM jump) via `HrNotificationThrottle`, and every entry point is background-start-safe (Phase 142).
 
 ## UI integration
 
-- **HeartRateScreen** wires ~9 PolarManager flows into a single UI state via `combine(...)` in `HeartRateViewModel`. It handles pairing, readiness display, VO2max, cardio-trend cards (from [CardioTrendLoader](../app/src/main/java/com/mygymapp/data/repository/CardioTrendLoader.kt)) and self-diagnosis.
+- **HeartRateScreen** wires ~9 PolarManager flows into a single UI state via `combine(...)` in `HeartRateViewModel`. It handles pairing, readiness display, VO2max, cardio-trend cards (from [CardioMetricsTrendLoader](../app/src/main/java/com/mygymapp/data/repository/CardioMetricsTrendLoader.kt): Resting HR, HRR 60s, VO2max line charts — the deeper RMSSD/SDNN/Poincaré/AFib analysis is server-side only) and self-diagnosis.
 - **HeartRateBar** is rendered at the top of every exercise screen. It auto-hides when the device isn't connected. Also shows the live HR-zone chip + time-in-zone bar (see above).
 - **LiveEcgCard** is shown only during an active session (on HeartRateScreen only if a session is running). The waveform is a custom Canvas fed by `ecgWaveform`.
 

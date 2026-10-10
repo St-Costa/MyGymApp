@@ -19,7 +19,7 @@ A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspi
 ## Features
 
 - **Gitgraph dashboard** — 4×7 grid of the last 28 days. Each cell shows a workout's tonnage change vs. the previous session for that routine (green = improved, red = regressed). Routine names appear below the current week.
-- **Week view** — routines assigned to each day of the week.
+- **Current-week schedule row** — routines assigned to each day of the week, with per-day outcomes once trained; tapping a cell starts that routine's session.
 - **Exercise library** — exercises grouped by body part with orange (strength) / blue (stretch) color coding. Attach an image or YouTube link to any exercise.
 - **Routine builder** — sets, rep ranges, supersets via a chain-link button, drag-and-drop reorder.
 - **Active workout** — tap an exercise to log sets. Strength exercises use a vertical scroll picker (no keyboard). Stretch exercises use a stopwatch with a status-bar notification.
@@ -44,13 +44,16 @@ A personal Android gym tracking app built with Kotlin and Jetpack Compose. Inspi
 | Image loading | Coil |
 | Charts | Custom Canvas (`TonnageLineChart`, `GitgraphView`, `LiveEcgCard`) |
 | BLE / heart rate | Polar BLE SDK + RxJava 3 |
+| Background sync | WorkManager (expedited + 4-hourly periodic) |
+| Steps | Health Connect client |
+| Secrets at rest | EncryptedSharedPreferences (Keystore AES256) |
 | Min SDK | 26 (Android 8.0) · Target 36 |
 
 ## Building
 
 ```bash
-# Debug APK
-ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
+# Debug APK (JDK 21 — the default JDK 25 breaks Gradle; Sprint 4 pins the toolchain)
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
 ```
 
 > Installing on a real device with data on it? Don't `installDebug` by hand —

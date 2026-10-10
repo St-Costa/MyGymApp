@@ -543,6 +543,6 @@ Since exercises and routines are now backed up incrementally to the server, a wi
 
 `android:allowBackup="false"` is set in the manifest — Android Auto Backup (Google
 Drive / Samsung) and `adb backup` are disabled, so `filesDir` (sessions, ECG, logs) and
-`SharedPreferences` (sync bearer, user profile) never leave the device via the OS backup
+`SharedPreferences` (sync bearer, schedule, paired-device MACs) never leave the device via the OS backup
 framework. The self-hosted server sync (`docs/SYNC.md`, `docs/BACKUP.md`) is unaffected —
 it is normal app I/O over INTERNET, not OS backup. For manual export, `adb pull /data/data/com.mygymapp/files/gymdata`. Restoring is just a matter of putting the directory back; the migration sentinel ensures old-format files are re-indexed on first launch.
