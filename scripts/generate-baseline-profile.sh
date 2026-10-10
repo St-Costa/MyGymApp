@@ -81,6 +81,14 @@ else
   prefs_backed_up=0
 fi
 
+# The test harness installs WITHOUT -r: any existing com.mygymapp (even same
+# signature) makes its install fail silently, and the run dies with "Unable to
+# find target package". Start from a clean slate — backup above is verified, and
+# the restore at the end brings everything back.
+echo "==> Uninstalling com.mygymapp for a clean generator run (backup above is verified)"
+adb uninstall com.mygymapp || true
+adb uninstall com.mygymapp.baselineprofile || true
+
 echo "==> Running :app:generateBaselineProfile (uninstalls the app — backup above is the safety net)"
 JAVA_HOME="${JAVA_HOME:-}" ANDROID_HOME="$ANDROID_HOME" ./gradlew :app:generateBaselineProfile
 
