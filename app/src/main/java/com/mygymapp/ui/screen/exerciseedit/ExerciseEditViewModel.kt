@@ -54,7 +54,7 @@ data class ExerciseEditUiState(
 
 @HiltViewModel
 class ExerciseEditViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val exerciseRepository: ExerciseRepository,
     private val dataChangedSignal: DataChangedSignal,
 ) : ViewModel() {
@@ -102,11 +102,15 @@ class ExerciseEditViewModel @Inject constructor(
             } else {
                 _uiState.value = _uiState.value.copy(existingBodyparts = bodyparts)
             }
+            // Process-death restore: keystrokes newer than the last disk save survive in
+            // the SavedStateHandle — overlay them over whatever the repo just loaded.
+            _uiState.value = _uiState.value.withTextDraft(readExerciseTextDraft(savedStateHandle))
         }
     }
 
     fun onNameChange(value: String) {
         _uiState.value = _uiState.value.copy(name = value)
+        savedStateHandle[DRAFT_NAME] = value
     }
 
     fun onTypeChange(type: ExerciseType) {
@@ -139,14 +143,17 @@ class ExerciseEditViewModel @Inject constructor(
 
     fun onBodypartChange(value: String) {
         _uiState.value = _uiState.value.copy(bodypart = value)
+        savedStateHandle[DRAFT_BODYPART] = value
     }
 
     fun onLinkChange(value: String) {
         _uiState.value = _uiState.value.copy(link = value)
+        savedStateHandle[DRAFT_LINK] = value
     }
 
     fun onNotesChange(value: String) {
         _uiState.value = _uiState.value.copy(notes = value)
+        savedStateHandle[DRAFT_NOTES] = value
     }
 
     fun onRepMinChange(value: Int) {
@@ -235,3 +242,35 @@ class ExerciseEditViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Process-death drafts (Sprint 3): keystrokes in the text fields are mirrored into the
+ * [SavedStateHandle] on every change and overlaid over the repo-loaded state at init, so
+ * a killed process loses at most the numeric/stepper state (step 2), never typed text.
+ * Strings only — the handle can't hold the complex UI state. Pure helpers, unit-tested.
+ */
+internal const val DRAFT_NAME = "draft_exercise_name"
+internal const val DRAFT_BODYPART = "draft_exercise_bodypart"
+internal const val DRAFT_LINK = "draft_exercise_link"
+internal const val DRAFT_NOTES = "draft_exercise_notes"
+
+internal data class ExerciseTextDraft(
+    val name: String?,
+    val bodypart: String?,
+    val link: String?,
+    val notes: String?,
+)
+
+internal fun readExerciseTextDraft(handle: SavedStateHandle): ExerciseTextDraft = ExerciseTextDraft(
+    name = handle.get<String>(DRAFT_NAME),
+    bodypart = handle.get<String>(DRAFT_BODYPART),
+    link = handle.get<String>(DRAFT_LINK),
+    notes = handle.get<String>(DRAFT_NOTES),
+)
+
+internal fun ExerciseEditUiState.withTextDraft(draft: ExerciseTextDraft): ExerciseEditUiState = copy(
+    name = draft.name ?: name,
+    bodypart = draft.bodypart ?: bodypart,
+    link = draft.link ?: link,
+    notes = draft.notes ?: notes,
+)
