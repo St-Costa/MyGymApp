@@ -19,6 +19,11 @@ if ! adb devices | awk 'NR>1 && $2=="device" {found=1} END {exit !found}'; then
   echo "ERROR: no device in 'device' state. Is it connected and authorized (adb devices)?" >&2
   exit 1
 fi
+if [ -z "${ANDROID_SERIAL:-}" ] && [ "$(adb devices | awk 'NR>1 && $2=="device"' | wc -l)" -gt 1 ]; then
+  echo "ERROR: more than one device connected — re-run with ANDROID_SERIAL=<serial>:" >&2
+  adb devices -l >&2
+  exit 1
+fi
 
 if ! adb shell run-as "$APP_ID" ls files/gymdata/logs >/dev/null 2>&1; then
   echo "ERROR: cannot read $APP_ID's files (not a debuggable build, or no logs yet)." >&2

@@ -21,6 +21,9 @@ local.properties
 /artifacts/
 gymdata-backup-*.tar
 /backups/
+# Claude Code per-machine permissions. .claude/settings.json, hooks/ and skills/ ARE tracked
+# (CONVENTIONS.md#claude-code-data-guard-hook).
+/.claude/settings.local.json
 # Smoke-test artifacts (CONVENTIONS.md#release-minify): signed release APK rebuilt
 # on demand, never committed.
 app-release-smoke.apk*

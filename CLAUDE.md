@@ -17,6 +17,10 @@ This file is the entry point for AI tooling. The details of the project live in 
 > `com.android.test` / baseline-profile / macrobenchmark run (those set
 > `uninstall_after_test: true`), a factory-reset-ish `cmd package` call, or a wipe by the OS
 > **destroys it permanently**. This has already happened once and cost the user real data.
+> A Claude Code `PreToolUse` hook (`.claude/hooks/guard-device-data.sh`) turns those commands
+> into a confirmation prompt for the user — take and verify the backup below *before* issuing
+> one, and never work around the prompt. See
+> [CONVENTIONS.md#claude-code-data-guard-hook](docs/CONVENTIONS.md#claude-code-data-guard-hook).
 >
 > **Standard way to build+install the debug build: run [`scripts/install-debug.sh`](scripts/install-debug.sh).**
 > This is the prescribed procedure for "build/install the latest version" requests — it checks
@@ -108,6 +112,11 @@ See [docs/CONVENTIONS.md](docs/CONVENTIONS.md) for the complete set. The ones th
 - `AutoSaveTextField` requires the `DisposableEffect.onDispose { pendingSave?.let(onSave) }` flush; without it, fast back navigation loses text.
 - `StopwatchService.ACTION_START` must call `handler.removeCallbacks(tickRunnable)` before `postDelayed`.
 - Gradle wrapper jar was copied from `~/.gradle/caches/` — there's no system Gradle.
+
+## Claude Code tooling (`.claude/`)
+
+- **Skills**: `/install` (wraps `install-debug.sh`, finds the phone), `/crash` (pull-logs + diagnosis), `/fase` (version bump + CHANGELOG + tests + `Phase N` commit).
+- **Data-guard hook** (`.claude/hooks/guard-device-data.sh`, wired in `.claude/settings.json`): forces a user confirmation before `pm uninstall/clear`, `adb uninstall`, hand-rolled `adb install` / `gradlew install*`, instrumented tests and baseline-profile runs — even when a permission rule would allow them. See [CONVENTIONS.md](docs/CONVENTIONS.md#claude-code-data-guard-hook).
 
 ## Working conventions
 
