@@ -952,6 +952,28 @@ Rules:
 - `scripts/install-debug.sh` stamps the installed version into the pre-install backup
   filename, so a backup tar says which app build produced it.
 
+## Claude Code data-guard hook
+
+The CLAUDE.md backup banner is text, so it relies on the assistant obeying it, and
+`.claude/settings.local.json` allows `adb shell *` without a prompt (so `adb shell pm clear`
+would run silently). `.claude/hooks/guard-device-data.sh` is a `PreToolUse` hook on Bash that
+returns `permissionDecision: "ask"` for every command pattern that can wipe `gymdata/` or
+skip the backup. Since the harness enforces it, it overrides allow rules. It uses "ask"
+rather than "deny" because the baseline-profile script legitimately uninstalls; the user
+confirms after taking a backup. Blessed paths (`scripts/install-debug.sh`,
+`scripts/pull-logs.sh`, the backup `run-as … tar -cf`) don't match. When adding a new
+destructive script, add its name to the hook. To test it, pipe
+`{"tool_input":{"command":"…"}}` into the script.
+
+Not a git hook: git only runs on git events and never sees an `adb` command, so the guard
+is run by the Claude Code harness on tool calls (wired in the tracked `.claude/settings.json`).
+It only covers Claude's commands — one typed by hand in a terminal never reaches it. The
+regexes match the whole command string, so lookalikes (`grep -rn "pm clear" docs/`,
+`adb logcat | grep uninstall`) also prompt; an accepted cost of erring on the safe side.
+
+Both device scripts refuse to guess when more than one device is attached (phone + emulator,
+USB + Wi-Fi): they list the devices and ask for `ANDROID_SERIAL=<serial>`.
+
 ## Commits
 
 One phase, one commit: the CHANGELOG entry, the version bump, the code, the tests and

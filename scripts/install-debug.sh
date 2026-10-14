@@ -20,6 +20,13 @@ if ! adb devices | awk 'NR>1 && $2=="device" {found=1} END {exit !found}'; then
   echo "ERROR: no device in 'device' state. Is it connected and authorized (adb devices)?" >&2
   exit 1
 fi
+# Several devices (e.g. phone + an emulator, or USB + Wi-Fi) make every bare adb call
+# fail with "more than one device". Pick one with ANDROID_SERIAL=<serial> (adb honors it).
+if [ -z "${ANDROID_SERIAL:-}" ] && [ "$(adb devices | awk 'NR>1 && $2=="device"' | wc -l)" -gt 1 ]; then
+  echo "ERROR: more than one device connected — re-run with ANDROID_SERIAL=<serial>:" >&2
+  adb devices -l >&2
+  exit 1
+fi
 adb wait-for-device
 
 # JDK 21 is required (the machine-default JDK 25 breaks Gradle). Honor an explicit
