@@ -69,6 +69,7 @@ fun OptionsScreen(
     onNavigateToScaleDebug: () -> Unit = {},
     onNavigateToPolarDebug: () -> Unit = {},
     onNavigateToSummaryPreview: () -> Unit = {},
+    onNavigateToLogs: () -> Unit = {},
     viewModel: OptionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -129,6 +130,7 @@ fun OptionsScreen(
                 onSendDebugEcg = viewModel::sendDebugEcg,
                 onRunPolarSelfTest = viewModel::runPolarSelfTest,
                 onSummaryPreviewClick = onNavigateToSummaryPreview,
+                onLogsClick = onNavigateToLogs,
             )
         }
     }
@@ -546,6 +548,7 @@ private fun DebugSection(
     onSendDebugEcg: () -> Unit,
     onRunPolarSelfTest: () -> Unit,
     onSummaryPreviewClick: () -> Unit,
+    onLogsClick: () -> Unit,
 ) {
     val configured = uiState.syncServerUrl.isNotBlank() && uiState.syncBearerToken.isNotBlank()
     Card(
@@ -564,6 +567,23 @@ private fun DebugSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            androidx.compose.material3.HorizontalDivider()
+
+            // Crash reports + app.log, readable and shareable without adb.
+            Text(
+                "Crash reports and the event log, to read or share.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onLogsClick, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "LOGS & CRASHES",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+            }
 
             androidx.compose.material3.HorizontalDivider()
 

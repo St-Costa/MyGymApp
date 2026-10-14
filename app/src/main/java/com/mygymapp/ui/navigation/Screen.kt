@@ -72,4 +72,5 @@ sealed class Screen(val route: String) {
     data object PolarDebug : Screen("polar_debug")
     data object SessionSummaryPreview : Screen("session_summary_preview")
     data object Options : Screen("options")
+    data object Logs : Screen("logs")
 }

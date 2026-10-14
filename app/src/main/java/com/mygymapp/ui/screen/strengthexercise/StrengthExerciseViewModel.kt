@@ -13,6 +13,7 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.util.Breadcrumbs
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import com.mygymapp.ui.screen.exercise.mergeExitSets
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -250,18 +251,22 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     fun updateReps(setIndex: Int, reps: Int) {
+        crumb("set ${setIndex + 1} reps → $reps", key = "reps.$setIndex")
         updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true) }
     }
 
     fun updateWeight(setIndex: Int, weight: Double) {
+        crumb("set ${setIndex + 1} weight → $weight", key = "weight.$setIndex")
         updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true, weightTouched = true) }
     }
 
     fun confirmReps(setIndex: Int) {
+        crumb("set ${setIndex + 1} reps confirmed")
         updateSet(setIndex) { it.copy(repsModified = true, repsTouched = true) }
     }
 
     fun confirmWeight(setIndex: Int) {
+        crumb("set ${setIndex + 1} weight confirmed")
         updateSet(setIndex) { it.copy(weightModified = true, weightTouched = true) }
     }
 
@@ -339,6 +344,7 @@ class StrengthExerciseViewModel @Inject constructor(
         // taken as done too and saved as-is. Tapping nothing means the exercise was not
         // performed and closes as completedEmpty (skipped styling; tonnage math skips it).
         val anyTouched = sets.any { it.repsTouched || it.weightTouched }
+        crumb("complete $exerciseId (touched=$anyTouched, sets=${sets.size})")
         markCompletionAndSave {
             if (session != null) {
                 val builtSets = buildStrengthSets(sets, session.date)
@@ -375,6 +381,7 @@ class StrengthExerciseViewModel @Inject constructor(
      * eseguito"), so a slot locked by an earlier accidental touch stays recoverable.
      */
     fun switchExercise(newExerciseId: String) {
+        crumb("switch $exerciseId → $newExerciseId")
         viewModelScope.launch {
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
             val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
@@ -399,6 +406,7 @@ class StrengthExerciseViewModel @Inject constructor(
         // lock the "Switch exercise" slot (see its KDoc).
         val sets = _uiState.value.sets
         val session = currentSession
+        crumb("exit without completing $exerciseId")
         val entrySets = session?.exercises?.find { it.exerciseId == exerciseId }?.sets
             ?.filterIsInstance<ExerciseSet.Strength>() ?: emptyList()
         clearScope.launch {
@@ -418,6 +426,9 @@ class StrengthExerciseViewModel @Inject constructor(
             clearScope.cancel()
         }
     }
+
+    private fun crumb(message: String, key: String? = null) =
+        Breadcrumbs.add("strength", message, key?.let { "strength.$it" })
 
     private fun updateSet(index: Int, transform: (StrengthSetUi) -> StrengthSetUi) {
         val sets = _uiState.value.sets.toMutableList()

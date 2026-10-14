@@ -747,6 +747,40 @@ Traversing `history/` for these: use `WorkoutRepository.historyMonthDirs()` / `h
 - **Re-saving a session with a changed `date` moves the file**: `WorkoutRepository.save` snapshots the pre-existing `_*_id.md` file BEFORE writing, then deletes the stale path and removes it from the exercise index — otherwise the orphan double-counts tonnage/history.
 - Kotlin gotcha this work surfaced: **`/*` inside a `/** */` KDoc opens a nested block comment** (Kotlin nests them), so writing `_sync/*.yml` in a doc comment un-closes the comment and fails compilation. Spell paths without the glob (`sync ledgers`) in KDoc.
 
+## Crash reports & action trail
+
+Android's own crash records (logcat crash buffer, DropBox, `ApplicationExitInfo`) rotate
+away within days — a crash from last week is simply gone. So the app keeps its own, in
+`gymdata/logs/` ([STORAGE.md](STORAGE.md#root-layout)), readable on the phone from
+Options → Debug → **LOGS & CRASHES** (and shareable as a file via the `${applicationId}.logs`
+FileProvider, scoped to `gymdata/logs/` only — never widen it). From a PC: `scripts/pull-logs.sh` copies
+`gymdata/logs/` to `backups/logs/<timestamp>/` (read-only on the device; debuggable build).
+
+- **`CrashReporter.install(this)` runs before `super.onCreate()`** in `MyGymApp`: no DI, so a
+  crash while Hilt builds the graph is caught too. On any uncaught exception (coroutines
+  included) it writes `crashes/crash-*.txt` — stack trace, app/device, thread, current
+  screen, the action trail — plus an `E` line in `app.log`, then chains to the platform
+  handler so the process still dies normally. The report uses a plain `writeText`, *not*
+  `AtomicFiles`: inside a dying process the shortest path is the one likeliest to finish.
+- **Boot pass** (`CrashReporter.recordPreviousExits`, API 30+): reads Android's
+  `ApplicationExitInfo` history newer than `logs/.exit_info_seen`. Every exit becomes one
+  `app.log` line; ANR / native crash / OOM / system kill (`ExitReasons.reportKind`) also get a
+  report file (ANR with the thread dump, capped at 512 KB). Those are the deaths the
+  in-process handler can't see — and their action trail is lost with the process.
+- **Action trail = `Breadcrumbs`** (global object, memory only, 200 entries). Record *key
+  actions*: navigation (MainActivity's `OnDestinationChangedListener`, real ids substituted),
+  set edits / confirm / complete / switch / exit in the four exercise VMs, BLE state, and every
+  `AppLogger` call. Anything that fires repeatedly (picker ticks) **must pass a `key`**: a run
+  of same-key crumbs collapses into the latest one, so scrolling a weight picker leaves one
+  line, not fifty. Never per-sample data (HR, ECG).
+- **`AppLogger` levels**: `d` = logcat + trail only; `i`/`w`/`e` = logcat + `app.log` + trail;
+  `w`/`e` with a throwable write the stack trace as indented continuation lines, which
+  `LogRetention` keeps grouped with their header when pruning (90 days — same horizon as crash
+  reports — then oldest-first down to half of the 5 MB safety cap). New `Log.w/e` in app code should go through `AppLogger` so they
+  survive.
+- `logs/` is diagnostics: excluded from sync, the full-store backup and restore
+  (`RestorePathPolicy`).
+
 ## HRV baseline is derived from the `.md` files, never stored on the side
 
 The rolling HRV-readiness baseline (14 LnRMSSD samples for the z-score, 7 resting-HR

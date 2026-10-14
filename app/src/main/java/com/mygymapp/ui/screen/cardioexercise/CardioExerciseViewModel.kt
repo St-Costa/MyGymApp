@@ -10,6 +10,7 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.util.Breadcrumbs
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -156,6 +157,7 @@ class CardioExerciseViewModel @Inject constructor(
 
     fun startBlock() {
         if (_uiState.value.isBlockRunning) return
+        crumb("block start")
         blockStartedAt = LocalDateTime.now()
         hrSum = 0
         hrSamples = 0
@@ -195,6 +197,7 @@ class CardioExerciseViewModel @Inject constructor(
      */
     fun stopBlock() {
         if (!_uiState.value.isBlockRunning) return
+        crumb("block stop")
         val block = closeCurrentBlock()
         timerJob?.cancel()
         timerJob = null
@@ -258,6 +261,7 @@ class CardioExerciseViewModel @Inject constructor(
         // unopened exercise rather than recording empty cardio as performed work, same
         // reasoning as StretchExerciseViewModel's anyDone check.
         val anyBlock = finalBlocks.isNotEmpty()
+        crumb("complete $exerciseId (blocks=${finalBlocks.size}, wasRunning=$running)")
         markCompletionAndSave {
             val session = currentSession
             if (session != null) {
@@ -275,6 +279,8 @@ class CardioExerciseViewModel @Inject constructor(
         }
     }
 
+    private fun crumb(message: String) = Breadcrumbs.add("cardio", message)
+
     override fun onCleared() {
         timerJob?.cancel()
         hrCollectJob?.cancel()
@@ -286,6 +292,7 @@ class CardioExerciseViewModel @Inject constructor(
         // block — the user may come back and resume it (see init{}'s closedBlocks handling for
         // the case where they never do and the process dies instead).
         val running = _uiState.value.isBlockRunning
+        crumb("exit without completing $exerciseId (blockRunning=$running)")
         val blocksToSave = if (running) {
             _uiState.value.completedBlocks + ExerciseSet.Cardio(
                 startedAt = (blockStartedAt ?: LocalDateTime.now()).toString(),

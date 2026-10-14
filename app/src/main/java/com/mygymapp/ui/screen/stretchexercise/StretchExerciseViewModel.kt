@@ -8,6 +8,7 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.util.Breadcrumbs
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -108,6 +109,7 @@ class StretchExerciseViewModel @Inject constructor(
     }
 
     fun toggleSetDone(setIndex: Int) {
+        crumb("set ${setIndex + 1} done")
         val sets = _uiState.value.sets.toMutableList()
         if (setIndex in sets.indices && !sets[setIndex].done) {
             sets[setIndex] = sets[setIndex].copy(done = true)
@@ -119,6 +121,7 @@ class StretchExerciseViewModel @Inject constructor(
 
     fun toggleStopwatch() {
         val wasRunning = _uiState.value.isStopwatchRunning
+        crumb(if (wasRunning) "stopwatch stop" else "stopwatch start")
         if (wasRunning) {
             timerJob?.cancel()
             timerJob = null
@@ -175,6 +178,7 @@ class StretchExerciseViewModel @Inject constructor(
         // A stretch set only becomes `done` via an explicit toggle. Marking at least one set
         // done is the signal the exercise was performed.
         val anyDone = sets.any { it.done }
+        crumb("complete $exerciseId (anyDone=$anyDone)")
         markCompletionAndSave {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
@@ -196,6 +200,7 @@ class StretchExerciseViewModel @Inject constructor(
     val switchedExerciseId: StateFlow<String?> = _switchedExerciseId
 
     fun switchExercise(newExerciseId: String) {
+        crumb("switch $exerciseId → $newExerciseId")
         viewModelScope.launch {
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
             val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
@@ -214,12 +219,15 @@ class StretchExerciseViewModel @Inject constructor(
         }
     }
 
+    private fun crumb(message: String) = Breadcrumbs.add("stretch", message)
+
     override fun onCleared() {
         timerJob?.cancel()
         super.onCleared()
     }
 
     override fun saveProgressOnExit() {
+        crumb("exit without completing $exerciseId")
         val sets = _uiState.value.sets
         val session = currentSession
         clearScope.launch {

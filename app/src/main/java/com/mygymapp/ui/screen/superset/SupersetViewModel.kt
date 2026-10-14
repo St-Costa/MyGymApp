@@ -14,6 +14,7 @@ import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
+import com.mygymapp.data.util.Breadcrumbs
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import com.mygymapp.ui.screen.exercise.mergeExitSets
 import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
@@ -298,18 +299,22 @@ class SupersetViewModel @Inject constructor(
     }
 
     fun updateReps(listIndex: Int, reps: Int) {
+        crumb("row $listIndex reps → $reps", key = "reps.$listIndex")
         updateSetAt(listIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true) }
     }
 
     fun updateWeight(listIndex: Int, weight: Double) {
+        crumb("row $listIndex weight → $weight", key = "weight.$listIndex")
         updateSetAt(listIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true, weightTouched = true) }
     }
 
     fun confirmReps(listIndex: Int) {
+        crumb("row $listIndex reps confirmed")
         updateSetAt(listIndex) { it.copy(repsModified = true, repsTouched = true) }
     }
 
     fun confirmWeight(listIndex: Int) {
+        crumb("row $listIndex weight confirmed")
         updateSetAt(listIndex) { it.copy(weightModified = true, weightTouched = true) }
     }
 
@@ -340,8 +345,12 @@ class SupersetViewModel @Inject constructor(
     }
 
     fun toggleSetDone(listIndex: Int) {
+        crumb("row $listIndex done toggled")
         updateSetAt(listIndex) { it.copy(done = !it.done) }
     }
+
+    private fun crumb(message: String, key: String? = null) =
+        Breadcrumbs.add("superset", message, key?.let { "superset.$it" })
 
     private fun updateSetAt(listIndex: Int, transform: (SupersetSetUi) -> SupersetSetUi) {
         val sets = _uiState.value.sets.toMutableList()
@@ -375,6 +384,7 @@ class SupersetViewModel @Inject constructor(
     fun completeSuperset() {
         val sets = _uiState.value.sets
         val session = currentSession
+        crumb("complete superset $exerciseIds")
         markCompletionAndSave {
             if (session != null) {
                 session.buildUpdatedSession(sets, completed = true)
@@ -405,6 +415,7 @@ class SupersetViewModel @Inject constructor(
     val switchedMember: StateFlow<Pair<Int, String>?> = _switchedMember
 
     fun switchExerciseAt(memberIndex: Int, newExerciseId: String) {
+        crumb("switch member $memberIndex → $newExerciseId")
         viewModelScope.launch {
             val oldExerciseId = exerciseIds.getOrNull(memberIndex) ?: return@launch
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
@@ -437,6 +448,7 @@ class SupersetViewModel @Inject constructor(
     override fun saveProgressOnExit() {
         val sets = _uiState.value.sets
         val session = currentSession
+        crumb("exit without completing superset $exerciseIds")
         clearScope.launch {
             if (session != null) {
                 session.buildUpdatedSession(sets, completed = false)

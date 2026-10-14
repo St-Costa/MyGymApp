@@ -431,6 +431,13 @@ fun AppNavigation(navController: NavHostController) {
                 onNavigateToScaleDebug = { navController.navigate(Screen.ScaleDebug.route) },
                 onNavigateToPolarDebug = { navController.navigate(Screen.PolarDebug.route) },
                 onNavigateToSummaryPreview = { navController.navigate(Screen.SessionSummaryPreview.route) },
+                onNavigateToLogs = { navController.navigate(Screen.Logs.route) },
+            )
+        }
+
+        composable(Screen.Logs.route) {
+            com.mygymapp.ui.screen.logs.LogsScreen(
+                onBack = { navController.popBackStack() },
             )
         }
 

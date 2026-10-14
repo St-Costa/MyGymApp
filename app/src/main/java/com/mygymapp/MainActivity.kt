@@ -8,7 +8,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.mygymapp.data.util.Breadcrumbs
+import com.mygymapp.data.util.describeRoute
 import com.mygymapp.ui.navigation.AppNavigation
 import com.mygymapp.ui.theme.MyGymAppTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -33,6 +37,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyGymAppTheme {
                 val navController = rememberNavController()
+                // Every destination change goes into the crash-report action trail, with the
+                // real ids substituted into the route pattern (see Breadcrumbs).
+                DisposableEffect(navController) {
+                    val listener = NavController.OnDestinationChangedListener { _, destination, args ->
+                        val values = destination.arguments.keys.associateWith { key ->
+                            @Suppress("DEPRECATION")
+                            args?.get(key)
+                        }
+                        Breadcrumbs.onScreen(describeRoute(destination.route, values))
+                    }
+                    navController.addOnDestinationChangedListener(listener)
+                    onDispose { navController.removeOnDestinationChangedListener(listener) }
+                }
                 AppNavigation(navController = navController)
             }
         }
