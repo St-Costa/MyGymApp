@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
@@ -221,7 +222,13 @@ fun RoutineEditScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
-                Text("Add", modifier = Modifier.padding(start = 8.dp))
+                Text(
+                    "ADD",
+                    modifier = Modifier.padding(start = 8.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             Spacer(modifier = Modifier.height(80.dp))

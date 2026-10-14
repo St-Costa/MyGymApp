@@ -231,7 +231,7 @@ fun SessionProgressScreen(
                     onClick = onDone,
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally).padding(top = 8.dp),
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText("Done")
+                    com.mygymapp.ui.components.ActionButtonText("DONE")
                 }
             }
         }

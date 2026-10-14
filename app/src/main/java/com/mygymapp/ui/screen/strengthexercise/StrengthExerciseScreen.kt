@@ -270,7 +270,7 @@ fun StrengthExerciseScreen(
                         )
                     },
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Complete" else "Skip")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "COMPLETE" else "SKIP")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

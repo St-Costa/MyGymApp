@@ -46,6 +46,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -422,7 +423,12 @@ private fun ColumnScope.ConnectedContent(
         )
         Spacer(modifier = Modifier.height(4.dp))
         OutlinedButton(onClick = onResumeLiveHr) {
-            Text("Resume live BPM")
+            Text(
+                "RESUME LIVE BPM",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+            )
         }
     }
 
@@ -478,12 +484,22 @@ private fun ColumnScope.ConnectedContent(
                         onBatteryReset()
                     },
                 ) {
-                    Text("Yes, replaced")
+                    Text(
+                        "YES, REPLACED",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBatteryDialog = false }) {
-                    Text("No")
+                    Text(
+                        "NO",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             },
         )
@@ -515,7 +531,12 @@ private fun ColumnScope.ConnectedContent(
     Spacer(modifier = Modifier.weight(1f))
 
     OutlinedButton(onClick = onDisconnect) {
-        Text("Disconnect")
+        Text(
+            "DISCONNECT",
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+        )
     }
     Spacer(modifier = Modifier.height(16.dp))
 }

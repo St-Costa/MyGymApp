@@ -209,7 +209,7 @@ fun SupersetScreen(
                                 MaterialTheme.colorScheme.secondary,
                         ),
                     ) {
-                        com.mygymapp.ui.components.ActionButtonText(if (uiState.isStopwatchRunning) "Stop" else "Start")
+                        com.mygymapp.ui.components.ActionButtonText(if (uiState.isStopwatchRunning) "STOP" else "START")
                     }
                 }
 
@@ -279,7 +279,7 @@ fun SupersetScreen(
                         )
                     },
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "Complete" else "Skip")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "COMPLETE" else "SKIP")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

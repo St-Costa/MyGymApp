@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.data.model.ExerciseType
@@ -76,9 +77,12 @@ fun ExerciseListScreen(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text(
-                        "New",
+                        "NEW",
                         modifier = Modifier.padding(start = 8.dp),
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
                     )
                 }
             }
