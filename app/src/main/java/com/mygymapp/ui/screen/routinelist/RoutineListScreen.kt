@@ -68,9 +68,12 @@ fun RoutineListScreen(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Text(
-                    "New",
+                    "NEW",
                     modifier = Modifier.padding(start = 8.dp),
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
                 )
             }
         },

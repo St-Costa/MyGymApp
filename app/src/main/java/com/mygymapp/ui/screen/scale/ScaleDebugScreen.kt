@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -96,17 +97,32 @@ fun ScaleDebugScreen(
             when (uiState.connectionState) {
                 ScaleConnectionState.DISCONNECTED -> {
                     Button(onClick = { startScanWithPermissionCheck() }) {
-                        Text("Start")
+                        Text(
+                            "START",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
+                        )
                     }
                 }
                 ScaleConnectionState.SCANNING -> {
                     Button(onClick = { viewModel.stopScan() }) {
-                        Text("Stop")
+                        Text(
+                            "STOP",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
+                        )
                     }
                 }
                 ScaleConnectionState.CONNECTING, ScaleConnectionState.CONNECTED -> {
                     Button(onClick = { viewModel.disconnect() }) {
-                        Text("Disconnect")
+                        Text(
+                            "DISCONNECT",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
+                        )
                     }
                 }
             }
@@ -122,11 +138,21 @@ fun ScaleDebugScreen(
             }
 
             OutlinedButton(onClick = { viewModel.forgetKnownScale() }) {
-                Text("Forget")
+                Text(
+                    "FORGET",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             OutlinedButton(onClick = { viewModel.seedDebugWeighIns() }) {
-                Text("Debug weigh-ins")
+                Text(
+                    "DEBUG WEIGH-INS",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             Text("Found devices:")
@@ -142,7 +168,12 @@ fun ScaleDebugScreen(
                             Text(device.name ?: "(senza nome)")
                             Text(device.address)
                             Button(onClick = { viewModel.connectToDevice(device.address) }) {
-                                Text("Connect")
+                                Text(
+                                    "CONNECT",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    softWrap = false,
+                                )
                             }
                         }
                     }

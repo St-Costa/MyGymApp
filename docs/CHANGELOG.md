@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 182 — Pulsanti in maiuscolo con anti-overflow
+
+Tutti i testi dei pulsanti (Button/OutlinedButton/TextButton/FAB, inclusi dialoghi) ora in CAPS: `ActionButtonText` fa `uppercase()` + `maxLines = 1` con ellissi (punto unico per i pulsanti primari), tutti gli altri `Text("...")` nei pulsanti resi maiuscoli con gli stessi tre parametri anti-sbordo. Le FilterChip restano escluse (selettori, non azioni). `CONVENTIONS.md` aggiornato. Suite verde (JDK 21).
+
 ## Phase 181 — Backlog scritto: `docs/BACKLOG.md`
 
 Lista del lavoro noto-pendente (check device, merge restore, major dipendenze, split collector, ricorrenti) con motivi e punti di partenza, così le analisi future la trovano invece di riscoprirla. Linkata da `CLAUDE.md` e `README.md`. Suite verde (JDK 21).

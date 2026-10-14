@@ -187,16 +187,25 @@ Use `ExerciseType.accentColor()` from [`theme/Color.kt`](../app/src/main/java/co
 
 ## Primary action buttons
 
-The big workout-flow buttons (Completa/Salta, Inizia/Termina, Start/Stop, Registra,
-Fatto) and the three server buttons in Options (Verifica backup, Invia, Ripristina) are
-deliberately **narrower than full width**: `Modifier.fillMaxWidth(0.85f)` centered with
+The big workout-flow buttons (COMPLETE/SKIP, START/STOP, FINISH, DONE) and the three
+server buttons in Options (VERIFY BACKUP, SEND, RESTORE) are deliberately **narrower
+than full width**: `Modifier.fillMaxWidth(0.85f)` centered with
 `.align(Alignment.CenterHorizontally)` in a `Column` (or a centering `Box` wrapper inside
 a `LazyColumn` item, where there is no `ColumnScope` — see the register button in
 `ActiveRoutineScreen`). Their label is
 [`ActionButtonText`](../app/src/main/java/com/mygymapp/ui/components/CommonComposables.kt)
 (`titleMedium` copied to 18sp `ExtraBold`), not a bare `Text` — don't inline the style.
-Secondary/debug buttons (Options BLE/test buttons, routine-editor Add) stay full-width
-with the default label style.
+
+## Button labels: all caps, single-line ellipsis
+
+Every button label in the app (Button, OutlinedButton, TextButton, FAB) is UPPERCASE
+and single-line with `maxLines = 1, overflow = TextOverflow.Ellipsis, softWrap = false`,
+so a wider caps string truncates instead of overflowing the button. `ActionButtonText`
+applies `text.uppercase()` defensively plus the ellipsis — call sites still pass
+already-uppercase literals. Plain `Text("...")` labels inside buttons carry the same
+three truncation params explicitly. FilterChips are excluded (selectors, not actions;
+their labels include user data like bodypart names). Secondary/debug buttons (Options
+BLE/test buttons, routine-editor ADD) stay full-width with the default label style.
 
 ## Typed ID prefixes
 

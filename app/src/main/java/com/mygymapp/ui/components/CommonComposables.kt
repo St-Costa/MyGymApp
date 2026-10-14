@@ -22,24 +22,30 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
 /**
- * Testo dei pulsanti azione primari (Completa/Salta, Inizia/Termina, Registra, ...):
+ * Testo dei pulsanti azione primari (COMPLETE/SKIP, START/STOP, SEND, ...):
  * leggermente più grande del default dei Button (labelLarge 14sp) e ExtraBold.
+ * Sempre maiuscolo e su singola riga con ellissi — i testi maiuscoli sono più
+ * larghi, quindi il troncamento garantisce che non sbordino dal Button.
  */
 @Composable
 fun ActionButtonText(text: String) {
     Text(
-        text = text,
+        text = text.uppercase(),
         style = MaterialTheme.typography.titleMedium.copy(
             fontWeight = FontWeight.ExtraBold,
             fontSize = 18.sp,
         ),
         textAlign = TextAlign.Center,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        softWrap = false,
     )
 }
 
@@ -85,11 +91,24 @@ fun DeleteConfirmationDialog(
         text = { Text("\"$itemName\" will be permanently deleted.") },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
+                Text(
+                    "DELETE",
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) {
+                Text(
+                    "CANCEL",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+            }
         },
     )
 }

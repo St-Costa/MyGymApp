@@ -269,7 +269,7 @@ fun ActiveRoutineScreen(
                                 .fillMaxWidth(0.85f)
                                 .padding(top = 8.dp, bottom = 8.dp),
                         ) {
-                            com.mygymapp.ui.components.ActionButtonText("Finish")
+                            com.mygymapp.ui.components.ActionButtonText("FINISH")
                         }
                     }
                 }
@@ -363,7 +363,14 @@ private fun SessionRpeDialog(
             androidx.compose.material3.TextButton(
                 enabled = selected != null,
                 onClick = { selected?.let { onSubmit(it) } },
-            ) { Text("OK") }
+            ) {
+                Text(
+                    "OK",
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+            }
         },
     )
 }
@@ -402,7 +409,12 @@ private fun PowerliftingWeekOverlay(onDismiss: () -> Unit) {
                         contentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                 ) {
-                    Text("OK")
+                    Text(
+                        "OK",
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             }
         }

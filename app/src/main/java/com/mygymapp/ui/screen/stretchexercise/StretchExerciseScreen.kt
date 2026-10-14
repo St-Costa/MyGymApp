@@ -181,7 +181,7 @@ fun StretchExerciseScreen(
                     ),
                 ) {
                     com.mygymapp.ui.components.ActionButtonText(
-                        if (uiState.isStopwatchRunning) "Stop" else "Start"
+                        if (uiState.isStopwatchRunning) "STOP" else "START"
                     )
                 }
 
@@ -231,7 +231,7 @@ fun StretchExerciseScreen(
                         )
                     },
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (anyDone) "Complete" else "Skip")
+                    com.mygymapp.ui.components.ActionButtonText(if (anyDone) "COMPLETE" else "SKIP")
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))

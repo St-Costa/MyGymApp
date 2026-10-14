@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -336,7 +337,12 @@ private fun ServerSettingsSection(
                     if (uiState.syncIsTestingConnection) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Check")
+                        Text(
+                            "CHECK",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
+                        )
                     }
                 }
                 when (uiState.syncConnectionTestResult) {
@@ -368,7 +374,7 @@ private fun ServerSettingsSection(
                 if (uiState.backupVerifyRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    com.mygymapp.ui.components.ActionButtonText("Verify backup")
+                    com.mygymapp.ui.components.ActionButtonText("VERIFY BACKUP")
                 }
             }
             if (uiState.backupVerifyRunning || uiState.backupVerifyError != null || uiState.backupVerifyReport != null) {
@@ -426,9 +432,9 @@ private fun ServerSettingsSection(
                 modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
             ) {
                 if (uiState.syncIsResyncing) {
-                    com.mygymapp.ui.components.ActionButtonText("Sending… ${(uiState.syncResyncProgress * 100).toInt()}%")
+                    com.mygymapp.ui.components.ActionButtonText("SENDING… ${(uiState.syncResyncProgress * 100).toInt()}%")
                 } else {
-                    com.mygymapp.ui.components.ActionButtonText("Send")
+                    com.mygymapp.ui.components.ActionButtonText("SEND")
                 }
             }
             if (uiState.syncIsResyncing) {
@@ -448,7 +454,7 @@ private fun ServerSettingsSection(
                     enabled = !uiState.syncIsRestoring,
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
                 ) {
-                    com.mygymapp.ui.components.ActionButtonText(if (uiState.syncIsRestoring) "Restoring…" else "Restore")
+                    com.mygymapp.ui.components.ActionButtonText(if (uiState.syncIsRestoring) "RESTORING…" else "RESTORE")
                 }
                 uiState.syncRestoreResult?.let {
                     Text(
@@ -475,10 +481,24 @@ private fun ServerSettingsSection(
                 Button(onClick = {
                     showRestoreConfirm = false
                     onRestoreFromServer()
-                }) { Text("Restore") }
+                }) {
+                    Text(
+                        "RESTORE",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
+                }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+                OutlinedButton(onClick = { showRestoreConfirm = false }) {
+                    Text(
+                        "CANCEL",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
+                }
             },
         )
     }
@@ -553,7 +573,12 @@ private fun DebugSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onScaleDebugClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Scale BLE")
+                Text(
+                    "SCALE BLE",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -567,7 +592,12 @@ private fun DebugSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onPolarDebugClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Polar BLE")
+                Text(
+                    "POLAR BLE",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -581,7 +611,12 @@ private fun DebugSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = onSummaryPreviewClick, modifier = Modifier.fillMaxWidth()) {
-                Text("Summary preview")
+                Text(
+                    "SUMMARY PREVIEW",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             androidx.compose.material3.HorizontalDivider()
@@ -604,7 +639,12 @@ private fun DebugSection(
                 if (uiState.stepDebugRunning) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("24h steps")
+                    Text(
+                        "24H STEPS",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             }
             if (uiState.stepDebugResult != null) {
@@ -632,9 +672,19 @@ private fun DebugSection(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.ecgDebugRecording) {
-                    Text("ECG… ${uiState.ecgDebugSecondsLeft}s")
+                    Text(
+                        "ECG… ${uiState.ecgDebugSecondsLeft}S",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 } else {
-                    Text("Debug ECG")
+                    Text(
+                        "DEBUG ECG",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             }
             if (uiState.ecgDebugResult != null) {
@@ -664,12 +714,27 @@ private fun DebugSection(
             ) {
                 if (uiState.polarSelfTestRunning) {
                     if (uiState.polarSelfTestSearching) {
-                        Text("Searching… ${uiState.polarSelfTestSecondsLeft}s")
+                        Text(
+                            "SEARCHING… ${uiState.polarSelfTestSecondsLeft}S",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
+                        )
                     } else {
-                        Text("Testing… ${uiState.polarSelfTestSecondsLeft}s")
+                        Text(
+                            "TESTING… ${uiState.polarSelfTestSecondsLeft}S",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            softWrap = false,
+                        )
                     }
                 } else {
-                    Text("Polar self-test")
+                    Text(
+                        "POLAR SELF-TEST",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             }
             if (uiState.polarSelfTestResult != null) {
@@ -716,7 +781,12 @@ private fun PowerliftingSection(
 
             if (anchorMonday != null) {
                 OutlinedButton(onClick = onClear, modifier = Modifier.fillMaxWidth()) {
-                    Text("Disable notice")
+                    Text(
+                        "DISABLE NOTICE",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             }
         }

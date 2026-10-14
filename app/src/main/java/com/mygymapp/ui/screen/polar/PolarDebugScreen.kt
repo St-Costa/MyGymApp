@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -108,25 +109,45 @@ fun PolarDebugScreen(
 
             if (uiState.isScanning) {
                 Button(onClick = { viewModel.stopScan() }) {
-                    Text("Stop")
+                    Text(
+                        "STOP",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 }
             } else {
                 when (uiState.connectionState) {
                     ConnectionState.CONNECTING, ConnectionState.CONNECTED -> {
                         Button(onClick = { viewModel.disconnect() }) {
-                            Text("Disconnect")
+                            Text(
+                                "DISCONNECT",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                softWrap = false,
+                            )
                         }
                     }
                     ConnectionState.DISCONNECTED -> {
                         Button(onClick = { startScanWithPermissionCheck() }) {
-                            Text("Start")
+                            Text(
+                                "START",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                softWrap = false,
+                            )
                         }
                     }
                 }
             }
 
             OutlinedButton(onClick = { viewModel.forgetKnownDevice() }) {
-                Text("Forget")
+                Text(
+                    "FORGET",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
             }
 
             Text("Found devices:")
@@ -137,7 +158,12 @@ fun PolarDebugScreen(
                             Text(device.name)
                             Text("${device.deviceId}  (RSSI ${device.rssi})")
                             Button(onClick = { viewModel.connectToDevice(device.deviceId) }) {
-                                Text("Connect")
+                                Text(
+                                    "CONNECT",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    softWrap = false,
+                                )
                             }
                         }
                     }
