@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 183 — Timer zone cardio più grandi e opachi
+
+I timer M:SS nelle bande Z1..Z5 di `HrZoneTraceChart` (schermata cardio) erano piccoli (9sp) e semi-trasparenti: ora 13sp bold bianco 100% opaco su badge nero solido (nomi zone 12sp bold opachi). Ogni badge viene ristretto alla propria banda (scala il testo se la banda è bassa) e rientrato dal bordo destro per i readout lunghi H:MM:SS — non sborda mai nella zona vicina. Suite verde (JDK 21).
+
 ## Phase 182 — Pulsanti in maiuscolo con anti-overflow
 
 Tutti i testi dei pulsanti (Button/OutlinedButton/TextButton/FAB, inclusi dialoghi) ora in CAPS: `ActionButtonText` fa `uppercase()` + `maxLines = 1` con ellissi (punto unico per i pulsanti primari), tutti gli altri `Text("...")` nei pulsanti resi maiuscoli con gli stessi tre parametri anti-sbordo. Le FilterChip restano escluse (selettori, non azioni). `CONVENTIONS.md` aggiornato. Suite verde (JDK 21).

@@ -106,27 +106,41 @@ fun HrZoneTraceChartContent(
     val belowZ1ScreenFrac = 0.5f // BELOW_Z1 band takes this fraction of its normal height
 
     val density = LocalDensity.current
+    // Zone names: fully opaque and larger than before (was 10sp at 85% alpha).
+    // Bold for legibility over the coloured bands.
     val labelPaint = remember(density) {
         Paint().apply {
-            color = Color.White.copy(alpha = 0.85f).toArgb()
-            textSize = with(density) { 10.sp.toPx() }
+            color = Color.White.toArgb()
+            textSize = with(density) { 12.sp.toPx() }
             isAntiAlias = true
+            isFakeBoldText = true
         }
     }
-    // Per-zone time-in-zone readout, sitting one line above the boundary label.
+    // Per-zone time-in-zone readout: fully opaque and larger (was 9sp at 90% alpha).
+    // Bold white over a solid black badge for maximum contrast on any band colour.
     val timerPaint = remember(density) {
         Paint().apply {
-            color = Color.White.copy(alpha = 0.9f).toArgb()
-            textSize = with(density) { 9.sp.toPx() }
+            color = Color.White.toArgb()
+            textSize = with(density) { 13.sp.toPx() }
+            isAntiAlias = true
+            isFakeBoldText = true
+        }
+    }
+    // Rounded backing for the time-in-zone text: solid black (was 45% alpha), so the
+    // white timer text reads at full contrast on every zone colour.
+    val badgePaint = remember {
+        Paint().apply {
+            color = Color.Black.toArgb()
             isAntiAlias = true
         }
     }
-    // Rounded backing for the time-in-zone text.
-    val badgePaint = remember {
-        Paint().apply {
-            color = Color.Black.copy(alpha = 0.45f).toArgb()
-            isAntiAlias = true
-        }
+    // Full-size text metrics, used to clamp each badge to its own band height so the
+    // larger text never spills into the neighbouring zone (see label loop below).
+    val fullTimerTextH = remember(density) {
+        val fm = Paint().apply {
+            textSize = with(density) { 13.sp.toPx() }
+        }.fontMetrics
+        fm.descent - fm.ascent
     }
 
     Box(
@@ -254,25 +268,57 @@ fun HrZoneTraceChartContent(
                     // Band i runs from its own lower boundary up to the next one (Z5 -> axisMax).
                     val bandLoPct = (fractions[i] * 100).toFloat()
                     val bandHiPct = if (i + 1 < fractions.size) (fractions[i + 1] * 100).toFloat() else axisMax
-                    val bandMidY = (yOf(bandLoPct) + yOf(bandHiPct)) / 2f
+                    val bandTopY = yOf(bandHiPct)
+                    val bandBottomY = yOf(bandLoPct)
+                    val bandH = (bandBottomY - bandTopY).coerceAtLeast(0f)
+                    val bandMidY = (bandTopY + bandBottomY) / 2f
                     val baseline = bandMidY + textHalfHeight
                     drawContext.canvas.nativeCanvas.drawText(zoneNames[i], labelX, baseline, labelPaint)
 
                     val minutesInZone = zoneMinutes.forZone(zoneEnums[i])
                     if (minutesInZone * 60.0 >= 1.0) {
                         val timeText = formatZoneTime(minutesInZone)
-                        val textW = timerPaint.measureText(timeText)
-                        val textX = labelX + nameW + badgeGap + badgePadH
-                        drawContext.canvas.nativeCanvas.drawRoundRect(
-                            textX - badgePadH,
-                            baseline + timerPaint.fontMetrics.ascent - badgePadV,
-                            textX + textW + badgePadH,
-                            baseline + timerPaint.fontMetrics.descent + badgePadV,
-                            badgeRadius,
-                            badgeRadius,
-                            badgePaint,
-                        )
-                        drawContext.canvas.nativeCanvas.drawText(timeText, textX, baseline, timerPaint)
+                        // Clamp the badge to its own band: if the full-size badge (text +
+                        // vertical padding) is taller than the band, shrink the timer text
+                        // for this band so it fits instead of spilling into neighbours.
+                        // A 1dp safety margin keeps the rounded corners off the band edge.
+                        val edgeMargin = 1.dp.toPx()
+                        val allowedH = (bandH - edgeMargin * 2f).coerceAtLeast(0f)
+                        val fullBadgeH = fullTimerTextH + badgePadV * 2f
+                        val scale = if (fullBadgeH > 0f) {
+                            (allowedH / fullBadgeH).coerceIn(0f, 1f)
+                        } else {
+                            1f
+                        }
+                        // Too thin to hold even a shrunk badge — name only, no timer.
+                        if (scale <= 0f || allowedH <= 0f) return@forEach
+                        val savedSize = timerPaint.textSize
+                        if (scale < 1f) timerPaint.textSize = savedSize * scale
+                        try {
+                            val textW = timerPaint.measureText(timeText)
+                            // Keep the badge inside the chart horizontally: shift left if
+                            // a long H:MM:SS readout would cross the right edge.
+                            val chartMargin = 4.dp.toPx()
+                            var textX = labelX + nameW + badgeGap + badgePadH
+                            val badgeRight = textX + textW + badgePadH
+                            val maxRight = w - chartMargin
+                            if (badgeRight > maxRight) {
+                                textX = (maxRight - textW - badgePadH)
+                                    .coerceAtLeast(labelX + nameW + badgeGap + badgePadH)
+                            }
+                            drawContext.canvas.nativeCanvas.drawRoundRect(
+                                textX - badgePadH,
+                                baseline + timerPaint.fontMetrics.ascent - badgePadV,
+                                textX + textW + badgePadH,
+                                baseline + timerPaint.fontMetrics.descent + badgePadV,
+                                badgeRadius,
+                                badgeRadius,
+                                badgePaint,
+                            )
+                            drawContext.canvas.nativeCanvas.drawText(timeText, textX, baseline, timerPaint)
+                        } finally {
+                            timerPaint.textSize = savedSize
+                        }
                     }
                 }
             }
