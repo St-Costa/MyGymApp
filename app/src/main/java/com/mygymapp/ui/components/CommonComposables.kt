@@ -1,5 +1,8 @@
 package com.mygymapp.ui.components
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,13 +12,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -113,15 +121,40 @@ fun DeleteConfirmationDialog(
     )
 }
 
+/**
+ * Round −/+ stepper: 48dp touch target (a11y minimum) with the visible circle kept at
+ * 32dp — same split as [PickerButton] in `ScrollPickerInput.kt`. The outer Box owns the
+ * single tap handler (no ripple, but the shared haptic tick); the inner circle is pure
+ * visual, so a tap can never fire twice. Semantics sit on the whole 48dp box.
+ */
 @Composable
 fun RoundStepButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        shape = CircleShape,
-        contentPadding = PaddingValues(0.dp),
-        modifier = modifier.size(32.dp),
+    val currentOnClick = rememberUpdatedState(onClick)
+    val currentPerformTick = rememberUpdatedState(rememberHapticTick())
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .semantics(mergeDescendants = true) { role = Role.Button }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = {
+                    currentPerformTick.value()
+                    currentOnClick.value()
+                },
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                .clip(CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        }
     }
 }
 

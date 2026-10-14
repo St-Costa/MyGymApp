@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -53,7 +53,7 @@ internal fun pickerButtonDescription(increase: Boolean, fieldName: String): Stri
  *
  * Behavior:
  *   - Tap (release < 1s) → haptic tick + onClick
- *   - Hold ≥ 1s → haptic tick + onLongPressRepeat fires, then again every 1s until released
+ *   - Hold ≥ 1s → haptic tick + onLongPressRepeat fires, then again every 500ms until released
  *
  * The haptic tick is the shared [performHapticTick] pulse (60 ms [Vibrator]
  * one-shot, same as the home menu tiles) — one small vibration per activation,
@@ -227,8 +227,12 @@ fun ScrollPickerInput(
             color = if (isModified) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
             textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier
-                .width(56.dp)
+                // Minimum, not fixed: short values stay centered and stable, long ones
+                // (e.g. "102.5" kg) widen the box instead of drawing under the buttons.
+                .widthIn(min = 56.dp)
                 .then(if (onConfirm != null) Modifier.clickable { onConfirm() } else Modifier),
         )
 

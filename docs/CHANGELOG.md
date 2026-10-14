@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 185 — Stepper: fix overflow profilo, numero elastico, target 48dp
+
+Revisione dei selettori −/+: i due `ScrollPickerInput` del profilo avevano `width(120.dp)` contro 152dp di contenuto (sbordavano 16dp per lato — tolto il vincolo, il wrap è esatto per costruzione); il numero ora ha `widthIn(min = 56.dp)` invece di 56dp fissi (valori lunghi come "102.5" allargano invece di finire sotto i pulsanti); `RoundStepButton` passato a target 48dp con cerchio visivo 32dp come `PickerButton` (singolo handler, haptic tick, niente doppi tap); KDoc del repeat corretta a 500ms. Suite verde (JDK 21).
+
 ## Phase 184 — Stepper `ScrollPickerInput`: − a sinistra, + a destra
 
 La Phase 150 (TalkBack) aveva scambiato i due `PickerButton` nella `Row` — + a sinistra, − a destra — mentre tutti gli altri stepper (`RoundStepButton`) sono −/+ nell'ordine giusto. Rimesso − a sinistra e + a destra con le rispettive azioni/long-press al seguito. Suite verde (JDK 21).
