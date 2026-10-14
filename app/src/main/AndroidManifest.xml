@@ -93,6 +93,18 @@
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
+        <!-- Share app.log / crash reports from Options → Debug → LOGS & CRASHES.
+             Scoped to gymdata/logs/ only (res/xml/log_file_paths.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.logs"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/log_file_paths" />
+        </provider>
+
         <!-- Disable WorkManager's default initializer: MyGymApp is a Configuration.Provider
              (see MyGymApp.kt) so Hilt-injected workers like SyncWorker can be constructed
              with their dependencies. Without this, WorkManager self-initializes before

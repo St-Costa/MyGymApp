@@ -13,6 +13,8 @@ import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncWorker
+import com.mygymapp.data.util.AppLogger
+import com.mygymapp.data.util.CrashReporter
 import com.mygymapp.ui.screen.main.HomeStateLoader
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +38,12 @@ class MyGymApp : Application(), ImageLoaderFactory, Configuration.Provider {
     // Only used for the parser warm-up below.
     @Inject lateinit var workoutRepository: WorkoutRepository
 
+    // Boot pass over Android's exit history (ANR / native crash / OOM) — see CrashReporter.
+    // Lazy: AppLogger prunes app.log (up to 5 MB) in its constructor; resolving it inside
+    // appScope keeps that file read off the main thread during cold start.
+    @Inject lateinit var crashReporter: dagger.Lazy<CrashReporter>
+    @Inject lateinit var appLogger: dagger.Lazy<AppLogger>
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -44,7 +52,15 @@ class MyGymApp : Application(), ImageLoaderFactory, Configuration.Provider {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
+        // Before super.onCreate(): the handler needs no DI, so a crash while Hilt builds the
+        // graph still leaves a report in gymdata/logs/crashes/.
+        CrashReporter.install(this)
         super.onCreate()
+        appScope.launch {
+            appLogger.get().i("App", "Process start — ${CrashReporter.appLine()}")
+            crashReporter.get().recordPreviousExits()
+            crashReporter.get().pruneReports()
+        }
         // Durability net: catches anything an expedited send couldn't deliver (server
         // down, phone off tailnet, app killed before the one-off ran). Retries every 4h
         // indefinitely — this is what keeps data flowing in when the self-hosted server

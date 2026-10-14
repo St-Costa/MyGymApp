@@ -23,6 +23,7 @@ import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.sync.ScaleWeighInLedgerRepository
 import com.mygymapp.data.sync.ScaleWeighInSyncWorker
 import com.mygymapp.data.sync.SyncConfigRepository
+import com.mygymapp.data.util.Breadcrumbs
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -260,6 +261,7 @@ class BleScaleManager @Inject constructor(
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             Log.d(TAG, "onConnectionStateChange status=$status newState=$newState")
+            Breadcrumbs.add("scale", "connection status=$status newState=$newState")
             mainHandler.post {
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {

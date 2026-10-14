@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 186 — Crash report e traccia azioni salvati nell'app
+
+Un crash di qualche giorno prima non era più recuperabile: Android aveva già ruotato via logcat, DropBox e `ApplicationExitInfo`. Ora l'app conserva i suoi in `gymdata/logs/`: `CrashReporter` installa un gestore delle eccezioni non catturate (prima di `super.onCreate()`, senza DI) che scrive `crashes/crash-*.txt` con stack trace, schermata corrente e la **traccia delle ultime azioni** (`Breadcrumbs`: navigazione con id reali, modifiche peso/reps unite per serie, complete/switch/uscita nei quattro VM esercizio, stato BLE, tutti gli eventi `AppLogger`). All'avvio legge lo storico `ApplicationExitInfo` (API 30+): ogni uscita è una riga in `app.log`, ANR (con thread dump), crash nativi, OOM e kill di sistema anche un report. `AppLogger` ha il livello `d`, scrive gli stack trace degli errori, conserva 90 giorni (come i crash report) con tetto di sicurezza a 5 MB (`LogRetention`, che tiene gli stack trace insieme alla loro riga); `PolarManager` ed `EcgRecorder` passano warning/errori da `Log` a `AppLogger`. Nuova schermata Options → Debug → **LOGS & CRASHES** per leggere e condividere i file (FileProvider limitato a `gymdata/logs/`). `scripts/pull-logs.sh` li copia sul PC (sola lettura sul telefono) per leggerli da qui. Solo locale, niente invio al server. Test: `BreadcrumbsTest`, `LogRetentionTest`, `CrashReportFormatTest`. Suite verde (JDK 21).
+
 ## Phase 185 — Stepper: fix overflow profilo, numero elastico, target 48dp
 
 Revisione dei selettori −/+: i due `ScrollPickerInput` del profilo avevano `width(120.dp)` contro 152dp di contenuto (sbordavano 16dp per lato — tolto il vincolo, il wrap è esatto per costruzione); il numero ora ha `widthIn(min = 56.dp)` invece di 56dp fissi (valori lunghi come "102.5" allargano invece di finire sotto i pulsanti); `RoundStepButton` passato a target 48dp con cerchio visivo 32dp come `PickerButton` (singolo handler, haptic tick, niente doppi tap); KDoc del repeat corretta a 500ms. Suite verde (JDK 21).

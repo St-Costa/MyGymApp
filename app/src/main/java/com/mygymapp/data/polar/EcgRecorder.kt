@@ -1,6 +1,6 @@
 package com.mygymapp.data.polar
 
-import android.util.Log
+import com.mygymapp.data.util.AppLogger
 import com.mygymapp.data.repository.FileManager
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
@@ -39,14 +39,13 @@ interface EcgRecordLogger {
     fun e(message: String, error: Throwable? = null)
 }
 
-class AndroidEcgRecordLogger @Inject constructor() : EcgRecordLogger {
-    override fun d(message: String) {
-        Log.d(TAG, message)
-    }
+/** Production backend: debug lines go to logcat + the crash-report trail, errors to `app.log`. */
+class AndroidEcgRecordLogger @Inject constructor(
+    private val appLogger: AppLogger,
+) : EcgRecordLogger {
+    override fun d(message: String) = appLogger.d(TAG, message)
 
-    override fun e(message: String, error: Throwable?) {
-        if (error != null) Log.e(TAG, message, error) else Log.e(TAG, message)
-    }
+    override fun e(message: String, error: Throwable?) = appLogger.e(TAG, message, error)
 
     companion object {
         private const val TAG = "EcgRecorder"

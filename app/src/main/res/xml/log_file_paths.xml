@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider scope for Options → Debug → LOGS & CRASHES sharing: only gymdata/logs/
+     (app.log + crashes/). Never widen this to gymdata/ — user data must not be shareable
+     through this authority. -->
+<paths>
+    <files-path name="logs" path="gymdata/logs/" />
+</paths>

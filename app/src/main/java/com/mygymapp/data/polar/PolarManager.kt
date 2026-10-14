@@ -721,7 +721,7 @@ class PolarManager @Inject constructor(
                     }
                 },
                 { error ->
-                    Log.e(TAG, "Scan error: $error")
+                    appLogger.e(TAG, "Scan error: $error")
                     _isScanning.value = false
                 },
                 {
@@ -788,7 +788,7 @@ class PolarManager @Inject constructor(
                 api.setAutomaticReconnection(false)
                 api.disconnectFromDevice(deviceId)
             } catch (t: Throwable) {
-                Log.w(TAG, "Disconnect failed: $t")
+                appLogger.w(TAG, "Disconnect failed: $t")
             }
         }
     }
@@ -806,7 +806,7 @@ class PolarManager @Inject constructor(
                 if (userInitiatedDisconnect || connectedDeviceId != null) return
                 // Give up after 5 minutes — the device is likely off or too far away.
                 if (System.currentTimeMillis() - reconnectStartAtMs > 5 * 60_000L) {
-                    Log.w(TAG, "Reconnect timed out after 5 min — stopping service")
+                    appLogger.w(TAG, "Reconnect timed out after 5 min — stopping service")
                     appLogger.w(TAG, "Reconnect timed out after 5 min for ${redactId(id)} — stopping service")
                     reconnectStartAtMs = 0L
                     _connectionState.value = ConnectionState.DISCONNECTED
@@ -820,7 +820,7 @@ class PolarManager @Inject constructor(
                 try {
                     api.connectToDevice(id)
                 } catch (t: Throwable) {
-                    Log.w(TAG, "Reconnect attempt failed: $t")
+                    appLogger.w(TAG, "Reconnect attempt failed: $t")
                 }
                 reconnectHandler.postDelayed(this, 10_000)
             }
@@ -855,7 +855,7 @@ class PolarManager @Inject constructor(
         hrRestartHandler.removeCallbacksAndMessages(null)
         hrDisposable = api.startHrStreaming(deviceId)
             .doOnComplete {
-                Log.w(TAG, "HR stream completed (no more samples) — scheduling restart in 2s")
+                appLogger.w(TAG, "HR stream completed (no more samples) — scheduling restart in 2s")
                 // Stream ended without a disconnect callback (strap powered off / out of
                 // range while Android still holds the link) — no data is flowing.
                 _receivingData.value = false
@@ -963,7 +963,7 @@ class PolarManager @Inject constructor(
                     }
                 },
                 { error ->
-                    Log.e(TAG, "HR streaming error: $error — scheduling restart in 2s")
+                    appLogger.e(TAG, "HR streaming error: $error — scheduling restart in 2s")
                     appLogger.e(TAG, "HR streaming error: $error")
                     _heartRate.value = null
                     _receivingData.value = false
@@ -1176,7 +1176,7 @@ class PolarManager @Inject constructor(
             try {
                 api.setAutomaticReconnection(true)
             } catch (t: Throwable) {
-                Log.w(TAG, "setAutomaticReconnection(true) on session start failed: $t")
+                appLogger.w(TAG, "setAutomaticReconnection(true) on session start failed: $t")
             }
             PolarStreamingService.start(context, connectedDeviceName)
         }
@@ -1257,7 +1257,7 @@ class PolarManager @Inject constructor(
         try {
             api.setAutomaticReconnection(false)
         } catch (t: Throwable) {
-            Log.w(TAG, "setAutomaticReconnection(false) on session end failed: $t")
+            appLogger.w(TAG, "setAutomaticReconnection(false) on session end failed: $t")
         }
 
         if (connectedDeviceId == null) {
@@ -1364,7 +1364,7 @@ class PolarManager @Inject constructor(
                 api.startEcgStreaming(deviceId, settings)
             }
             .doOnComplete {
-                Log.w(TAG, "ECG stream completed — scheduling restart in 2s")
+                appLogger.w(TAG, "ECG stream completed — scheduling restart in 2s")
                 appLogger.w(TAG, "ECG stream completed unexpectedly for session=$sessionId — restarting")
                 scheduleEcgRestart(deviceId, sessionId)
             }
@@ -1395,7 +1395,7 @@ class PolarManager @Inject constructor(
                     }
                 },
                 { error ->
-                    Log.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
+                    appLogger.e(TAG, "ECG streaming error: $error — scheduling restart in 2s")
                     appLogger.e(TAG, "ECG streaming error for session=$sessionId: $error")
                     ecgRecorder.stop()
                     // ERROR_ALREADY_IN_STATE means the sensor thinks it is still streaming
@@ -1457,7 +1457,7 @@ class PolarManager @Inject constructor(
         try {
             api.disconnectFromDevice(deviceId)
         } catch (t: Throwable) {
-            Log.w(TAG, "Escalation disconnect failed: $t")
+            appLogger.w(TAG, "Escalation disconnect failed: $t")
             appLogger.e(TAG, "Escalation disconnect failed for $deviceId", t)
         }
     }
@@ -1485,7 +1485,7 @@ class PolarManager @Inject constructor(
                 if (hrDisposable != null && lastHrSampleAtMs > 0 &&
                     now - lastHrSampleAtMs > 15_000
                 ) {
-                    Log.w(TAG, "HR watchdog: no sample for ${(now - lastHrSampleAtMs) / 1000}s — restarting")
+                    appLogger.w(TAG, "HR watchdog: no sample for ${(now - lastHrSampleAtMs) / 1000}s — restarting")
                     lastHrSampleAtMs = 0L
                     startHrStreaming(deviceId)
                 }
@@ -1504,7 +1504,7 @@ class PolarManager @Inject constructor(
                             "no first sample after ${(now - ecgStreamStartedAt) / 1000}s"
                         else
                             "no sample for ${(now - lastEcgSampleAtMs) / 1000}s"
-                        Log.w(TAG, "ECG watchdog: $reason — restarting")
+                        appLogger.w(TAG, "ECG watchdog: $reason — restarting")
                         appLogger.w(TAG, "ECG watchdog triggered ($reason) for session=$activeSession — restarting stream")
                         ecgStreamStartedAt = 0L
                         lastEcgSampleAtMs = 0L
@@ -1829,7 +1829,7 @@ class PolarManager @Inject constructor(
             }
             vibrator?.vibrate(VibrationEffect.createOneShot(150, VibrationEffect.DEFAULT_AMPLITUDE))
         } catch (t: Throwable) {
-            Log.w(TAG, "Readiness vibration failed: $t")
+            appLogger.w(TAG, "Readiness vibration failed: $t")
         }
         playBeep(beepVolumeRepository.volume())
     }
@@ -1858,7 +1858,7 @@ class PolarManager @Inject constructor(
             // Anything threw before the delayed release was scheduled: release now,
             // otherwise the native player leaks.
             runCatching { tone?.release() }
-            Log.w(TAG, "Readiness beep failed: $t")
+            appLogger.w(TAG, "Readiness beep failed: $t")
         }
     }
 

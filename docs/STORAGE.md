@@ -48,6 +48,11 @@ filesDir/gymdata/              ← FileManager.root
 ├── scale/                     ← VitaFit VT701 weigh-ins (one per calendar day)
 │   └── YYYY/MM/
 │       └── YYYY-MM-DD.md
+├── logs/                      ← Diagnostics only — never synced, backed up or restored
+│   ├── app.log                 (AppLogger event log: 90 days, 5 MB cap)
+│   ├── .exit_info_seen         (newest ApplicationExitInfo timestamp already recorded)
+│   └── crashes/
+│       └── {kind}-YYYYMMDD-HHmmss.txt  (crash/anr/native/oom/killed reports, newest 50, ≤90 days)
 └── _sync/                     ← Server sync ledgers (see SYNC.md, BACKUP.md)
     ├── state.yml               (sessions)
     ├── readiness_state.yml     (readiness events)

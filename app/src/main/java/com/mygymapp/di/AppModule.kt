@@ -2,6 +2,7 @@ package com.mygymapp.di
 
 import com.mygymapp.data.polar.AndroidEcgRecordLogger
 import com.mygymapp.data.polar.EcgRecordLogger
+import com.mygymapp.data.util.AppLogger
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,7 +20,7 @@ import dagger.hilt.components.SingletonComponent
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    /** [EcgRecordLogger] is an interface (test seam) — bind the Android Log backend. */
+    /** [EcgRecordLogger] is an interface (test seam) — bind the AppLogger backend. */
     @Provides
-    fun provideEcgRecordLogger(): EcgRecordLogger = AndroidEcgRecordLogger()
+    fun provideEcgRecordLogger(appLogger: AppLogger): EcgRecordLogger = AndroidEcgRecordLogger(appLogger)
 }

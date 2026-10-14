@@ -470,6 +470,7 @@ class ActiveRoutineViewModel @Inject constructor(
     }
 
     fun markExerciseCompleted(exerciseId: String) {
+        appLogger.d(TAG, "Exercise completed: $exerciseId")
         viewModelScope.launch {
             completionMutex.withLock {
                 // Reload session from disk to get actual set data written by exercise screen
@@ -579,6 +580,7 @@ class ActiveRoutineViewModel @Inject constructor(
      * `savedStateHandle` result observed when the exercise screen is popped/replaced.
      */
     fun applyExerciseSwitch(oldExerciseId: String, newExerciseId: String) {
+        appLogger.d(TAG, "Exercise switch: $oldExerciseId → $newExerciseId")
         viewModelScope.launch {
             completionMutex.withLock {
                 val session = currentSession ?: return@withLock
@@ -679,6 +681,7 @@ class ActiveRoutineViewModel @Inject constructor(
      * [submitSessionRpe]. No skip option — a rating is required to proceed.
      */
     fun requestRegisterRoutine() {
+        appLogger.d(TAG, "Register routine requested (RPE prompt)")
         _uiState.value = _uiState.value.copy(showRpePrompt = true)
     }
 
@@ -697,6 +700,7 @@ class ActiveRoutineViewModel @Inject constructor(
 
     fun submitSessionRpe(rpe: Int): Boolean {
         if (rpe !in 0..9) return false
+        appLogger.d(TAG, "Session RPE submitted: $rpe")
         _uiState.value = _uiState.value.copy(showRpePrompt = false)
         registerRoutine(sessionRpe = rpe)
         return true
