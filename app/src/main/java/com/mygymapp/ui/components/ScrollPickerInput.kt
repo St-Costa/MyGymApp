@@ -213,11 +213,11 @@ fun ScrollPickerInput(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PickerButton(
-            label = "+",
-            actionDescription = pickerButtonDescription(increase = true, fieldName = fieldName),
-            onClick = { applyChange(buttonStep) },
+            label = "−",
+            actionDescription = pickerButtonDescription(increase = false, fieldName = fieldName),
+            onClick = { applyChange(-buttonStep) },
             onLongPressRepeat = if (longPressRepeatStep > 0) {
-                { applyChange(longPressRepeatStep) }
+                { applyChange(-longPressRepeatStep) }
             } else null,
         )
 
@@ -233,11 +233,11 @@ fun ScrollPickerInput(
         )
 
         PickerButton(
-            label = "−",
-            actionDescription = pickerButtonDescription(increase = false, fieldName = fieldName),
-            onClick = { applyChange(-buttonStep) },
+            label = "+",
+            actionDescription = pickerButtonDescription(increase = true, fieldName = fieldName),
+            onClick = { applyChange(buttonStep) },
             onLongPressRepeat = if (longPressRepeatStep > 0) {
-                { applyChange(-longPressRepeatStep) }
+                { applyChange(longPressRepeatStep) }
             } else null,
         )
     }

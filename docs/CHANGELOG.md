@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 184 — Stepper `ScrollPickerInput`: − a sinistra, + a destra
+
+La Phase 150 (TalkBack) aveva scambiato i due `PickerButton` nella `Row` — + a sinistra, − a destra — mentre tutti gli altri stepper (`RoundStepButton`) sono −/+ nell'ordine giusto. Rimesso − a sinistra e + a destra con le rispettive azioni/long-press al seguito. Suite verde (JDK 21).
+
 ## Phase 183 — Timer zone cardio più grandi e opachi
 
 I timer M:SS nelle bande Z1..Z5 di `HrZoneTraceChart` (schermata cardio) erano piccoli (9sp) e semi-trasparenti: ora 13sp bold bianco 100% opaco su badge nero solido (nomi zone 12sp bold opachi). Ogni badge viene ristretto alla propria banda (scala il testo se la banda è bassa) e rientrato dal bordo destro per i readout lunghi H:MM:SS — non sborda mai nella zona vicina. Suite verde (JDK 21).
