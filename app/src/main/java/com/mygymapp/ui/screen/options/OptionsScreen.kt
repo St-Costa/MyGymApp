@@ -187,7 +187,8 @@ private fun ProfileSection(
                         onValueChange = { onBirthYearChange(it.toInt().takeIf { y -> y in 1900..currentYear }) },
                         buttonStep = 1.0,
                         isModified = profile.birthYear != null,
-                        modifier = Modifier.width(120.dp),
+                        // No fixed width: the content is 48+56+48 = 152dp, so width(120.dp)
+                        // overflowed 16dp per side. Wrap sizing stays exact by construction.
                         fieldName = "birth year",
                     )
                 }
@@ -198,7 +199,7 @@ private fun ProfileSection(
                         onValueChange = { onHeightChange(it.toInt()) },
                         buttonStep = 1.0,
                         isModified = true,
-                        modifier = Modifier.width(120.dp),
+                        // No fixed width here either (see birth year above).
                         fieldName = "height",
                     )
                 }
