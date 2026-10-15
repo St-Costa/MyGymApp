@@ -51,7 +51,7 @@ class StopwatchService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var startElapsedRealtime = 0L
     private var startWallClockTime = 0L
-    private var lastVibrationAt = -1
+    private var lastVibrationAt = 0
     // Countdown-loop mode (stretch): null = legacy count-up stopwatch.
     private var countdownDuration: Int? = null
     private var loopStartElapsed = 0L
@@ -75,25 +75,28 @@ class StopwatchService : Service() {
             val now = SystemClock.elapsedRealtime()
             val duration = countdownDuration
             if (duration != null) {
-                // Countdown-loop mode: the 30s cadence is per-loop, and the loop-end
-                // triple buzz takes precedence when both land on the same second
-                // (e.g. a 30s stretch buzzes three times, not once).
+                // Countdown-loop mode: the 30s cadence is per-loop and the loop-end
+                // triple buzz always wins (see StopwatchBuzzSchedule.countdown).
                 var loopElapsed = ((now - loopStartElapsed) / 1000).toInt()
-                if (loopElapsed >= duration) {
-                    vibrateTriple()
-                    loopStartElapsed = now
-                    loopElapsed = 0
-                    loopCount++
-                    lastVibrationAt = -1
-                } else if (loopElapsed > 0 && loopElapsed - lastVibrationAt >= 30) {
-                    lastVibrationAt = loopElapsed
-                    vibrate()
+                when (StopwatchBuzzSchedule.countdown(loopElapsed, duration, lastVibrationAt)) {
+                    StopwatchBuzz.LOOP_END -> {
+                        vibrateTriple()
+                        loopStartElapsed = now
+                        loopElapsed = 0
+                        loopCount++
+                        lastVibrationAt = 0
+                    }
+                    StopwatchBuzz.PERIODIC -> {
+                        lastVibrationAt = loopElapsed
+                        vibrate()
+                    }
+                    StopwatchBuzz.NONE -> Unit
                 }
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, buildCountdownNotification(duration - loopElapsed, loopCount))
             } else {
                 val elapsed = ((now - startElapsedRealtime) / 1000).toInt()
-                if (elapsed > 0 && elapsed - lastVibrationAt >= 30) {
+                if (StopwatchBuzzSchedule.countUp(elapsed, lastVibrationAt)) {
                     lastVibrationAt = elapsed
                     vibrate()
                 }
@@ -116,7 +119,7 @@ class StopwatchService : Service() {
                 handler.removeCallbacks(tickRunnable)
                 startElapsedRealtime = SystemClock.elapsedRealtime()
                 startWallClockTime = System.currentTimeMillis()
-                lastVibrationAt = -1
+                lastVibrationAt = 0
                 countdownDuration = intent.getIntExtra(EXTRA_DURATION_SECONDS, 0).takeIf { it > 0 }
                 loopStartElapsed = startElapsedRealtime
                 loopCount = 1
@@ -135,7 +138,7 @@ class StopwatchService : Service() {
             }
             ACTION_STOP -> {
                 handler.removeCallbacks(tickRunnable)
-                lastVibrationAt = -1
+                lastVibrationAt = 0
                 countdownDuration = null
                 loopCount = 1
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -242,7 +245,10 @@ class StopwatchService : Service() {
      */
     private fun vibrateTriple() {
         try {
-            systemVibrator()?.vibrate(
+            val vibrator = systemVibrator() ?: return
+            // Cut any periodic buzz still running so only the three short ones are felt.
+            vibrator.cancel()
+            vibrator.vibrate(
                 VibrationEffect.createWaveform(longArrayOf(0, 150, 150, 150, 150, 150), -1)
             )
         } catch (_: Throwable) {

@@ -226,8 +226,12 @@ the set duration (`EXTRA_DURATION_SECONDS`, from the first set's `timeSeconds` �
 share the routine's `timePerSetSeconds`) to `StopwatchService`, which owns the loop so it
 keeps running with the screen off. Loop semantics: restart automatically at zero, one buzz
 every 30s inside the loop (per-loop cadence, reset on wrap), three quick buzzes
-(`createWaveform`, not three one-shots) on each loop completion — the triple takes
-precedence when both land on the same second (a 30s stretch buzzes three times, not once).
+(`createWaveform`, not three one-shots) on each loop completion — the triple always takes
+precedence: on the same second it replaces the 30s buzz (a 30s stretch buzzes three times,
+not once), a 2s periodic buzz that would still be running at loop end is skipped, and
+`vibrateTriple()` calls `vibrator.cancel()` first. The schedule is the pure
+`StopwatchBuzzSchedule` (`lastPeriodicAt` baseline is **0**, not -1: with -1 the "30s" buzz
+fired at 29s/59s, and on a 60s stretch its 2s buzz overlapped the end triple).
 No-duration start (superset) keeps the legacy count-up. The on-screen `MM:SS` is display
 only, driven by the pure [`StretchCountdown`](../app/src/main/java/com/mygymapp/ui/screen/stretchexercise/StretchCountdown.kt)
 state machine (`tick()` returns the loop-completion flag; sets stay manual checkboxes —
