@@ -214,7 +214,7 @@ fun ActiveRoutineScreen(
                                 ExerciseRow(
                                     exercise = group.exercise,
                                     onClick = {
-                                        if (!group.exercise.completed) {
+                                        if (group.exercise.isReopenable()) {
                                             onNavigateToExercise(
                                                 uiState.sessionId,
                                                 group.exercise.exerciseId,
@@ -225,11 +225,10 @@ fun ActiveRoutineScreen(
                                 )
                             }
                             is ExerciseGroup.Superset -> {
-                                val allCompleted = group.exercises.all { it.completed }
                                 SupersetGroupRow(
                                     exercises = group.exercises,
                                     onClick = {
-                                        if (!allCompleted) {
+                                        if (group.exercises.any { it.isReopenable() }) {
                                             onNavigateToSuperset(
                                                 uiState.sessionId,
                                                 group.exercises.map { it.exerciseId },

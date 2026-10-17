@@ -9,6 +9,7 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.withExerciseSwitched
+import com.mygymapp.data.model.withExerciseSetsOnExit
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
@@ -400,10 +401,11 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     override fun saveProgressOnExit() {
-        // Back-navigation without completing: save current progress as incomplete — but only
-        // real input. Untouched sets keep whatever was on disk at entry (zeros for a fresh
-        // slot) via mergeExitSets, so a zero-touch visit can't fabricate recorded data and
-        // lock the "Switch exercise" slot (see its KDoc).
+        // Back-navigation without completing: save current progress — but only real input.
+        // Untouched sets keep whatever was on disk at entry (zeros for a fresh slot) via
+        // mergeExitSets, so a zero-touch visit can't fabricate recorded data and lock the
+        // "Switch exercise" slot (see its KDoc). Completion flags are preserved
+        // (withExerciseSetsOnExit): a skipped slot the lifter re-entered stays skipped.
         val sets = _uiState.value.sets
         val session = currentSession
         crumb("exit without completing $exerciseId")
@@ -416,12 +418,7 @@ class StrengthExerciseViewModel @Inject constructor(
                     val touched = sets.getOrNull(i)?.let { it.repsTouched || it.weightTouched } ?: true
                     mergeExitSets(built, touched, completed = false, entrySets.getOrNull(i))
                 }
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(completed = false, sets = exitSets)
-                    } else ex
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
+                workoutRepository.save(session.withExerciseSetsOnExit(exerciseId, exitSets))
             }
             clearScope.cancel()
         }

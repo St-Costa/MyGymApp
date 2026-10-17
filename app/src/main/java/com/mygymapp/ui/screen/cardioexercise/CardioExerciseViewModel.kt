@@ -6,6 +6,7 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.withExerciseSetsOnExit
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
@@ -307,12 +308,9 @@ class CardioExerciseViewModel @Inject constructor(
         clearScope.launch {
             try {
                 if (session != null) {
-                    val exercises = session.exercises.map { ex ->
-                        if (ex.exerciseId == exerciseId) {
-                            ex.copy(completed = false, sets = blocksToSave)
-                        } else ex
-                    }
-                    workoutRepository.save(session.copy(exercises = exercises))
+                    // Completion flags are preserved: a skipped block the lifter re-entered stays
+                    // skipped until an explicit Complete (same semantics as the other VMs).
+                    workoutRepository.save(session.withExerciseSetsOnExit(exerciseId, blocksToSave))
                 }
             } finally {
                 clearScope.cancel()

@@ -6,6 +6,7 @@ import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.withExerciseSwitched
+import com.mygymapp.data.model.withExerciseSetsOnExit
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.util.Breadcrumbs
@@ -232,15 +233,11 @@ class StretchExerciseViewModel @Inject constructor(
         val session = currentSession
         clearScope.launch {
             if (session != null) {
-                val exercises = session.exercises.map { ex ->
-                    if (ex.exerciseId == exerciseId) {
-                        ex.copy(
-                            completed = false,
-                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
-                        )
-                    } else ex
-                }
-                workoutRepository.save(session.copy(exercises = exercises))
+                // Completion flags are preserved: a skipped slot the lifter re-entered to look
+                // around and backed out of stays skipped (only an explicit Complete re-closes
+                // it) — same semantics as StrengthExerciseViewModel.
+                val exitSets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) }
+                workoutRepository.save(session.withExerciseSetsOnExit(exerciseId, exitSets))
             }
             clearScope.cancel()
         }
