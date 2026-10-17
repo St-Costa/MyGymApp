@@ -546,16 +546,18 @@ class SupersetViewModel @Inject constructor(
         // On an explicit "Complete Superset" (completed=true) every member closes out; a member
         // the lifter never touched closes as completedEmpty (skipped) rather than staying open.
         // Its shown numbers are still saved (grey pre-fills included) so nothing is lost.
-        // On back-out / autosave (completed=false) nothing closes.
+        // On back-out / autosave (completed=false) the settle step preserves the entry flags:
+        // a skipped member the lifter re-entered stays skipped, and a performed one stays
+        // performed (see docs/CONVENTIONS.md "Re-entering a skipped exercise").
         val updatedExercises = exercises.map { ex ->
             val mi = exerciseIds.indexOf(ex.exerciseId)
             if (mi < 0) return@map ex
             val memberSets = sets.filter { it.exerciseIndex == mi }.sortedBy { it.setIndex }
-            val performed = anyTouched(memberSets)
+            val performed = supersetMemberPerformed(anyTouched(memberSets), ex.completed, ex.completedEmpty)
             val bw = bwByIndex.getOrElse(mi) { Bw(0, 0.0, 0.0, false) }
             ex.copy(
-                completed = completed,
-                completedEmpty = completed && !performed,
+                completed = if (completed) true else ex.completed,
+                completedEmpty = if (completed) !performed else ex.completedEmpty,
                 sets = memberSets.map { setUi ->
                     // A touched set (or an explicit completion) persists the on-screen value;
                     // an untouched set on back-out keeps its on-disk entry value via
@@ -584,6 +586,19 @@ class SupersetViewModel @Inject constructor(
  * than misaligning sets. Pure helpers, unit-tested.
  */
 internal const val DRAFT_SUPERSET_SETS = "draft_superset_sets"
+
+/**
+ * Whether a chain member counts as performed work when "Complete Superset" rebuilds its slot.
+ * `anyTouched` is the touch signal of the current visit; a member already closed as performed
+ * at entry (`completed && !completedEmpty`) stays performed even when this visit didn't touch
+ * it — re-entering a chain to rescue one skipped member and tapping Complete must not demote
+ * the members that were already done. Pure, unit-tested.
+ */
+internal fun supersetMemberPerformed(
+    anyTouched: Boolean,
+    entryCompleted: Boolean,
+    entryCompletedEmpty: Boolean,
+): Boolean = anyTouched || (entryCompleted && !entryCompletedEmpty)
 
 internal data class SupersetSetDraft(
     val exerciseIndex: Int,

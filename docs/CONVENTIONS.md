@@ -130,7 +130,27 @@ Touch tracking: each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `re
 
 - **`WorkoutExercise.isUntouched()` is `!completed || completedEmpty`.** `computeCommonTonnage()` (`GitgraphHistoryCalculator`) — the session-vs-session comparison behind the gitgraph's day colour and `%` change — excludes `isUntouched()` exercises from the common-exercise-ID intersection in *either* session, alongside `excludeFromTonnage` (warmup/daily). Without this a skipped exercise's pre-fill would count as "0-vs-something" work and drag that day's average around.
 - **Ghost-session detection is `completedAt.isBlank()`, nothing else (Phase 97).** Both `ActiveRoutineViewModel.onCleared()` and `WorkoutRepository.isGhostSession()`. Completed exercises / filled sets no longer rescue an unfinalized session — see [Ghost session prevention](#ghost-session-prevention) for why (crash vs. deliberate exit is indistinguishable at boot). Earlier builds also required `exercises.none { it.completed }`.
-- `hasNoRecordedSets()` / `isSwitchEligible()` are unchanged — still per-set-value checks — and `isSwitchEligible()`'s `!completed` clause correctly locks a completed-empty slot too.
+- `hasNoRecordedSets()` / `isSwitchEligible()` are unchanged — still per-set-value checks — and `isSwitchEligible()`'s `!completed` clause correctly locks a completed-empty slot too (a re-entered skipped slot can't be switched either — it must be un-skipped first).
+
+### Re-entering a skipped exercise
+
+A completed-empty slot is **reopenable**: the active-routine row's gate is
+`ActiveExerciseUi.isReopenable()` = `!completed || completedEmpty` (for a superset group, the
+group opens if *any* member is reopenable — `exercises.any { it.isReopenable() }`). The second
+visit starts with fresh touch tracking (`repsTouched`/`weightTouched`/`done` only ever come from
+this visit's explicit user actions), so the button reads "Salta"/"SKIP" while untouched and flips
+back to "Completa"/"COMPLETE" the moment a value is touched — closing it then records the work
+(`completedEmpty = false`). A completed-and-performed slot stays locked. Cardio skipped blocks
+are reopenable the same way: a started block makes the member performed on close.
+
+**Backing out preserves the entry completion flags.** The single-exercise exit save uses
+`WorkoutSession.withExerciseSetsOnExit(exerciseId, sets)` (replaces only `sets`) and the superset
+back-out is `buildUpdatedSession(completed = false)` with the same preserve-instead-of-reset
+semantics — so a skipped slot the lifter re-entered to look around and backed out of stays
+skipped, with any edited values saved; only an explicit Complete re-closes it. In the superset's
+complete rebuild a member already `completed && !completedEmpty` at entry counts as performed
+even when this visit didn't touch it (`supersetMemberPerformed`), so re-closing a partially
+skipped chain can't demote the members that were already done.
 
 ## `onBack` vs `onComplete`
 

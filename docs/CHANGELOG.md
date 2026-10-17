@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 191 — Rientro negli esercizi skippati
+
+Un esercizio chiuso come "skipped" (`completedEmpty`) non era più riapribile: il gate della riga era `!completed`, quindi il tocco non navigava. Ora `ActiveExerciseUi.isReopenable()` (`!completed || completedEmpty`) governa la riga singola e `any { isReopenable() }` il gruppo superset: la seconda visita riparte con touch tracking fresco (il bottone torna "SKIP", e al primo valore toccato di nuovo "COMPLETE"), e chiudendola con dati l'esercizio diventa performed. Il back-out ora **preserva i flag di completamento d'ingresso**: nuovo helper di modello `WorkoutSession.withExerciseSetsOnExit` per strength/stretch/cardio e `buildUpdatedSession(completed = false)` per il superset sostituiscono solo i `sets` — uno slot skippato rientrato e abbandonato resta skippato (solo un Complete esplicito lo sblocca). Nel Complete del superset un membro già performed all'ingresso resta performed anche se non toccato (`supersetMemberPerformed`), così richiudere una catena con un membro skippato non degrada gli altri. Test: `WorkoutSessionExitSaveTest`, `SupersetMemberPerformedTest`, `ActiveExerciseReopenableTest`; `CONVENTIONS.md` aggiornato. Suite verde (JDK 21).
+
 ## Phase 190 — Countdown stretch nel superset
 
 Nel superset il timer dello stretch era un count-up (`elapsedSeconds` in `SupersetUiState`, azzerato a ogni START) mentre nello stretch singolo è un countdown a cicli; per di più il `StopwatchService` partiva senza `EXTRA_DURATION_SECONDS`, quindi notifica e vibrazioni restavano in modalità legacy. Ora `SupersetViewModel` è allineato a `StretchExerciseViewModel`: `countdownDuration`/`remainingSeconds`/`loopCount` nello stato, `StretchCountdown.start/tick` nel tick, durata = primo set STRETCH della catena (helper puro `supersetCountdownDuration`, fallback 60s), e la `SupersetScreen` mostra MM:SS con rosso negli ultimi 5s e sottotitolo `Xs · loop N`, passando la durata al servizio. Test: `SupersetCountdownTest`. Suite verde (JDK 21).

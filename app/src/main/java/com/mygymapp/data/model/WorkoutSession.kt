@@ -174,3 +174,22 @@ fun WorkoutSession.withExerciseSwitched(
     )
     return copy(exercises = exercises.map { if (it.exerciseId == oldExerciseId) newSlot else it })
 }
+
+/**
+ * Back-navigation ("save as incomplete") write for a single slot: replaces [sets] but preserves
+ * the slot's entry completion flags exactly as they were on disk — an open slot stays open, and
+ * a completed-empty (skipped) slot the lifter re-entered to look around and backed out of stays
+ * skipped. Only an explicit Complete re-closes the slot (see docs/CONVENTIONS.md "Re-entering a
+ * skipped exercise"). Returns `this` unchanged when the slot doesn't exist. Pure, unit-tested.
+ */
+fun WorkoutSession.withExerciseSetsOnExit(
+    exerciseId: String,
+    sets: List<ExerciseSet>,
+): WorkoutSession {
+    if (exercises.none { it.exerciseId == exerciseId }) return this
+    return copy(
+        exercises = exercises.map {
+            if (it.exerciseId == exerciseId) it.copy(sets = sets) else it
+        },
+    )
+}

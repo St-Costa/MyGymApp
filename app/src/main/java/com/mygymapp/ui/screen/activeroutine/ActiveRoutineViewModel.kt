@@ -168,7 +168,17 @@ data class ActiveExerciseUi(
     // doesn't need a repeated exerciseRepository lookup on every recomposition.
     val substitutedFor: String? = null,
     val substitutedForName: String? = null,
-)
+) {
+    /**
+     * "Re-entering a skipped exercise" (docs/CONVENTIONS.md): while true, tapping the row must
+     * open the exercise screen again — either still open (`!completed`) or closed as skipped
+     * (`completed && completedEmpty`). Touch tracking starts fresh in the second visit, so the
+     * button reads "Salta"/"SKIP" until a value is touched, then flips back to
+     * "Completa"/"COMPLETE" and closing it records the work. A completed-and-performed slot
+     * stays locked. Pure, unit-tested.
+     */
+    fun isReopenable(): Boolean = !completed || completedEmpty
+}
 
 /** SavedStateHandle key for the staged RPE pick (Sprint 9 process-death drafts). */
 internal const val DRAFT_RPE = "draft_rpe"
