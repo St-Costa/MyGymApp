@@ -82,10 +82,10 @@ data class StrengthExerciseUiState(
     val previousSessionDate: String = "",
     /** Day keys (newest first) of the recent like-with-like sessions backing the pre-fill. Saved but intentionally not shown. */
     val previousHistoryDates: List<String> = emptyList(),
-    // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): true only for a plain NORMAL
-    // slot with zero recorded sets so far — warmup/daily/completed/already-switched slots
-    // never show the button. excludeIds is every exerciseId already occupying a slot in this
-    // session, passed to the filtered picker so it can never offer a duplicate.
+    // "Switch exercise" (docs/CONVENTIONS.md#switch-exercise): true only for a NORMAL or
+    // fixed-daily slot with zero recorded sets so far — warmup/completed/already-switched
+    // slots never show the button. excludeIds is every exerciseId already occupying a slot in
+    // this session, passed to the filtered picker so it can never offer a duplicate.
     val switchEligible: Boolean = false,
     val excludeIds: Set<String> = emptySet(),
 )
@@ -224,10 +224,10 @@ class StrengthExerciseViewModel @Inject constructor(
             val previousDate = ctxStats?.previousSessionDateFor(exercise.loadMode).orEmpty()
             val historyDates = ctxStats?.historyFor(exercise.loadMode).orEmpty().map { it.date }
 
-            // Switch is offered only for a plain NORMAL slot (not warmup/daily/cardio — cardio
-            // never reaches this screen) that hasn't recorded anything yet, matching
+            // Switch is offered for a NORMAL or fixed-daily slot (not warmup — cardio never
+            // reaches this screen) that hasn't recorded anything yet, matching
             // WorkoutExercise.isSwitchEligible().
-            val switchEligible = workoutExercise?.isSwitchEligible() == true && !isDaily && !isWarmup
+            val switchEligible = workoutExercise?.isSwitchEligible() == true && !isWarmup
 
             _uiState.value = StrengthExerciseUiState(
                 exercise = exercise,

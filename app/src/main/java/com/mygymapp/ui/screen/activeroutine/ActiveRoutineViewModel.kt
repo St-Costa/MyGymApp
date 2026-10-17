@@ -600,11 +600,17 @@ class ActiveRoutineViewModel @Inject constructor(
                 // sono diversi (i candidati sono stesso bodypart+tipo e i pesi sono netti
                 // materializzati, quindi confrontabili). Solo se il sostituito non ha alcuno
                 // storico si ripiega su quello proprio del subentrato, letto dal sidecar come
-                // in init (contesto NORMAL, approccio di carico like-with-like): uno slot
-                // completed-empty non contribuisce per costruzione, e uno cross-approccio non
-                // genera mai un confronto fasullo (schema v5/v6).
+                // in init — contesto DAILY per uno slot fixed-daily (confronto like-with-like
+                // solo con sessioni daily), NORMAL altrimenti — e approccio di carico
+                // like-with-like: uno slot completed-empty non contribuisce per costruzione, e
+                // uno cross-approccio non genera mai un confronto fasullo (schema v5/v6).
+                val switchSlotContext = if (newSlot.isDaily) {
+                    com.mygymapp.data.model.SlotContext.DAILY
+                } else {
+                    com.mygymapp.data.model.SlotContext.NORMAL
+                }
                 val switchedStats = workoutRepository.getExerciseStats(newExerciseId)
-                    .forContext(com.mygymapp.data.model.SlotContext.NORMAL)
+                    .forContext(switchSlotContext)
                 val switchedPrevSets = switchedStats?.previousSetsFor(newExerciseLoadMode).orEmpty()
                     .map { ExerciseSet.Strength(reps = it.reps, weight = it.weight) }
                 val ownTonnage = switchedPrevSets.takeIf { it.isNotEmpty() }

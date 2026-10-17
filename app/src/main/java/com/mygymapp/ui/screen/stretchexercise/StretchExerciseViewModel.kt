@@ -85,11 +85,11 @@ class StretchExerciseViewModel @Inject constructor(
                 decodeStretchDraft(savedStateHandle.get<ArrayList<String>>(DRAFT_STRETCH_SETS)),
             )
 
-            // Switch is offered only for a plain NORMAL slot — not warmup/fixed-daily —
-            // matching WorkoutExercise.isSwitchEligible().
+            // Switch is offered for a NORMAL or fixed-daily slot — not warmup — matching
+            // WorkoutExercise.isSwitchEligible().
             val isDaily = workoutExercise?.isDaily ?: false
-            val switchEligible = workoutExercise?.isSwitchEligible() == true &&
-                !isDaily && workoutExercise?.excludeFromTonnage != true
+            val isWarmup = (workoutExercise?.excludeFromTonnage ?: false) && !isDaily
+            val switchEligible = workoutExercise?.isSwitchEligible() == true && !isWarmup
 
             // All sets share the routine's timePerSetSeconds (the editor has no per-set
             // duration) — the countdown runs off the first set's duration.

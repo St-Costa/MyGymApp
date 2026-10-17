@@ -48,6 +48,26 @@ class WorkoutSessionSwitchExerciseTest {
     }
 
     @Test
+    fun `switching an untouched daily slot keeps its daily and tonnage flags`() {
+        // Fixed-daily slots are switchable too; isDaily/excludeFromTonnage (and therefore
+        // slotContext = DAILY, the like-with-like stats context) must survive the swap.
+        val dailySlot = untouchedSlot.copy(isDaily = true, excludeFromTonnage = true)
+        val session = WorkoutSession(
+            id = "s1", routineId = "rt-fixeddaily", routineName = "Fixed daily exercise",
+            date = "2026-08-25", exercises = listOf(dailySlot),
+        )
+
+        val result = session.withExerciseSwitched("ex-original", newExercise)
+
+        val slot = result.exercises.single()
+        assertEquals("ex-newone01", slot.exerciseId)
+        assertEquals("ex-original", slot.substitutedFor)
+        assertTrue(slot.isDaily)
+        assertTrue(slot.excludeFromTonnage)
+        assertEquals(SlotContext.DAILY, slot.slotContext)
+    }
+
+    @Test
     fun `switching regenerates empty sets matching the new exercise count and type`() {
         val slot = untouchedSlot.copy(
             sets = listOf(ExerciseSet.Strength(), ExerciseSet.Strength(), ExerciseSet.Strength()),
