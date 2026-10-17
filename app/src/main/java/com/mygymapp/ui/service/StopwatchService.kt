@@ -34,7 +34,9 @@ class StopwatchService : Service() {
          * Optional start extra: when present and > 0 the service runs a countdown loop of
          * that many seconds (stretch mode) instead of the legacy count-up stopwatch —
          * restarting automatically at zero, buzzing every 30s inside the loop and three
-         * times fast on each loop completion. Absent (superset) = legacy count-up.
+         * times fast on each loop completion. Both current callers (standalone stretch
+         * and superset, which runs it off the chain's first stretch set) send it; absent =
+         * plain count-up, kept as a fallback.
          */
         const val EXTRA_DURATION_SECONDS = "com.mygymapp.COUNTDOWN_DURATION_SECONDS"
 

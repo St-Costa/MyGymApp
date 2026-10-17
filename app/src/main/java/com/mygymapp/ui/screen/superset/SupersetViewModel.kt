@@ -17,6 +17,8 @@ import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.util.Breadcrumbs
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import com.mygymapp.ui.screen.exercise.mergeExitSets
+import com.mygymapp.ui.screen.stretchexercise.StretchCountdown
+import com.mygymapp.ui.screen.stretchexercise.tick
 import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -86,7 +88,14 @@ data class SupersetUiState(
     val sets: List<SupersetSetUi> = emptyList(),
     val isLoading: Boolean = true,
     val isStopwatchRunning: Boolean = false,
-    val elapsedSeconds: Int = 0,
+    // Countdown-loop timer shared by the chain, shown while at least one member is STRETCH:
+    // counts down from [countdownDuration] (first stretch set's duration, see
+    // [supersetCountdownDuration]) and restarts automatically at zero — sets stay manual
+    // (toggled via checkbox). Display only: buzzes + notification live in StopwatchService,
+    // which the screen starts with the same duration.
+    val countdownDuration: Int = 60,
+    val remainingSeconds: Int = 60,
+    val loopCount: Int = 1,
     // Union of every exerciseId in the session, so the "switch" picker never offers a
     // duplicate of any occupied slot.
     val excludeIds: Set<String> = emptySet(),
@@ -289,10 +298,13 @@ class SupersetViewModel @Inject constructor(
                 decodeSupersetDraft(savedStateHandle.get<ArrayList<String>>(DRAFT_SUPERSET_SETS)),
             )
 
+            val countdownDuration = supersetCountdownDuration(restoredSets)
             _uiState.value = SupersetUiState(
                 members = members,
                 sets = restoredSets,
                 isLoading = false,
+                countdownDuration = countdownDuration,
+                remainingSeconds = countdownDuration,
                 excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
             )
         }
@@ -319,25 +331,41 @@ class SupersetViewModel @Inject constructor(
     }
 
     /**
-     * A lightweight in-VM rest timer, deliberately NOT the foreground [StopwatchService] (which
-     * the CARDIO screen uses): a superset rest countdown is only meaningful while this screen is
-     * on top, and it resets when the lifter leaves. No notification / background survival needed
-     * — it stops with the ViewModel. Same choice in StretchExerciseViewModel.
+     * Countdown-loop timer, mirroring StretchExerciseViewModel: counts down from the chain's
+     * stretch set duration ([supersetCountdownDuration]) and wraps at zero. The screen starts
+     * /stops the foreground [StopwatchService] in lockstep with the same duration extra, so
+     * the buzzes + notification match the on-screen loop.
      */
     fun toggleStopwatch() {
         val wasRunning = _uiState.value.isStopwatchRunning
         if (wasRunning) {
             timerJob?.cancel()
             timerJob = null
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = false)
+            _uiState.value = _uiState.value.copy(
+                isStopwatchRunning = false,
+                remainingSeconds = _uiState.value.countdownDuration,
+                loopCount = 1,
+            )
         } else {
             timerJob?.cancel()
-            _uiState.value = _uiState.value.copy(isStopwatchRunning = true, elapsedSeconds = 0)
+            val countdown = StretchCountdown.start(_uiState.value.countdownDuration)
+            _uiState.value = _uiState.value.copy(
+                isStopwatchRunning = true,
+                countdownDuration = countdown.remainingSeconds,
+                remainingSeconds = countdown.remainingSeconds,
+                loopCount = countdown.loopCount,
+            )
             timerJob = viewModelScope.launch {
                 while (true) {
                     delay(1000)
-                    _uiState.value = _uiState.value.copy(
-                        elapsedSeconds = _uiState.value.elapsedSeconds + 1
+                    val current = _uiState.value
+                    val (next, _) = StretchCountdown(
+                        remainingSeconds = current.remainingSeconds,
+                        loopCount = current.loopCount,
+                    ).tick(current.countdownDuration)
+                    _uiState.value = current.copy(
+                        remainingSeconds = next.remainingSeconds,
+                        loopCount = next.loopCount,
                     )
                 }
             }

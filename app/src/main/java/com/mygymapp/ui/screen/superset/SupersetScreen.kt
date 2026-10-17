@@ -176,20 +176,32 @@ fun SupersetScreen(
                     }
                 }
 
-                // Single stopwatch shown once if at least one exercise is STRETCH
+                // Shared countdown shown once if at least one exercise is STRETCH — like the
+                // standalone stretch screen: runs down the stretch set duration and loops
+                // at zero (StopwatchService buzzes every 30s in-loop, three times fast on
+                // each loop completion). Red in the last 5s.
                 val hasStretch = uiState.members.any { it.exercise.type == ExerciseType.STRETCH }
                 if (hasStretch) {
-                    val formatted = remember(uiState.elapsedSeconds) {
-                        "%02d:%02d".format(uiState.elapsedSeconds / 60, uiState.elapsedSeconds % 60)
+                    val remaining = uiState.remainingSeconds
+                    val formatted = remember(remaining) {
+                        "%02d:%02d".format(remaining / 60, remaining % 60)
                     }
                     Text(
                         text = formatted,
                         style = MaterialTheme.typography.displaySmall,
                         textAlign = TextAlign.Center,
-                        color = if (uiState.isStopwatchRunning)
-                            MaterialTheme.colorScheme.secondary
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        color = when {
+                            uiState.isStopwatchRunning && remaining <= 5 -> MaterialTheme.colorScheme.error
+                            uiState.isStopwatchRunning -> MaterialTheme.colorScheme.secondary
+                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        text = "${uiState.countdownDuration}s · loop ${uiState.loopCount}",
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Button(
@@ -198,6 +210,12 @@ fun SupersetScreen(
                             viewModel.toggleStopwatch()
                             val svcIntent = Intent(context, StopwatchService::class.java).apply {
                                 action = if (wasRunning) StopwatchService.ACTION_STOP else StopwatchService.ACTION_START
+                                if (!wasRunning) {
+                                    putExtra(
+                                        StopwatchService.EXTRA_DURATION_SECONDS,
+                                        uiState.countdownDuration,
+                                    )
+                                }
                             }
                             if (wasRunning) context.startService(svcIntent) else context.startForegroundService(svcIntent)
                         },

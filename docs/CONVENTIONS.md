@@ -232,7 +232,10 @@ not once), a 2s periodic buzz that would still be running at loop end is skipped
 `vibrateTriple()` calls `vibrator.cancel()` first. The schedule is the pure
 `StopwatchBuzzSchedule` (`lastPeriodicAt` baseline is **0**, not -1: with -1 the "30s" buzz
 fired at 29s/59s, and on a 60s stretch its 2s buzz overlapped the end triple).
-No-duration start (superset) keeps the legacy count-up. The on-screen `MM:SS` is display
+No-duration start (plain count-up) survives only as a fallback: the superset screen
+also passes `EXTRA_DURATION_SECONDS` (duration = first STRETCH set of the chain, see
+`supersetCountdownDuration`) and mirrors the same countdown with `StretchCountdown`.
+The on-screen `MM:SS` is display
 only, driven by the pure [`StretchCountdown`](../app/src/main/java/com/mygymapp/ui/screen/stretchexercise/StretchCountdown.kt)
 state machine (`tick()` returns the loop-completion flag; sets stay manual checkboxes —
 a finished loop never auto-marks a set). Timer goes red in the last 5s.
