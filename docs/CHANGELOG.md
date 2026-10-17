@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 190 — Countdown stretch nel superset
+
+Nel superset il timer dello stretch era un count-up (`elapsedSeconds` in `SupersetUiState`, azzerato a ogni START) mentre nello stretch singolo è un countdown a cicli; per di più il `StopwatchService` partiva senza `EXTRA_DURATION_SECONDS`, quindi notifica e vibrazioni restavano in modalità legacy. Ora `SupersetViewModel` è allineato a `StretchExerciseViewModel`: `countdownDuration`/`remainingSeconds`/`loopCount` nello stato, `StretchCountdown.start/tick` nel tick, durata = primo set STRETCH della catena (helper puro `supersetCountdownDuration`, fallback 60s), e la `SupersetScreen` mostra MM:SS con rosso negli ultimi 5s e sottotitolo `Xs · loop N`, passando la durata al servizio. Test: `SupersetCountdownTest`. Suite verde (JDK 21).
+
 ## Phase 189 — Switch esercizio anche sui daily
 
 Gli esercizi della routine fixed-daily non erano sostituibili: le tre `switchEligible` di `StrengthExerciseViewModel`/`StretchExerciseViewModel`/`SupersetViewModel` escludevano esplicitamente gli slot daily, anche se `WorkoutExercise.isSwitchEligible()` e `withExerciseSwitched()` erano già compatibili (lo slot conserva `isDaily`/`excludeFromTonnage`). Tolto il vincolo — resta escluso solo il warmup (e il cardio, che non ha mai avuto l'icona di switch). `ActiveRoutineViewModel.applyExerciseSwitch` legge ora la baseline di ripiego dal contesto sidecar giusto per lo slot (`DAILY` per un daily, `NORMAL` altrimenti), come già fa `init`. Test: caso daily in `WorkoutSessionSwitchExerciseTest` (flag preservati e `slotContext = DAILY`); `CONVENTIONS.md#switch-exercise` aggiornato. Suite verde (JDK 21).
