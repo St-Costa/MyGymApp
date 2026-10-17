@@ -142,7 +142,7 @@ enum class SlotContext { NORMAL, WARMUP, DAILY }
  * partial work may go. Completed and already-switched slots stay locked either way.
  *
  * The slot keeps its position in [WorkoutSession.exercises] and its warmup/daily/tonnage
- * flags (switch is only ever offered for plain NORMAL slots to begin with) — only
+ * flags (switch is offered for NORMAL and fixed-daily slots only — never warmup) — only
  * exerciseId/exerciseName/bodypart/type/sets change, plus `substitutedFor` recording the
  * original id for history/sync. Shared by ActiveRoutineViewModel and the three exercise
  * ViewModels so the mutation logic lives in exactly one place.

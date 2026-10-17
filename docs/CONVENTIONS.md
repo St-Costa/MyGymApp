@@ -444,8 +444,12 @@ next session from the same routine proposes the original exercise again by defau
 zero recorded sets (`hasNoRecordedSets()` — the same per-set-type check the ghost-session guard
 above uses, factored into one place) and hasn't already been switched (`substitutedFor == null`).
 Once switched — or once a real set exists — the slot is locked for the rest of the session: no
-re-switch, not even back to the original. Offered only for plain NORMAL slots (FORZA/STRETCH):
-never for warmup, fixed-daily, or CARDIO exercises.
+re-switch, not even back to the original. Offered for NORMAL **and fixed-daily** slots
+(FORZA/STRETCH): never for warmup, and never for CARDIO (which has no switch affordance at
+all — the icon/gate exists only in Strength/Stretch/Superset). A daily slot keeps
+`isDaily`/`excludeFromTonnage` through the swap, so `slotContext` stays DAILY: the fallback
+baseline in `ActiveRoutineViewModel.applyExerciseSwitch` reads the sidecar's DAILY context for
+it (NORMAL otherwise), like `init` does for the precomputed maps.
 
 **The icon mirrors the Complete button.** The swap icon is shown only while the current visit
 is untouched — the Complete button still reads "Salta" (per-member in a

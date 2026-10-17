@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 189 — Switch esercizio anche sui daily
+
+Gli esercizi della routine fixed-daily non erano sostituibili: le tre `switchEligible` di `StrengthExerciseViewModel`/`StretchExerciseViewModel`/`SupersetViewModel` escludevano esplicitamente gli slot daily, anche se `WorkoutExercise.isSwitchEligible()` e `withExerciseSwitched()` erano già compatibili (lo slot conserva `isDaily`/`excludeFromTonnage`). Tolto il vincolo — resta escluso solo il warmup (e il cardio, che non ha mai avuto l'icona di switch). `ActiveRoutineViewModel.applyExerciseSwitch` legge ora la baseline di ripiego dal contesto sidecar giusto per lo slot (`DAILY` per un daily, `NORMAL` altrimenti), come già fa `init`. Test: caso daily in `WorkoutSessionSwitchExerciseTest` (flag preservati e `slotContext = DAILY`); `CONVENTIONS.md#switch-exercise` aggiornato. Suite verde (JDK 21).
+
 ## Phase 188 — Vibrazioni stretch: fine ciclo sempre tripla
 
 Nel cronometro a ciclo dello stretch la fine del ciclo non si sentiva sempre come tre vibrazioni brevi: il baseline `lastVibrationAt = -1` faceva partire il buzz "ogni 30s" a 29s/59s, e su uno stretch da 60s il buzz periodico da 2s (a 59s) si sovrapponeva alla tripla di fine ciclo. La logica è stata estratta da `StopwatchService` nell'oggetto puro `StopwatchBuzzSchedule` (enum `StopwatchBuzz`: `NONE`/`PERIODIC`/`LOOP_END`): baseline a **0** (primo buzz a 30s esatti, reset a 0 a ogni ripartenza del ciclo), la tripla vince sempre — sostituisce il buzz periodico nello stesso secondo e salta un buzz periodico che sarebbe ancora in corso a fine ciclo — e `vibrateTriple()` chiama `vibrator.cancel()` prima della forma d'onda. La modalità count-up (superset) usa `StopwatchBuzzSchedule.countUp`. Test: `StopwatchBuzzScheduleTest`. Suite verde (JDK 21).

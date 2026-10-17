@@ -247,7 +247,7 @@ class SupersetViewModel @Inject constructor(
                         ExerciseType.CARDIO -> error("Cardio exercises cannot be superset members")
                     }
                 }
-                val switchEligible = workoutEx?.isSwitchEligible() == true && !isDaily && !isWarmup
+                val switchEligible = workoutEx?.isSwitchEligible() == true && !isWarmup
                 MemberBuild(
                     member = SupersetMemberUi(
                         exercise = ex,
