@@ -684,15 +684,10 @@ class PolarManager @Inject constructor(
                 if (low) {
                     appLogger.w(TAG, "Battery at $level% (<= $BATTERY_WARNING_THRESHOLD%) — replace the CR2025 soon")
                 }
-                // Feed the active-hours / install-date tracker. A >5% jump vs the last
-                // reading is auto-detected here as a battery swap (counter resets).
+                // Feed the active-hours / install-date tracker. Bookkeeping only: a cell
+                // swap is recorded solely via the manual reset (resetBatteryCell).
                 readinessScope.launch {
-                    val prev = _batteryLife.value
-                    val next = batteryLifeRepository.onBatteryLevel(level)
-                    _batteryLife.value = next
-                    if (prev != null && next.activeSeconds == 0L && next.installedAtDate != prev.installedAtDate) {
-                        appLogger.i(TAG, "Battery jump ${prev.lastLevel}% -> $level% — treating as a new CR2025, life counter reset")
-                    }
+                    _batteryLife.value = batteryLifeRepository.onBatteryLevel(level)
                 }
             }
         })
@@ -1564,9 +1559,9 @@ class PolarManager @Inject constructor(
 
     /**
      * Manual "I changed the CR2025" reset, from the HR screen's battery-indicator dialog.
-     * Same bookkeeping as an auto-detected swap (credible outgoing hours join the lifespan
-     * history, counter restarts), for swaps the jump detector can't see. Fire-and-forget on
-     * readinessScope like the rest of the battery-life writes.
+     * The only way a cell swap is recorded (credible outgoing hours join the lifespan
+     * history, counter restarts) — battery readings never reset it on their own.
+     * Fire-and-forget on readinessScope like the rest of the battery-life writes.
      */
     fun resetBatteryCell() {
         readinessScope.launch {
