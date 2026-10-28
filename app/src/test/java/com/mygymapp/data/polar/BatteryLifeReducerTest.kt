@@ -56,40 +56,21 @@ class BatteryLifeReducerTest {
     }
 
     @Test
-    fun `a rise of more than five points resets install date and counter`() {
+    fun `a rise in level never resets the cell, swaps are manual only`() {
         var s = reduce(null, 70, nowEpochSec = 0)
-        s = reduce(s, 70, nowEpochSec = 600) // same cell, 10 min later — no time added here
-        assertEquals(0L, s.activeSeconds)
+        s = s.copy(activeSeconds = 10 * 3600L) // as addActiveSeconds would have recorded
 
-        // Next day: 70% -> 100%. Fresh CR2025.
+        // Next day: 70% -> 100%. Used to be auto-detected as a swap; now bookkeeping only.
         s = reduce(s, 100, nowEpochSec = 700, today = day2)
-        assertEquals(day2, s.installedAtDate)
-        assertEquals(100, s.installedAtLevel)
-        assertEquals(0L, s.activeSeconds)
+        assertEquals(day1, s.installedAtDate)
+        assertEquals(70, s.installedAtLevel)
+        assertEquals(10 * 3600L, s.activeSeconds)
         assertEquals(100, s.lastLevel)
+        assertEquals(700L, s.lastReadingEpochSec)
+        assertTrue(s.pastLifeSeconds.isEmpty())
     }
 
     private val hour = 3600L
-
-    @Test
-    fun `a swap folds the outgoing cell's active hours into the lifespan history`() {
-        // 40 h of connected spans, as addActiveSeconds would have recorded them.
-        val s = BatteryLifeState(
-            installedAtDate = day1, installedAtLevel = 100, activeSeconds = 40 * hour,
-            lastLevel = 92, lastReadingEpochSec = 40 * hour,
-            pastLifeSeconds = emptyList(),
-        )
-        assertEquals(40.0, s.activeHours, 0.01)
-        assertTrue(s.pastLifeSeconds.isEmpty())
-        assertNull(s.avgLifeHours)
-
-        // Swap: reported level jumps back up.
-        val afterSwap = reduce(s, 100, nowEpochSec = s.lastReadingEpochSec + 60, today = day2)
-        assertEquals(listOf(40 * hour), afterSwap.pastLifeSeconds)
-        assertEquals(40.0, afterSwap.avgLifeHours!!, 0.01)
-        assertEquals(0L, afterSwap.activeSeconds)
-        assertEquals(1, afterSwap.measuredCellCount)
-    }
 
     @Test
     fun `avgLifeHours is the mean of every past cell`() {
@@ -100,49 +81,6 @@ class BatteryLifeReducerTest {
         )
         assertEquals(40.0, s.avgLifeHours!!, 1e-9) // (30+50+40)/3
         assertEquals(3, s.measuredCellCount)
-    }
-
-    @Test
-    fun `a near-zero-life swap is not credited to the average`() {
-        // Only 1 h on this cell — below MIN_CREDIBLE_LIFE_SEC (2 h).
-        val s = BatteryLifeState(
-            installedAtDate = day1, installedAtLevel = 100, activeSeconds = hour,
-            lastLevel = 99, lastReadingEpochSec = hour,
-        )
-        val afterSwap = reduce(s, 100, nowEpochSec = hour + 60, today = day2) // pulled & reinserted
-        assertTrue(afterSwap.pastLifeSeconds.isEmpty())
-        assertNull(afterSwap.avgLifeHours)
-    }
-
-    @Test
-    fun `history is preserved across a later swap`() {
-        var s = BatteryLifeState(
-            installedAtDate = day1, installedAtLevel = 100, activeSeconds = 20 * hour,
-            lastLevel = 75, lastReadingEpochSec = 1_000_000,
-            pastLifeSeconds = listOf(45 * hour),
-        )
-        s = reduce(s, 100, nowEpochSec = 1_000_060, today = day2)
-        assertEquals(listOf(45 * hour, 20 * hour), s.pastLifeSeconds)
-        assertEquals(32.5, s.avgLifeHours!!, 1e-9)
-    }
-
-    @Test
-    fun `a rise of exactly five points is treated as noise, not a swap`() {
-        var s = reduce(null, 80, nowEpochSec = 0)
-        s = reduce(s, 85, nowEpochSec = 600) // +5 exactly -> not a reset
-        assertEquals(day1, s.installedAtDate)
-        assertEquals(0L, s.activeSeconds)
-        assertEquals(85, s.lastLevel)
-    }
-
-    @Test
-    fun `a small rise from a swap of a partially-used cell still resets`() {
-        // Old cell at 40%, new cell inserted also not full, reports 60% -> +20 > 5.
-        var s = reduce(null, 40, nowEpochSec = 0)
-        s = reduce(s, 60, nowEpochSec = 600, today = day2)
-        assertEquals(day2, s.installedAtDate)
-        assertEquals(60, s.installedAtLevel)
-        assertEquals(0L, s.activeSeconds)
     }
 
     @Test

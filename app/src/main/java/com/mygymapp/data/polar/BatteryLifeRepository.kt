@@ -26,19 +26,15 @@ import javax.inject.Singleton
  * Everything is a local-only computation aid, never synced. Persisted as
  * `gymdata/_sync/battery_life.yml`.
  *
- * ## Automatic install detection (plus a manual fallback)
+ * ## Install detection is manual only
  *
- * [onBatteryLevel] watches the reported
- * percentage across readings: a rise of more than [JUMP_RESET_THRESHOLD_PCT] points versus the
- * last reading can only mean a fresh cell went in (a coin cell under load never recovers >5%
- * on its own). On that transition the *outgoing* cell's `activeSeconds` is appended to
- * [BatteryLifeState.pastLifeSeconds] (the history behind the average), then the install date
- * resets to today and the active-hours counter to zero.
- *
- * The jump detector is blind when old and new cell report nearly the same level (both read
- * ~100% — the percentage is a flat voltage proxy), so the HR screen's battery indicator is
- * tappable and offers a manual "ho cambiato batteria" reset via [resetForNewBattery], with
- * the same history/counter bookkeeping as an auto-detected swap.
+ * A cell swap is recorded only when the user confirms it from the HR screen's battery
+ * indicator ("Hai cambiato la batteria?") via [resetForNewBattery]: the *outgoing* cell's
+ * `activeSeconds` is appended to [BatteryLifeState.pastLifeSeconds] (the history behind the
+ * average), then the install date resets to today and the active-hours counter to zero.
+ * Battery readings ([onBatteryLevel]) never reset anything on their own — the old ">5% rise
+ * = new cell" auto-detection was dropped (Phase 192): the percentage is a flat voltage proxy,
+ * so it both missed real swaps (~100% before and after) and could fire on a noisy reading.
  *
  * ## Active-time accumulation
  *
@@ -96,12 +92,10 @@ class BatteryLifeRepository @Inject constructor(
     }
 
     /**
-     * Manual "I changed the CR2025" reset, for when the automatic jump detection can't see
-     * the swap (a fresh cell and a spent one both report ~100% — the H10 percentage is a
-     * flat voltage proxy, so `level - lastLevel` may stay within noise). Same bookkeeping
-     * as an auto-detected swap: the outgoing cell's hours join the lifespan history only if
-     * credible ([MIN_CREDIBLE_LIFE_SEC]), then install date / counter restart. With no prior
-     * state and a known [currentLevel] this seeds the first cell instead of failing.
+     * Manual "I changed the CR2025" reset — the only way a cell swap is recorded. The
+     * outgoing cell's hours join the lifespan history only if credible
+     * ([MIN_CREDIBLE_LIFE_SEC]), then install date / counter restart. With no prior state
+     * and a known [currentLevel] this seeds the first cell instead of failing.
      */
     suspend fun resetForNewBattery(
         currentLevel: Int?,
@@ -189,22 +183,6 @@ class BatteryLifeRepository @Inject constructor(
     }
 
     companion object {
-        /** A reported rise larger than this (percentage points) versus the last reading is a swap. */
-        const val JUMP_RESET_THRESHOLD_PCT = 5
-
-        /**
-         * Pure state transition — all the logic, no I/O, so it is unit-tested directly.
-         *
-         * - No prior state (first reading ever): start fresh, install date = [today].
-         * - `level - prev.lastLevel > JUMP_RESET_THRESHOLD_PCT`: battery was swapped. The
-         *   outgoing cell's `activeSeconds` is appended to `pastLifeSeconds` (only if it clears
-         *   [MIN_CREDIBLE_LIFE_SEC]), then install date / counter reset.
-         * - Otherwise: bookkeeping only (`lastLevel` / `lastReadingEpochSec` advance). Time
-         *   accumulation deliberately does NOT happen here — battery callbacks arrive ~once
-         *   per connect, so gap-based counting measured 0 h forever (every inter-session gap
-         *   exceeded any sane cap). Connected spans are added via [addActiveSeconds] instead.
-         */
-
         /**
          * A swap is only folded into the lifespan average if the outgoing cell logged at least
          * this much active use (2 h). Guards the average against a cell that was pulled and
@@ -214,15 +192,14 @@ class BatteryLifeRepository @Inject constructor(
         const val MIN_CREDIBLE_LIFE_SEC = 2L * 3600L
 
         /**
-         * Pure state transition for a battery-level reading — swap detection + bookkeeping,
-         * no I/O, so it is unit-tested directly.
+         * Pure state transition for a battery-level reading — bookkeeping only, no I/O, so it
+         * is unit-tested directly.
          *
-         * - No prior state (first reading ever): start fresh, install date = [today].
-         * - `level - prev.lastLevel > JUMP_RESET_THRESHOLD_PCT`: battery was swapped. The
-         *   outgoing cell's `activeSeconds` is appended to `pastLifeSeconds` (only if it clears
-         *   [MIN_CREDIBLE_LIFE_SEC]), then install date / counter reset.
-         * - Otherwise: advance `lastLevel` / `lastReadingEpochSec`, leave `activeSeconds`
-         *   untouched (spans arrive via [addActiveSeconds]).
+         * - No prior state (first reading ever): seed the first cell, install date = [today].
+         * - Otherwise: advance `lastLevel` / `lastReadingEpochSec`, nothing else. A reading
+         *   never resets the cell, however much the level rises — swaps are manual
+         *   ([resetForNewBattery]). `activeSeconds` is untouched too (spans arrive via
+         *   [addActiveSeconds]; battery callbacks come ~once per connect).
          */
         fun reduce(
             prev: BatteryLifeState?,
@@ -238,21 +215,6 @@ class BatteryLifeRepository @Inject constructor(
                     lastLevel = level,
                     lastReadingEpochSec = nowEpochSec,
                     pastLifeSeconds = emptyList(),
-                )
-            }
-            if (level - prev.lastLevel > JUMP_RESET_THRESHOLD_PCT) {
-                val history = if (prev.activeSeconds >= MIN_CREDIBLE_LIFE_SEC) {
-                    prev.pastLifeSeconds + prev.activeSeconds
-                } else {
-                    prev.pastLifeSeconds
-                }
-                return BatteryLifeState(
-                    installedAtDate = today,
-                    installedAtLevel = level,
-                    activeSeconds = 0L,
-                    lastLevel = level,
-                    lastReadingEpochSec = nowEpochSec,
-                    pastLifeSeconds = history,
                 )
             }
             return prev.copy(

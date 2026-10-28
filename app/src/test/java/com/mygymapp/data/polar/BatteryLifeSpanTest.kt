@@ -60,9 +60,13 @@ class BatteryLifeSpanTest {
     @Test
     fun `accumulated spans feed the swap history`() = runBlocking {
         repo.onBatteryLevel(level = 60, nowEpochSec = 0, today = day)
-        // 3 h of connected spans, then the cell is swapped for a fresh one at 100%.
+        // 3 h of connected spans; a 100% reading alone no longer counts as a swap.
         repo.addActiveSeconds(3 * 3_600)
-        val afterSwap = repo.onBatteryLevel(level = 100, nowEpochSec = 3 * 3_600 + 60, today = day)
+        val afterReading = repo.onBatteryLevel(level = 100, nowEpochSec = 3 * 3_600 + 60, today = day)
+        assertEquals(3 * 3_600L, afterReading.activeSeconds)
+        assertTrue(afterReading.pastLifeSeconds.isEmpty())
+        // The user confirms the swap manually.
+        val afterSwap = repo.resetForNewBattery(currentLevel = 100, nowEpochSec = 3 * 3_600 + 120, today = day)!!
         assertEquals(listOf(3 * 3_600L), afterSwap.pastLifeSeconds)
         assertEquals(3.0, afterSwap.avgLifeHours!!, 1e-9)
         assertEquals(0L, afterSwap.activeSeconds)

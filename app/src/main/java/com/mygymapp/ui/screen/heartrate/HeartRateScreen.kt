@@ -464,8 +464,8 @@ private fun ColumnScope.ConnectedContent(
         onBatteryClick = { showBatteryDialog = true },
     )
 
-    // Manual CR2025 reset: the auto jump-detection is blind when old and new cell report
-    // nearly the same % (both ~100%), so tapping the battery % asks first. "Sì" restarts
+    // Manual CR2025 reset — the only way a swap is recorded (no auto-detection from the
+    // reported %), so tapping the battery % asks first. "Sì" restarts
     // the counter and folds credible outgoing hours into the lifespan average.
     if (showBatteryDialog) {
         AlertDialog(
