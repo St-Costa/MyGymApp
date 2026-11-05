@@ -41,6 +41,13 @@ import androidx.compose.ui.graphics.nativeCanvas
 /** Side of the square tempo boxes, shared by the editor and the loop animation. */
 internal val TempoBoxSide = 52.dp
 
+/**
+ * Effective width of the 4-box tempo row ([TempoAnimation]): 4 squares plus the 3 × 3dp
+ * gaps of its centered [Arrangement.spacedBy]. The stretch START/STOP button uses this so
+ * it lines up exactly with the boxes instead of the full screen width.
+ */
+internal val TempoBoxesRowWidth = TempoBoxSide * 4 + 3.dp * 3
+
 internal val TempoPhaseLabels = listOf("Neg", "Stretch", "Contr", "Peak")
 
 /**

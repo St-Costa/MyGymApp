@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -40,6 +41,7 @@ import com.mygymapp.ui.components.CollapsibleAutoSaveDescription
 import com.mygymapp.ui.components.FullscreenLoading
 import com.mygymapp.ui.components.HeartRateBar
 import com.mygymapp.ui.components.MediaPreview
+import com.mygymapp.ui.components.TempoBoxesRowWidth
 import com.mygymapp.ui.service.StopwatchService
 import com.mygymapp.ui.theme.OnSkipped
 import com.mygymapp.ui.theme.SkippedColor
@@ -141,6 +143,7 @@ fun StretchExerciseScreen(
                 // Countdown button — the duration travels to StopwatchService so the
                 // loop (and its buzzes) keeps running with the screen off.
                 val context = LocalContext.current
+                // Same effective width as the 4 Poliquin boxes (4×52dp + gaps).
                 Button(
                     onClick = {
                         val wasRunning = uiState.isStopwatchRunning
@@ -164,7 +167,7 @@ fun StretchExerciseScreen(
                             context.startForegroundService(intent)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.width(TempoBoxesRowWidth).align(Alignment.CenterHorizontally),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (uiState.isStopwatchRunning)
                             MaterialTheme.colorScheme.error
