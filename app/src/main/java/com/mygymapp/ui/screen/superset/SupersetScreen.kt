@@ -171,7 +171,7 @@ fun SupersetScreen(
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            TempoAnimation(tempo = tempo)
+                            TempoAnimation(tempo = tempo, showLabel = false)
                         }
                     }
                 }
@@ -197,13 +197,10 @@ fun SupersetScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(
-                        text = "${uiState.countdownDuration}s · loop ${uiState.loopCount}",
-                        style = MaterialTheme.typography.bodySmall,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // Countdown button — the duration travels to StopwatchService so the
+                    // loop (and its buzzes) keeps running with the screen off. Same as the
+                    // standalone stretch screen: no `Xs · loop N` caption, the big mm:ss
+                    // above is enough.
                     Button(
                         onClick = {
                             val wasRunning = uiState.isStopwatchRunning
@@ -274,8 +271,8 @@ fun SupersetScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
+                // No extra spacer before the button: the Column's arrangement already
+                // separates it from the last card (same as the single-exercise screen).
                 // Each member closes independently: one with no touched value closes as
                 // "skipped" (grey + X, excluded from tonnage), one with any touched value as
                 // done. The label reflects the all-untouched case — the whole chain skipped.
@@ -300,7 +297,7 @@ fun SupersetScreen(
                     com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "COMPLETE" else "SKIP")
                 }
 
-                Spacer(modifier = Modifier.height(80.dp))
+                Spacer(modifier = Modifier.height(32.dp))
             }
         }
     }
@@ -426,14 +423,15 @@ private fun SupersetSetItem(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // PR badges: shown once above the first set of a FORZA member — the best-estimated-
-            // 1RM set ("RM") stacked 2dp above the best-tonnage set ("T"), each rendered as
-            // `reps x weight` (the set, not the computed 1RM), with a small subscript "PR",
-            // both centered. Record dates (prSessionDate/prE1rmSessionDate) and the
-            // "Ultima volta" date stay saved in the sidecar/ViewModel but are intentionally
-            // not shown. For a bodyweight member the weight shown is the body weight at the
-            // time the set was logged ("peso corpo in quel momento"), not the materialized
-            // bwLoadPercent% of it — and only when that body weight is known.
+            // PR badges: shown once above the first set of a FORZA member — the
+            // best-estimated-1RM set ("RM") next to the best-tonnage set ("T"), each rendered
+            // as `reps x weight` (the set, not the computed 1RM), with a small subscript "PR".
+            // Side by side like the single-exercise screen (they fit). Record dates
+            // (prSessionDate/prE1rmSessionDate) and the "Ultima volta" date stay saved in the
+            // sidecar/ViewModel but are intentionally not shown. For a bodyweight member the
+            // weight shown is the body weight at the time the set was logged ("peso corpo in
+            // quel momento"), not the materialized bwLoadPercent% of it — and only when that
+            // body weight is known.
             // A real barbell weight keeps its fraction ("82.5"); a body weight is rounded to
             // the nearest whole kg — a weigh-in of 79.45 shows as "79", not two decimals.
             fun fmtWeight(w: Double) =
@@ -445,21 +443,22 @@ private fun SupersetSetItem(
             if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 &&
                 (prBadgeWeight > 0 || showRmBadge)
             ) {
-                Column(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (showRmBadge) {
                         PrBadge(
                             "RM", "$prE1rmReps x ${fmtSetWeight(rmBadgeWeight)}",
-                            Modifier.fillMaxWidth(),
+                            Modifier.weight(1f),
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
                     if (prBadgeWeight > 0) {
                         PrBadge(
                             "T", "$prReps x ${fmtSetWeight(prBadgeWeight)}",
-                            Modifier.fillMaxWidth(),
+                            Modifier.weight(1f),
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
@@ -468,59 +467,51 @@ private fun SupersetSetItem(
 
             when (setUi.exerciseType) {
                 ExerciseType.FORZA -> {
+                    // Rep-range header, centered — same as the single-exercise screen. The old
+                    // per-column "range | Kg/Assist." labels are gone: the pickers below are
+                    // self-evident.
                     val rangeLabel = if (repRangeMin > 0 && repRangeMax > 0) {
-                        "$repRangeMin–$repRangeMax"
+                        "$repRangeMin - $repRangeMax"
                     } else "Reps"
+                    Text(
+                        text = rangeLabel,
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Column(
+                        // Reps picker — tap by 1, long-press by 5 (same repeat behavior as weight).
+                        ScrollPickerInput(
+                            value = setUi.reps,
+                            onValueChange = { onUpdateReps(it.toInt()) },
+                            buttonStep = 1.0,
+                            isModified = setUi.repsModified,
+                            enableScroll = false,
+                            longPressRepeatStep = 5.0,
+                            onConfirm = onConfirmReps,
                             modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = rangeLabel,
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            )
-                            ScrollPickerInput(
-                                value = setUi.reps,
-                                onValueChange = { onUpdateReps(it.toInt()) },
-                                buttonStep = 1.0,
-                                isModified = setUi.repsModified,
-                                enableScroll = false,
-                                longPressRepeatStep = 5.0,
-                                onConfirm = onConfirmReps,
-                                modifier = Modifier.fillMaxWidth(),
-                                fieldName = "reps",
-                            )
-                        }
+                            fieldName = "reps",
+                        )
                         if (!isBodyweight) {
-                            Column(
+                            // Weight picker (tap + long-press +10/-10 per second, no scroll).
+                            // Assisted members keep the picker (the lifter dials in the
+                            // assist-machine number).
+                            ScrollPickerInput(
+                                value = setUi.weight,
+                                onValueChange = { onUpdateWeight(it.toDouble()) },
+                                buttonStep = 1.0,
+                                isDecimal = true,
+                                isModified = setUi.weightModified,
+                                enableScroll = false,
+                                longPressRepeatStep = 10.0,
+                                onConfirm = onConfirmWeight,
                                 modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    text = if (isAssisted) "Assist." else "Kg",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                )
-                                ScrollPickerInput(
-                                    value = setUi.weight,
-                                    onValueChange = { onUpdateWeight(it.toDouble()) },
-                                    buttonStep = 1.0,
-                                    isDecimal = true,
-                                    isModified = setUi.weightModified,
-                                    enableScroll = false,
-                                    longPressRepeatStep = 10.0,
-                                    onConfirm = onConfirmWeight,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    fieldName = "weight",
-                                )
-                            }
+                                fieldName = "weight",
+                            )
                         }
                     }
                 }

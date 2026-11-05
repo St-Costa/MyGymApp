@@ -149,10 +149,10 @@ fun StrengthExerciseScreen(
                 // it; if that body weight is unknown (legacy set, no weigh-in) the T badge
                 // shows reps only and the RM badge is hidden.
                 if (uiState.rmPr != null || uiState.tonnagePr != null) {
-                    Column(
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         uiState.rmPr?.let { rm ->
                             if (!isBodyweight || rm.bwBaseWeightKg > 0.0) {
@@ -163,7 +163,7 @@ fun StrengthExerciseScreen(
                                     // did I lift", same meaning as a manual-load PR.
                                     else -> "${rm.reps} x ${formatWeight(rm.weight)}"
                                 }
-                                PrBadge("RM", value, Modifier.fillMaxWidth())
+                                PrBadge("RM", value, Modifier.weight(1f))
                             }
                         }
                         uiState.tonnagePr?.let { pr ->
@@ -173,7 +173,7 @@ fun StrengthExerciseScreen(
                             } else {
                                 "${pr.reps} x ${formatWeight(pr.weight)}"
                             }
-                            PrBadge("T", value, Modifier.fillMaxWidth())
+                            PrBadge("T", value, Modifier.weight(1f))
                         }
                     }
                 }
