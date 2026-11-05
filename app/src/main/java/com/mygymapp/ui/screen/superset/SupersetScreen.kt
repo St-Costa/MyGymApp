@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ import com.mygymapp.ui.components.MediaPreview
 import com.mygymapp.ui.components.PrBadge
 import com.mygymapp.ui.components.ScrollPickerInput
 import com.mygymapp.ui.components.TempoAnimation
+import com.mygymapp.ui.components.TempoBoxesRowWidth
 import com.mygymapp.ui.service.StopwatchService
 import com.mygymapp.ui.theme.ForzaColor
 import com.mygymapp.ui.theme.OnSkipped
@@ -200,7 +202,8 @@ fun SupersetScreen(
                     // Countdown button — the duration travels to StopwatchService so the
                     // loop (and its buzzes) keeps running with the screen off. Same as the
                     // standalone stretch screen: no `Xs · loop N` caption, the big mm:ss
-                    // above is enough.
+                    // above is enough. Same effective width as the 4 Poliquin boxes above
+                    // (4×52dp + gaps) so the two line up.
                     Button(
                         onClick = {
                             val wasRunning = uiState.isStopwatchRunning
@@ -216,7 +219,7 @@ fun SupersetScreen(
                             }
                             if (wasRunning) context.startService(svcIntent) else context.startForegroundService(svcIntent)
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.width(TempoBoxesRowWidth).align(Alignment.CenterHorizontally),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (uiState.isStopwatchRunning)
                                 MaterialTheme.colorScheme.error

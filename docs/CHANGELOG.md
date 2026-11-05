@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 196 — START stretch largo come i riquadri Poliquin
+
+Lo START/STOP del timer stretch usa la larghezza effettiva della riga dei 4 riquadri (`TempoBoxesRowWidth` = 4×52dp + gaps, 217dp) invece di tutto schermo o 0.85f — singolo e superset allineati ai quadrati. Suite verde (JDK 21).
+
 ## Phase 195 — Pulsante START stretch a tutta larghezza
 
 Per coerenza grafica, lo START/STOP del timer stretch occupa la stessa larghezza dei riquadri Poliquin (`fillMaxWidth` invece di `0.85f`), sia nello stretch singolo che nel superset. Suite verde (JDK 21).
