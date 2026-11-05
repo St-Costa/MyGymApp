@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 199 — Corpo libero: `[N]` reps per battere il PR
+
+Solo corpo libero: dopo il badge tonnellaggio (e dopo `RM/T` unito) compare `[N]` — reps da fare all'ultima pesata per superare il tonnellaggio del record, es. `10 x 77 [11]`. Formula pura `repsToBeatTonnage()` (`floor(rec/self)+1`, testata); niente suffisso senza pesata, con PR senza peso corpo, o su manual/assisted. Suite verde (JDK 21).
+
 ## Phase 198 — PR uguali: un solo badge RM/T
 
 Quando il set da miglior 1RM stimato e quello da miglior tonnellaggio coincidono (il caso più comune), singolo e superset mostrano un solo badge `RM/T` invece di due identici affiancati; se differiscono restano i due badge. Suite verde (JDK 21).

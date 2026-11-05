@@ -100,6 +100,27 @@ class TonnageMathTest {
     }
 
     @Test
+    fun `repsToBeatTonnage gives one more rep at the same weight`() {
+        assertEquals(11, repsToBeatTonnage(10, 77.0, 77.0))
+    }
+
+    @Test
+    fun `repsToBeatTonnage scales down when heavier and up when lighter`() {
+        // 10 x 77 = 770; at 80 kg 10 reps (800) already beat it.
+        assertEquals(10, repsToBeatTonnage(10, 77.0, 80.0))
+        // At 74.9 kg (a cut) 10 reps are only 749 — 11 needed.
+        assertEquals(11, repsToBeatTonnage(10, 77.0, 74.9))
+    }
+
+    @Test
+    fun `repsToBeatTonnage returns null without usable inputs`() {
+        assertNull(repsToBeatTonnage(0, 77.0, 77.0))
+        assertNull(repsToBeatTonnage(10, 0.0, 77.0))
+        assertNull(repsToBeatTonnage(10, 77.0, 0.0))
+        assertNull(repsToBeatTonnage(10, -5.0, 77.0))
+    }
+
+    @Test
     fun `repsForSameTonnage returns null without a usable target or weight`() {
         assertNull(repsForSameTonnage(0.0, 50.0))
         assertNull(repsForSameTonnage(-10.0, 50.0))

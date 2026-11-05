@@ -258,6 +258,7 @@ fun SupersetScreen(
                                     prE1rmReps = member?.prE1rmReps ?: 0,
                                     prE1rmWeight = member?.prE1rmWeight ?: 0.0,
                                     prE1rmBwBaseWeightKg = member?.prE1rmBwBaseWeightKg ?: 0.0,
+                                    prTargetReps = member?.prTargetReps,
                                     prSessionDate = member?.prSessionDate ?: "",
                                     prE1rmSessionDate = member?.prE1rmSessionDate ?: "",
                                     previousSessionDate = member?.previousSessionDate ?: "",
@@ -386,6 +387,8 @@ private fun SupersetSetItem(
     prE1rmReps: Int = 0,
     prE1rmWeight: Double = 0.0,
     prE1rmBwBaseWeightKg: Double = 0.0,
+    /** Bodyweight members only: reps at the latest weigh-in to beat the tonnage PR, shown as ` [N]`. Null when unknown. */
+    prTargetReps: Int? = null,
     /** Day keys of the sessions the PR sets come from, "" when unknown. Saved but intentionally not shown. */
     prSessionDate: String = "",
     prE1rmSessionDate: String = "",
@@ -453,9 +456,13 @@ private fun SupersetSetItem(
             if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 &&
                 (rmText != null || tText != null)
             ) {
+                // Bodyweight members append the beat-the-PR target: `10 x 77 [11]` means
+                // "11 reps at the latest weigh-in beats this record's tonnage".
+                fun withTarget(text: String) =
+                    if (isBodyweight && prTargetReps != null) "$text [$prTargetReps]" else text
                 if (rmText != null && rmText == tText) {
                     PrBadge(
-                        "RM/T", rmText,
+                        "RM/T", withTarget(rmText),
                         Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.labelMedium,
                     )
@@ -474,7 +481,7 @@ private fun SupersetSetItem(
                         }
                         tText?.let {
                             PrBadge(
-                                "T", it,
+                                "T", withTarget(it),
                                 Modifier.weight(1f),
                                 style = MaterialTheme.typography.labelMedium,
                             )

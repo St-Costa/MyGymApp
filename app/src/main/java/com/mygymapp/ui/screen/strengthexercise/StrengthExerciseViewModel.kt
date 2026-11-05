@@ -9,6 +9,7 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.repsForSameTonnage
+import com.mygymapp.data.model.repsToBeatTonnage
 import com.mygymapp.data.model.withExerciseSetsOnExit
 import com.mygymapp.data.model.withExerciseStarted
 import com.mygymapp.data.model.withExerciseSwitched
@@ -89,6 +90,12 @@ data class StrengthExerciseUiState(
     val allSetsFilled: Boolean = false,
     val tonnagePr: TonnagePr? = null,
     val rmPr: RmPr? = null,
+    /**
+     * Bodyweight only: reps to perform at the latest weigh-in to beat [tonnagePr]'s
+     * tonnage, shown as ` [N]` after the badge (null when unknown — no weigh-in, legacy
+     * PR without body weight, or non-bodyweight exercise).
+     */
+    val tonnagePrTargetReps: Int? = null,
     /** Day key (`YYYY-MM-DD`) of the session the grey pre-fill comes from, "" when none. Saved but intentionally not shown. */
     val previousSessionDate: String = "",
     /** Day keys (newest first) of the recent like-with-like sessions backing the pre-fill. Saved but intentionally not shown. */
@@ -246,6 +253,20 @@ class StrengthExerciseViewModel @Inject constructor(
             val previousDate = ctxStats?.previousSessionDateFor(exercise.loadMode).orEmpty()
             val historyDates = ctxStats?.historyFor(exercise.loadMode).orEmpty().map { it.date }
 
+            // Bodyweight only: how many reps at the latest weigh-in beat the tonnage PR.
+            // The badge reads `reps x body-weight-then` (e.g. `10 x 77`); the suffix answers
+            // "how many do I do now" — computed against today's weigh-in, which is also what
+            // completion will materialize the load from (see buildStrengthSets).
+            val tonnagePrTargetReps =
+                if (exercise.loadMode == LoadMode.BODYWEIGHT && (tonnagePr?.bwBaseWeightKg ?: 0.0) > 0.0) {
+                    val latestWeight = scaleHistoryRepository.getLatestWeightOnOrBefore(
+                        java.time.LocalDate.now()
+                    )
+                    repsToBeatTonnage(tonnagePr!!.reps, tonnagePr.bwBaseWeightKg, latestWeight ?: 0.0)
+                } else {
+                    null
+                }
+
             // Switch is offered for a NORMAL or fixed-daily slot (not warmup — cardio never
             // reaches this screen) that hasn't recorded anything yet, matching
             // WorkoutExercise.isSwitchEligible().
@@ -264,6 +285,7 @@ class StrengthExerciseViewModel @Inject constructor(
                     restoredSets.all { it.reps > 0 && (it.weight > 0 || weightOptional) },
                 tonnagePr = tonnagePr,
                 rmPr = rmPr,
+                tonnagePrTargetReps = tonnagePrTargetReps,
                 previousSessionDate = previousDate,
                 previousHistoryDates = historyDates,
                 switchEligible = switchEligible,

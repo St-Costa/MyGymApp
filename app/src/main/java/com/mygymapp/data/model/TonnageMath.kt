@@ -39,6 +39,20 @@ fun repsForSameTonnage(tonnage: Double, weight: Double): Int? {
     return ceil(tonnage / weight).toInt().coerceAtLeast(1)
 }
 
+/**
+ * Reps to perform at [currentWeight] to *beat* a record set of [prReps] reps at [prWeight]
+ * (strictly greater tonnage). Always a whole number, rounded up: the lifter sees `10 x 77`
+ * and `[11]` means "11 reps at today's weight beats it".
+ *
+ * Used for the bodyweight `[N]` badge suffix: the record reads `reps x body-weight-then`,
+ * the target is computed against the latest weigh-in. Returns null when any input is
+ * unusable — callers then show no suffix.
+ */
+fun repsToBeatTonnage(prReps: Int, prWeight: Double, currentWeight: Double): Int? {
+    if (prReps <= 0 || prWeight <= 0.0 || currentWeight <= 0.0) return null
+    return ((prReps * prWeight) / currentWeight).toInt() + 1
+}
+
 /** Best (highest) estimated 1RM across a set of strength sets, or null if none. */
 fun List<ExerciseSet.Strength>.bestEstimated1RM(): Double? =
     filter { it.reps > 0 && it.weight > 0 }

@@ -10,6 +10,7 @@ import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.repsForSameTonnage
+import com.mygymapp.data.model.repsToBeatTonnage
 import com.mygymapp.data.model.withExercisesStarted
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
@@ -77,6 +78,11 @@ data class SupersetMemberUi(
     val prE1rmReps: Int = 0,
     val prE1rmWeight: Double = 0.0,
     val prE1rmBwBaseWeightKg: Double = 0.0,
+    /**
+     * Bodyweight members only: reps to perform at the latest weigh-in to beat the
+     * tonnage PR, shown as ` [N]` after the badge (null when unknown).
+     */
+    val prTargetReps: Int? = null,
     /** Day key of the session the tonnage-PR set comes from, "" when unknown. Saved but intentionally not shown. */
     val prSessionDate: String = "",
     /** Day key of the session the e1RM-PR set comes from, "" when unknown. Saved but intentionally not shown. */
@@ -154,6 +160,10 @@ class SupersetViewModel @Inject constructor(
             currentSession = session
 
             val sessionRoutineId = session?.routineId ?: ""
+
+            // Latest weigh-in: bodyweight members show ` [N]` after the tonnage PR — reps
+            // to beat it at today's weight. Fetched once for the whole chain.
+            val latestBodyWeight = scaleHistoryRepository.getLatestWeightOnOrBefore(today)
 
             // Build each member independently and in parallel: every member does its own
             // getExerciseStats (a small sidecar read, but a full per-exercise history scan the
@@ -285,6 +295,19 @@ class SupersetViewModel @Inject constructor(
                         prE1rmReps = rmPrSet?.reps ?: 0,
                         prE1rmWeight = rmPrSet?.weight ?: 0.0,
                         prE1rmBwBaseWeightKg = rmPrSet?.bwBaseWeightKg ?: 0.0,
+                        prTargetReps =
+                            if (ex.type == ExerciseType.FORZA &&
+                                ex.loadMode == com.mygymapp.data.model.LoadMode.BODYWEIGHT &&
+                                (prSet?.bwBaseWeightKg ?: 0.0) > 0.0
+                            ) {
+                                repsToBeatTonnage(
+                                    prSet!!.reps,
+                                    prSet.bwBaseWeightKg,
+                                    latestBodyWeight ?: 0.0,
+                                )
+                            } else {
+                                null
+                            },
                         prSessionDate = ctxStats?.prSessionDate.orEmpty(),
                         prE1rmSessionDate = ctxStats?.rmPrSessionDate.orEmpty(),
                         previousSessionDate = ctxStats?.previousSessionDateFor(ex.loadMode).orEmpty(),
