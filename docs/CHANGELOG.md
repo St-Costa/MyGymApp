@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 195 — Pulsante START stretch a tutta larghezza
+
+Per coerenza grafica, lo START/STOP del timer stretch occupa la stessa larghezza dei riquadri Poliquin (`fillMaxWidth` invece di `0.85f`), sia nello stretch singolo che nel superset. Suite verde (JDK 21).
+
 ## Phase 194 — Superset come il singolo: PR affiancati, niente etichette
 
 La pulizia grafica dei singoli (Phase 193: via scritta `Tempo X-X-X-X`, via header `reps | Kg`, rep-range centrato, niente spacer) è stata portata nel superset così le due schermate sono strutturalmente uguali: `TempoAnimation(showLabel = false)`, tolto anche il sottotitolo `Xs · loop N` sotto il countdown (come nello stretch singolo), via etichette `range | Kg/Assist.` sopra i picker con rep-range centrato sopra e soli picker sotto, tolto lo spacer prima di COMPLETE e fondo a 32dp. I PR tonnellaggio (T) e 1RM stimato (RM) ora stanno uno a fianco all'altro (`Row` con `weight(1f)`) invece che impilati, sia nel singolo che nel superset — ci stanno. Suite verde (JDK 21).
