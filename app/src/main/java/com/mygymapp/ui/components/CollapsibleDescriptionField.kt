@@ -1,5 +1,7 @@
 package com.mygymapp.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -8,7 +10,6 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,11 +30,10 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /**
- * Descrizione collassata quando vuota: resta visibile come riga singola
- * (solo label attenuata, senza freccia — l'attenuazione segnala che è vuota)
- * così occupa poco spazio ma si può aggiungere con un tap. Il tap espande
- * il campo e gli dà subito il focus (tastiera aperta), senza bisogno di un
- * secondo tap per iniziare a scrivere.
+ * Descrizione collassata quando vuota: resta visibile come riga sottile senza bordo
+ * (solo hint piccolo attenuato con "+", centrato) così occupa ~metà spazio del box
+ * intero ma si può aggiungere con un tap. Il tap espande il campo e gli dà subito
+ * il focus (tastiera aperta), senza bisogno di un secondo tap per iniziare a scrivere.
  *
  * Quando il valore non è vuoto il campo è sempre mostrato per intero.
  */
@@ -175,21 +175,21 @@ private fun CollapsedDescriptionRow(
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedCard(
-        onClick = onExpand,
-        modifier = modifier.fillMaxWidth(),
+    // Empty description: a slim borderless hint, not a full text-field box. Full-width
+    // tap target preserved, but only small faded text ("+ Description") with 6dp padding
+    // instead of a 12dp-padded bordered card.
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onExpand)
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            )
-        }
+        Text(
+            text = "+ $label",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+        )
     }
 }

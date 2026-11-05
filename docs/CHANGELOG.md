@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 197 — Description vuota: riga sottile senza bordo
+
+La description vuota non è più un box bordato alto una riga intera: solo hint piccolo attenuato `+ Description`, centrato, senza bordo e con padding minimo — occupa circa metà spazio ma resta tappabile a tutta larghezza (un tap espande con focus immediato). Vale per singolo, superset e stretch. Suite verde (JDK 21).
+
 ## Phase 196 — START stretch largo come i riquadri Poliquin
 
 Lo START/STOP del timer stretch usa la larghezza effettiva della riga dei 4 riquadri (`TempoBoxesRowWidth` = 4×52dp + gaps, 217dp) invece di tutto schermo o 0.85f — singolo e superset allineati ai quadrati. Suite verde (JDK 21).
