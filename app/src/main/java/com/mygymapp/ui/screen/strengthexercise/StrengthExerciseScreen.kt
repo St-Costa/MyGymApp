@@ -149,31 +149,38 @@ fun StrengthExerciseScreen(
                 // it; if that body weight is unknown (legacy set, no weigh-in) the T badge
                 // shows reps only and the RM badge is hidden.
                 if (uiState.rmPr != null || uiState.tonnagePr != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        uiState.rmPr?.let { rm ->
-                            if (!isBodyweight || rm.bwBaseWeightKg > 0.0) {
-                                val value = when {
-                                    isBodyweight -> "${rm.reps} x ${formatBodyWeight(rm.bwBaseWeightKg)}"
-                                    // Assisted PR is shown as the net load lifted (weight), not
-                                    // the machine's assist number — the badge answers "how much
-                                    // did I lift", same meaning as a manual-load PR.
-                                    else -> "${rm.reps} x ${formatWeight(rm.weight)}"
-                                }
-                                PrBadge("RM", value, Modifier.weight(1f))
+                    // Both badges show their set's `reps x weight`. When the best-1RM set and
+                    // the best-tonnage set coincide (the common case), a single "RM/T" badge
+                    // replaces the two identical ones.
+                    val rmValue: String? = uiState.rmPr
+                        ?.takeIf { !isBodyweight || it.bwBaseWeightKg > 0.0 }
+                        ?.let { rm ->
+                            when {
+                                isBodyweight -> "${rm.reps} x ${formatBodyWeight(rm.bwBaseWeightKg)}"
+                                // Assisted PR is shown as the net load lifted (weight), not
+                                // the machine's assist number — the badge answers "how much
+                                // did I lift", same meaning as a manual-load PR.
+                                else -> "${rm.reps} x ${formatWeight(rm.weight)}"
                             }
                         }
-                        uiState.tonnagePr?.let { pr ->
-                            val value = if (isBodyweight) {
-                                if (pr.bwBaseWeightKg > 0.0) "${pr.reps} x ${formatBodyWeight(pr.bwBaseWeightKg)}"
-                                else "${pr.reps}"
-                            } else {
-                                "${pr.reps} x ${formatWeight(pr.weight)}"
-                            }
-                            PrBadge("T", value, Modifier.weight(1f))
+                    val tValue: String? = uiState.tonnagePr?.let { pr ->
+                        if (isBodyweight) {
+                            if (pr.bwBaseWeightKg > 0.0) "${pr.reps} x ${formatBodyWeight(pr.bwBaseWeightKg)}"
+                            else "${pr.reps}"
+                        } else {
+                            "${pr.reps} x ${formatWeight(pr.weight)}"
+                        }
+                    }
+                    if (rmValue != null && rmValue == tValue) {
+                        PrBadge("RM/T", rmValue, Modifier.fillMaxWidth())
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            rmValue?.let { PrBadge("RM", it, Modifier.weight(1f)) }
+                            tValue?.let { PrBadge("T", it, Modifier.weight(1f)) }
                         }
                     }
                 }

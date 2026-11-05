@@ -443,27 +443,42 @@ private fun SupersetSetItem(
             val prBadgeWeight = if (isBodyweight) prBwBaseWeightKg else prWeight
             val rmBadgeWeight = if (isBodyweight) prE1rmBwBaseWeightKg else prE1rmWeight
             val showRmBadge = prE1rmReps > 0 && rmBadgeWeight > 0
+            // Same rule as the single-exercise screen: when the best-1RM set and the
+            // best-tonnage set coincide (the common case), one "RM/T" badge replaces the
+            // two identical ones.
+            val rmText: String? =
+                if (showRmBadge) "$prE1rmReps x ${fmtSetWeight(rmBadgeWeight)}" else null
+            val tText: String? =
+                if (prBadgeWeight > 0) "$prReps x ${fmtSetWeight(prBadgeWeight)}" else null
             if (setUi.exerciseType == ExerciseType.FORZA && setUi.setIndex == 0 &&
-                (prBadgeWeight > 0 || showRmBadge)
+                (rmText != null || tText != null)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (showRmBadge) {
-                        PrBadge(
-                            "RM", "$prE1rmReps x ${fmtSetWeight(rmBadgeWeight)}",
-                            Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                    if (prBadgeWeight > 0) {
-                        PrBadge(
-                            "T", "$prReps x ${fmtSetWeight(prBadgeWeight)}",
-                            Modifier.weight(1f),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
+                if (rmText != null && rmText == tText) {
+                    PrBadge(
+                        "RM/T", rmText,
+                        Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        rmText?.let {
+                            PrBadge(
+                                "RM", it,
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+                        tText?.let {
+                            PrBadge(
+                                "T", it,
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
                     }
                 }
             }

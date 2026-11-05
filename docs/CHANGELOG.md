@@ -2,6 +2,10 @@
 
 Historical phase log. The most recent commits live in `git log` — this file captures the high-level milestones and the intent behind them.
 
+## Phase 198 — PR uguali: un solo badge RM/T
+
+Quando il set da miglior 1RM stimato e quello da miglior tonnellaggio coincidono (il caso più comune), singolo e superset mostrano un solo badge `RM/T` invece di due identici affiancati; se differiscono restano i due badge. Suite verde (JDK 21).
+
 ## Phase 197 — Description vuota: riga sottile senza bordo
 
 La description vuota non è più un box bordato alto una riga intera: solo hint piccolo attenuato `+ Description`, centrato, senza bordo e con padding minimo — occupa circa metà spazio ma resta tappabile a tutta larghezza (un tap espande con focus immediato). Vale per singolo, superset e stretch. Suite verde (JDK 21).
