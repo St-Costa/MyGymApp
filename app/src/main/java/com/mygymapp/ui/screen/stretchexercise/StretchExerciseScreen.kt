@@ -164,7 +164,7 @@ fun StretchExerciseScreen(
                             context.startForegroundService(intent)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (uiState.isStopwatchRunning)
                             MaterialTheme.colorScheme.error

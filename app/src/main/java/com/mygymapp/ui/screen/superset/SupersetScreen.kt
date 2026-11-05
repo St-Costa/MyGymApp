@@ -216,7 +216,7 @@ fun SupersetScreen(
                             }
                             if (wasRunning) context.startService(svcIntent) else context.startForegroundService(svcIntent)
                         },
-                        modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
+                        modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (uiState.isStopwatchRunning)
                                 MaterialTheme.colorScheme.error
