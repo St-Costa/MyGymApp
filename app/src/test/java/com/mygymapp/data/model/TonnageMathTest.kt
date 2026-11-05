@@ -83,6 +83,31 @@ class TonnageMathTest {
     }
 
     @Test
+    fun `repsForSameTonnage always rounds up to the next whole rep`() {
+        // 50 x 10 = 500; 500/55 = 9.09 -> 10, 500/45 = 11.11 -> 12.
+        assertEquals(10, repsForSameTonnage(500.0, 55.0))
+        assertEquals(12, repsForSameTonnage(500.0, 45.0))
+        // 500/60 = 8.33 -> 9, 500/40 = 12.5 -> 13 (exact halves go up too).
+        assertEquals(9, repsForSameTonnage(500.0, 60.0))
+        assertEquals(13, repsForSameTonnage(500.0, 40.0))
+        // Exact division stays put: 500/50 = 10 -> 10, never 11.
+        assertEquals(10, repsForSameTonnage(500.0, 50.0))
+    }
+
+    @Test
+    fun `repsForSameTonnage never returns zero reps`() {
+        assertEquals(1, repsForSameTonnage(100.0, 500.0))
+    }
+
+    @Test
+    fun `repsForSameTonnage returns null without a usable target or weight`() {
+        assertNull(repsForSameTonnage(0.0, 50.0))
+        assertNull(repsForSameTonnage(-10.0, 50.0))
+        assertNull(repsForSameTonnage(500.0, 0.0))
+        assertNull(repsForSameTonnage(500.0, -1.0))
+    }
+
+    @Test
     fun `materializeAssistedWeight subtracts the assist offset from body weight`() {
         // 80kg body weight, 20kg assistance -> 60kg net load
         assertEquals(60.0, materializeAssistedWeight(80.0, 20.0), 0.0001)

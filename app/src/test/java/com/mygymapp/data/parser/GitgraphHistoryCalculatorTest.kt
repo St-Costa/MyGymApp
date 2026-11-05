@@ -200,6 +200,67 @@ class GitgraphHistoryCalculatorTest {
     }
 
     @Test
+    fun `a skipped cardio slot does not hijack a stretch day with the session envelope`() {
+        // The Pike bug: the routine has a cardio warmup slot the lifter skipped plus real
+        // stretches. The old fallback treated "routine contains cardio" as "this was a cardio
+        // session" and painted the whole 94-minute session as cardio. A skipped slot must not
+        // engage the envelope fallback; the day belongs to the stretch work.
+        val date = MON.plusDays(3).toString()
+        val s = WorkoutSession(
+            id = "c", routineId = "rt-pike", routineName = "Pike",
+            date = date,
+            startedAt = "${date}T08:00:00",
+            completedAt = "${date}T09:34:00", // 94 minutes
+            ecgDurationSec = 4140.0, // 69 minutes of session-wide ECG, not a cardio slot
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = "cardio-warmup", exerciseName = "Backward tapis roulant",
+                    bodypart = "cardio", type = ExerciseType.CARDIO,
+                    completed = true, completedEmpty = true, excludeFromTonnage = true,
+                    sets = emptyList(),
+                ),
+                WorkoutExercise(
+                    exerciseId = "stretch", exerciseName = "Stretch", bodypart = "legs",
+                    type = ExerciseType.STRETCH, completed = true,
+                    sets = listOf(
+                        ExerciseSet.Stretch(timeSeconds = 90, done = true),
+                        ExerciseSet.Stretch(timeSeconds = 90, done = true),
+                        ExerciseSet.Stretch(timeSeconds = 90, done = true),
+                    ),
+                ),
+            ),
+        )
+
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-pike" to listOf(s)))
+
+        assertNull(cell.tonnageChangePct)
+        assertNull("skipped cardio must not claim the day", cell.cardioMinutes)
+        assertEquals(4, cell.stretchMinutes) // 270s -> 4m
+    }
+
+    @Test
+    fun `a performed cardio slot with no usable blocks still uses the session envelope`() {
+        val date = MON.plusDays(3).toString()
+        val s = WorkoutSession(
+            id = "c", routineId = "rt-cardio", routineName = "Cardio",
+            date = date,
+            startedAt = "${date}T08:00:00",
+            completedAt = "${date}T09:00:00",
+            exercises = listOf(
+                WorkoutExercise(
+                    exerciseId = "cardio", exerciseName = "Bike", bodypart = "cardio",
+                    type = ExerciseType.CARDIO, completed = true, excludeFromTonnage = true,
+                    sets = emptyList(),
+                ),
+            ),
+        )
+
+        val cell = GitgraphHistoryCalculator.dayCell(s, mapOf("rt-cardio" to listOf(s)))
+
+        assertEquals(60, cell.cardioMinutes)
+    }
+
+    @Test
     fun `cardio day ignores a fixed-daily stretch warmup and shows the bike minutes`() {
         // The real bug: a ❤️ cardio day whose routine carries a 60s fixed-daily "Chest stretch
         // sbarre" (isDaily). That stretch is a warmup, not the day's work — it must be ignored,

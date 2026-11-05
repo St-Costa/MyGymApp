@@ -5,8 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.model.Exercise
 import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.WorkoutSession
-import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.model.withExerciseSetsOnExit
+import com.mygymapp.data.model.withExerciseStarted
+import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.util.Breadcrumbs
@@ -63,7 +64,18 @@ class StretchExerciseViewModel @Inject constructor(
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
             // The active session is always dated today; fetch it straight by id.
-            val session = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+            var loadedSession = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+            // Start the wall-clock window now: the row badge and the section estimate count
+            // the real time spent stretching — holds plus the recovery pauses between them —
+            // not just the configured hold seconds.
+            if (loadedSession != null) {
+                val started = loadedSession.withExerciseStarted(
+                    exerciseId,
+                    java.time.LocalDateTime.now().toString(),
+                )
+                if (started !== loadedSession) loadedSession = workoutRepository.save(started)
+            }
+            val session = loadedSession
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
@@ -187,6 +199,7 @@ class StretchExerciseViewModel @Inject constructor(
                         ex.copy(
                             completed = true,
                             completedEmpty = !anyDone,
+                            completedAt = java.time.LocalDateTime.now().toString(),
                             sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
                         )
                     } else ex

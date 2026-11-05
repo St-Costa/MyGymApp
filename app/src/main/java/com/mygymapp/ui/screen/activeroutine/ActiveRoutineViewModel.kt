@@ -10,6 +10,7 @@ import com.mygymapp.data.model.RoutineExercise
 import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.bestEstimated1RM
+import com.mygymapp.data.model.measuredDurationSeconds
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
@@ -71,6 +72,9 @@ data class ActiveRoutineUiState(
     val sessionRegistered: Boolean = false,
     val registeredSessionId: String = "",
     val registeredSessionDate: String = "",
+    // Estimated seconds per section (WORKOUT / DAILY / WARMUP), from the previous timed session
+    // of this routine with configured durations as fallback. Missing = no usable estimate yet.
+    val sectionEstimates: Map<SessionExerciseCategory, Int> = emptyMap(),
     // Session-RPE prompt: shown once, right after "Registra" is tapped and before
     // the session is actually finalized/synced. Skippable — see docs/CONVENTIONS.md.
     val showRpePrompt: Boolean = false,
@@ -229,6 +233,8 @@ class ActiveRoutineViewModel @Inject constructor(
     // well-tracked exercise look like "first time" again, and conversely an exercise with no
     // history at all must be flagged as first time even if it wasn't in the previous session.
     private var exercisesWithPriorTonnage: Set<String> = emptySet()
+    // IDs belonging to a superset chain, so a stretch badge knows its screen window is shared.
+    private var supersetExerciseIds: Set<String> = emptySet()
     private var sessionFinalized = false
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Serializza applyExerciseSwitch e markExerciseCompleted: al rientro da un esercizio appena
@@ -323,6 +329,7 @@ class ActiveRoutineViewModel @Inject constructor(
                     category = category,
                 )
             }
+            supersetExerciseIds = exerciseIdsInSupersets(exercises)
 
             // Load previous session BEFORE saving the current one, so we don't find ourselves.
             // Used only for `commonPreviousTonnage` (the chart-consistency number) below — the
@@ -330,6 +337,10 @@ class ActiveRoutineViewModel @Inject constructor(
             // down, so they can compare like-with-like (same slot context AND same weighting
             // approach) rather than blindly against whatever the last routine session held.
             val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
+            // Header estimates are static for the session: previous measured windows, with
+            // configured durations as fallback and the previous session envelope as a cap
+            // (see SectionTimeEstimate.kt).
+            val sectionEstimates = estimateSectionSeconds(exercises, previousSession)
 
             // Seeded from the stats sidecar once `statsByExercise` is built (below).
             previousTonnageByExercise = emptyMap()
@@ -473,6 +484,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 sessionId = saved.id,
                 isLoading = false,
                 previousTonnage = commonPreviousTonnage,
+                sectionEstimates = sectionEstimates,
                 // Preserve the flag set above — recreating the state from scratch would reset it.
                 isPowerliftingWeek = _uiState.value.isPowerliftingWeek,
             )
@@ -503,7 +515,10 @@ class ActiveRoutineViewModel @Inject constructor(
 
                 val updatedExercises = _uiState.value.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        ex.withCompletionFrom(reloadedExercise)
+                        ex.withCompletionFrom(
+                            reloadedExercise,
+                            includeMeasuredStretchTime = exerciseId !in supersetExerciseIds,
+                        )
                     } else ex
                 }
                 val allCompleted = updatedExercises.all { it.completed }
@@ -528,6 +543,7 @@ class ActiveRoutineViewModel @Inject constructor(
      */
     private fun ActiveExerciseUi.withCompletionFrom(
         reloadedExercise: WorkoutExercise,
+        includeMeasuredStretchTime: Boolean = true,
     ): ActiveExerciseUi {
         // Compute current tonnage for this exercise
         val currentExTonnage = reloadedExercise
@@ -572,7 +588,16 @@ class ActiveRoutineViewModel @Inject constructor(
             isFirstTimeTonnage = strengthWithBadge &&
                 exerciseId !in exercisesWithPriorTonnage && currentExTonnage > 0,
             stretchTotalSeconds = if (type == ExerciseType.STRETCH && !completedEmpty) {
-                stretchDoneSeconds
+                // Wall-clock includes the recovery pauses between holds, which the configured
+                // hold sum cannot see. Never report less than the holds the lifter marked done
+                // (a quick tap-through still means the prescribed sets were performed). In a
+                // superset the window is shared by the whole chain, so those rows keep their
+                // own done-hold total instead of duplicating the chain's minutes.
+                if (includeMeasuredStretchTime) {
+                    maxOf(stretchDoneSeconds, reloadedExercise.measuredDurationSeconds() ?: 0)
+                } else {
+                    stretchDoneSeconds
+                }
             } else {
                 null
             },
@@ -666,9 +691,17 @@ class ActiveRoutineViewModel @Inject constructor(
                         // quindi la riga nasce già completata col badge — altrimenti,
                         // nell'ordine mark-prima-apply, il completamento andrebbe perso e la riga
                         // resterebbe "da eseguire" pur col disco corretto.
-                        if (newSlot.completed) base.withCompletionFrom(newSlot) else base
+                        if (newSlot.completed) {
+                            base.withCompletionFrom(
+                                newSlot,
+                                includeMeasuredStretchTime = oldExerciseId !in supersetExerciseIds,
+                            )
+                        } else {
+                            base
+                        }
                     } else ex
                 }
+                supersetExerciseIds = exerciseIdsInSupersets(updatedExercises)
                 val allCompleted = updatedExercises.all { it.completed }
                 _uiState.value = _uiState.value.copy(
                     exercises = updatedExercises,

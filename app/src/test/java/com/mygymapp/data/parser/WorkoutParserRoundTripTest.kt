@@ -147,6 +147,8 @@ class WorkoutParserRoundTripTest {
                     // completedEmpty always implies completed: the lifter tapped "Complete"
                     // without touching a value. The pre-fill on `sets` is still persisted.
                     completedEmpty = true,
+                    startedAt = "2026-08-25T09:00:00",
+                    completedAt = "2026-08-25T09:04:30",
                     sets = listOf(ExerciseSet.Strength(reps = 8, weight = 40.0)),
                     excludeFromTonnage = true,
                     isDaily = true,
@@ -164,6 +166,8 @@ class WorkoutParserRoundTripTest {
         assertTrue(ex.completedEmpty)
         assertEquals(1, ex.sets.size)
         assertEquals("ex-oldexerc", ex.substitutedFor)
+        assertEquals("2026-08-25T09:00:00", ex.startedAt)
+        assertEquals("2026-08-25T09:04:30", ex.completedAt)
     }
 
     @Test

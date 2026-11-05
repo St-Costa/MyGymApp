@@ -8,8 +8,10 @@ import com.mygymapp.data.model.LoadMode
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
-import com.mygymapp.data.model.withExerciseSwitched
+import com.mygymapp.data.model.repsForSameTonnage
 import com.mygymapp.data.model.withExerciseSetsOnExit
+import com.mygymapp.data.model.withExerciseStarted
+import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
 import com.mygymapp.data.repository.ScaleHistoryRepository
@@ -33,6 +35,14 @@ data class StrengthSetUi(
     val weightModified: Boolean = false,
     val repsTouched: Boolean = false,
     val weightTouched: Boolean = false,
+    /**
+     * Tonnage (reps × weight) this set is being kept constant while the lifter changes the
+     * weight: the reps are recomputed from it on every weight step, always rounded up, so
+     * 50×10 → 60 becomes 60×9 instead of a dropped 60×8. Reset to 0 by a manual reps edit or
+     * by confirming either value; the next weight change then re-anchors on whatever is on
+     * screen.
+     */
+    val tonnageAnchor: Double = 0.0,
 )
 
 /**
@@ -114,7 +124,18 @@ class StrengthExerciseViewModel @Inject constructor(
 
             // The active session is always dated today; fetch it straight by id (filename
             // fast-path) instead of parsing every one of today's session files.
-            val session = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+            var loadedSession = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+            // Start this slot's wall-clock window before showing the screen. Reopening a
+            // skipped slot starts a fresh window (withExercisesStarted handles that) so idle
+            // time between visits is not billed to the exercise in the section estimates.
+            if (loadedSession != null) {
+                val started = loadedSession.withExerciseStarted(
+                    exerciseId,
+                    java.time.LocalDateTime.now().toString(),
+                )
+                if (started !== loadedSession) loadedSession = workoutRepository.save(started)
+            }
+            val session = loadedSession
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
@@ -253,22 +274,48 @@ class StrengthExerciseViewModel @Inject constructor(
 
     fun updateReps(setIndex: Int, reps: Int) {
         crumb("set ${setIndex + 1} reps → $reps", key = "reps.$setIndex")
-        updateSet(setIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true) }
+        // A manual reps choice is the new truth: drop the tonnage anchor so the next weight
+        // change preserves *this* tonnage, not the one from before the edit.
+        updateSet(setIndex) {
+            it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true, tonnageAnchor = 0.0)
+        }
     }
 
     fun updateWeight(setIndex: Int, weight: Double) {
         crumb("set ${setIndex + 1} weight → $weight", key = "weight.$setIndex")
-        updateSet(setIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true, weightTouched = true) }
+        // Only manual load has a meaningful "same tonnage" trade-off. For bodyweight the
+        // picker is hidden; for assisted the picker is the assist offset, not the lifted
+        // weight, so changing it must not rewrite reps.
+        val manualLoad = _uiState.value.exercise?.loadMode == LoadMode.MANUAL
+        updateSet(setIndex) { set ->
+            val newWeight = weight.coerceAtLeast(0.0)
+            val anchor = if (manualLoad) {
+                set.tonnageAnchor.takeIf { it > 0.0 }
+                    ?: (set.reps * set.weight).takeIf { it > 0.0 }
+            } else {
+                null
+            }
+            val adjustedReps = anchor?.let { repsForSameTonnage(it, newWeight) }
+            set.copy(
+                weight = newWeight,
+                reps = adjustedReps ?: set.reps,
+                repsModified = if (adjustedReps != null) adjustedReps != set.previousReps else set.repsModified,
+                weightModified = true,
+                weightTouched = true,
+                tonnageAnchor = anchor ?: 0.0,
+            )
+        }
     }
 
     fun confirmReps(setIndex: Int) {
         crumb("set ${setIndex + 1} reps confirmed")
-        updateSet(setIndex) { it.copy(repsModified = true, repsTouched = true) }
+        updateSet(setIndex) { it.copy(repsModified = true, repsTouched = true, tonnageAnchor = 0.0) }
     }
 
     fun confirmWeight(setIndex: Int) {
         crumb("set ${setIndex + 1} weight confirmed")
-        updateSet(setIndex) { it.copy(weightModified = true, weightTouched = true) }
+        // Confirming accepts the current reps×weight pair as the new baseline.
+        updateSet(setIndex) { it.copy(weightModified = true, weightTouched = true, tonnageAnchor = 0.0) }
     }
 
     fun updateDescription(text: String) {
@@ -354,6 +401,7 @@ class StrengthExerciseViewModel @Inject constructor(
                         ex.copy(
                             completed = true,
                             completedEmpty = !anyTouched,
+                            completedAt = java.time.LocalDateTime.now().toString(),
                             // Persist the shown numbers either way — grey pre-fills included.
                             // Even a completed-empty exercise keeps its pre-filled sets (not
                             // emptyList()) so the next session's prefill walk-back still finds

@@ -142,7 +142,15 @@ object GitgraphHistoryCalculator {
         val cardioExercises = session.exercises.filter { it.type == ExerciseType.CARDIO }
         if (cardioExercises.isEmpty()) return null
 
-        val blockSeconds = cardioExercises
+        // A cardio slot the lifter skipped (completedEmpty, or left open) carries no performed
+        // work. It must not engage the session-envelope fallback below: on a routine that has
+        // both stretches and a cardio slot, skipping the cardio used to fall back to the whole
+        // session (startedAt..completedAt) and render the stretch day as e.g. `94m`. Only a
+        // slot that was actually performed may claim the day as cardio.
+        val performedCardio = cardioExercises.filterNot { it.isUntouched() }
+        if (performedCardio.isEmpty()) return null
+
+        val blockSeconds = performedCardio
             .flatMap { it.sets }
             .filterIsInstance<ExerciseSet.Cardio>()
             .filter { it.startedAt.isNotBlank() && it.endedAt.isNotBlank() }
@@ -152,8 +160,9 @@ object GitgraphHistoryCalculator {
 
         // Older/imported sessions may have no parseable cardio block timestamps, while the
         // Polar analysis or the session envelope still has the actual recording duration.
-        // This is deliberately limited to cardio sessions: ECG duration is session-global and
-        // must not turn a strength workout into a cardio entry in the GitGraph.
+        // This is deliberately limited to performed cardio sessions: ECG duration is
+        // session-global and must not turn a strength workout into a cardio entry in the
+        // GitGraph.
         val totalSeconds = when {
             blockSeconds > 0 -> blockSeconds
             session.ecgDurationSec > 0.0 -> session.ecgDurationSec.toLong()

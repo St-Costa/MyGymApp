@@ -1,5 +1,6 @@
 package com.mygymapp.data.model
 
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /** Epley formula: estimated 1-rep max from a single set's weight and reps. */
@@ -22,6 +23,20 @@ fun materializeBodyweightWeight(bwLoadPercent: Int, bodyWeightKg: Double?): Doub
     if (bodyWeightKg == null || bodyWeightKg <= 0.0) return 0.0
     val raw = bwLoadPercent / 100.0 * bodyWeightKg
     return (raw * 2).roundToInt() / 2.0
+}
+
+/**
+ * Reps that keep [tonnage] constant at [weight], always rounded **up** to the next whole rep
+ * and floored at 1. Returns null when there is nothing to preserve or the new weight cannot
+ * carry any load (zero/negative tonnage or weight) — callers then leave reps alone.
+ *
+ * Used by the strength/superset weight pickers: 50 kg × 10 reps = 500 kg; stepping the weight
+ * to 60 kg yields 9 reps (540 kg) instead of silently dropping to 480 kg. Reps are always
+ * whole numbers — never fractional. Pure, unit-tested.
+ */
+fun repsForSameTonnage(tonnage: Double, weight: Double): Int? {
+    if (tonnage <= 0.0 || weight <= 0.0) return null
+    return ceil(tonnage / weight).toInt().coerceAtLeast(1)
 }
 
 /** Best (highest) estimated 1RM across a set of strength sets, or null if none. */

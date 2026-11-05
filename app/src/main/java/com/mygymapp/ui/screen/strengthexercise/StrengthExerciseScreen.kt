@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.ui.components.CollapsibleAutoSaveDescription
@@ -124,48 +125,19 @@ fun StrengthExerciseScreen(
 
                 // Poliquin tempo loop (FORZA only): infinite bottom-to-top fill, one phase
                 // at a time over its real duration (X = 0.35s). Hidden when disabled
-                // (0-0-0-0, e.g. legacy exercises without the key).
+                // (0-0-0-0, e.g. legacy exercises without the key). No "Tempo X-X-X-X"
+                // caption here — the squares themselves already show the tokens.
                 val tempo = uiState.exercise?.tempo
                 if (tempo != null && !tempo.isDisabled) {
-                    TempoAnimation(tempo = tempo)
-                }
-
-                // Sets header
-                val repRangeText = remember(uiState.repRangeMin, uiState.repRangeMax) {
-                    if (uiState.repRangeMin > 0 && uiState.repRangeMax > 0) {
-                        "${uiState.repRangeMin} - ${uiState.repRangeMax}"
-                    } else "Reps"
+                    TempoAnimation(tempo = tempo, showLabel = false)
                 }
 
                 // Bodyweight exercises carry no user-entered weight — the load is estimated from
                 // body weight at completion (see StrengthExerciseViewModel.buildStrengthSets).
-                // The Kg column and per-set weight picker are hidden entirely. Assisted
-                // exercises keep the picker (the lifter dials in the assist-machine number) but
-                // label it differently and read PRs/previous from the raw assist offset.
+                // The per-set weight picker is hidden entirely. Assisted exercises keep the
+                // picker (the lifter dials in the assist-machine number) and read PRs/previous
+                // from the raw assist offset.
                 val isBodyweight = uiState.exercise?.isBodyweight == true
-                val isAssisted = uiState.exercise?.loadMode == com.mygymapp.data.model.LoadMode.ASSISTED
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        repRangeText,
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    if (!isBodyweight) {
-                        Text(
-                            if (isAssisted) "Assist." else "Kg",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.weight(1f),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                    }
-                }
-
-                HorizontalDivider()
 
                 // All-time PRs, centered: the best-estimated-1RM set ("RM") stacked 2dp above
                 // the best-tonnage set ("T"), each with a small subscript "PR". Each badge
@@ -205,6 +177,22 @@ fun StrengthExerciseScreen(
                         }
                     }
                 }
+
+                // Rep-range header, centered. The old two-column "reps | Kg" header is gone:
+                // the weight/assist label added nothing (the set pickers are self-evident).
+                val repRangeText = remember(uiState.repRangeMin, uiState.repRangeMax) {
+                    if (uiState.repRangeMin > 0 && uiState.repRangeMax > 0) {
+                        "${uiState.repRangeMin} - ${uiState.repRangeMax}"
+                    } else "Reps"
+                }
+                Text(
+                    repRangeText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+
+                HorizontalDivider()
 
                 // Set rows
                 uiState.sets.forEachIndexed { index, set ->
@@ -249,8 +237,9 @@ fun StrengthExerciseScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
+                // No extra spacer before the button: the Column's 16dp arrangement already
+                // separates it from the last set (the old 24dp + bottom 80dp made the
+                // screen unnecessarily long).
                 // Complete button — its label reflects what tapping it will record: an exercise
                 // where no reps/weight value was touched closes as "skipped" (grey border + X
                 // in the active list, excluded from tonnage), one where any value was touched
@@ -273,7 +262,7 @@ fun StrengthExerciseScreen(
                     com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "COMPLETE" else "SKIP")
                 }
 
-                Spacer(modifier = Modifier.height(80.dp))
+                Spacer(modifier = Modifier.height(32.dp))
             }
         }
     }

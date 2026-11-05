@@ -208,6 +208,10 @@ exercises:
     exerciseName: Bench Press   # denormalized
     type: FORZA
     bodypart: chest
+    startedAt: 2025-04-15T09:16:12   # omitted on legacy/incomplete slots — wall-clock visit
+    completedAt: 2025-04-15T09:31:40 # window, stamped when the exercise screen opens/closes.
+                                     # Powers the active-routine section estimates and the
+                                     # stretch row time; includes rest/recovery between sets.
     excludeFromTonnage: true    # omitted when false; set for warmup + fixed-daily exercises
     isDaily: true               # omitted when false; set only for fixed-daily exercises
     substitutedFor: ex-f6e5d4c3 # omitted unless this slot was swapped mid-session via "Switch
@@ -282,6 +286,8 @@ exercises:
 `excludeFromTonnage: true` is resolved when the session is built (warmup and fixed-daily exercises) and persisted per-exercise. Every tonnage reader filters `!excludeFromTonnage`; cardio metrics (`sessionCalories`, `sessionTrimp`, `vo2max`, ECG/HRV) are session-global and unaffected. `ExerciseType.CARDIO` exercises are always excluded from tonnage too, independent of section.
 
 `isDaily: true` marks an exercise performed as a fixed-daily exercise in this session. Exercise screens use it so daily progress (grey "previous" values) is compared only against prior sessions where the same exercise was *also* daily, and normal progress only against prior normal sessions — the same exercise can swing between the two roles across days without contaminating either history.
+
+Per-exercise `startedAt`/`completedAt` are the wall-clock window of that slot's last visit: stamped when the exercise screen opens (a re-entered skipped slot restarts it) and when the slot closes. They are omitted for legacy/incomplete slots. `WorkoutExercise.measuredDurationSeconds()` uses the pair for the active-routine section estimates and the stretch row badge, so the figure includes recovery/rest between sets rather than only the configured hold seconds; a skipped (`completedEmpty`) slot has no measurement and never feeds the estimate. Cardio prefers the sum of its closed block timestamps and falls back to this window. The section estimate then compares the sum of the slot windows with the whole session's `startedAt→completedAt`: when the slot screens undercount (opened after the first set), the surplus is distributed proportionally across the exercise groups so the sections add up to the real session duration.
 
 **`ExerciseSet.Cardio`** (`type: CARDIO` only): `startedAt`/`endedAt` are absolute ISO
 `LocalDateTime` strings, not offsets — this is what lets the sync server correlate a block

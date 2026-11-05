@@ -91,6 +91,7 @@ private fun ExerciseGroup.category(): SessionExerciseCategory = when (this) {
 @Composable
 private fun SessionSectionHeader(
     category: SessionExerciseCategory,
+    estimateSeconds: Int?,
     modifier: Modifier = Modifier,
 ) {
     // Excluded sections (warmup/daily) are muted; the counted workout section is highlighted.
@@ -112,8 +113,29 @@ private fun SessionSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = label, style = MaterialTheme.typography.labelMedium, color = color)
+        if (estimateSeconds != null) {
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = formatSectionEstimate(estimateSeconds),
+                style = MaterialTheme.typography.labelMedium,
+                color = color.copy(alpha = 0.75f),
+            )
+        }
         Spacer(Modifier.width(8.dp))
         HorizontalDivider(color = color.copy(alpha = 0.4f), modifier = Modifier.weight(1f))
+    }
+}
+
+/**
+ * Compact header estimate: `~7m`, `~1h 05m`. Rounds to the nearest minute but never shows a
+ * discouraging `~0m` for a short section.
+ */
+private fun formatSectionEstimate(totalSeconds: Int): String {
+    val minutes = ((totalSeconds + 30) / 60).coerceAtLeast(1)
+    return if (minutes >= 60) {
+        "~${minutes / 60}h ${(minutes % 60).toString().padStart(2, '0')}m"
+    } else {
+        "~${minutes}m"
     }
 }
 
@@ -200,12 +222,16 @@ fun ActiveRoutineScreen(
                         }
                     },
                 ) { index, group ->
-                    val showHeader = hasSections &&
+                    // Mixed routines always show the section headers. A single-section routine
+                    // also gets its header once an estimate is available: otherwise the WORKOUT
+                    // estimate would be invisible for the (very common) all-strength routines.
+                    val showHeader = (hasSections || uiState.sectionEstimates[group.category()] != null) &&
                         (index == 0 || groups[index - 1].category() != group.category())
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (showHeader) {
                             SessionSectionHeader(
                                 category = group.category(),
+                                estimateSeconds = uiState.sectionEstimates[group.category()],
                                 modifier = if (index == 0) Modifier else Modifier.padding(top = 8.dp),
                             )
                         }
