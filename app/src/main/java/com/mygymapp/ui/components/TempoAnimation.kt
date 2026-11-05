@@ -48,6 +48,7 @@ import com.mygymapp.ui.theme.JetBrainsMono
 fun TempoAnimation(
     tempo: Tempo,
     modifier: Modifier = Modifier,
+    showLabel: Boolean = true,
 ) {
     // No remember() before this point: activePhases() is 4 items, and an early return
     // before any hook keeps the hook order stable across recompositions.
@@ -80,11 +81,13 @@ fun TempoAnimation(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
-            "Tempo ${tempo.toFileString()}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-        )
+        if (showLabel) {
+            Text(
+                "Tempo ${tempo.toFileString()}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),

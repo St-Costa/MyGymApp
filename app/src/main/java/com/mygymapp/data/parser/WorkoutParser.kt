@@ -84,6 +84,10 @@ object WorkoutParser {
                 if (ex.excludeFromTonnage) put("excludeFromTonnage", true)
                 if (ex.isDaily) put("isDaily", true)
                 if (ex.completedEmpty) put("completedEmpty", true)
+                // Per-slot timing: omitted for legacy/incomplete visits and for every session
+                // saved before these fields existed. See WorkoutExercise.measuredDurationSeconds.
+                if (ex.startedAt.isNotBlank()) put("startedAt", ex.startedAt)
+                if (ex.completedAt.isNotBlank()) put("completedAt", ex.completedAt)
                 ex.substitutedFor?.let { put("substitutedFor", it) }
                 put("sets", sets)
             }
@@ -146,6 +150,8 @@ object WorkoutParser {
                 bodypart = map["bodypart"]?.toString() ?: "",
                 type = type,
                 completed = map["completed"] as? Boolean ?: false,
+                startedAt = map["startedAt"]?.toString() ?: "",
+                completedAt = map["completedAt"]?.toString() ?: "",
                 sets = parseSets(map["sets"], type),
                 excludeFromTonnage = map["excludeFromTonnage"] as? Boolean ?: false,
                 isDaily = map["isDaily"] as? Boolean ?: false,

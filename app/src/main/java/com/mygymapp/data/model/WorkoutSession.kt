@@ -49,6 +49,17 @@ data class WorkoutExercise(
     val bodypart: String,
     val type: ExerciseType,
     val completed: Boolean = false,
+    /**
+     * Wall-clock window of this slot's last visit, stamped when the exercise screen opens
+     * ([withExercisesStarted]) and when the slot is closed ([completedAt]). Together they give
+     * the active-routine section estimates a real duration per exercise — including the rest
+     * between sets and, for stretching, the recovery time between holds, not just the
+     * configured hold seconds. Empty on sessions saved before these fields existed; readers
+     * must treat a missing/invalid pair as "no measurement" and fall back to configured
+     * durations.
+     */
+    val startedAt: String = "",
+    val completedAt: String = "",
     val sets: List<ExerciseSet> = emptyList(),
     /** Warmup or fixed-daily exercise: still recorded, but excluded from all tonnage math. */
     val excludeFromTonnage: Boolean = false,
@@ -169,6 +180,11 @@ fun WorkoutSession.withExerciseSwitched(
         exerciseName = newExercise.name,
         bodypart = newExercise.bodypart,
         type = newExercise.type,
+        // The new exercise is a new visit: its screen stamps a fresh startedAt when it opens.
+        // Carrying the replaced slot's window over would bill the new exercise for the old one's
+        // time in the section estimates.
+        startedAt = "",
+        completedAt = "",
         sets = newSets,
         substitutedFor = oldExerciseId,
     )
@@ -192,4 +208,92 @@ fun WorkoutSession.withExerciseSetsOnExit(
             if (it.exerciseId == exerciseId) it.copy(sets = sets) else it
         },
     )
+}
+
+/**
+ * Stamps the start of a visit for one or more slots (a superset screen owns 2–3 at once). Every
+ * open **restarts** the window: the exercise screen can be left and reopened, and the idle time
+ * between visits is not exercise time. A performed-and-completed slot is never reopened (only
+ * skipped slots are — see [WorkoutExercise.isSwitchEligible]) and is left untouched defensively.
+ * Clearing [WorkoutExercise.completedAt] on a reopened skipped slot avoids a `startedAt >
+ * completedAt` pair that no duration reader could use. Pure, unit-tested.
+ */
+fun WorkoutSession.withExercisesStarted(
+    exerciseIds: Collection<String>,
+    at: String,
+): WorkoutSession {
+    val ids = exerciseIds.toSet()
+    if (ids.isEmpty()) return this
+    var changed = false
+    val updated = exercises.map { ex ->
+        if (ex.exerciseId in ids && !(ex.completed && !ex.completedEmpty)) {
+            changed = true
+            ex.copy(startedAt = at, completedAt = "")
+        } else {
+            ex
+        }
+    }
+    return if (changed) copy(exercises = updated) else this
+}
+
+/** Single-slot convenience overload of [withExercisesStarted]. */
+fun WorkoutSession.withExerciseStarted(exerciseId: String, at: String): WorkoutSession =
+    withExercisesStarted(listOf(exerciseId), at)
+
+/**
+ * Measured wall-clock duration of this slot's last visit, or null when there is no usable
+ * measurement (legacy session, skipped slot, malformed/negative window). This is what the
+ * active-routine section estimate and the stretch row badge use: it includes the rest/recovery
+ * time between sets, unlike the configured `timePerSetSeconds` sums.
+ *
+ * Cardio prefers the sum of its closed blocks — a block's start/end is the actual ride, while
+ * the screen window may include waiting around before "Inizia". Falls back to the exercise
+ * window when block timestamps are missing/invalid (imported or old sessions).
+ */
+fun WorkoutExercise.measuredDurationSeconds(): Int? {
+    if (isUntouched()) return null
+    if (type == ExerciseType.CARDIO) {
+        val blockSeconds = sets
+            .filterIsInstance<ExerciseSet.Cardio>()
+            .filter { it.startedAt.isNotBlank() && it.endedAt.isNotBlank() }
+            .sumOf { durationSeconds(it.startedAt, it.endedAt) }
+        if (blockSeconds > 0) return blockSeconds.coerceAtMost(MAX_MEASURED_SECONDS)
+    }
+    return measuredWindowSeconds(startedAt, completedAt)
+}
+
+/**
+ * Measured wall-clock duration of the whole session, or null when the envelope is missing,
+ * malformed, reversed, or implausibly long. The section estimate uses it to reconcile the
+ * per-exercise windows with the time actually spent: screens opened after the first set (or
+ * any other unmeasured pause) otherwise make the sum of the slots shorter than the session.
+ */
+fun WorkoutSession.measuredSessionDurationSeconds(): Int? =
+    measuredWindowSeconds(startedAt, completedAt)
+
+private fun measuredWindowSeconds(startText: String, endText: String): Int? {
+    val start = parseLocalDateTime(startText) ?: return null
+    val end = parseLocalDateTime(endText) ?: return null
+    val seconds = java.time.Duration.between(start, end).seconds
+    return seconds
+        .takeIf { it in 1..MAX_MEASURED_SECONDS.toLong() }
+        ?.toInt()
+}
+
+/**
+ * Plausibility ceiling for one slot's or a whole session's measured duration (6 hours). A
+ * corrupt clock or a session left open overnight must not turn a section estimate into a
+ * nonsense number.
+ */
+private const val MAX_MEASURED_SECONDS = 6 * 60 * 60
+
+private fun parseLocalDateTime(text: String): java.time.LocalDateTime? =
+    runCatching { java.time.LocalDateTime.parse(text) }.getOrNull()
+
+private fun durationSeconds(startText: String, endText: String): Int {
+    val start = parseLocalDateTime(startText) ?: return 0
+    val end = parseLocalDateTime(endText) ?: return 0
+    return java.time.Duration.between(start, end).seconds
+        .coerceIn(0, MAX_MEASURED_SECONDS.toLong())
+        .toInt()
 }

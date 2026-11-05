@@ -9,6 +9,8 @@ import com.mygymapp.data.model.LoadMode
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
+import com.mygymapp.data.model.repsForSameTonnage
+import com.mygymapp.data.model.withExercisesStarted
 import com.mygymapp.data.model.withExerciseSwitched
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalDateTime
 import javax.inject.Inject
 
 data class SupersetSetUi(
@@ -46,6 +49,8 @@ data class SupersetSetUi(
     val weightModified: Boolean = false,
     val repsTouched: Boolean = false,
     val weightTouched: Boolean = false,
+    // Same tonnage-preserving anchor as StrengthSetUi (manual-load members only).
+    val tonnageAnchor: Double = 0.0,
     // STRETCH fields
     val timeSeconds: Int = 0,
     val done: Boolean = false,
@@ -134,7 +139,18 @@ class SupersetViewModel @Inject constructor(
 
             val today = LocalDate.now()
             // The active session is always dated today; fetch it straight by id.
-            val session = workoutRepository.getSession(sessionId, today)
+            var loadedSession = workoutRepository.getSession(sessionId, today)
+            // One window for the whole chain: the members are interleaved on this single
+            // screen, so stamping them together is what lets the section estimate count the
+            // chain once instead of once per member.
+            if (loadedSession != null) {
+                val started = loadedSession.withExercisesStarted(
+                    exerciseIds,
+                    LocalDateTime.now().toString(),
+                )
+                if (started !== loadedSession) loadedSession = workoutRepository.save(started)
+            }
+            val session = loadedSession
             currentSession = session
 
             val sessionRoutineId = session?.routineId ?: ""
@@ -312,22 +328,47 @@ class SupersetViewModel @Inject constructor(
 
     fun updateReps(listIndex: Int, reps: Int) {
         crumb("row $listIndex reps → $reps", key = "reps.$listIndex")
-        updateSetAt(listIndex) { it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true) }
+        // Manual reps edit becomes the new tonnage baseline for this row.
+        updateSetAt(listIndex) {
+            it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true, tonnageAnchor = 0.0)
+        }
     }
 
     fun updateWeight(listIndex: Int, weight: Double) {
         crumb("row $listIndex weight → $weight", key = "weight.$listIndex")
-        updateSetAt(listIndex) { it.copy(weight = weight.coerceAtLeast(0.0), weightModified = true, weightTouched = true) }
+        updateSetAt(listIndex) { set ->
+            // Same rule as the single-exercise screen: only manual-load rows trade reps for
+            // weight. A bodyweight row has no picker, and an assisted row's picker is the
+            // assist offset, so neither has a meaningful "same lifted tonnage" target.
+            val manualLoad = _uiState.value.members
+                .getOrNull(set.exerciseIndex)?.exercise?.loadMode == LoadMode.MANUAL
+            val newWeight = weight.coerceAtLeast(0.0)
+            val anchor = if (manualLoad) {
+                set.tonnageAnchor.takeIf { it > 0.0 }
+                    ?: (set.reps * set.weight).takeIf { it > 0.0 }
+            } else {
+                null
+            }
+            val adjustedReps = anchor?.let { repsForSameTonnage(it, newWeight) }
+            set.copy(
+                weight = newWeight,
+                reps = adjustedReps ?: set.reps,
+                repsModified = if (adjustedReps != null) adjustedReps != set.previousReps else set.repsModified,
+                weightModified = true,
+                weightTouched = true,
+                tonnageAnchor = anchor ?: 0.0,
+            )
+        }
     }
 
     fun confirmReps(listIndex: Int) {
         crumb("row $listIndex reps confirmed")
-        updateSetAt(listIndex) { it.copy(repsModified = true, repsTouched = true) }
+        updateSetAt(listIndex) { it.copy(repsModified = true, repsTouched = true, tonnageAnchor = 0.0) }
     }
 
     fun confirmWeight(listIndex: Int) {
         crumb("row $listIndex weight confirmed")
-        updateSetAt(listIndex) { it.copy(weightModified = true, weightTouched = true) }
+        updateSetAt(listIndex) { it.copy(weightModified = true, weightTouched = true, tonnageAnchor = 0.0) }
     }
 
     /**
@@ -549,6 +590,7 @@ class SupersetViewModel @Inject constructor(
         // On back-out / autosave (completed=false) the settle step preserves the entry flags:
         // a skipped member the lifter re-entered stays skipped, and a performed one stays
         // performed (see docs/CONVENTIONS.md "Re-entering a skipped exercise").
+        val completedAtNow = LocalDateTime.now().toString()
         val updatedExercises = exercises.map { ex ->
             val mi = exerciseIds.indexOf(ex.exerciseId)
             if (mi < 0) return@map ex
@@ -558,6 +600,7 @@ class SupersetViewModel @Inject constructor(
             ex.copy(
                 completed = if (completed) true else ex.completed,
                 completedEmpty = if (completed) !performed else ex.completedEmpty,
+                completedAt = if (completed) completedAtNow else ex.completedAt,
                 sets = memberSets.map { setUi ->
                     // A touched set (or an explicit completion) persists the on-screen value;
                     // an untouched set on back-out keeps its on-disk entry value via

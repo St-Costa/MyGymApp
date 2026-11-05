@@ -7,6 +7,7 @@ import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.withExerciseSetsOnExit
+import com.mygymapp.data.model.withExerciseStarted
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.ExerciseRepository
 import com.mygymapp.data.repository.RoutineRepository
@@ -86,7 +87,17 @@ class CardioExerciseViewModel @Inject constructor(
             val exercise = exerciseRepository.getById(exerciseId) ?: return@launch
 
             // The active session is always dated today; fetch it straight by id.
-            val session = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+            var loadedSession = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+            // Slot window for the estimate fallback; actual cardio minutes prefer the closed
+            // block timestamps (see WorkoutExercise.measuredDurationSeconds).
+            if (loadedSession != null) {
+                val started = loadedSession.withExerciseStarted(
+                    exerciseId,
+                    java.time.LocalDateTime.now().toString(),
+                )
+                if (started !== loadedSession) loadedSession = workoutRepository.save(started)
+            }
+            val session = loadedSession
             currentSession = session
 
             val workoutExercise = session?.exercises?.find { it.exerciseId == exerciseId }
@@ -221,7 +232,12 @@ class CardioExerciseViewModel @Inject constructor(
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        ex.copy(completed = true, completedEmpty = false, sets = updatedBlocks)
+                        ex.copy(
+                            completed = true,
+                            completedEmpty = false,
+                            completedAt = LocalDateTime.now().toString(),
+                            sets = updatedBlocks,
+                        )
                     } else ex
                 }
                 workoutRepository.save(session.copy(exercises = exercises))
@@ -269,9 +285,19 @@ class CardioExerciseViewModel @Inject constructor(
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         if (anyBlock) {
-                            ex.copy(completed = true, completedEmpty = false, sets = finalBlocks)
+                            ex.copy(
+                                completed = true,
+                                completedEmpty = false,
+                                completedAt = LocalDateTime.now().toString(),
+                                sets = finalBlocks,
+                            )
                         } else {
-                            ex.copy(completed = true, completedEmpty = true, sets = emptyList())
+                            ex.copy(
+                                completed = true,
+                                completedEmpty = true,
+                                completedAt = LocalDateTime.now().toString(),
+                                sets = emptyList(),
+                            )
                         }
                     } else ex
                 }

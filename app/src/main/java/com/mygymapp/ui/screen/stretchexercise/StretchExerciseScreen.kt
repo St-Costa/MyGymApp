@@ -138,14 +138,6 @@ fun StretchExerciseScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text(
-                    text = "${uiState.countdownDuration}s · loop ${uiState.loopCount}",
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
                 // Countdown button — the duration travels to StopwatchService so the
                 // loop (and its buzzes) keeps running with the screen off.
                 val context = LocalContext.current
