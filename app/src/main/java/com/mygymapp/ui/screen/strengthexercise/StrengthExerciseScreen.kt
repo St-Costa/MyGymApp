@@ -172,7 +172,15 @@ fun StrengthExerciseScreen(
                         }
                     }
                     if (rmValue != null && rmValue == tValue) {
-                        PrBadge("RM/T", rmValue, Modifier.fillMaxWidth())
+                        PrBadge(
+                            "RM/T",
+                            if (isBodyweight && uiState.tonnagePrTargetReps != null) {
+                                "$rmValue [${uiState.tonnagePrTargetReps}]"
+                            } else {
+                                rmValue
+                            },
+                            Modifier.fillMaxWidth(),
+                        )
                     } else {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -180,7 +188,17 @@ fun StrengthExerciseScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             rmValue?.let { PrBadge("RM", it, Modifier.weight(1f)) }
-                            tValue?.let { PrBadge("T", it, Modifier.weight(1f)) }
+                            tValue?.let {
+                                PrBadge(
+                                    "T",
+                                    if (isBodyweight && uiState.tonnagePrTargetReps != null) {
+                                        "$it [${uiState.tonnagePrTargetReps}]"
+                                    } else {
+                                        it
+                                    },
+                                    Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                 }
