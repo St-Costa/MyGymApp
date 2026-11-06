@@ -214,4 +214,52 @@ class SectionTimeEstimateTest {
         assertEquals(setOf("a", "b", "d", "e"), ids)
         assertTrue("c" !in ids)
     }
+
+    @Test
+    fun `a strength slot skipped in the previous session contributes no time`() {
+        val current = listOf(active("bench", SessionExerciseCategory.NORMAL))
+        // completedEmpty=true: lo slot porta il pre-fill grigio ma nessun lavoro eseguito —
+        // measuredDurationSeconds è null, e la forza non ha fallback configurato.
+        val prior = previous(
+            performed("bench", "2026-11-04T10:00:00", "2026-11-04T10:10:00").copy(completedEmpty = true),
+        )
+
+        assertNull(estimateSectionSeconds(current, prior)[SessionExerciseCategory.NORMAL])
+    }
+
+    @Test
+    fun `a stretch slot skipped in the previous session falls back to the configured hold`() {
+        val current = listOf(
+            active("stretch", SessionExerciseCategory.NORMAL, ExerciseType.STRETCH, setCount = 3, timePerSetSeconds = 90),
+        )
+        // Skippato: nessuna finestra misurata, ma la stima resta "se lo fai, dura 3x90".
+        val prior = previous(
+            performed(
+                "stretch", "2026-11-04T18:00:00", "2026-11-04T18:10:00", ExerciseType.STRETCH,
+                sets = List(3) { ExerciseSet.Stretch(timeSeconds = 90, done = false) },
+            ).copy(completedEmpty = true),
+        )
+
+        assertEquals(270, estimateSectionSeconds(current, prior)[SessionExerciseCategory.NORMAL])
+    }
+
+    @Test
+    fun `daily estimate reflects only the daily slots present under this routine`() {
+        // La routine ha filtrato via "mobility" (già presente nel workout): la stima DAILY
+        // conta solo "breath" effettivamente in sezione, anche se la precedente conteneva entrambi.
+        val current = listOf(
+            active("breath", SessionExerciseCategory.DAILY, ExerciseType.STRETCH, setCount = 2, timePerSetSeconds = 60),
+            active("bench", SessionExerciseCategory.NORMAL),
+        )
+        val prior = previous(
+            performed("breath", "2026-11-04T08:00:00", "2026-11-04T08:04:00", ExerciseType.STRETCH),
+            performed("mobility", "2026-11-04T08:04:00", "2026-11-04T08:09:00", ExerciseType.STRETCH),
+            performed("bench", "2026-11-04T08:09:00", "2026-11-04T08:19:00"),
+        )
+
+        val estimate = estimateSectionSeconds(current, prior)
+
+        assertEquals(240, estimate[SessionExerciseCategory.DAILY])
+        assertEquals(600, estimate[SessionExerciseCategory.NORMAL])
+    }
 }

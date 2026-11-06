@@ -321,7 +321,10 @@ class StrengthExerciseViewModel @Inject constructor(
             set.copy(
                 weight = newWeight,
                 reps = adjustedReps ?: set.reps,
-                repsModified = if (adjustedReps != null) adjustedReps != set.previousReps else set.repsModified,
+                // Il ricalcolo automatico per tenere lo stesso tonnellaggio non deve
+                // marcare le reps come modificate (restano grigie): solo una modifica
+                // manuale delle reps o una conferma le promuove a viola.
+                repsModified = set.repsModified,
                 weightModified = true,
                 weightTouched = true,
                 tonnageAnchor = anchor ?: 0.0,
@@ -532,21 +535,26 @@ internal data class StrengthSetDraft(
     val weight: Double,
     val repsTouched: Boolean,
     val weightTouched: Boolean,
+    /** Null nelle bozze legacy a 4 campi (pre stima viola-fix): ricalcolato come prima. */
+    val repsModified: Boolean? = null,
+    val weightModified: Boolean? = null,
 )
 
 internal fun encodeStrengthDraft(sets: List<StrengthSetUi>): ArrayList<String> =
-    ArrayList(sets.map { "${it.reps}|${it.weight}|${it.repsTouched}|${it.weightTouched}" })
+    ArrayList(sets.map { "${it.reps}|${it.weight}|${it.repsTouched}|${it.weightTouched}|${it.repsModified}|${it.weightModified}" })
 
 internal fun decodeStrengthDraft(raw: List<String>?): List<StrengthSetDraft>? {
     if (raw == null) return null
     return raw.map { row ->
         val p = row.split("|")
-        if (p.size != 4) return null
+        if (p.size != 4 && p.size != 6) return null
         StrengthSetDraft(
             reps = p[0].toIntOrNull() ?: return null,
             weight = p[1].toDoubleOrNull() ?: return null,
             repsTouched = p[2].toBooleanStrictOrNull() ?: return null,
             weightTouched = p[3].toBooleanStrictOrNull() ?: return null,
+            repsModified = if (p.size == 6) p[4].toBooleanStrictOrNull() ?: return null else null,
+            weightModified = if (p.size == 6) p[5].toBooleanStrictOrNull() ?: return null else null,
         )
     }
 }
@@ -563,10 +571,12 @@ internal fun applyStrengthDraft(
             weight = d.weight,
             repsTouched = d.repsTouched,
             weightTouched = d.weightTouched,
-            // Recomputed against the fresh previous like init does — the draft carries
-            // values + touches, never derived flags.
-            repsModified = d.reps != s.previousReps,
-            weightModified = d.weight != s.previousWeight,
+            // I flag derivati viaggiano nella bozza (6 campi): un ricalcolo automatico
+            // a tonnellaggio costante lascia repsModified=false anche se il valore
+            // differisce dal previous, così resta grigio dopo un process-death restore.
+            // Le bozze legacy a 4 campi ricalcolano come prima.
+            repsModified = d.repsModified ?: (d.reps != s.previousReps),
+            weightModified = d.weightModified ?: (d.weight != s.previousWeight),
         )
     }
 }

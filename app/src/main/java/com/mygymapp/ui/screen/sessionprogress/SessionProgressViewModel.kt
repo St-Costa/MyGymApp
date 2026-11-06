@@ -230,29 +230,33 @@ class SessionProgressViewModel @Inject constructor(
             .filter { it.routineId == session.routineId }
         val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
-        val currentForza = session.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
+        val currentForza = session.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage && !it.isUntouched() }
         val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
         val sessionTonnage = allSessions.map { hist ->
             hist.exercises
-                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage && !it.isUntouched() }
                 .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
         }
 
         // Best estimated 1RM per session, mirroring ActiveRoutineViewModel's chart data —
         // a max across exercises/sets, not a sum (see estimate1RM / bestEstimated1RM).
+        // Gli slot skippati sono esclusi: il pre-fill persistito non deve forgiare un record.
         val sessionBestE1RM = allSessions.map { hist ->
             hist.exercises
-                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage && !it.isUntouched() }
                 .mapNotNull { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM() }
                 .maxOrNull() ?: 0.0
         }
 
         // Stretch: total seconds held across every Stretch set of every STRETCH exercise.
+        // Solo i set marcati done: uno slot skippato conserva i timeSeconds configurati
+        // ma nessun hold eseguito, quindi contribuisce 0.
         val sessionStretchMinutes = allSessions.map { hist ->
             val secs = hist.exercises
                 .filter { it.type == ExerciseType.STRETCH }
                 .flatMap { it.sets }
                 .filterIsInstance<ExerciseSet.Stretch>()
+                .filter { it.done }
                 .sumOf { it.timeSeconds.toLong() }
             secs / 60.0
         }

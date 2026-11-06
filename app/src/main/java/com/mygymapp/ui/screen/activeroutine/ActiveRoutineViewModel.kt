@@ -425,12 +425,15 @@ class ActiveRoutineViewModel @Inject constructor(
 
             // Compute previous tonnage using only exercises common to the current session,
             // so it matches the chart (which also filters to current exercise IDs).
+            // Come il chart e finalizeSession: gli slot skippati/ancora aperti
+            // (isUntouched) non rappresentano lavoro eseguito e restano fuori — il
+            // pre-fill grigio resta persistito per continuità ma non conta.
             val currentNormalExIds = ordered
                 .filter { (_, cat) -> cat == SessionExerciseCategory.NORMAL }
                 .map { (re, _) -> re.exerciseId }
                 .toSet()
             val commonPreviousTonnage: Double? = previousSession?.exercises
-                ?.filter { it.exerciseId in currentNormalExIds && !it.excludeFromTonnage }
+                ?.filter { it.exerciseId in currentNormalExIds && !it.excludeFromTonnage && !it.isUntouched() }
                 ?.sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
 
             // Create and save the workout session
@@ -904,12 +907,15 @@ class ActiveRoutineViewModel @Inject constructor(
             val updated = reloaded.copy(
                 completedAt = LocalDateTime.now().toString(),
             )
-            // Calculate tonnage from actual set data
+            // Calculate tonnage from actual set data. Skipped/open slots (isUntouched)
+            // carry the grey pre-fill for walk-back continuity but are not performed
+            // work: they contribute nothing — same rule as ExerciseStatsCalculator,
+            // GitgraphHistoryCalculator and measuredDurationSeconds.
             var totalTonnage = 0.0
             val tonnageByBodypart = mutableMapOf<String, Double>()
             for (ex in updated.exercises) {
                 // Warmup + fixed-daily exercises never contribute to tonnage.
-                if (ex.excludeFromTonnage) continue
+                if (ex.excludeFromTonnage || ex.isUntouched()) continue
                 var exTonnage = 0.0
                 for (set in ex.sets) {
                     if (set is ExerciseSet.Strength) {
@@ -942,21 +948,24 @@ class ActiveRoutineViewModel @Inject constructor(
             val sessionLabels = allSessions.map { LocalDate.parse(it.date).format(labelFmt) }
 
             // Compare only exercises that are in the current session, so the chart is meaningful
-            // even when routine composition has changed between sessions.
-            val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage }
+            // even when routine composition has changed between sessions. Skipped slots are
+            // excluded everywhere (same rule as the stored totalTonnage above): a skipped
+            // pre-fill must not paint a phantom bar on the history chart.
+            val currentForza = finalSession.exercises.filter { it.type == ExerciseType.FORZA && !it.excludeFromTonnage && !it.isUntouched() }
             val currentExerciseIds = currentForza.map { it.exerciseId }.toSet()
             val sessionTonnage = allSessions.map { hist ->
                 hist.exercises
-                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage && !it.isUntouched() }
                     .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
             }
 
             // Best estimated 1RM per session, across the same exercises used for sessionTonnage.
             // Unlike tonnage, 1RM is a max across exercises/sets, not a sum — summing would just
             // reproduce the same "more reps beats heavier weight" distortion this metric exists to avoid.
+            // Untouched slots excluded: their pre-fill sets would otherwise forge a record.
             val sessionBestE1RM = allSessions.map { hist ->
                 hist.exercises
-                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage }
+                    .filter { it.exerciseId in currentExerciseIds && !it.excludeFromTonnage && !it.isUntouched() }
                     .mapNotNull { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().bestEstimated1RM() }
                     .maxOrNull() ?: 0.0
             }
@@ -967,7 +976,7 @@ class ActiveRoutineViewModel @Inject constructor(
                 val bpIds = currentForza.filter { it.bodypart == bp }.map { it.exerciseId }.toSet()
                 allSessions.map { hist ->
                     hist.exercises
-                        .filter { it.exerciseId in bpIds && !it.excludeFromTonnage }
+                        .filter { it.exerciseId in bpIds && !it.excludeFromTonnage && !it.isUntouched() }
                         .sumOf { ex -> ex.sets.filterIsInstance<ExerciseSet.Strength>().sumOf { it.reps * it.weight } }
                 }
             }

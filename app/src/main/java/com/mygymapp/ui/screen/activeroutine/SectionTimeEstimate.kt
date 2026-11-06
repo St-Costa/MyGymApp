@@ -20,6 +20,17 @@ import kotlin.math.roundToInt
  * block duration; strength groups have no configured duration, so they only get an estimate
  * once a timed session exists.
  *
+ * Daily composition: [currentExercises] is already the routine-filtered list (a fixed-daily
+ * exercise that also lives in the routine is dropped, never duplicated), so the DAILY section
+ * estimate naturally reflects only the daily slots actually present under this routine — no
+ * extra filtering is needed here.
+ *
+ * Skipped slots: [com.mygymapp.data.model.WorkoutExercise.measuredDurationSeconds] returns
+ * null for untouched slots (`!completed || completedEmpty`), so a strength slot skipped in
+ * the previous session contributes 0 (never a phantom window), while a skipped timed slot
+ * (stretch/cardio) falls back to its configured duration — the "if you do it, this is how
+ * long it takes" figure, not a record of the skip.
+ *
  * The per-slot windows are then reconciled with the **whole previous session** envelope. A slot
  * opened after the first set (common when the lifter already knows the load) measures only the
  * tail of that exercise, so summing slots would understate the session. When the session's
