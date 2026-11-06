@@ -63,6 +63,46 @@ class ExerciseSetDraftsTest {
     }
 
     @Test
+    fun `strength auto tonnage recalc stays grey through a draft round-trip`() {
+        // 50x10 che passa a 60 kg: le reps ricalcolate a 9 per tenere il tonnellaggio
+        // non marcano repsModified (restano grigie) pur differendo dal previous.
+        val autoRecalced = listOf(
+            StrengthSetUi(
+                reps = 9, weight = 60.0,
+                previousReps = 10, previousWeight = 50.0,
+                repsModified = false, weightModified = true,
+                repsTouched = false, weightTouched = true,
+            ),
+        )
+
+        val restored = applyStrengthDraft(
+            listOf(StrengthSetUi(reps = 10, weight = 50.0, previousReps = 10, previousWeight = 50.0)),
+            decodeStrengthDraft(encodeStrengthDraft(autoRecalced)),
+        ).single()
+
+        assertEquals(9, restored.reps)
+        assertEquals(60.0, restored.weight, 0.0)
+        assertEquals(false, restored.repsTouched)
+        assertEquals(true, restored.weightTouched)
+        assertEquals(false, restored.repsModified)
+        assertEquals(true, restored.weightModified)
+    }
+
+    @Test
+    fun `strength legacy four-field drafts still decode`() {
+        val draft = decodeStrengthDraft(listOf("10|80.0|true|false"))!!
+
+        val restored = applyStrengthDraft(
+            listOf(StrengthSetUi(reps = 8, weight = 75.0, previousReps = 8, previousWeight = 75.0)),
+            draft,
+        ).single()
+
+        // Senza flag persistiti, ricalcolo come prima.
+        assertEquals(true, restored.repsModified)
+        assertEquals(true, restored.weightModified)
+    }
+
+    @Test
     fun `strength malformed or mismatched drafts are ignored`() {
         val base = listOf(StrengthSetUi(reps = 8, weight = 75.0))
         assertNull(decodeStrengthDraft(null))
@@ -146,6 +186,27 @@ class ExerciseSetDraftsTest {
         assertEquals("Bench", restored.exerciseName)
         assertEquals(8, restored.previousReps)
         assertEquals(ExerciseType.FORZA, restored.exerciseType)
+    }
+
+    @Test
+    fun `superset auto tonnage recalc stays grey through a draft round-trip`() {
+        val autoRecalced = listOf(
+            supersetSet().copy(
+                reps = 9, weight = 60.0,
+                previousReps = 10, previousWeight = 50.0,
+                repsModified = false, weightModified = true,
+                repsTouched = false, weightTouched = true,
+            ),
+        )
+
+        val restored = applySupersetDraft(
+            listOf(supersetSet().copy(reps = 10, weight = 50.0, previousReps = 10, previousWeight = 50.0)),
+            decodeSupersetDraft(encodeSupersetDraft(autoRecalced)),
+        ).single()
+
+        assertEquals(9, restored.reps)
+        assertEquals(false, restored.repsModified)
+        assertEquals(true, restored.weightModified)
     }
 
     @Test

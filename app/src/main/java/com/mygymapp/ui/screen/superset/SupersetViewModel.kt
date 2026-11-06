@@ -376,7 +376,9 @@ class SupersetViewModel @Inject constructor(
             set.copy(
                 weight = newWeight,
                 reps = adjustedReps ?: set.reps,
-                repsModified = if (adjustedReps != null) adjustedReps != set.previousReps else set.repsModified,
+                // Come nello screen singolo: il ricalcolo automatico a tonnellaggio
+                // costante non marca le reps (restano grigie); solo tocco/conferma manuale.
+                repsModified = set.repsModified,
                 weightModified = true,
                 weightTouched = true,
                 tonnageAnchor = anchor ?: 0.0,
@@ -675,13 +677,17 @@ internal data class SupersetSetDraft(
     val weightTouched: Boolean,
     val timeSeconds: Int,
     val done: Boolean,
+    /** Null nelle bozze legacy a 8 campi: ricalcolato come prima. */
+    val repsModified: Boolean? = null,
+    val weightModified: Boolean? = null,
 )
 
 internal fun encodeSupersetDraft(sets: List<SupersetSetUi>): ArrayList<String> =
     ArrayList(
         sets.map {
             "${it.exerciseIndex}|${it.setIndex}|${it.reps}|${it.weight}|" +
-                "${it.repsTouched}|${it.weightTouched}|${it.timeSeconds}|${it.done}"
+                "${it.repsTouched}|${it.weightTouched}|${it.timeSeconds}|${it.done}|" +
+                "${it.repsModified}|${it.weightModified}"
         },
     )
 
@@ -689,7 +695,7 @@ internal fun decodeSupersetDraft(raw: List<String>?): List<SupersetSetDraft>? {
     if (raw == null) return null
     return raw.map { row ->
         val p = row.split("|")
-        if (p.size != 8) return null
+        if (p.size != 8 && p.size != 10) return null
         SupersetSetDraft(
             exerciseIndex = p[0].toIntOrNull() ?: return null,
             setIndex = p[1].toIntOrNull() ?: return null,
@@ -699,6 +705,8 @@ internal fun decodeSupersetDraft(raw: List<String>?): List<SupersetSetDraft>? {
             weightTouched = p[5].toBooleanStrictOrNull() ?: return null,
             timeSeconds = p[6].toIntOrNull() ?: return null,
             done = p[7].toBooleanStrictOrNull() ?: return null,
+            repsModified = if (p.size == 10) p[8].toBooleanStrictOrNull() ?: return null else null,
+            weightModified = if (p.size == 10) p[9].toBooleanStrictOrNull() ?: return null else null,
         )
     }
 }
@@ -712,14 +720,15 @@ internal fun applySupersetDraft(
         val d = draft[i]
         // Positional (same slot, same handle): a member switch re-navigates to a fresh
         // entry with an empty handle, so positions can't straddle different members.
-        // Derived flags recompute against the fresh previous, like the loaders do.
+        // I flag derivati viaggiano nella bozza (10 campi): il ricalcolo automatico resta
+        // grigio dopo un restore. Bozze legacy a 8 campi: ricalcolo come prima.
         s.copy(
             reps = d.reps,
             weight = d.weight,
             repsTouched = d.repsTouched,
             weightTouched = d.weightTouched,
-            repsModified = d.reps != s.previousReps,
-            weightModified = d.weight != s.previousWeight,
+            repsModified = d.repsModified ?: (d.reps != s.previousReps),
+            weightModified = d.weightModified ?: (d.weight != s.previousWeight),
             timeSeconds = d.timeSeconds,
             done = d.done,
         )
