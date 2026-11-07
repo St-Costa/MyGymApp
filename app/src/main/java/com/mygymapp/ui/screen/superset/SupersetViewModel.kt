@@ -360,6 +360,16 @@ class SupersetViewModel @Inject constructor(
     fun updateWeight(listIndex: Int, weight: Double) {
         crumb("row $listIndex weight → $weight", key = "weight.$listIndex")
         updateSetAt(listIndex) { set ->
+            // Se le reps della riga sono già state toccate/confermate, il peso cambia
+            // da solo: niente ricalcolo reps (stessa regola dello screen singolo).
+            if (set.repsTouched) {
+                return@updateSetAt set.copy(
+                    weight = weight.coerceAtLeast(0.0),
+                    weightModified = true,
+                    weightTouched = true,
+                    tonnageAnchor = 0.0,
+                )
+            }
             // Same rule as the single-exercise screen: only manual-load rows trade reps for
             // weight. A bodyweight row has no picker, and an assisted row's picker is the
             // assist offset, so neither has a meaningful "same lifted tonnage" target.

@@ -32,6 +32,9 @@ data class ExerciseListUiState(
     // User-selected bodypart filter (dropdown, below the type chips) — null means "all
     // bodyparts". Combines with selectedType/searchQuery (AND).
     val selectedBodypart: String? = null,
+    // Preferiti (stella ⭐): true = mostra solo gli esercizi marcati come preferiti.
+    // Si combina in AND con tutti gli altri filtri.
+    val favoritesOnly: Boolean = false,
     // "Switch exercise" picker lock (docs/CONVENTIONS.md#switch-exercise): the bodypart of
     // the slot being switched. Non-blank only in the filtered switch picker — drives the
     // hidden bodypart row and the contextual empty message. The type lock instead becomes
@@ -131,14 +134,22 @@ class ExerciseListViewModel @Inject constructor(
         applyFilter()
     }
 
+    /** Stella ⭐: mostra solo i preferiti / torna a tutti. */
+    fun onFavoritesFilterChange() {
+        _uiState.value = _uiState.value.copy(favoritesOnly = !_uiState.value.favoritesOnly)
+        applyFilter()
+    }
+
     private fun applyFilter() {
         val query = _uiState.value.searchQuery.trim()
         val selectedType = _uiState.value.selectedType
         val selectedBodypart = _uiState.value.selectedBodypart
+        val favoritesOnly = _uiState.value.favoritesOnly
         val filtered = allExercises
             .filter { query.isBlank() || fuzzyMatch(query, it.name) }
             .filter { selectedType == null || it.type == selectedType }
             .filter { selectedBodypart == null || it.bodypart.ifBlank { "Other" } == selectedBodypart }
+            .filter { !favoritesOnly || it.isFavorite }
         val (cardio, rest) = filtered.partition { it.type == ExerciseType.CARDIO }
         // Within each bodypart group, stretch exercises come before strength ones.
         val grouped = rest

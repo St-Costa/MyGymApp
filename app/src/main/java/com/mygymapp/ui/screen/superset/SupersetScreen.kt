@@ -277,6 +277,8 @@ fun SupersetScreen(
 
                 // No extra spacer before the button: the Column's arrangement already
                 // separates it from the last card (same as the single-exercise screen).
+                // Coda ridotta a 8dp: il vecchio Spacer(32dp) forzava ~32dp di overflow
+                // anche quando tutto stava in una pagina (minuscolo scroll di pochi pixel).
                 // Each member closes independently: one with no touched value closes as
                 // "skipped" (grey + X, excluded from tonnage), one with any touched value as
                 // done. The label reflects the all-untouched case — the whole chain skipped.
@@ -301,7 +303,7 @@ fun SupersetScreen(
                     com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "COMPLETE" else "SKIP")
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }

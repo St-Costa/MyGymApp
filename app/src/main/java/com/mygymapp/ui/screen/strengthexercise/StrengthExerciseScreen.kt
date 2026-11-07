@@ -263,13 +263,9 @@ fun StrengthExerciseScreen(
                 }
 
                 // No extra spacer before the button: the Column's 16dp arrangement already
-                // separates it from the last set (the old 24dp + bottom 80dp made the
-                // screen unnecessarily long).
-                // Complete button — its label reflects what tapping it will record: an exercise
-                // where no reps/weight value was touched closes as "skipped" (grey border + X
-                // in the active list, excluded from tonnage), one where any value was touched
-                // closes as done. See StrengthExerciseViewModel.completeExercise().
-                // (anyTouched is hoisted above — the swap icon mirrors it.)
+                // separates it from the last set. Il vecchio Spacer(32dp) in coda forzava
+                // ~32dp di overflow anche quando tutto stava in una pagina (minuscolo
+                // scroll di pochi pixel): resta solo 8dp di respiro.
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
@@ -287,7 +283,7 @@ fun StrengthExerciseScreen(
                     com.mygymapp.ui.components.ActionButtonText(if (anyTouched) "COMPLETE" else "SKIP")
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }

@@ -31,7 +31,8 @@ fun ExerciseCard(
         border = BorderStroke(2.dp, borderColor),
     ) {
         Text(
-            text = exercise.name,
+            // Preferito: stella a sinistra del nome.
+            text = if (exercise.isFavorite) "⭐ ${exercise.name}" else exercise.name,
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

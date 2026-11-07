@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -106,6 +107,14 @@ fun ExerciseEditScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.onFavoriteChange(!uiState.isFavorite) }) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = if (uiState.isFavorite) "Remove from favorites" else "Mark as favorite",
+                            tint = if (uiState.isFavorite) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        )
+                    }
                     if (!uiState.isNew) {
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(

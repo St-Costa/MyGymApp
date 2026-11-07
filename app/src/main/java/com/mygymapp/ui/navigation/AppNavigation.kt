@@ -11,8 +11,11 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.mygymapp.ui.screen.main.MainScreen
 import com.mygymapp.ui.screen.exerciselist.ExerciseListScreen
 import com.mygymapp.ui.screen.exerciseedit.ExerciseEditScreen
@@ -57,6 +60,35 @@ internal fun parseSwitchResults(value: String): List<Pair<String, String>> =
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun AppNavigation(navController: NavHostController) {
+    // Collegamento Polar globale: vale in qualunque schermata, non solo in HeartRate.
+    // - Auto-scan: se esiste uno strap noto e il link è giù, la scan parte da qui
+    //   (prima all'avvio, poi a ogni ON_RESUME), così la connessione scatta anche
+    //   dalla home o con lo schermo appena spento (scan già attiva nel singleton).
+    // - Auto-navigazione: quando parte davvero la misura readiness da 60s (prima
+    //   connessione con tutti i requisiti), l'app va alla pagina Heart.
+    val globalPolar: GlobalPolarViewModel = hiltViewModel()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                globalPolar.ensureScanningIfNeeded()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) {
+        globalPolar.ensureScanningIfNeeded()
+    }
+    LaunchedEffect(Unit) {
+        globalPolar.readinessStarted.collect {
+            if (navController.currentDestination?.route != Screen.HeartRate.route) {
+                navController.navigate(Screen.HeartRate.route) {
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
     NavHost(
         navController = navController,
         startDestination = Screen.Main.route,

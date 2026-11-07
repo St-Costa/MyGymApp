@@ -79,13 +79,8 @@ fun HeartRateScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    // The Polar manager remains alive outside this screen. Collecting this one-shot
-    // event here keeps the start beep limited to the readiness screen.
-    LaunchedEffect(viewModel) {
-        viewModel.readinessStarted.collect {
-            viewModel.playReadinessSignal()
-        }
-    }
+    // Il beep di inizio/fine readiness è globale (PolarManager.signalReadiness, anche a
+    // schermo spento o da altre schermate): qui non si suona più per non duplicarlo.
 
     fun blePermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(

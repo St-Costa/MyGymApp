@@ -44,6 +44,10 @@ data class Exercise(
     // without the key, and the default for non-strength work). Never enters
     // tonnage/PR math — display + animation only.
     val tempo: Tempo = Tempo.disabled(),
+    // Preferito: marcato dall'utente nella scheda esercizio (stella). Mostrato come
+    // "⭐" a sinistra del nome nella lista e filtrabile con la chip ⭐. Persistito
+    // come `favorite: true` (omesso quando false, come isBodyweight).
+    val isFavorite: Boolean = false,
 )
 
 enum class LoadMode {
