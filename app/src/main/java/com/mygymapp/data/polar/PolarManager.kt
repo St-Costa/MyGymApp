@@ -1632,6 +1632,10 @@ class PolarManager @Inject constructor(
         readinessMinHr = 200
         readinessBpmTrace.clear()
         _readinessStarted.tryEmit(Unit)
+        // Suono di inizio globale (non solo se la HeartRateScreen è visibile): la
+        // connessione può avvenire da qualunque schermata o a schermo spento, e il
+        // PolarManager è un singleton che sopravvive alla UI.
+        signalReadiness()
         _readinessResult.value = ReadinessResult(
             readiness = Readiness.MEASURING,
             secondsRemaining = 60,

@@ -47,6 +47,8 @@ data class ExerciseEditUiState(
     // Poliquin tempo (FORZA only): per-phase durations, 0-5s or X. New exercises start
     // at 4-0-1-0; all-zero = disabled. See Tempo.
     val tempo: Tempo = Tempo.default(),
+    // Preferito (stella): filtrabile nella lista con la chip ⭐.
+    val isFavorite: Boolean = false,
     val existingBodyparts: List<String> = emptyList(),
     val isNew: Boolean = true,
     val deleted: Boolean = false,
@@ -95,6 +97,7 @@ class ExerciseEditViewModel @Inject constructor(
                         isAssisted = exercise.loadMode == LoadMode.ASSISTED,
                         // Legacy files without the key parse as disabled (all zeros).
                         tempo = exercise.tempo,
+                        isFavorite = exercise.isFavorite,
                         existingBodyparts = bodyparts,
                         isNew = false,
                     )
@@ -217,7 +220,12 @@ class ExerciseEditViewModel @Inject constructor(
         // Persisted only when not disabled (ExerciseParser omits the key then); enforced
         // FORZA-only at the UI level, but stored as-is so a type flip never loses data.
         tempo = tempo,
+        isFavorite = isFavorite,
     )
+
+    fun onFavoriteChange(value: Boolean) {
+        _uiState.value = _uiState.value.copy(isFavorite = value)
+    }
 
     suspend fun saveNow() {
         val state = _uiState.value

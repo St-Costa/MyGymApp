@@ -311,6 +311,17 @@ class StrengthExerciseViewModel @Inject constructor(
         val manualLoad = _uiState.value.exercise?.loadMode == LoadMode.MANUAL
         updateSet(setIndex) { set ->
             val newWeight = weight.coerceAtLeast(0.0)
+            // Se le reps sono già state toccate/confermate in questa visita, il peso
+            // cambia da solo: non ricalcolare le reps. L'eguagliamento del tonnellaggio
+            // vale solo finché le reps non sono state confermate.
+            if (set.repsTouched) {
+                return@updateSet set.copy(
+                    weight = newWeight,
+                    weightModified = true,
+                    weightTouched = true,
+                    tonnageAnchor = 0.0,
+                )
+            }
             val anchor = if (manualLoad) {
                 set.tonnageAnchor.takeIf { it > 0.0 }
                     ?: (set.reps * set.weight).takeIf { it > 0.0 }

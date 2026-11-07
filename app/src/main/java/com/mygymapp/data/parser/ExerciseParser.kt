@@ -45,6 +45,8 @@ object ExerciseParser {
             // Poliquin tempo: single "4-0-X-0" string (0-5 or X per phase). Absent/invalid
             // (legacy files) falls back to disabled (all zeros = nothing shown).
             tempo = Tempo.fromFileString(fm["tempo"]?.toString()) ?: Tempo.disabled(),
+            // Preferito (stella): `favorite: true` quando marcato, assente/false altrimenti.
+            isFavorite = fm["favorite"]?.toString()?.toBooleanStrictOrNull() ?: false,
         )
     }
 
@@ -77,6 +79,10 @@ object ExerciseParser {
             // isBodyweight/loadMode above). Old builds/server ignore unknown keys.
             if (!exercise.tempo.isDisabled) {
                 put("tempo", exercise.tempo.toFileString())
+            }
+            // Preferito: scritto solo quando true, per tenere i file snelli.
+            if (exercise.isFavorite) {
+                put("favorite", true)
             }
             // LoadMode.MANUAL (and not bodyweight/assisted): omit both keys, the default.
         }

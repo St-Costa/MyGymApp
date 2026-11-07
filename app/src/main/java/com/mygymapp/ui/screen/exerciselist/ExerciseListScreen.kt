@@ -139,6 +139,16 @@ fun ExerciseListScreen(
                         ),
                     )
                 }
+                // Preferiti (stella ⭐): filtro AND con tutti gli altri.
+                FilterChip(
+                    selected = uiState.favoritesOnly,
+                    onClick = { viewModel.onFavoritesFilterChange() },
+                    label = { Text("⭐") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
             }
             // Hidden in the "Switch exercise" picker (switchBodypart non-blank): the list
             // is already locked to that bodypart, so the row would only ever show one chip.
@@ -223,7 +233,7 @@ fun ExerciseListScreen(
                     // changes. The LaunchedEffect approach instead drew one frame with the new
                     // (shorter) content at the old scroll offset, then snapped to 0 a frame
                     // later — a visible flash where "Cardio" briefly seemed to load in late.
-                    val listState = remember(uiState.selectedType, uiState.selectedBodypart, uiState.searchQuery) {
+                    val listState = remember(uiState.selectedType, uiState.selectedBodypart, uiState.searchQuery, uiState.favoritesOnly) {
                         LazyListState()
                     }
                     LazyColumn(

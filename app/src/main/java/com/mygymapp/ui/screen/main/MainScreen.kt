@@ -60,11 +60,17 @@ fun MainScreen(
     // pairs apart instead of shrinking them, since each tile centers within its own half).
     val menuTileScale = 0.92f
 
+    // Scan Polar globale anche dalla home: se esiste uno strap noto, parte qui senza
+    // dover aprire la pagina Heart (vedi GlobalPolarViewModel / AppNavigation).
+    val globalPolar: com.mygymapp.ui.navigation.GlobalPolarViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
         viewModel.loadGitgraph()
+        globalPolar.ensureScanningIfNeeded()
     }
 
-    RequestAllRuntimePermissions(permissionsViewModel)
+    RequestAllRuntimePermissions(permissionsViewModel, onBlePermissionsReady = {
+        globalPolar.ensureScanningIfNeeded()
+    })
 
     Scaffold { padding ->
         Column(
@@ -199,7 +205,10 @@ private fun MainMenuTile(
  * whenever their permission is actually granted, whenever that ends up being.
  */
 @Composable
-private fun RequestAllRuntimePermissions(viewModel: PermissionsViewModel) {
+private fun RequestAllRuntimePermissions(
+    viewModel: PermissionsViewModel,
+    onBlePermissionsReady: () -> Unit = {},
+) {
     val context = LocalContext.current
 
     fun blePermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -214,7 +223,11 @@ private fun RequestAllRuntimePermissions(viewModel: PermissionsViewModel) {
 
     val blePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* no-op: HeartRateScreen checks+re-requests on its own before starting a scan */ }
+    ) { permissions ->
+        // La scan globale parte solo con i permessi BLE: se l'utente li concede ora,
+        // farla partire subito senza aspettare il prossimo ON_RESUME.
+        if (permissions.values.all { it }) onBlePermissionsReady()
+    }
 
     val stepPermissionLauncher = rememberLauncherForActivityResult(
         viewModel.stepPermissionContract

@@ -212,6 +212,8 @@ fun StretchExerciseScreen(
                 // "skipped" (grey border + X, excluded from history); any set done -> closes
                 // as performed. See StretchExerciseViewModel.completeExercise().
                 // (anyDone is hoisted above — the swap icon mirrors it.)
+                // Coda ridotta a 8dp: il vecchio Spacer(80dp) forzava lo scroll anche
+                // quando tutto stava in una pagina (minuscolo scroll di pochi pixel).
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),
@@ -229,7 +231,7 @@ fun StretchExerciseScreen(
                     com.mygymapp.ui.components.ActionButtonText(if (anyDone) "COMPLETE" else "SKIP")
                 }
 
-                Spacer(modifier = Modifier.height(80.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
