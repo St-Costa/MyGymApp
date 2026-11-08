@@ -20,8 +20,9 @@ import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.util.Breadcrumbs
 import com.mygymapp.ui.screen.exercise.ExerciseSessionViewModel
 import com.mygymapp.ui.screen.exercise.mergeExitSets
-import com.mygymapp.ui.screen.stretchexercise.StretchCountdown
-import com.mygymapp.ui.screen.stretchexercise.tick
+import com.mygymapp.ui.screen.stretchexercise.startStretchTimer
+import com.mygymapp.ui.screen.stretchexercise.stopStretchTimer
+import com.mygymapp.ui.screen.stretchexercise.tickStretchTimer
 import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -417,31 +418,33 @@ class SupersetViewModel @Inject constructor(
         if (wasRunning) {
             timerJob?.cancel()
             timerJob = null
+            val stopped = stopStretchTimer(_uiState.value.countdownDuration)
             _uiState.value = _uiState.value.copy(
                 isStopwatchRunning = false,
-                remainingSeconds = _uiState.value.countdownDuration,
-                loopCount = 1,
+                remainingSeconds = stopped.remainingSeconds,
+                loopCount = stopped.loopCount,
             )
         } else {
             timerJob?.cancel()
-            val countdown = StretchCountdown.start(_uiState.value.countdownDuration)
+            val started = startStretchTimer(_uiState.value.countdownDuration)
             _uiState.value = _uiState.value.copy(
                 isStopwatchRunning = true,
-                countdownDuration = countdown.remainingSeconds,
-                remainingSeconds = countdown.remainingSeconds,
-                loopCount = countdown.loopCount,
+                countdownDuration = started.countdownDuration,
+                remainingSeconds = started.remainingSeconds,
+                loopCount = started.loopCount,
             )
             timerJob = viewModelScope.launch {
                 while (true) {
                     delay(1000)
                     val current = _uiState.value
-                    val (next, _) = StretchCountdown(
-                        remainingSeconds = current.remainingSeconds,
-                        loopCount = current.loopCount,
-                    ).tick(current.countdownDuration)
+                    val ticked = tickStretchTimer(
+                        current.countdownDuration,
+                        current.remainingSeconds,
+                        current.loopCount,
+                    )
                     _uiState.value = current.copy(
-                        remainingSeconds = next.remainingSeconds,
-                        loopCount = next.loopCount,
+                        remainingSeconds = ticked.remainingSeconds,
+                        loopCount = ticked.loopCount,
                     )
                 }
             }

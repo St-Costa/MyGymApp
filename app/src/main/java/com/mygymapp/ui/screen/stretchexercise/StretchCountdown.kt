@@ -34,3 +34,50 @@ fun StretchCountdown.tick(durationSeconds: Int): Pair<StretchCountdown, Boolean>
         copy(remainingSeconds = remainingSeconds - 1) to false
     }
 }
+
+/**
+ * Display-side snapshot of the stretch/superset countdown loop (ISM-17/18).
+ *
+ * `StretchCountdown` is the tick math; this is the start/stop/tick *transition*
+ * both exercise ViewModels (`StretchExerciseViewModel.toggleStopwatch`,
+ * `SupersetViewModel.toggleStopwatch`) previously reimplemented inline — same
+ * shape, drift-prone. The foreground-service buzzing stays in
+ * `StopwatchService` (driven by the Screen in lockstep); timer `Job`
+ * management stays in the ViewModels.
+ */
+data class StretchTimerSnapshot(
+    val countdownDuration: Int,
+    val remainingSeconds: Int,
+    val loopCount: Int,
+)
+
+/** Start: normalize the duration (a stale 0 becomes 1s) and show it full, loop 1. */
+fun startStretchTimer(durationSeconds: Int): StretchTimerSnapshot {
+    val started = StretchCountdown.start(durationSeconds)
+    return StretchTimerSnapshot(
+        countdownDuration = started.remainingSeconds,
+        remainingSeconds = started.remainingSeconds,
+        loopCount = started.loopCount,
+    )
+}
+
+/** Stop: back to the full duration, loop 1 (running flag lives in the caller). */
+fun stopStretchTimer(durationSeconds: Int): StretchTimerSnapshot = StretchTimerSnapshot(
+    countdownDuration = durationSeconds,
+    remainingSeconds = durationSeconds,
+    loopCount = 1,
+)
+
+/** One display tick; the loop-completion flag is display-irrelevant here (see `tick`). */
+fun tickStretchTimer(
+    countdownDuration: Int,
+    remainingSeconds: Int,
+    loopCount: Int,
+): StretchTimerSnapshot {
+    val (next, _) = StretchCountdown(remainingSeconds, loopCount).tick(countdownDuration)
+    return StretchTimerSnapshot(
+        countdownDuration = countdownDuration,
+        remainingSeconds = next.remainingSeconds,
+        loopCount = next.loopCount,
+    )
+}
