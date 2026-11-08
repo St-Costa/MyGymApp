@@ -47,13 +47,6 @@ import com.mygymapp.ui.theme.SkippedColor
  * cardio equivalent of the strength/stretch skip path (completeExercise() with no blocks
  * closes the exercise as completedEmpty). It disappears once a block is running/done.
  */
-private enum class CardioButtonState { IDLE, RUNNING, DONE }
-
-private fun CardioExerciseUiState.buttonState(): CardioButtonState = when {
-    isBlockRunning -> CardioButtonState.RUNNING
-    completedBlocks.isNotEmpty() -> CardioButtonState.DONE
-    else -> CardioButtonState.IDLE
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,7 +139,7 @@ fun CardioExerciseScreen(
 
                 // Single action button: IDLE -> RUNNING, and "Termina" both ends the
                 // block and completes the exercise (see buttonState() / stopBlock()).
-                val buttonState = uiState.buttonState()
+                val buttonState = cardioButtonState(uiState.isBlockRunning, uiState.completedBlocks.isNotEmpty())
                 Button(
                     onClick = {
                         when (buttonState) {

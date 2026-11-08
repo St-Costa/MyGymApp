@@ -107,11 +107,7 @@ class CardioExerciseViewModel @Inject constructor(
             // (0 if none), same "don't leave inconsistent state lying around" spirit as the
             // ghost-session guard elsewhere. A block closed this way is otherwise a normal one.
             val existingSets = workoutExercise?.sets?.filterIsInstance<ExerciseSet.Cardio>() ?: emptyList()
-            val closedBlocks = existingSets.map { block ->
-                if (block.endedAt.isBlank() && block.startedAt.isNotBlank()) {
-                    block.copy(endedAt = LocalDateTime.now().toString())
-                } else block
-            }
+            val closedBlocks = closeOpenCardioBlocks(existingSets, LocalDateTime.now().toString())
             if (closedBlocks != existingSets && session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) ex.copy(sets = closedBlocks) else ex
@@ -247,12 +243,11 @@ class CardioExerciseViewModel @Inject constructor(
 
     private fun closeCurrentBlock(): ExerciseSet.Cardio {
         val start = blockStartedAt ?: LocalDateTime.now()
-        val avg = if (hrSamples > 0) (hrSum / hrSamples).toInt() else 0
         blockStartedAt = null
         return ExerciseSet.Cardio(
             startedAt = start.toString(),
             endedAt = LocalDateTime.now().toString(),
-            avgHr = avg,
+            avgHr = cardioBlockAverage(hrSum, hrSamples),
             maxHr = hrMax,
         )
     }
@@ -276,15 +271,15 @@ class CardioExerciseViewModel @Inject constructor(
         }
         // No blocks at all means the lifter never touched "Inizia" — treat like an
         // unopened exercise rather than recording empty cardio as performed work, same
-        // reasoning as StretchExerciseViewModel's anyDone check.
-        val anyBlock = finalBlocks.isNotEmpty()
+        // reasoning as StretchExerciseViewModel's anyDone check. See cardioCompletion.
+        val completion = cardioCompletion(running, _uiState.value.completedBlocks.isNotEmpty())
         crumb("complete $exerciseId (blocks=${finalBlocks.size}, wasRunning=$running)")
         markCompletionAndSave {
             val session = currentSession
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
-                        if (anyBlock) {
+                        if (completion == CardioCompletion.PERFORMED) {
                             ex.copy(
                                 completed = true,
                                 completedEmpty = false,
@@ -320,16 +315,12 @@ class CardioExerciseViewModel @Inject constructor(
         // the case where they never do and the process dies instead).
         val running = _uiState.value.isBlockRunning
         crumb("exit without completing $exerciseId (blockRunning=$running)")
-        val blocksToSave = if (running) {
-            _uiState.value.completedBlocks + ExerciseSet.Cardio(
-                startedAt = (blockStartedAt ?: LocalDateTime.now()).toString(),
-                endedAt = "",
-                avgHr = 0,
-                maxHr = 0,
-            )
-        } else {
-            _uiState.value.completedBlocks
-        }
+        val blocksToSave = exitSaveBlocks(
+            isRunning = running,
+            completedBlocks = _uiState.value.completedBlocks,
+            blockStartedAt = blockStartedAt,
+            now = LocalDateTime.now(),
+        )
         val session = currentSession
         clearScope.launch {
             try {
