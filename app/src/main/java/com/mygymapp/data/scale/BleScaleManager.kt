@@ -119,7 +119,7 @@ class BleScaleManager @Inject constructor(
 
         _discoveredDevices.value = emptyList()
         _lastError.value = null
-        _connectionState.value = ScaleConnectionState.SCANNING
+        _connectionState.value = reduceScaleLink(_connectionState.value, ScaleLinkEvent.START_SCAN)
         autoConnectAttempted = false
 
         val settings = ScanSettings.Builder()
@@ -144,7 +144,7 @@ class BleScaleManager @Inject constructor(
 
             override fun onScanFailed(errorCode: Int) {
                 _lastError.value = "BLE scan failed (code $errorCode)"
-                _connectionState.value = ScaleConnectionState.DISCONNECTED
+                _connectionState.value = reduceScaleLink(_connectionState.value, ScaleLinkEvent.SCAN_FAILED)
             }
         }
         scanCallback = callback
@@ -165,9 +165,7 @@ class BleScaleManager @Inject constructor(
         val scanner = adapter?.bluetoothLeScanner ?: return
         scanCallback?.let { scanner.stopScan(it) }
         scanCallback = null
-        if (_connectionState.value == ScaleConnectionState.SCANNING) {
-            _connectionState.value = ScaleConnectionState.DISCONNECTED
-        }
+        _connectionState.value = reduceScaleLink(_connectionState.value, ScaleLinkEvent.STOP_SCAN)
     }
 
     @SuppressLint("MissingPermission")
@@ -177,7 +175,12 @@ class BleScaleManager @Inject constructor(
             _lastError.value = "Invalid device address"
             return
         }
-        _connectionState.value = ScaleConnectionState.CONNECTING
+        _connectionState.value = reduceScaleLink(_connectionState.value, ScaleLinkEvent.CONNECT_REQUEST)
+        if (_connectionState.value != ScaleConnectionState.CONNECTING) {
+            // Refused by the reducer (already connected/connecting): do NOT tear
+            // down the live link — the old code fell through and leaked it.
+            return
+        }
         synchronized(weightSamples) { weightSamples.clear() }
         // Cancel any pending auto-disconnect from a previous weigh-in (maybeSaveWeighIn's
         // postDelayed) — otherwise a reconnect within that window would have the stale
@@ -206,10 +209,11 @@ class BleScaleManager @Inject constructor(
         // Non-positive impedance is partial contact, not a measurement (the sentinels
         // never reach here — they parse to null upstream). Wait for a real reading
         // instead of persisting a clamped floor value; see BodyCompositionCalculator.
-        if (impedanceOhm <= 0) return
+        // Without a tail-averaged weight there is nothing to persist either.
         val weightKg = synchronized(weightSamples) {
             ScaleWeightAverager.average(weightSamples)
         } ?: return
+        if (!shouldSaveWeighIn(impedanceOhm, weightKg)) return
 
         val profile = userProfileRepository.get()
         val composition = BodyCompositionCalculator.calculate(
@@ -268,7 +272,8 @@ class BleScaleManager @Inject constructor(
                         g.discoverServices()
                     }
                     BluetoothProfile.STATE_DISCONNECTED -> {
-                        _connectionState.value = ScaleConnectionState.DISCONNECTED
+                        _connectionState.value =
+                            reduceScaleLink(_connectionState.value, ScaleLinkEvent.GATT_DISCONNECTED)
                         g.close()
                         if (gatt === g) gatt = null
                     }
@@ -308,7 +313,7 @@ class BleScaleManager @Inject constructor(
                     Log.d(TAG, "writeDescriptor initiated=$writeOk")
                 }
                 knownScaleRepository.setKnownAddress(g.device.address)
-                _connectionState.value = ScaleConnectionState.CONNECTED
+                _connectionState.value = reduceScaleLink(_connectionState.value, ScaleLinkEvent.SERVICES_READY)
             }
         }
 
@@ -341,13 +346,7 @@ class BleScaleManager @Inject constructor(
                 }
 
                 val previous = _lastReading.value
-                val merged = ScaleReading(
-                    weightKg = reading.weightKg ?: previous?.weightKg,
-                    weightStable = if (reading.weightKg != null) reading.weightStable else (previous?.weightStable ?: false),
-                    impedanceOhm = reading.impedanceOhm ?: previous?.impedanceOhm,
-                    displayUnit = reading.displayUnit ?: previous?.displayUnit,
-                )
-                _lastReading.value = merged
+                _lastReading.value = reading.mergedWith(previous)
 
                 // The scale's own stability flag isn't reliable timing-wise —
                 // what matters is the impedance reading itself: as soon as a

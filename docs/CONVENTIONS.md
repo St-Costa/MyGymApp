@@ -650,6 +650,12 @@ displayed "Stretch" — since it isn't an exhaustive `when`, the compiler had no
 Prefer exhaustive `when` over `if/else` for anything branching on `ExerciseType`, even a
 two-way UI choice, specifically so a third case can't silently fall into the wrong branch.)
 
+- **Cardio block rules are pure (`ui/screen/cardioexercise/CardioBlockState.kt`, ISM-19):** `cardioButtonState()` (RUNNING > DONE > IDLE), `cardioCompletion()` (only IDLE-with-nothing skips), `closeOpenCardioBlocks()` (kill-recovery close), `exitSaveBlocks()` (back-navigation never force-closes), `cardioBlockAverage()`. The Screen's private button enum moved there; jobs/timers/HR collection stay in the ViewModel. Tested in `CardioBlockStateTest`.
+
+## Scale link (BleScaleManager)
+
+The VitaFit scale link is `ScaleConnectionState` (`DISCONNECTED`/`SCANNING`/`CONNECTING`/`CONNECTED`) driven by UI entries, two timers (30s scan timeout, 1.5s post-weigh-in auto-disconnect) and four BLE callbacks. Every transition goes through the pure `reduceScaleLink(state, event)` (`data/scale/ScaleLinkState.kt`, ISM-21, tested in `ScaleLinkStateTest`): `START_SCAN`/`CONNECT_REQUEST` only leave their origin states (a CONNECT tap while already connected is refused whole-operation instead of leaking the live `gatt`), `SERVICES_FAILED`/`DISCONNECT_REQUEST` change nothing (the async `GATT_DISCONNECTED` flips), and a failed discovery staying CONNECTING is a documented quirk — adding a CONNECTING watchdog is one event + one arm, but the retry/timeout policy needs the real device to validate. Frame merge (`ScaleReading.mergedWith`: weight and composition packets only carry their own fields) and the save guard (`shouldSaveWeighIn`: positive impedance + averaged weight) are pure in the same file.
+
 ## Polar foreground service + reconnection
 
 `PolarStreamingService` is a foreground service (type `CONNECTED_DEVICE`) that keeps the BLE connection alive when the screen is off between sets — Android **requires** an FGS to show an ongoing notification, so it can't be removed while keeping a reliable background connection. The ongoing notification lives on channel `polar_hr_channel_min` at `IMPORTANCE_MIN` (no status-bar icon, collapsed, silent). A channel's importance is immutable after creation, so the id is versioned (`_min` suffix) and the legacy `polar_hr_channel` is deleted in `createNotificationChannel()`.
