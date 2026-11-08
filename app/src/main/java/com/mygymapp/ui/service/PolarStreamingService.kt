@@ -191,9 +191,7 @@ class PolarStreamingService : Service() {
         }
     }
 
-    private var currentHr: Int? = null
-    private var reconnecting: Boolean = false
-    private var standby: Boolean = false
+    private var linkState = ServiceLinkState()
     private var deviceName: String = "Polar H10"
 
     override fun onCreate() {
@@ -211,9 +209,7 @@ class PolarStreamingService : Service() {
         when (intent.action) {
             ACTION_START -> {
                 deviceName = intent.getStringExtra(EXTRA_DEVICE) ?: "Polar H10"
-                currentHr = null
-                reconnecting = false
-                standby = false
+                linkState = linkState.onAction(ServiceLinkAction.START)
                 isRunning = true
                 val notification = buildNotification()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -229,25 +225,19 @@ class PolarStreamingService : Service() {
             ACTION_UPDATE_HR -> {
                 val hr = intent.getIntExtra(EXTRA_HR, 0)
                 if (hr > 0) {
-                    currentHr = hr
-                    reconnecting = false
-                    standby = false
+                    linkState = linkState.onAction(ServiceLinkAction.UPDATE_HR, hr)
                     getSystemService(NotificationManager::class.java)
                         .notify(NOTIFICATION_ID, buildNotification())
                 }
             }
             ACTION_RECONNECTING -> {
-                reconnecting = true
-                standby = false
-                currentHr = null
+                linkState = linkState.onAction(ServiceLinkAction.RECONNECTING)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, buildNotification())
             }
             ACTION_STANDBY -> {
                 deviceName = intent.getStringExtra(EXTRA_DEVICE) ?: deviceName
-                standby = true
-                reconnecting = false
-                currentHr = null
+                linkState = linkState.onAction(ServiceLinkAction.STANDBY)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION_ID, buildNotification())
             }
@@ -280,12 +270,7 @@ class PolarStreamingService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val title = when {
-            reconnecting -> "Reconnecting…"
-            standby -> "Standby · stream paused"
-            currentHr != null -> "${currentHr} BPM"
-            else -> "Connecting…"
-        }
+        val title = serviceNotificationTitle(linkState)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
