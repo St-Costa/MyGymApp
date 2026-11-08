@@ -772,6 +772,8 @@ The home screen's state is built by the `@Singleton` `HomeStateLoader`, not `Mai
 
 `GitgraphHistoryCalculator.dayCell` is the single per-day status/%/cardio rule — used for both the cached history rows and the live current-week row, so they can't diverge. Parsing helpers (`getSessionsInRange`, `getLastSessionForRoutine`) parse their in-range `.md` files concurrently; `getLastSessionForRoutine` walks newest-filename-first and stops at the first completed session (plus same-day siblings) instead of parsing a routine's whole history.
 
+The loader's own coordination is pure too (ISM-23): `refreshCommand()` (START / JOIN_RUNNING / CANCEL_AND_RESTART), `shouldEmitScaffold()`, `scheduleCellSession()` (today's column never reads the per-date map) and `openRoutineForColumn()` (first non-completed, else first), pinned in `HomeLoadDecisionsTest`.
+
 ## Derived-data sidecars
 
 Two pre-computed caches now live under `history/` — the exercise-stats sidecars (`_stats/{id}.yaml`) and the home gitgraph cache (`_gitgraph.yaml`). Both follow the same shape, and a third should too:

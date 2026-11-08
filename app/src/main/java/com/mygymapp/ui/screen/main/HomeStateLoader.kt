@@ -53,8 +53,7 @@ class HomeStateLoader @Inject constructor(
      * every load emits its phase-1 scaffold so the screen has something to paint; after that,
      * a load holds the last complete state on screen and swaps in one go (no schedule-row
      * blank flicker), even a `force` load that cancelled a first load mid-flight.
-     */
-    @Volatile
+     */    @Volatile
     private var everCompleted = false
 
     /**
@@ -62,9 +61,11 @@ class HomeStateLoader @Inject constructor(
      * it; [force] cancels the in-flight one and starts fresh (data actually changed).
      */
     fun refresh(force: Boolean = false) {
-        val running = job
-        if (!force && running?.isActive == true) return
-        if (force) running?.cancel()
+        when (refreshCommand(hasRunning = job != null, runningActive = job?.isActive == true, force = force)) {
+            RefreshCommand.JOIN_RUNNING -> return
+            RefreshCommand.CANCEL_AND_RESTART -> job?.cancel()
+            RefreshCommand.START -> Unit
+        }
         job = scope.launch { loadHomeState() }
     }
 
@@ -152,7 +153,7 @@ class HomeStateLoader @Inject constructor(
         // a force after the first successful load), hold it on screen and swap in one go at
         // phase 2 below — emitting the scaffold here would blank the schedule row's outcomes
         // for the ~100ms until phase 2, a visible flicker.
-        if (!everCompleted) {
+        if (shouldEmitScaffold(everCompleted)) {
             _state.value = phase1
         }
 
@@ -187,9 +188,8 @@ class HomeStateLoader @Inject constructor(
 
         val scheduleCells = dowKeys.indices.map { col ->
             val routines = routinesForColumn(allRoutines, col)
-            val toOpen = routines.firstOrNull { it.id !in completedTodayRoutineIds } ?: routines.firstOrNull()
-            val dayDate = currentWeekMonday.plusDays(col.toLong())
-            val session = if (col == todayDow - 1) null else currentWeekSessionByDate[dayDate.toString()]
+            val toOpen = openRoutineForColumn(routines, completedTodayRoutineIds)
+            val session = scheduleCellSession(col, todayDow - 1, currentWeekMonday, currentWeekSessionByDate)
             val sessionCell = session?.let {
                 GitgraphHistoryCalculator.dayCell(it, currentWeekSessionsByRoutine)
             }
@@ -219,3 +219,66 @@ class HomeStateLoader @Inject constructor(
         everCompleted = true
     }
 }
+
+/**
+ * Explicit load-coordination decisions (ISM-23).
+ *
+ * Before these existed the refresh coalescing, the phase-1 emit gate and the
+ * schedule-row composition rules lived inline in [HomeStateLoader] as bare
+ * flag checks, with the "today lives in the `today*` fields, not in
+ * `scheduleCells[today]`" split and the open-routine preference only in
+ * comments. The loader only executes them.
+ */
+
+/** What [HomeStateLoader.refresh] does about an in-flight load. */
+internal enum class RefreshCommand {
+    /** No load running (or finished) — start one. */
+    START,
+    /** A load is running and this call is not forced — join it (do nothing). */
+    JOIN_RUNNING,
+    /** Forced — cancel whatever is running and start fresh. */
+    CANCEL_AND_RESTART,
+}
+
+/**
+ * Mirrors `refresh`: force always cancels-and-restarts (the cancel is a
+ * null-safe no-op with nothing running); otherwise a live job is joined and
+ * only an idle/absent one starts a load.
+ */
+internal fun refreshCommand(hasRunning: Boolean, runningActive: Boolean, force: Boolean): RefreshCommand =
+    when {
+        force -> RefreshCommand.CANCEL_AND_RESTART
+        runningActive -> RefreshCommand.JOIN_RUNNING
+        else -> RefreshCommand.START
+    }
+
+/**
+ * The phase-1 scaffold emits only while the screen has never shown a complete
+ * state — afterwards it would blank the schedule row's outcomes for ~100ms
+ * (visible flicker) until phase 2 lands.
+ */
+internal fun shouldEmitScaffold(everCompleted: Boolean): Boolean = !everCompleted
+
+/**
+ * Which session (if any) a schedule column shows: today's column never reads
+ * the per-date map — today lives only in the `today*` fields — every other
+ * column reads its own date. The renderer must combine both.
+ */
+internal fun scheduleCellSession(
+    col: Int,
+    todayDowIndex: Int,
+    weekMonday: LocalDate,
+    sessionsByDate: Map<String, WorkoutSession?>,
+): WorkoutSession? =
+    if (col == todayDowIndex) null
+    else sessionsByDate[weekMonday.plusDays(col.toLong()).toString()]
+
+/**
+ * Which routine a schedule cell offers to open: the first not yet completed
+ * today, falling back to the first routine (or null when the column is empty).
+ */
+internal fun openRoutineForColumn(
+    routines: List<Routine>,
+    completedTodayRoutineIds: Set<String>,
+): Routine? =
+    routines.firstOrNull { it.id !in completedTodayRoutineIds } ?: routines.firstOrNull()
