@@ -794,32 +794,37 @@ class PolarManager @Inject constructor(
      */
     private fun scheduleReconnect() {
         val id = lastConnectedDeviceId ?: return
-        if (reconnectStartAtMs == 0L) reconnectStartAtMs = System.currentTimeMillis()
+        reconnectStartAtMs = anchorReconnectStart(reconnectStartAtMs, System.currentTimeMillis())
         reconnectHandler.removeCallbacksAndMessages(null)
         reconnectHandler.postDelayed(object : Runnable {
             override fun run() {
-                if (userInitiatedDisconnect || connectedDeviceId != null) return
-                // Give up after 5 minutes — the device is likely off or too far away.
-                if (System.currentTimeMillis() - reconnectStartAtMs > 5 * 60_000L) {
-                    appLogger.w(TAG, "Reconnect timed out after 5 min — stopping service")
-                    appLogger.w(TAG, "Reconnect timed out after 5 min for ${redactId(id)} — stopping service")
-                    reconnectStartAtMs = 0L
-                    _connectionState.value = ConnectionState.DISCONNECTED
-                    hrSeriesActive = false
-                    PolarStreamingService.stop(context)
-                    PolarStreamingService.clearDisconnectAlert(context)
-                    return
+                when (reconnectTick(userInitiatedDisconnect, connectedDeviceId, System.currentTimeMillis(), reconnectStartAtMs)) {
+                    // Link came back or the user hung up meanwhile.
+                    ReconnectTick.AbortStale -> return
+                    // Give up after 5 minutes — the device is likely off or too far away.
+                    ReconnectTick.GiveUp -> {
+                        appLogger.w(TAG, "Reconnect timed out after 5 min — stopping service")
+                        appLogger.w(TAG, "Reconnect timed out after 5 min for ${redactId(id)} — stopping service")
+                        reconnectStartAtMs = 0L
+                        _connectionState.value = ConnectionState.DISCONNECTED
+                        hrSeriesActive = false
+                        PolarStreamingService.stop(context)
+                        PolarStreamingService.clearDisconnectAlert(context)
+                        return
+                    }
+                    ReconnectTick.Attempt -> {
+                        Log.d(TAG, "Auto-reconnect attempt to ${redactId(id)}")
+                        appLogger.i(TAG, "Auto-reconnect attempt to ${redactId(id)} (elapsed ${(System.currentTimeMillis() - reconnectStartAtMs) / 1000}s)")
+                        try {
+                            api.connectToDevice(id)
+                        } catch (t: Throwable) {
+                            appLogger.w(TAG, "Reconnect attempt failed: $t")
+                        }
+                        reconnectHandler.postDelayed(this, RECONNECT_RETRY_DELAY_MS)
+                    }
                 }
-                Log.d(TAG, "Auto-reconnect attempt to ${redactId(id)}")
-                appLogger.i(TAG, "Auto-reconnect attempt to ${redactId(id)} (elapsed ${(System.currentTimeMillis() - reconnectStartAtMs) / 1000}s)")
-                try {
-                    api.connectToDevice(id)
-                } catch (t: Throwable) {
-                    appLogger.w(TAG, "Reconnect attempt failed: $t")
-                }
-                reconnectHandler.postDelayed(this, 10_000)
             }
-        }, 3_000)
+        }, RECONNECT_FIRST_DELAY_MS)
     }
 
     fun shutdown() {
@@ -988,8 +993,16 @@ class PolarManager @Inject constructor(
             _hrStandby.value = false
             return
         }
-        if (hrSeriesActive || readinessMeasuring) return
-        if (hrDisposable == null && _hrStandby.value) return // already parked
+        // Already parked with nothing flowing, or busy with a session/readiness
+        // measurement — see shouldParkForStandby.
+        if (!shouldParkForStandby(
+                connected = true,
+                hrSeriesActive = hrSeriesActive,
+                readinessMeasuring = readinessMeasuring,
+                streamRunning = hrDisposable != null,
+                alreadyParked = _hrStandby.value,
+            )
+        ) return
         hrDisposable?.dispose()
         hrDisposable = null
         hrRestartHandler.removeCallbacksAndMessages(null)
@@ -1011,7 +1024,13 @@ class PolarManager @Inject constructor(
 
     private fun ensureHrStreaming(reason: String) {
         val deviceId = connectedDeviceId ?: return
-        if (hrDisposable != null && !_hrStandby.value) return // already flowing
+        // Already flowing outside standby — a parked strap always resubscribes.
+        if (!shouldEnsureStreaming(
+                connected = true,
+                streamRunning = hrDisposable != null,
+                inStandby = _hrStandby.value,
+            )
+        ) return
         _hrStandby.value = false
         _receivingData.value = false
         startHrStreaming(deviceId)
@@ -1470,16 +1489,19 @@ class PolarManager @Inject constructor(
                 // Data-presence hint for the UI (NO_SIGNAL): strap still BLE-connected but
                 // no HR sample for DATA_STALE_MS. Display only — no stream/connection change.
                 // Promotion back to true happens only on a real HR sample, never here.
-                if (_receivingData.value && lastHrSampleAtMs > 0 &&
-                    now - lastHrSampleAtMs > DATA_STALE_MS
-                ) {
+                val hrDecision = hrWatchdogDecision(
+                    receivingData = _receivingData.value,
+                    lastHrSampleAtMs = lastHrSampleAtMs,
+                    hrStreamRunning = hrDisposable != null,
+                    nowMs = now,
+                    staleAfterMs = DATA_STALE_MS,
+                )
+                if (hrDecision.markStaleDisplay) {
                     Log.d(TAG, "Data watchdog: no HR sample for ${(now - lastHrSampleAtMs) / 1000}s — NO_SIGNAL")
                     _receivingData.value = false
                 }
                 // HR: if running and no sample for >15s, restart
-                if (hrDisposable != null && lastHrSampleAtMs > 0 &&
-                    now - lastHrSampleAtMs > 15_000
-                ) {
+                if (hrDecision.restartStream) {
                     appLogger.w(TAG, "HR watchdog: no sample for ${(now - lastHrSampleAtMs) / 1000}s — restarting")
                     lastHrSampleAtMs = 0L
                     startHrStreaming(deviceId)
@@ -1488,26 +1510,23 @@ class PolarManager @Inject constructor(
                 // (b) stream was started but never delivered a first sample within 15s
                 // (silent hang — the watchdog previously missed this case).
                 val activeSession = activeEcgSessionId
-                if (activeSession != null && streamingFeatureReady && ecgDisposable != null) {
-                    val noFirstSample = lastEcgSampleAtMs == 0L &&
-                        ecgStreamStartedAt > 0 &&
-                        now - ecgStreamStartedAt > 15_000
-                    val sampleTimeout = lastEcgSampleAtMs > 0 &&
-                        now - lastEcgSampleAtMs > 10_000
-                    if (noFirstSample || sampleTimeout) {
-                        val reason = if (noFirstSample)
-                            "no first sample after ${(now - ecgStreamStartedAt) / 1000}s"
-                        else
-                            "no sample for ${(now - lastEcgSampleAtMs) / 1000}s"
-                        appLogger.w(TAG, "ECG watchdog: $reason — restarting")
-                        appLogger.w(TAG, "ECG watchdog triggered ($reason) for session=$activeSession — restarting stream")
-                        ecgStreamStartedAt = 0L
-                        lastEcgSampleAtMs = 0L
-                        // Route through scheduleEcgRestart so watchdog restarts also count
-                        // toward the escalation cap (a silent hang that never recovers will
-                        // eventually force a reconnect instead of looping forever).
-                        scheduleEcgRestart(deviceId, activeSession)
-                    }
+                val ecgDecision = ecgWatchdogDecision(
+                    hasActiveSession = activeSession != null,
+                    streamingFeatureReady = streamingFeatureReady,
+                    ecgStreaming = ecgDisposable != null,
+                    lastEcgSampleAtMs = lastEcgSampleAtMs,
+                    ecgStreamStartedAtMs = ecgStreamStartedAt,
+                    nowMs = now,
+                )
+                if (ecgDecision.shouldRestart && activeSession != null) {
+                    appLogger.w(TAG, "ECG watchdog: ${ecgDecision.reason} — restarting")
+                    appLogger.w(TAG, "ECG watchdog triggered (${ecgDecision.reason}) for session=$activeSession — restarting stream")
+                    ecgStreamStartedAt = 0L
+                    lastEcgSampleAtMs = 0L
+                    // Route through scheduleEcgRestart so watchdog restarts also count
+                    // toward the escalation cap (a silent hang that never recovers will
+                    // eventually force a reconnect instead of looping forever).
+                    scheduleEcgRestart(deviceId, activeSession)
                 }
             }
             watchdogHandler.postDelayed(this, WATCHDOG_TICK_MS)
