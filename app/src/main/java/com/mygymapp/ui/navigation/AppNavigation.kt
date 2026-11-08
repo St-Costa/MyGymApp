@@ -36,7 +36,8 @@ import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
 /**
  * `savedStateHandle`-result plumbing (Sprint 3).
  *
- * Two rules every result key in this file follows:
+ * Two rules every result key in this file follows (see `NavResults.kt` for the
+ * key shapes — single slot vs list vs queue — and the consume protocol):
  * 1. **Reactive reads.** Consumers observe keys via `getStateFlow(key, null).collectAsState()`,
  *    never a one-shot `get()` + `LaunchedEffect(key)`: `NavHost` does not always recompose the
  *    target entry when its `SavedStateHandle` is set, so the `get()` snapshot can miss a result
@@ -44,18 +45,6 @@ import com.mygymapp.ui.util.MAX_SUPERSET_SIZE
  * 2. **Switch results are a queue, not a slot.** Two switches before returning to the list
  *    must not overwrite each other (`"old,new"` pairs joined by `";"`, applied in order).
  */
-internal fun appendSwitchResult(existing: String?, oldId: String, newId: String): String =
-    if (existing.isNullOrBlank()) "$oldId,$newId" else "$existing;$oldId,$newId"
-
-internal fun parseSwitchResults(value: String): List<Pair<String, String>> =
-    value.split(";").mapNotNull { pair ->
-        val parts = pair.split(",", limit = 2)
-        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
-            parts[0] to parts[1]
-        } else {
-            null
-        }
-    }
 
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -159,12 +148,12 @@ fun AppNavigation(navController: NavHostController) {
             val viewModel: RoutineEditViewModel = hiltViewModel()
 
             // Observe picker result (reactive: getStateFlow, not a one-shot get()).
-            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>("pickedExerciseId", null).collectAsState()
+            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>(NavResultKeys.PICKED_EXERCISE_ID, null).collectAsState()
             LaunchedEffect(pickedId) {
                 val id = pickedId
                 if (id != null) {
                     viewModel.addExercise(id)
-                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
+                    backStackEntry.savedStateHandle.remove<String>(NavResultKeys.PICKED_EXERCISE_ID)
                 }
             }
 
@@ -185,24 +174,24 @@ fun AppNavigation(navController: NavHostController) {
             val viewModel: com.mygymapp.ui.screen.activeroutine.ActiveRoutineViewModel = hiltViewModel()
 
             // Observe single-exercise completion result (reactive: getStateFlow).
-            val completedExId by backStackEntry.savedStateHandle.getStateFlow<String?>("completedExerciseId", null).collectAsState()
+            val completedExId by backStackEntry.savedStateHandle.getStateFlow<String?>(NavResultKeys.COMPLETED_EXERCISE_ID, null).collectAsState()
             LaunchedEffect(completedExId) {
                 val id = completedExId
                 if (id != null) {
                     viewModel.markExerciseCompleted(id)
-                    backStackEntry.savedStateHandle.remove<String>("completedExerciseId")
+                    backStackEntry.savedStateHandle.remove<String>(NavResultKeys.COMPLETED_EXERCISE_ID)
                 }
             }
 
             // Observe superset completion result (comma-separated chain member exerciseIds)
-            val completedSupersetIds by backStackEntry.savedStateHandle.getStateFlow<String?>("completedSupersetIds", null).collectAsState()
+            val completedSupersetIds by backStackEntry.savedStateHandle.getStateFlow<String?>(NavResultKeys.COMPLETED_SUPERSET_IDS, null).collectAsState()
             LaunchedEffect(completedSupersetIds) {
                 val ids = completedSupersetIds
                 if (ids != null) {
-                    ids.split(",").forEach { id ->
+                    parseSupersetResult(ids).forEach { id ->
                         viewModel.markExerciseCompleted(id)
                     }
-                    backStackEntry.savedStateHandle.remove<String>("completedSupersetIds")
+                    backStackEntry.savedStateHandle.remove<String>(NavResultKeys.COMPLETED_SUPERSET_IDS)
                 }
             }
 
@@ -213,14 +202,14 @@ fun AppNavigation(navController: NavHostController) {
             // it never reflects the new one when the user navigates back. One key covers both
             // Strength/Stretch and each Superset side, since they're all the same "one slot
             // changed exerciseId" event from this screen's point of view.
-            val switchedIds by backStackEntry.savedStateHandle.getStateFlow<String?>("switchedExerciseIds", null).collectAsState()
+            val switchedIds by backStackEntry.savedStateHandle.getStateFlow<String?>(NavResultKeys.SWITCHED_EXERCISE_IDS, null).collectAsState()
             LaunchedEffect(switchedIds) {
                 val queued = switchedIds
                 if (queued != null) {
                     parseSwitchResults(queued).forEach { (oldId, newId) ->
                         viewModel.applyExerciseSwitch(oldId, newId)
                     }
-                    backStackEntry.savedStateHandle.remove<String>("switchedExerciseIds")
+                    backStackEntry.savedStateHandle.remove<String>(NavResultKeys.SWITCHED_EXERCISE_IDS)
                 }
             }
 
@@ -261,12 +250,12 @@ fun AppNavigation(navController: NavHostController) {
 
             // Observe the filtered picker's result (see ExercisePicker composable below) and
             // apply the switch on this screen's own VM before re-navigating.
-            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>("pickedExerciseId", null).collectAsState()
+            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>(NavResultKeys.PICKED_EXERCISE_ID, null).collectAsState()
             LaunchedEffect(pickedId) {
                 val id = pickedId
                 if (id != null) {
                     viewModel.switchExercise(id)
-                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
+                    backStackEntry.savedStateHandle.remove<String>(NavResultKeys.PICKED_EXERCISE_ID)
                 }
             }
 
@@ -275,7 +264,7 @@ fun AppNavigation(navController: NavHostController) {
                 onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
-                        ?.set("completedExerciseId", exerciseId)
+                        ?.set(NavResultKeys.COMPLETED_EXERCISE_ID, exerciseId)
                     navController.popBackStack()
                 },
                 onSwitchExercise = { bodypart, type, excludeIds ->
@@ -289,8 +278,8 @@ fun AppNavigation(navController: NavHostController) {
                     // must both survive.
                     navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
                         handle.set(
-                            "switchedExerciseIds",
-                            appendSwitchResult(handle.get<String>("switchedExerciseIds"), exerciseId, newExerciseId),
+                            NavResultKeys.SWITCHED_EXERCISE_IDS,
+                            appendSwitchResult(handle.get<String>(NavResultKeys.SWITCHED_EXERCISE_IDS), exerciseId, newExerciseId),
                         )
                     }
                     // Re-navigate to the same screen with the new exerciseId: init{} loads all
@@ -315,12 +304,12 @@ fun AppNavigation(navController: NavHostController) {
             val exerciseId = backStackEntry.arguments?.getString("exerciseId") ?: ""
             val viewModel: com.mygymapp.ui.screen.stretchexercise.StretchExerciseViewModel = hiltViewModel()
 
-            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>("pickedExerciseId", null).collectAsState()
+            val pickedId by backStackEntry.savedStateHandle.getStateFlow<String?>(NavResultKeys.PICKED_EXERCISE_ID, null).collectAsState()
             LaunchedEffect(pickedId) {
                 val id = pickedId
                 if (id != null) {
                     viewModel.switchExercise(id)
-                    backStackEntry.savedStateHandle.remove<String>("pickedExerciseId")
+                    backStackEntry.savedStateHandle.remove<String>(NavResultKeys.PICKED_EXERCISE_ID)
                 }
             }
 
@@ -329,7 +318,7 @@ fun AppNavigation(navController: NavHostController) {
                 onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
-                        ?.set("completedExerciseId", exerciseId)
+                        ?.set(NavResultKeys.COMPLETED_EXERCISE_ID, exerciseId)
                     navController.popBackStack()
                 },
                 onSwitchExercise = { bodypart, type, excludeIds ->
@@ -338,8 +327,8 @@ fun AppNavigation(navController: NavHostController) {
                 onSwitched = { newExerciseId ->
                     navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
                         handle.set(
-                            "switchedExerciseIds",
-                            appendSwitchResult(handle.get<String>("switchedExerciseIds"), exerciseId, newExerciseId),
+                            NavResultKeys.SWITCHED_EXERCISE_IDS,
+                            appendSwitchResult(handle.get<String>(NavResultKeys.SWITCHED_EXERCISE_IDS), exerciseId, newExerciseId),
                         )
                     }
                     navController.navigate(Screen.StretchExercise.createRoute(sessionId, newExerciseId)) {
@@ -363,7 +352,7 @@ fun AppNavigation(navController: NavHostController) {
                 onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
-                        ?.set("completedExerciseId", exerciseId)
+                        ?.set(NavResultKeys.COMPLETED_EXERCISE_ID, exerciseId)
                     navController.popBackStack()
                 },
             )
@@ -385,7 +374,7 @@ fun AppNavigation(navController: NavHostController) {
             // set by the picker composable below, keyed on the member the picker was opened for)
             // so a switch on one member can never be misapplied to another member's slot.
             exerciseIds.indices.forEach { i ->
-                val key = "pickedExerciseIdSide${i + 1}"
+                val key = NavResultKeys.pickedSideKey(i + 1)
                 val picked by backStackEntry.savedStateHandle.getStateFlow<String?>(key, null).collectAsState()
                 LaunchedEffect(picked) {
                     val id = picked
@@ -400,7 +389,7 @@ fun AppNavigation(navController: NavHostController) {
                 onComplete = {
                     navController.previousBackStackEntry
                         ?.savedStateHandle
-                        ?.set("completedSupersetIds", exerciseIds.joinToString(","))
+                        ?.set(NavResultKeys.COMPLETED_SUPERSET_IDS, encodeSupersetResult(exerciseIds))
                     navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() },
@@ -416,8 +405,8 @@ fun AppNavigation(navController: NavHostController) {
                     val oldExerciseId = exerciseIds.getOrNull(memberIndex) ?: return@onSwitched
                     navController.previousBackStackEntry?.savedStateHandle?.let { handle ->
                         handle.set(
-                            "switchedExerciseIds",
-                            appendSwitchResult(handle.get<String>("switchedExerciseIds"), oldExerciseId, newExerciseId),
+                            NavResultKeys.SWITCHED_EXERCISE_IDS,
+                            appendSwitchResult(handle.get<String>(NavResultKeys.SWITCHED_EXERCISE_IDS), oldExerciseId, newExerciseId),
                         )
                     }
                     // Re-navigate to the same Superset route with only the switched member's id
@@ -485,11 +474,11 @@ fun AppNavigation(navController: NavHostController) {
             // Which key to write the result under: superset sides use their own key so a
             // switch on side 1 never gets applied to side 2's slot (see Superset composable
             // above); everything else (plain RoutineEdit picker, Strength/Stretch switch)
-            // uses the shared "pickedExerciseId" key.
+            // uses the shared NavResultKeys.PICKED_EXERCISE_ID key.
             val resultKeySide = backStackEntry.arguments?.getInt("resultKeySide") ?: 0
             val resultKey = when (resultKeySide) {
-                in 1..MAX_SUPERSET_SIZE -> "pickedExerciseIdSide$resultKeySide"
-                else -> "pickedExerciseId"
+                in 1..MAX_SUPERSET_SIZE -> NavResultKeys.pickedSideKey(resultKeySide)
+                else -> NavResultKeys.PICKED_EXERCISE_ID
             }
             ExerciseListScreen(
                 pickerMode = true,
