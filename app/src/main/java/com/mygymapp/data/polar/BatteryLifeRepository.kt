@@ -79,9 +79,9 @@ class BatteryLifeRepository @Inject constructor(
      * Add a connected-time span (seconds) to the current cell's counter. Called by
      * [PolarManager] on disconnect and on every in-connection heartbeat. Non-positive spans
      * are ignored (clock skew); the caller caps abnormally large spans (missed heartbeats,
-     * forward clock jumps) before calling. Returns null when no cell has ever been seeded
-     * by [onBatteryLevel] — with no install baseline there is nothing to attribute the
-     * span to, so it is dropped rather than inventing a cell.
+     * forward clock jumps) with [cappedSpanSeconds] before calling. Returns null when no
+     * cell has ever been seeded by [onBatteryLevel] — with no install baseline there is
+     * nothing to attribute the span to, so it is dropped rather than inventing a cell.
      */
     suspend fun addActiveSeconds(seconds: Long): BatteryLifeState? = mutex.withLock {
         if (seconds <= 0) return readUnlocked()
@@ -257,4 +257,16 @@ data class BatteryLifeState(
     val avgLifeHours: Double?
         get() = pastLifeSeconds.takeIf { it.isNotEmpty() }
             ?.let { it.sum().toDouble() / it.size / 3600.0 }
+}
+
+/**
+ * Connected-span attribution rule for [BatteryLifeRepository.addActiveSeconds]
+ * (ISM-13): no anchor means no span (a disconnect-followed-by-callback double
+ * flush is a harmless no-op); the span is capped so missed heartbeats or a
+ * forward clock jump can't credit hours that never happened; a non-positive
+ * span (backward clock jump) is dropped. `null` means "attribute nothing".
+ */
+internal fun batterySpanSeconds(anchorSec: Long, nowSec: Long, capSec: Long): Long? {
+    if (anchorSec <= 0L) return null
+    return (nowSec - anchorSec).coerceAtMost(capSec).takeIf { it > 0 }
 }

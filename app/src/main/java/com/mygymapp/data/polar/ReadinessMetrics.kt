@@ -17,6 +17,17 @@ import kotlin.math.sqrt
 object ReadinessMetrics {
 
     /**
+     * Minimum clean RR intervals for a usable 60s readiness window (ISM-12).
+     * Below this the measurement ends as NO_BASELINE ("not enough clean data")
+     * instead of feeding RMSSD math with noise.
+     */
+    const val MIN_READINESS_RR_SAMPLES = 20
+
+    /** Whether [cleanCount] clean intervals suffice for a readiness result. */
+    fun hasEnoughReadinessSamples(cleanCount: Int): Boolean =
+        cleanCount >= MIN_READINESS_RR_SAMPLES
+
+    /**
      * Drops implausible RR intervals: outside 300..2000 ms, or deviating ≥20% from the
      * median of the in-range samples. Passes through untouched when fewer than 3
      * in-range samples exist (nothing to take a median of).

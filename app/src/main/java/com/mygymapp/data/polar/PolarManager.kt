@@ -1583,9 +1583,8 @@ class PolarManager @Inject constructor(
         val anchor = batterySpanAnchorSec
         if (anchor <= 0L) return
         val nowSec = System.currentTimeMillis() / 1000
-        val span = (nowSec - anchor).coerceAtMost(MAX_SPAN_FLUSH_SEC)
         batterySpanAnchorSec = if (reopen) nowSec else 0L
-        if (span <= 0) return
+        val span = batterySpanSeconds(anchor, nowSec, MAX_SPAN_FLUSH_SEC) ?: return
         readinessScope.launch {
             _batteryLife.value = batteryLifeRepository.addActiveSeconds(span) ?: _batteryLife.value
         }
@@ -1685,7 +1684,7 @@ class PolarManager @Inject constructor(
         // Filter artifacts from collected RR
         val cleanRR = filterArtifacts(readinessRR)
 
-        if (cleanRR.size < 20) {
+        if (!ReadinessMetrics.hasEnoughReadinessSamples(cleanRR.size)) {
             _readinessResult.value = ReadinessResult(
                 readiness = Readiness.NO_BASELINE,
                 restingHr = readinessMinHr.takeIf { it < 200 } ?: 0,
