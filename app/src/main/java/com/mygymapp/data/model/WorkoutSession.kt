@@ -97,7 +97,7 @@ data class WorkoutExercise(
      * — but tonnage / history / PR math must skip the exercise. Callers that only want the
      * "still open in the active list" case check `!completed` directly.
      */
-    fun isUntouched(): Boolean = !completed || completedEmpty
+    fun isUntouched(): Boolean = slotLifecycle() !is SlotLifecycle.Performed
 
     /**
      * True when no set in this slot carries any real data yet — same "did the lifter actually
@@ -119,7 +119,7 @@ data class WorkoutExercise(
      * and only once per slot per session — once switched (or once real data exists), the slot
      * is locked for the rest of this session. See docs/CONVENTIONS.md#switch-exercise.
      */
-    fun isSwitchEligible(): Boolean = substitutedFor == null && hasNoRecordedSets() && !completed
+    fun isSwitchEligible(): Boolean = slotLifecycle().canSwitch(hasNoRecordedSets())
 
     /**
      * Which of the three mutually-exclusive slot categories this exercise was performed as.
@@ -164,7 +164,8 @@ fun WorkoutSession.withExerciseSwitched(
     allowDiscardRecordedSets: Boolean = false,
 ): WorkoutSession {
     val slot = exercises.find { it.exerciseId == oldExerciseId } ?: return this
-    if (slot.substitutedFor != null || slot.completed) return this
+    val slotState = slot.slotLifecycle()
+    if (slotState !is SlotLifecycle.Open || slotState.switchedFrom != null) return this
     if (!allowDiscardRecordedSets && !slot.hasNoRecordedSets()) return this
     // Regenerate empty sets matching the new exercise's type (same shape the session-creation
     // path in ActiveRoutineViewModel.init builds for a freshly-started slot). STRETCH defaults
@@ -226,7 +227,7 @@ fun WorkoutSession.withExercisesStarted(
     if (ids.isEmpty()) return this
     var changed = false
     val updated = exercises.map { ex ->
-        if (ex.exerciseId in ids && !(ex.completed && !ex.completedEmpty)) {
+        if (ex.exerciseId in ids && ex.slotLifecycle() !is SlotLifecycle.Performed) {
             changed = true
             ex.copy(startedAt = at, completedAt = "")
         } else {
