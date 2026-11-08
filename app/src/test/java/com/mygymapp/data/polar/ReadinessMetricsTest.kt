@@ -1,7 +1,9 @@
 package com.mygymapp.data.polar
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -51,5 +53,13 @@ class ReadinessMetricsTest {
         assertEquals(58.14, ReadinessMetrics.uthVo2max(190, 50)!!, 1e-9)
         assertNull(ReadinessMetrics.uthVo2max(190, 0))
         assertNull(ReadinessMetrics.uthVo2max(190, -5))
+    }
+
+    @Test
+    fun `readiness needs at least 20 clean samples`() {
+        assertTrue(ReadinessMetrics.hasEnoughReadinessSamples(20))
+        assertTrue(ReadinessMetrics.hasEnoughReadinessSamples(60))
+        assertFalse(ReadinessMetrics.hasEnoughReadinessSamples(19))
+        assertFalse(ReadinessMetrics.hasEnoughReadinessSamples(0))
     }
 }

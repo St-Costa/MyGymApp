@@ -110,4 +110,16 @@ class BatteryLifeSpanTest {
         ))
         assertNull(fresh.resetForNewBattery(currentLevel = null))
     }
+
+    @Test
+    fun `span attribution needs an anchor, caps the span, drops non-positive`() {
+        assertNull(batterySpanSeconds(0L, 10_000L, 900L))
+        assertNull(batterySpanSeconds(-5L, 10_000L, 900L))
+        assertEquals(600L, batterySpanSeconds(9_400L, 10_000L, 900L))
+        // Missed heartbeats / forward clock jump: capped, never credited beyond the cap.
+        assertEquals(900L, batterySpanSeconds(1_000L, 10_000L, 900L))
+        // Backward clock jump: nothing to attribute.
+        assertNull(batterySpanSeconds(10_000L, 9_999L, 900L))
+        assertNull(batterySpanSeconds(10_000L, 10_000L, 900L))
+    }
 }
