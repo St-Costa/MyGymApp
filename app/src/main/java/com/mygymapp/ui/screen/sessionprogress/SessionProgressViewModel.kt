@@ -14,8 +14,8 @@ import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.repository.WorkoutRepository
 import com.mygymapp.data.steps.HealthConnectStepsReader
 import com.mygymapp.data.sync.BackupVerifier
-import com.mygymapp.data.sync.BackupVerifyOutcome
 import com.mygymapp.data.sync.BackupVerifyReport
+import com.mygymapp.data.sync.backupVerifyOutcomeBox
 import com.mygymapp.data.sync.SyncConfigRepository
 import com.mygymapp.data.sync.SyncLedgerRepository
 import com.mygymapp.data.sync.SyncStatus
@@ -148,14 +148,15 @@ class SessionProgressViewModel @Inject constructor(
             backupVerifyError = null,
             backupVerifyReport = null,
         )
-        _uiState.value = when (val outcome = backupVerifier.run { progress ->
+        val (error, report) = backupVerifyOutcomeBox(backupVerifier.run { progress ->
             _uiState.value = _uiState.value.copy(backupVerifyProgress = progress)
-        }) {
-            is BackupVerifyOutcome.HardFail ->
-                _uiState.value.copy(backupVerifyRunning = false, backupVerifyProgress = null, backupVerifyError = outcome.reason)
-            is BackupVerifyOutcome.Done ->
-                _uiState.value.copy(backupVerifyRunning = false, backupVerifyProgress = null, backupVerifyReport = outcome.report)
-        }
+        })
+        _uiState.value = _uiState.value.copy(
+            backupVerifyRunning = false,
+            backupVerifyProgress = null,
+            backupVerifyError = error,
+            backupVerifyReport = report,
+        )
     }
 
     /**

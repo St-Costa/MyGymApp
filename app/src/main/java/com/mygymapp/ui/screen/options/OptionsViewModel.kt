@@ -19,8 +19,8 @@ import com.mygymapp.data.sync.EcgSyncWorker
 import com.mygymapp.data.sync.ReadinessLedgerRepository
 import com.mygymapp.data.sync.ReadinessSyncWorker
 import com.mygymapp.data.sync.BackupVerifier
-import com.mygymapp.data.sync.BackupVerifyOutcome
 import com.mygymapp.data.sync.BackupVerifyReport
+import com.mygymapp.data.sync.backupVerifyOutcomeBox
 import com.mygymapp.data.sync.RepoLedgerRepository
 import com.mygymapp.data.sync.RepoSyncWorker
 import com.mygymapp.data.sync.RestoreApi
@@ -432,9 +432,9 @@ class OptionsViewModel @Inject constructor(
                 scaleWeighInLedgerRepository.getPending().size +
                 ecgSyncLedgerRepository.getPending().size +
                 repoLedgerRepository.pendingCount()
-            val sent = (totalQueued - stillPending).coerceIn(0, totalQueued)
-            val progress = sent.toFloat() / totalQueued
-            _uiState.value = _uiState.value.copy(syncResyncProgress = progress)
+            _uiState.value = _uiState.value.copy(
+                syncResyncProgress = resyncProgress(totalQueued, stillPending),
+            )
             if (stillPending <= 0) return
             kotlinx.coroutines.delay(1_000L)
         }
@@ -641,20 +641,13 @@ class OptionsViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(backupVerifyProgress = progress)
             }
             refreshSyncStatus()
-            _uiState.value = when (outcome) {
-                is BackupVerifyOutcome.HardFail -> _uiState.value.copy(
-                    backupVerifyRunning = false,
-                    backupVerifyProgress = null,
-                    backupVerifyError = outcome.reason,
-                    backupVerifyReport = null,
-                )
-                is BackupVerifyOutcome.Done -> _uiState.value.copy(
-                    backupVerifyRunning = false,
-                    backupVerifyProgress = null,
-                    backupVerifyError = null,
-                    backupVerifyReport = outcome.report,
-                )
-            }
+            val (error, report) = backupVerifyOutcomeBox(outcome)
+            _uiState.value = _uiState.value.copy(
+                backupVerifyRunning = false,
+                backupVerifyProgress = null,
+                backupVerifyError = error,
+                backupVerifyReport = report,
+            )
         }
     }
 
@@ -673,13 +666,21 @@ class OptionsViewModel @Inject constructor(
      * debug recording with nowhere to send it would just accumulate on disk.
      */
     fun sendDebugEcg() {
-        if (polarManager.connectionState.value != ConnectionState.CONNECTED) {
-            _uiState.value = _uiState.value.copy(ecgDebugResult = "Polar not connected")
-            return
-        }
-        if (!syncConfigRepository.isConfigured()) {
-            _uiState.value = _uiState.value.copy(ecgDebugResult = "Server sync not configured")
-            return
+        when (
+            ecgDebugGate(
+                polarConnected = polarManager.connectionState.value == ConnectionState.CONNECTED,
+                serverConfigured = syncConfigRepository.isConfigured(),
+            )
+        ) {
+            EcgDebugGate.NO_POLAR -> {
+                _uiState.value = _uiState.value.copy(ecgDebugResult = "Polar not connected")
+                return
+            }
+            EcgDebugGate.NO_SERVER -> {
+                _uiState.value = _uiState.value.copy(ecgDebugResult = "Server sync not configured")
+                return
+            }
+            EcgDebugGate.READY -> Unit
         }
 
         val debugId = "debug-${System.currentTimeMillis()}"
@@ -889,12 +890,7 @@ class OptionsViewModel @Inject constructor(
             } finally {
                 collectJob.cancel()
             }
-            val liveSummary = if (samples.isEmpty()) {
-                "Live: no HR samples in ${totalSeconds}s (strap connected but silent)"
-            } else {
-                "Live: ${samples.size} samples, avg ${samples.average().toInt()}, " +
-                    "min ${samples.min()}, max ${samples.max()}"
-            }
+            val liveSummary = polarSelfTestLiveSummary(samples, totalSeconds)
             val report = PolarSelfTest.formatReport(liveSummary, PolarSelfTest.runOfflineChecks())
             _uiState.value = _uiState.value.copy(
                 polarSelfTestRunning = false,

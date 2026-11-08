@@ -77,6 +77,19 @@ sealed interface BackupVerifyOutcome {
 }
 
 /**
+ * Terminal verify-box content, shared by Options ("Verifica backup") and the
+ * end-of-session summary (ISM-25/26): exactly one of error/report is ever set
+ * (HardFail → error, Done → report). Callers clear `running`/`progress`
+ * alongside. Pure so both boxes stay in sync by construction instead of by
+ * two copies of the same `when` drifting apart.
+ */
+fun backupVerifyOutcomeBox(outcome: BackupVerifyOutcome): Pair<String?, BackupVerifyReport?> =
+    when (outcome) {
+        is BackupVerifyOutcome.HardFail -> outcome.reason to null
+        is BackupVerifyOutcome.Done -> null to outcome.report
+    }
+
+/**
  * The full-store backup round-trip, shared by Options ("Verifica backup") and
  * the end-of-session summary. See docs/BACKUP.md §3.7:
  *
