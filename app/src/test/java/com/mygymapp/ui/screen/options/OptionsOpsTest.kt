@@ -53,4 +53,11 @@ class OptionsOpsTest {
             polarSelfTestLiveSummary(listOf(90, 100, 110), 60),
         )
     }
+
+    @Test
+    fun `self-test label names the phase`() {
+        assertEquals("SEARCHING… 30S", polarSelfTestLabel(running = true, searching = true, secondsLeft = 30))
+        assertEquals("TESTING… 60S", polarSelfTestLabel(running = true, searching = false, secondsLeft = 60))
+        assertEquals("POLAR SELF-TEST", polarSelfTestLabel(running = false, searching = false, secondsLeft = 0))
+    }
 }

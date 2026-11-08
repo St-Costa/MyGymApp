@@ -114,4 +114,12 @@ class ScaleLinkStateTest {
         assertFalse(shouldSaveWeighIn(512, null))
         assertTrue(shouldSaveWeighIn(512, 70.5))
     }
+
+    @Test
+    fun `weigh-in is complete only with weight and impedance`() {
+        assertTrue(ScaleReading(70.5, true, 512, null).isWeighInComplete())
+        assertFalse(ScaleReading(70.5, true, null, null).isWeighInComplete())
+        assertFalse(ScaleReading(null, false, 512, null).isWeighInComplete())
+        assertFalse((null as ScaleReading?).isWeighInComplete())
+    }
 }

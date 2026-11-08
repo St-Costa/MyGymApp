@@ -68,6 +68,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.mygymapp.R
 import com.mygymapp.data.polar.ConnectionState
 import com.mygymapp.data.scale.ScaleConnectionState
+import com.mygymapp.data.scale.isWeighInComplete
 import com.mygymapp.ui.components.ScaleTrendSection
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -328,8 +329,7 @@ private fun DeviceStatusHeader(
     }
 
     val weighInComplete = scaleConnectionState == ScaleConnectionState.CONNECTED &&
-        scaleReading?.weightKg != null &&
-        scaleReading.impedanceOhm != null
+        scaleReading.isWeighInComplete()
     if (weighInComplete) {
         Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -363,7 +363,7 @@ private fun ScaleStatusIcon(
             tint = SignalAmber,
         )
         ScaleConnectionState.CONNECTED -> {
-            val weighInComplete = reading?.weightKg != null && reading.impedanceOhm != null
+            val weighInComplete = reading.isWeighInComplete()
             if (weighInComplete) {
                 Icon(
                     Icons.Default.TaskAlt,

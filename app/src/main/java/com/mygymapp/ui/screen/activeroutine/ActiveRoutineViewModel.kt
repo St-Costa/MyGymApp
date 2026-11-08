@@ -751,7 +751,7 @@ class ActiveRoutineViewModel @Inject constructor(
     }
 
     fun submitSessionRpe(rpe: Int): Boolean {
-        if (rpe !in 0..9) return false
+        if (!isValidSessionRpe(rpe)) return false
         appLogger.d(TAG, "Session RPE submitted: $rpe")
         _uiState.value = _uiState.value.copy(showRpePrompt = false)
         registerRoutine(sessionRpe = rpe)
@@ -1048,3 +1048,10 @@ class ActiveRoutineViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Session-RPE gate (second sweep): the Foster 0..9 rating is mandatory and
+ * non-skippable — an out-of-range value keeps the prompt open instead of
+ * silently clamping or dropping the rating.
+ */
+internal fun isValidSessionRpe(rpe: Int): Boolean = rpe in 0..9

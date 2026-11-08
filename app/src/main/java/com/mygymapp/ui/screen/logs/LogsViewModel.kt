@@ -33,6 +33,17 @@ data class LogsUiState(
     val content: String? = null,
 )
 
+/** Which pane the logs screen shows. `open` wins over `loading`: an opened file
+ * renders immediately (with its own loading state inside) instead of flashing
+ * the list spinner. */
+internal enum class LogsView { FILE, LIST_LOADING, LIST }
+
+internal fun logsViewState(hasOpenFile: Boolean, loading: Boolean): LogsView = when {
+    hasOpenFile -> LogsView.FILE
+    loading -> LogsView.LIST_LOADING
+    else -> LogsView.LIST
+}
+
 /** Options → Debug → LOGS & CRASHES: lists `app.log` + crash reports, shows one, shares it. */
 @HiltViewModel
 class LogsViewModel @Inject constructor(
