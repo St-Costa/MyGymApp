@@ -865,6 +865,8 @@ pipeline — they authenticate against that very server).
 
 `StrengthExerciseViewModel`, `StretchExerciseViewModel`, `SupersetViewModel` and `CardioExerciseViewModel` extend `ui/screen/exercise/ExerciseSessionViewModel`, which owns the shared completion plumbing that was previously copy-pasted (and drifting) across all four: the `clearScope` `SupervisorJob`, `markCompletionAndSave { … }` (runs the completion write on `clearScope`, flips `completionSaved` after), `markSwitched()` (mark done without a write, for "Switch exercise"), and the `onCleared()` template (join the completion job then cancel the scope if finished; otherwise call the subclass's `saveProgressOnExit()`). Subclasses that also run a timer override `onCleared()` to cancel it, then call `super.onCleared()`. (Cardio was the last holdout — its completion used to run on `viewModelScope`, which teardown cancels; its exit path still differs: it persists a resumable open block rather than saving-as-incomplete.)
 
+The teardown decision is the exhaustive `ExerciseSaveState` (ISM-03, same file): `Idle` → exit-save; `Completing(job)` → join then cancel; `Switched(pendingCompletion)` → join then cancel, carrying a completion write that was still running when the switch landed instead of dropping it via a nulled field. Pinned in `ExerciseSaveStateTest`.
+
 ## Baseline Profile
 
 `:baseline-profile` is a `com.android.test` module (`androidx.baselineprofile` plugin) that
