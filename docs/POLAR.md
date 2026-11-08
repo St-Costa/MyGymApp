@@ -285,6 +285,8 @@ PolarManager watches a rolling window for automatic peak detection:
 5. Otherwise, `delta = peakHr − currentHr` is appended to `hrrDeltas` and emitted via `_liveHrrLast`. Discarded deltas increment `hrrDeltasDiscarded`, exposed via `PolarManager.hrrDiscardedCount()` and logged (tag `PolarManager`/`ActiveRoutineVM`) at session end so it's visible how often a session's "recovery" windows weren't actually passive rest.
 6. Session average (`averageHrr60s()`, over only the accepted deltas) is saved as `hrr60s` in the session file.
 
+The trigger/settlement/exit rules around this walk are the pure `peakTrigger` / `settleHrrPeak` / `hasRecovered` / `clampSampleMinutes` in `data/polar/HrrDecisions.kt` (ISM-11, tested in `HrrDecisionsTest`) — `PolarManager` only executes them; thresholds stay its constants and are passed in.
+
 ### Cardiac drift
 
 `startHrSeriesCapture()` is called by `ActiveRoutineViewModel.init` and appends every HR sample as `(elapsedMs, hr)` into an `ArrayDeque` capped at `HR_SERIES_MAX_ENTRIES = 28 800` (~8 h at 1 Hz). The cap is a safety net against lifecycle bugs that would otherwise let the series grow unbounded — real sessions are orders of magnitude shorter. Every 30 s, a linear regression on the series gives BPM/minute (positive = drift up, a proxy for dehydration / early fatigue). Requires ≥5 min and ≥60 samples before the regression runs.

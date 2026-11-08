@@ -1051,30 +1051,39 @@ class PolarManager @Inject constructor(
         // Compare first half average vs second half average of the window
         val isRising = SessionMetrics.isRisingHalf(hrWindow.toList())
 
-        // Peak detected: was rising, now falling, and HR is well above resting
-        if (hrWasRising && !isRising) {
-            val peakHr = hrWindow.max()
-            if (peakHr - restingHr >= PEAK_MIN_RISE_BPM) {
-                val now = System.currentTimeMillis()
-                // Recovery peak: only one active at a time
-                if (!isRecovering) {
-                    peakHrAfterSet = peakHr
-                    isRecovering = true
-                    recentRR.clear()
-                    _rmssd.value = null
-                    Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
-                }
-                // HRR queue: independent from recovery flag. Stricter criteria
-                // than the recovery semaphore to avoid false positives from
-                // light activity (walking, stair climbing).
-                val hrMax = userProfile.hrMax
-                val meetsHrrThresholds =
-                    SessionMetrics.peakMeetsHrrThresholds(peakHr, restingHr, hrMax)
-                if (meetsHrrThresholds && now - lastQueuedPeakAtMs > HRR_QUEUE_DEBOUNCE_MS) {
-                    pendingHrrPeaks.add(peakHr to now)
-                    lastQueuedPeakAtMs = now
-                }
-            }
+        // Peak trigger + HRR queue admission — see peakTrigger for the rule.
+        // Recovery latch and HRR queue are independent: a second qualifying
+        // peak while recovering still queues its own 60s observation.
+        val peakHr = hrWindow.max()
+        val triggerNow = System.currentTimeMillis()
+        val trigger = peakTrigger(
+            wasRising = hrWasRising,
+            isRisingNow = isRising,
+            peakHr = peakHr,
+            restingHr = restingHr,
+            isRecovering = isRecovering,
+            meetsHrrThresholds = SessionMetrics.peakMeetsHrrThresholds(
+                peakHr, restingHr, userProfile.hrMax,
+            ),
+            nowMs = triggerNow,
+            lastQueuedAtMs = lastQueuedPeakAtMs,
+            minRiseBpm = PEAK_MIN_RISE_BPM,
+            debounceMs = HRR_QUEUE_DEBOUNCE_MS,
+        )
+        // Recovery peak: only one active at a time
+        if (trigger.startRecovery) {
+            peakHrAfterSet = peakHr
+            isRecovering = true
+            recentRR.clear()
+            _rmssd.value = null
+            Log.d(TAG, "Peak detected: $peakHr BPM, starting recovery (resting=$restingHr)")
+        }
+        // HRR queue: independent from recovery flag. Stricter criteria
+        // than the recovery semaphore to avoid false positives from
+        // light activity (walking, stair climbing).
+        if (trigger.queueHrr) {
+            pendingHrrPeaks.add(peakHr to triggerNow)
+            lastQueuedPeakAtMs = triggerNow
         }
         hrWasRising = isRising
 
@@ -1084,28 +1093,32 @@ class PolarManager @Inject constructor(
         val now = System.currentTimeMillis()
         val iter = pendingHrrPeaks.iterator()
         while (iter.hasNext()) {
-            val (peakHr, peakTs) = iter.next()
+            val (queuedPeakHr, peakTs) = iter.next()
             if (now - peakTs >= 60_000) {
                 val hrAt60 = hrrWindowAverage(hrSeries.toList(), now - hrSeriesStart) ?: hr
-                val delta = peakHr - hrAt60
-                if (delta !in 0..120) {
-                    hrrDeltasDiscarded++
-                    Log.d(
-                        TAG,
-                        "HRR delta out of range, discarded: peak=$peakHr hrAt60=$hrAt60 " +
-                            "totalDiscarded=$hrrDeltasDiscarded"
-                    )
-                } else if (isMonotonicRecovery(peakHr, peakTs, now)) {
-                    hrrDeltas.add(delta)
-                    _liveHrrLast.value = delta
-                } else {
-                    hrrDeltasDiscarded++
-                    Log.d(
-                        TAG,
-                        "HRR delta discarded (rebound > $HRR_REBOUND_TOLERANCE_BPM bpm " +
-                            "within peak+60s window): peak=$peakHr delta=$delta " +
-                            "totalDiscarded=$hrrDeltasDiscarded"
-                    )
+                val delta = hrrDelta(queuedPeakHr, hrAt60)
+                when (settleHrrPeak(queuedPeakHr, hrAt60, isMonotonicRecovery(queuedPeakHr, peakTs, now))) {
+                    HrrSettlement.ACCEPT -> {
+                        hrrDeltas.add(delta)
+                        _liveHrrLast.value = delta
+                    }
+                    HrrSettlement.DISCARD_OUT_OF_RANGE -> {
+                        hrrDeltasDiscarded++
+                        Log.d(
+                            TAG,
+                            "HRR delta out of range, discarded: peak=$queuedPeakHr hrAt60=$hrAt60 " +
+                                "totalDiscarded=$hrrDeltasDiscarded"
+                        )
+                    }
+                    HrrSettlement.DISCARD_REBOUND -> {
+                        hrrDeltasDiscarded++
+                        Log.d(
+                            TAG,
+                            "HRR delta discarded (rebound > $HRR_REBOUND_TOLERANCE_BPM bpm " +
+                                "within peak+60s window): peak=$queuedPeakHr delta=$delta " +
+                                "totalDiscarded=$hrrDeltasDiscarded"
+                        )
+                    }
                 }
                 iter.remove()
             }
@@ -1130,29 +1143,31 @@ class PolarManager @Inject constructor(
         if (!isRecovering) return
 
         // HR-based recovery: has HR dropped enough toward resting?
-        val hrDelta = peakHrAfterSet - restingHr
-        val hrReady = if (hrDelta > 0) {
-            val recovery = (peakHrAfterSet - hr).toFloat() / hrDelta
-            recovery >= HR_RECOVERY_THRESHOLD
-        } else true
-
-        // RMSSD-based recovery: parasympathetic reactivation
+        // RMSSD-based recovery: parasympathetic reactivation — see hasRecovered.
         val currentRmssd = calculateRMSSD(recentRR.toList())
         _rmssd.value = currentRmssd
-        val rmssdReady = currentRmssd > RMSSD_READY_THRESHOLD && recentRR.size >= 15
-
-        if (hrReady && rmssdReady) {
+        if (hasRecovered(
+                peakHrAfterSet = peakHrAfterSet,
+                restingHr = restingHr,
+                currentHr = hr,
+                rmssd = currentRmssd,
+                recentRrCount = recentRR.size,
+                hrFraction = HR_RECOVERY_THRESHOLD,
+                rmssdThreshold = RMSSD_READY_THRESHOLD,
+                minRecentRr = 15,
+            )
+        ) {
             isRecovering = false
         }
     }
 
     private fun accumulateCaloriesAndTrimp(hr: Int) {
         val now = System.currentTimeMillis()
-        val elapsedMin = (now - lastHrTimestamp) / 60000.0
+        val rawElapsedMin = (now - lastHrTimestamp) / 60000.0
         lastHrTimestamp = now
 
         // Clamp to reasonable interval (skip if >10s gap, e.g. reconnection)
-        if (elapsedMin <= 0 || elapsedMin > 0.2) return
+        val elapsedMin = clampSampleMinutes(rawElapsedMin) ?: return
 
         val p = userProfile
 
