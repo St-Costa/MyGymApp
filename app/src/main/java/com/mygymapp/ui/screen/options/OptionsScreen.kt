@@ -734,24 +734,19 @@ private fun DebugSection(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (uiState.polarSelfTestRunning) {
-                    if (uiState.polarSelfTestSearching) {
-                        Text(
-                            "SEARCHING… ${uiState.polarSelfTestSecondsLeft}S",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = false,
-                        )
-                    } else {
-                        Text(
-                            "TESTING… ${uiState.polarSelfTestSecondsLeft}S",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            softWrap = false,
-                        )
-                    }
+                    Text(
+                        polarSelfTestLabel(
+                            running = true,
+                            searching = uiState.polarSelfTestSearching,
+                            secondsLeft = uiState.polarSelfTestSecondsLeft,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                    )
                 } else {
                     Text(
-                        "POLAR SELF-TEST",
+                        polarSelfTestLabel(running = false, searching = false, secondsLeft = 0),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         softWrap = false,

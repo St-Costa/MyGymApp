@@ -38,13 +38,12 @@ class HrZoneTracker {
 
     /** Call on every BPM update. [zone] is the classification of the *new* [bpm]. */
     fun onTick(zone: HrZone, nowMs: Long = System.currentTimeMillis()) {
-        if (lastTickAtMs != 0L && lastZone != null) {
-            val dtMinutes = (nowMs - lastTickAtMs) / 60_000.0
-            // Skip implausible gaps (reconnects, app backgrounded) so they don't get
-            // misattributed to whatever zone the stream happened to be in beforehand.
-            if (dtMinutes in 0.0..0.2) {
-                minutes = minutes.addTo(lastZone!!, dtMinutes)
-            }
+        val gap = zoneGapMinutes(lastTickAtMs, nowMs)
+        val prevZone = lastZone
+        if (gap != null && prevZone != null) {
+            // Attributed to the leading (previous) zone: HR is fairly stable within
+            // a ~1s gap, so this coarse attribution is standard.
+            minutes = minutes.addTo(prevZone, gap)
         }
         lastTickAtMs = nowMs
         lastZone = zone
@@ -58,4 +57,15 @@ class HrZoneTracker {
         HrZone.Z4 -> copy(zone4 = zone4 + dt)
         HrZone.Z5 -> copy(zone5 = zone5 + dt)
     }
+}
+
+/**
+ * Gap veto for [HrZoneTracker.onTick] (second sweep): a gap is attributed only
+ * when a previous tick exists and the gap is plausible (0..0.2 min) — reconnects
+ * and backgrounded gaps are dropped instead of misattributed to whatever zone
+ * the stream happened to be in beforehand. `null` means drop.
+ */
+internal fun zoneGapMinutes(lastTickAtMs: Long, nowMs: Long): Double? {
+    if (lastTickAtMs == 0L) return null
+    return ((nowMs - lastTickAtMs) / 60_000.0).takeIf { it in 0.0..0.2 }
 }

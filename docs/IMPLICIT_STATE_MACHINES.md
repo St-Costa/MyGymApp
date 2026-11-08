@@ -252,6 +252,31 @@ Six instances of the same `(running/testing × progress/secondsLeft × error/res
 
 Unthrottled ghost sweep (`deleteUnfinalizedSessions :819-853`, blank-`completedAt` → delete + index strip + paired `.ecg`, never rebuilds sidecars `:815-816`) vs throttled `runMaintenance` (`:870-962`, sentinel-gated `:965,:1044-1052`, single walk, one parse serving prune/ghost checks `:905-913`) with stats rebuild only when the removed session was completed (`:917-918`) — ghost cleanup never feeds sidecars because `save()` only merges completed sessions. `delete()` shares the completed-only rebuild rule (`:587-591`); `runMaintenance` rebuilds outside the lock with an mtime re-check (`:609-624`, `:956`).
 
+## Second sweep (2026-11-08) — re-audit with fresh eyes
+
+Two parallel audits (UI layer, data layer) re-scanned every file for missed
+machines and for new ones the resolutions might have introduced. Result: six
+micro-extractions below (same pattern as before — pure rule + tests, wiring
+unchanged), and the rest consciously accepted. Acceptance bar, applied evenly:
+a cluster counts only with history-dependence *and* an illegal combination
+that costs something *and* multiple writers; pure calculators, single-owner
+locks, display-only `when`s and already-tested kernels stay as they are.
+
+| Area | Verdict |
+|---|---|
+| Logs viewer mode (`loading × open × content`) | Explicit: `LogsView` + `logsViewState()` (`ui/screen/logs/`), tested |
+| Auto-scan gate (`hasBle × known × disconnected × scanning`) | Explicit: `shouldAutoScan()` (`ui/navigation/`), tested |
+| Zone gap veto (reconnect/background gaps) | Explicit: `zoneGapMinutes()` (`HrZoneTracker.kt`), tested incl. `onTick` behavior |
+| Weigh-in completeness (weight && impedance in two places) | Explicit: `ScaleReading?.isWeighInComplete()` (`ScaleLinkState.kt`), both call sites deduped, tested |
+| Self-test button label (searching vs sampling vs idle) | Explicit: `polarSelfTestLabel()` (`OptionsOps.kt`), tested |
+| RPE gate (ISM-01 remainder) | Explicit: `isValidSessionRpe()`; the prompt→answer→register sequencing stays linear in the VM (no hidden states: Idle/Open/Answered map 1:1 to `showRpePrompt`/`sessionRegistered`), documented here instead of reified |
+| Connection-test invalidation (`isTesting × result-null`) | Accepted: single screen, no illegal combo with a cost (worst case a stale "reachable" until the next test) |
+| HR/ Polar /Scale debug button tables | Accepted: display-only `when`s over already-explicit states; guarded actions (`startScan` no-ops unless disconnected, `ensureScanningIfNeeded`) stay the guards |
+| `EcgRecorder` open/write/close/drain | Accepted: already a disciplined single-lock design (one channel + session id, `stop()` before `start()`, FIFO writer); no unenforced invariant found |
+| `LiveEcgAnalyzer` detector + `HrZoneTracker` accumulator internals | Accepted: signal-processing internals with pure kernels already extracted (`isMonotonicHrRecovery`, `hrrWindowAverage`); covered by existing tests |
+| `HrNotificationThrottle`, `UserProfile` cache+migration, repo lazy-load+sentinel, `StepLedger` cursor, stats/gitgraph calculators, `UstarReader` slot, log buffers | Accepted: standard patterns (throttle windows, double-checked load, one-shot sentinels, pure calculators), each with existing tests; no multi-writer illegal combos found |
+| No new machines born from the resolutions | Verified: every new type added in this pass is total (exhaustive `when`, all-paths returns) — `SessionLifecycle`, `SlotLifecycle`, `SyncStatus.canTransitionTo` (6×6 pinned), `MaintenanceAction`, `ExerciseSaveState`, `NavResultKeys` codecs, all pure rule functions |
+
 ## How to find more (method used)
 
 - ≥2 mutually-exclusive booleans per class → cluster.

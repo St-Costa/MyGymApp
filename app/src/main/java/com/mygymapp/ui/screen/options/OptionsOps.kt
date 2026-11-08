@@ -49,3 +49,11 @@ internal fun polarSelfTestLiveSummary(samples: List<Int>, totalSeconds: Int): St
         "Live: ${samples.size} samples, avg ${samples.average().toInt()}, " +
             "min ${samples.min()}, max ${samples.max()}"
     }
+
+/** Self-test button label: searching (strap hunt) vs sampling vs idle. */
+internal fun polarSelfTestLabel(running: Boolean, searching: Boolean, secondsLeft: Int): String =
+    when {
+        running && searching -> "SEARCHING… ${secondsLeft}S"
+        running -> "TESTING… ${secondsLeft}S"
+        else -> "POLAR SELF-TEST"
+    }

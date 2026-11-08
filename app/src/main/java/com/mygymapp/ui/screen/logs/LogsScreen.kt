@@ -90,10 +90,10 @@ fun LogsScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when {
-                open != null -> FileContent(uiState.content)
-                uiState.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                else -> FileList(uiState.files, onOpen = viewModel::open)
+            when (logsViewState(open != null, uiState.loading)) {
+                LogsView.FILE -> FileContent(uiState.content)
+                LogsView.LIST_LOADING -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                LogsView.LIST -> FileList(uiState.files, onOpen = viewModel::open)
             }
         }
     }

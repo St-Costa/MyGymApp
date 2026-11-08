@@ -21,8 +21,7 @@ package com.mygymapp.data.scale
  */
 
 /** Every event that can move the scale link. */
-enum class ScaleLinkEvent {
-    START_SCAN,
+enum class ScaleLinkEvent {    START_SCAN,
     STOP_SCAN,
     SCAN_TIMEOUT,
     SCAN_FAILED,
@@ -82,3 +81,13 @@ fun ScaleReading.mergedWith(previous: ScaleReading?): ScaleReading = ScaleReadin
  */
 fun shouldSaveWeighIn(impedanceOhm: Int, averageWeightKg: Double?): Boolean =
     impedanceOhm > 0 && averageWeightKg != null
+
+/**
+ * Weigh-in completeness (second sweep): a connected scale counts as "you can
+ * step off" only once weight *and* impedance have both arrived — the two
+ * notify packets (`0x10`/`0x11`) land separately and the merged reading holds
+ * the latest of each. Shared by the Heart screen banner and the debug icon so
+ * they can't disagree.
+ */
+fun ScaleReading?.isWeighInComplete(): Boolean =
+    this?.weightKg != null && this.impedanceOhm != null

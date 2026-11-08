@@ -44,10 +44,13 @@ class GlobalPolarViewModel @Inject constructor(
      * permessi BLE concessi. Idempotente — chiamabile da ogni ON_RESUME globale.
      */
     fun ensureScanningIfNeeded() {
-        if (!hasBlePermissions()) return
-        if (!hasKnownDevice()) return
-        if (polarManager.connectionState.value != ConnectionState.DISCONNECTED) return
-        if (polarManager.isScanning.value) return
+        if (!shouldAutoScan(
+                hasPermissions = hasBlePermissions(),
+                hasKnownDevice = hasKnownDevice(),
+                isDisconnected = polarManager.connectionState.value == ConnectionState.DISCONNECTED,
+                isScanning = polarManager.isScanning.value,
+            )
+        ) return
         polarManager.startScan()
     }
 
@@ -60,3 +63,15 @@ class GlobalPolarViewModel @Inject constructor(
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 }
+
+/**
+ * Auto-scan gate (second sweep): scan only with permissions, a known strap,
+ * a down link and no scan already running. Pure so the ON_RESUME restart
+ * policy — never tear down a live link — is pinned without a device.
+ */
+internal fun shouldAutoScan(
+    hasPermissions: Boolean,
+    hasKnownDevice: Boolean,
+    isDisconnected: Boolean,
+    isScanning: Boolean,
+): Boolean = hasPermissions && hasKnownDevice && isDisconnected && !isScanning
