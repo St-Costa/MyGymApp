@@ -87,6 +87,126 @@ fun canEnableSupersetLink(segments: List<ExerciseSegment>, index: Int, count: In
     return here + next <= MAX_SUPERSET_SIZE
 }
 
+/**
+ * Explicit toggle rule (ISM-27): refuses linking across the warmup line and
+ * chains that would exceed [MAX_SUPERSET_SIZE], otherwise flips the flag.
+ * Out-of-range indices are a no-op — same as the old in-place update.
+ */
+fun toggleSupersetLink(
+    exercises: List<RoutineExerciseUi>,
+    index: Int,
+    warmupCount: Int,
+): List<RoutineExerciseUi> {
+    // Never link the last warmup exercise with the first normal exercise across the line.
+    if (index + 1 == warmupCount) return exercises
+    if (index !in exercises.indices) return exercises
+    val turningOn = !exercises[index].supersetWithNext
+    if (turningOn && !canEnableSupersetLink(buildExerciseSegments(exercises), index, exercises.size)) {
+        // Merged chain would exceed MAX_SUPERSET_SIZE (e.g. an existing A+B+C can't absorb a D).
+        return exercises
+    }
+    return exercises.mapIndexed { i, ex ->
+        if (i == index) ex.copy(supersetWithNext = !ex.supersetWithNext) else ex
+    }
+}
+
+/** Result of [removeExerciseAt]: the surviving list plus the shifted warmup line. */
+data class ExerciseRemoval(val exercises: List<RoutineExerciseUi>, val warmupCount: Int)
+
+/**
+ * Explicit removal rule (ISM-27): dropping a member repairs the chain (a
+ * middle removal re-links predecessor to successor via its still-true flag;
+ * removing the last member clears the now-dangling predecessor flag) and
+ * shifts the positional warmup line up when the removal sits above it.
+ * Returns the input unchanged for out-of-range indices.
+ */
+fun removeExerciseAt(
+    exercises: List<RoutineExerciseUi>,
+    index: Int,
+    warmupCount: Int,
+): ExerciseRemoval {
+    if (index !in exercises.indices) return ExerciseRemoval(exercises, warmupCount)
+    val list = exercises.toMutableList()
+    // If the previous exercise has supersetWithNext=true, this exercise was a member of
+    // that chain. Removing a middle member (A+[B]+C) just re-links A to C via A's own
+    // still-true flag, which is fine. Removing the last member (A+B+[C]) would leave B's
+    // flag dangling past the end of its segment — clear it so no chain runs off the end.
+    if (index > 0 && list[index - 1].supersetWithNext &&
+        (index == list.lastIndex || !list[index].supersetWithNext)
+    ) {
+        list[index - 1] = list[index - 1].copy(supersetWithNext = false)
+    }
+    list.removeAt(index)
+    // Removing an exercise above the line shifts the line up by one.
+    // Note: the result is intentionally NOT re-snapped here — a transient
+    // mid-segment value stands until the next move/drag snaps it (see
+    // snapWarmupToBoundary, applied on moveSegment).
+    val newWarmup = if (index < warmupCount) warmupCount - 1 else warmupCount
+    return ExerciseRemoval(list, newWarmup)
+}
+
+/**
+ * Explicit warmup-line moves (ISM-27): the line jumps whole segments, never
+ * into the middle of one. Returns [warmupCount] unchanged when no boundary
+ * matches (already at the top/bottom).
+ */
+fun moveWarmupLineDown(exercises: List<RoutineExerciseUi>, warmupCount: Int): Int {
+    var acc = 0
+    for (seg in buildExerciseSegments(exercises)) {
+        val size = seg.indices().size
+        if (acc == warmupCount) return acc + size
+        acc += size
+    }
+    return warmupCount
+}
+
+fun moveWarmupLineUp(exercises: List<RoutineExerciseUi>, warmupCount: Int): Int {
+    var acc = 0
+    for (seg in buildExerciseSegments(exercises)) {
+        val size = seg.indices().size
+        if (acc + size == warmupCount) return acc
+        acc += size
+    }
+    return warmupCount
+}
+
+/** Snaps [warmupCount] to the nearest segment boundary so it never splits a superset pair. */
+internal fun snapWarmupToBoundary(exercises: List<RoutineExerciseUi>, warmupCount: Int): Int {
+    val segments = buildExerciseSegments(exercises)
+    var acc = 0
+    for (seg in segments) {
+        val size = seg.indices().size
+        if (warmupCount <= acc) return acc
+        if (warmupCount < acc + size) return acc // inside a pair → snap before it
+        acc += size
+    }
+    return acc
+}
+
+/**
+ * Maps editor state to the persisted [Routine] (ISM-27): the leading
+ * [RoutineEditUiState.warmupCount] prefix is warmup (except in the fixed-daily
+ * container, which has no warmup concept); superset flags ride through
+ * untouched. Pure so the prefix rule is unit-testable without repositories.
+ */
+internal fun buildRoutine(state: RoutineEditUiState): Routine = Routine(
+    id = state.id,
+    name = state.name.trim(),
+    day = state.day,
+    exercises = state.exercises.mapIndexed { index, ex ->
+        RoutineExercise(
+            exerciseId = ex.exerciseId,
+            sets = ex.sets,
+            repRangeMin = ex.repRangeMin,
+            repRangeMax = ex.repRangeMax,
+            timePerSetSeconds = ex.timePerSetSeconds,
+            supersetWithNext = ex.supersetWithNext,
+            // The container has no warmup concept; otherwise the leading prefix is warmup.
+            isWarmup = !state.isFixedDaily && index < state.warmupCount,
+        )
+    },
+)
+
 @HiltViewModel
 class RoutineEditViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
@@ -178,78 +298,35 @@ class RoutineEditViewModel @Inject constructor(
     }
 
     fun removeExercise(index: Int) {
-        val list = _uiState.value.exercises.toMutableList()
-        if (index in list.indices) {
-            // If the previous exercise has supersetWithNext=true, this exercise was a member of
-            // that chain. Removing a middle member (A+[B]+C) just re-links A to C via A's own
-            // still-true flag, which is fine. Removing the last member (A+B+[C]) would leave B's
-            // flag dangling past the end of its segment — clear it so no chain runs off the end.
-            if (index > 0 && list[index - 1].supersetWithNext &&
-                (index == list.lastIndex || !list[index].supersetWithNext)
-            ) {
-                list[index - 1] = list[index - 1].copy(supersetWithNext = false)
-            }
-            list.removeAt(index)
-            // Removing an exercise above the line shifts the line up by one.
-            val warmupCount = _uiState.value.warmupCount
-            val newWarmup = if (index < warmupCount) warmupCount - 1 else warmupCount
-            _uiState.value = _uiState.value.copy(exercises = list, warmupCount = newWarmup)
+        val state = _uiState.value
+        val removal = removeExerciseAt(state.exercises, index, state.warmupCount)
+        // Preserve the old in-bounds-only write: an out-of-range index leaves state untouched.
+        if (removal.exercises !== state.exercises) {
+            _uiState.value = state.copy(exercises = removal.exercises, warmupCount = removal.warmupCount)
         }
     }
 
     fun toggleSuperset(index: Int) {
-        // Never link the last warmup exercise with the first normal exercise across the line.
-        if (index + 1 == _uiState.value.warmupCount) return
-        val exercises = _uiState.value.exercises
-        val turningOn = index in exercises.indices && !exercises[index].supersetWithNext
-        if (turningOn && !canEnableSupersetLink(buildExerciseSegments(exercises), index, exercises.size)) {
-            // Merged chain would exceed MAX_SUPERSET_SIZE (e.g. an existing A+B+C can't absorb a D).
-            return
-        }
-        updateExercise(index) { it.copy(supersetWithNext = !it.supersetWithNext) }
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            exercises = toggleSupersetLink(state.exercises, index, state.warmupCount),
+        )
     }
 
     /** Pushes the first normal segment up into the warmup section (moves the line down). */
     fun moveWarmupLineDown() {
         val state = _uiState.value
-        val segments = buildExerciseSegments(state.exercises)
-        var acc = 0
-        for (seg in segments) {
-            val size = seg.indices().size
-            if (acc == state.warmupCount) {
-                _uiState.value = state.copy(warmupCount = acc + size)
-                return
-            }
-            acc += size
-        }
+        _uiState.value = state.copy(
+            warmupCount = moveWarmupLineDown(state.exercises, state.warmupCount),
+        )
     }
 
     /** Pulls the last warmup segment back into the normal section (moves the line up). */
     fun moveWarmupLineUp() {
         val state = _uiState.value
-        val segments = buildExerciseSegments(state.exercises)
-        var acc = 0
-        for (seg in segments) {
-            val size = seg.indices().size
-            if (acc + size == state.warmupCount) {
-                _uiState.value = state.copy(warmupCount = acc)
-                return
-            }
-            acc += size
-        }
-    }
-
-    /** Snaps [warmupCount] to the nearest segment boundary so it never splits a superset pair. */
-    private fun snapWarmupToBoundary(exercises: List<RoutineExerciseUi>, warmupCount: Int): Int {
-        val segments = buildExerciseSegments(exercises)
-        var acc = 0
-        for (seg in segments) {
-            val size = seg.indices().size
-            if (warmupCount <= acc) return acc
-            if (warmupCount < acc + size) return acc // inside a pair → snap before it
-            acc += size
-        }
-        return acc
+        _uiState.value = state.copy(
+            warmupCount = moveWarmupLineUp(state.exercises, state.warmupCount),
+        )
     }
 
     fun moveSegment(fromSegIdx: Int, toSegIdx: Int) {
@@ -367,23 +444,6 @@ class RoutineEditViewModel @Inject constructor(
         }
     }
 
-    private fun buildRoutine(state: RoutineEditUiState): Routine = Routine(
-        id = state.id,
-        name = state.name.trim(),
-        day = state.day,
-        exercises = state.exercises.mapIndexed { index, ex ->
-            RoutineExercise(
-                exerciseId = ex.exerciseId,
-                sets = ex.sets,
-                repRangeMin = ex.repRangeMin,
-                repRangeMax = ex.repRangeMax,
-                timePerSetSeconds = ex.timePerSetSeconds,
-                supersetWithNext = ex.supersetWithNext,
-                // The container has no warmup concept; otherwise the leading prefix is warmup.
-                isWarmup = !state.isFixedDaily && index < state.warmupCount,
-            )
-        },
-    )
 }
 
 /**
