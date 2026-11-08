@@ -31,11 +31,12 @@ import kotlinx.coroutines.launch
  *    the `completed = true` (see docs/CONVENTIONS.md#completionsaved-pattern and
  *    #oncleared-save).
  *  - [markCompletionAndSave] — run the completion write on [clearScope], tracked as
- *    [completionJob], and flip [completionSaved] once it lands. The screen observes
+ *    [ExerciseSaveState.Completing], and flip [completionSaved] once it lands. The screen observes
  *    [completionSaved] and only then calls `onComplete()` (navigates back), so the write is
  *    always on disk before the active-routine screen reloads.
- *  - [markSwitched] — "Switch exercise": the swap write already happened elsewhere; this only
- *    marks the instance done so [onCleared] doesn't re-save a slot that no longer exists.
+ *  - [markSwitched] — "Switch exercise": the swap write already happened elsewhere; this moves
+ *    to [ExerciseSaveState.Switched] (carrying any still-running completion job) so [onCleared]
+ *    joins instead of re-saving a slot that no longer exists.
  *  - [onCleared] — if the exercise was completed/switched, join [completionJob] (so `cancel`
  *    can't abort a write still in flight) then tear the scope down; otherwise delegate to
  *    [saveProgressOnExit] for the back-navigation "save as incomplete" write.
@@ -43,13 +44,40 @@ import kotlinx.coroutines.launch
  * Subclasses implement only [saveProgressOnExit]; anything screen-specific in the completion
  * write is passed as the `block` lambda to [markCompletionAndSave].
  */
+/**
+ * Explicit save-state for one exercise/superset instance (ISM-03).
+ *
+ * Before this type existed the teardown decision lived in two correlated
+ * fields — a `finished` flag plus a nullable `completionJob` — with the legal
+ * combinations (`finished && job == null` after a bare switch, `!finished &&
+ * job != null` impossible) only implied. [ExerciseSessionViewModel.onCleared]
+ * now branches exhaustively over this: [Completing]/[Switched] join any
+ * in-flight write before tearing the scope down, [Idle] takes the exit-save
+ * path. In particular a switch that lands while a completion write is still
+ * running carries the job along ([Switched.pendingCompletion]) instead of
+ * relying on a shared nullable field surviving the flag flip.
+ */
+sealed interface ExerciseSaveState {
+    /** Nothing requested yet — `onCleared` takes the exit-save path. */
+    data object Idle : ExerciseSaveState
+
+    /** Completion write launched — `onCleared` joins it, never re-saves. */
+    data class Completing(val job: Job) : ExerciseSaveState
+
+    /**
+     * Slot swapped away — this instance is obsolete. Carries a possibly-running
+     * completion write so `onCleared` still joins it (complete-then-switch in
+     * one navigation), instead of dropping it.
+     */
+    data class Switched(val pendingCompletion: Job? = null) : ExerciseSaveState
+}
+
 abstract class ExerciseSessionViewModel : ViewModel() {
 
     protected val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Set once the exercise/superset is completed or switched — stops [onCleared] re-saving. */
-    private var finished = false
-    private var completionJob: Job? = null
+    /** See [ExerciseSaveState] — the single source for the teardown decision. */
+    private var saveState: ExerciseSaveState = ExerciseSaveState.Idle
 
     private val _completionSaved = MutableStateFlow(false)
     val completionSaved: StateFlow<Boolean> = _completionSaved
@@ -76,13 +104,12 @@ abstract class ExerciseSessionViewModel : ViewModel() {
      * Idempotent-ish: a second call is ignored, since the screen navigates away on the first.
      */
     protected fun markCompletionAndSave(block: suspend () -> Unit) {
-        if (finished) return
-        finished = true
-        completionJob = clearScope.launch {
+        if (saveState != ExerciseSaveState.Idle) return
+        saveState = ExerciseSaveState.Completing(clearScope.launch {
             block()
             _completionSaved.value = true
             _completionEvent.send(Unit)
-        }
+        })
     }
 
     /**
@@ -91,7 +118,10 @@ abstract class ExerciseSessionViewModel : ViewModel() {
      * path and this slot/VM is now obsolete.
      */
     protected fun markSwitched() {
-        finished = true
+        saveState = when (val s = saveState) {
+            is ExerciseSaveState.Completing -> ExerciseSaveState.Switched(s.job)
+            else -> ExerciseSaveState.Switched()
+        }
     }
 
     /**
@@ -105,17 +135,24 @@ abstract class ExerciseSessionViewModel : ViewModel() {
     /** Subclasses that need extra teardown (timers) override, call `super.onCleared()` first. */
     override fun onCleared() {
         super.onCleared()
-        if (finished) {
-            clearScope.launch {
-                try {
-                    completionJob?.join()
-                } finally {
-                    clearScope.cancel()
-                }
-            }
-            return
+        when (val s = saveState) {
+            // Completed or switched: join any in-flight write so `cancel` can't
+            // abort it, then tear the scope down. Never re-saves.
+            is ExerciseSaveState.Completing -> joinAndTearDown(s.job)
+            is ExerciseSaveState.Switched -> joinAndTearDown(s.pendingCompletion)
+            // Plain back-navigation: persist as *incomplete*.
+            ExerciseSaveState.Idle -> saveProgressOnExit()
         }
-        saveProgressOnExit()
+    }
+
+    private fun joinAndTearDown(job: Job?) {
+        clearScope.launch {
+            try {
+                job?.join()
+            } finally {
+                clearScope.cancel()
+            }
+        }
     }
 }
 
