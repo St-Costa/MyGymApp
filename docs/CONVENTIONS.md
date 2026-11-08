@@ -773,6 +773,8 @@ Two pre-computed caches now live under `history/` — the exercise-stats sidecar
 
 Traversing `history/` for these: use `WorkoutRepository.historyMonthDirs()` / `historySessionFiles()`, not an ad-hoc `listFiles()` walk — they're the one place the `_idx`/`_stats` reserved-name skip lives.
 
+- **Maintenance verdict is a pure `MaintenanceAction`** (ISM-29): `decideMaintenanceAction(fileDate, session, cutoffDate)` returns Keep / DeleteMalformedName / Delete(kind, exerciseIds, affectsStats), and `runMaintenance`'s loop is a `when` over it. The sidecar rule falls out of `SessionLifecycle` — only a completed pruned session rebuilds (ghosts carry `affectsStats = false` by construction). Pinned in `MaintenanceActionTest`.
+
 ## Atomic file writes + ledger quarantine + restore allowlist
 
 - **Never `File.writeText` a durable record directly** — use `AtomicFiles.writeTextAtomically` / `writeBytesAtomically` (`data/util/AtomicFiles.kt`: tmp file in the same dir + `fd.sync()` + rename). A kill mid-`writeText` used to leave truncated YAML that every reader's `catch { skip }` then silently dropped. The same helper covers sidecars, `.idx` files, ledgers, checkpoints and restore writes.
