@@ -17,6 +17,50 @@ package com.mygymapp.data.sync
 enum class SyncStatus { PENDING, SENT, FAILED, EXPIRED, DELETED_PENDING, DELETED_SENT }
 
 /**
+ * Explicit transition table for every sync ledger (ISM-05).
+ *
+ * Before this existed each repository's `markSent`/`markFailed`/`markDead` accepted
+ * any source state — the legal moves lived only in prose (`SyncLedgerEntry` KDoc,
+ * `docs/SYNC.md`). The outcome functions now refuse (no-op, no write) anything
+ * outside this table, so an illegal move can no longer silently corrupt delivery
+ * state (e.g. un-sending a SENT entry, or resurrecting an EXPIRED dead-letter
+ * into the retry loop).
+ *
+ * Audited against every live caller (2026-11-08): workers only ever move
+ * PENDING/FAILED entries to SENT/FAILED/EXPIRED; `enqueue`/`requeueIfChanged`
+ * (fresh hash wins), `markRestored` (post-restore) and `markDeleted` (tombstone)
+ * are sanctioned resets and stay outside this table on purpose — they carry new
+ * ground truth (fresh bytes, server bytes, user delete), not a worker outcome.
+ * `resetAllToPending` preserves EXPIRED for the same reason: a dead-letter is
+ * revived only by an explicit re-enqueue, never by a bulk reset.
+ */
+fun SyncStatus.canTransitionTo(target: SyncStatus): Boolean = when (this) {
+    // A queued entry resolves to sent, failed (retryable), or dead-lettered.
+    SyncStatus.PENDING -> target == SyncStatus.SENT ||
+        target == SyncStatus.FAILED ||
+        target == SyncStatus.EXPIRED
+    // A retry resolves the same way; FAILED→FAILED only counts the new attempt.
+    SyncStatus.FAILED -> target == SyncStatus.SENT ||
+        target == SyncStatus.FAILED ||
+        target == SyncStatus.EXPIRED
+    // A sent delivery is never un-sent, failed retroactively, or dead-lettered by
+    // a worker outcome. The only way out is an explicit re-enqueue with a fresh
+    // hash (`enqueue`/`requeueIfChanged`) when the content actually changed.
+    SyncStatus.SENT -> false
+    // Terminal by design: revival needs a fresh enqueue with a live file, so a
+    // bulk/reset path can never drag it back into the 4h retry loop.
+    SyncStatus.EXPIRED -> false
+    // A delete tombstone resolves to delivered, or stays a tombstone counting
+    // the failed attempt. It never becomes a plain upsert status.
+    SyncStatus.DELETED_PENDING -> target == SyncStatus.DELETED_SENT ||
+        target == SyncStatus.DELETED_PENDING
+    // Delivered tombstone: only a file reappearing (`requeueIfChanged`
+    // un-tombstones) or a fresh delete (`markDeleted` is a no-op here by
+    // idempotence guard) touches it — never a worker outcome.
+    SyncStatus.DELETED_SENT -> false
+}
+
+/**
  * One row of the local sync ledger — the durable record of "has this exact session
  * content been handed to the server yet." See `docs/SYNC.md` §1.2.
  *

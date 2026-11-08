@@ -199,6 +199,7 @@ class RepoLedgerRepository @Inject constructor(
             val all = readAllUnlocked()
             val existing = all[relPath] ?: return@withLock
             val nextStatus = if (existing.op == "delete") SyncStatus.DELETED_SENT else SyncStatus.SENT
+            if (!existing.status.canTransitionTo(nextStatus)) return@withLock
             all[relPath] = existing.copy(
                 status = nextStatus,
                 attempts = existing.attempts + 1,
@@ -218,6 +219,7 @@ class RepoLedgerRepository @Inject constructor(
             // ledgers — FAILED is a diagnostics status, not a dead-letter state).
             val nextStatus =
                 if (existing.op == "delete") SyncStatus.DELETED_PENDING else SyncStatus.FAILED
+            if (!existing.status.canTransitionTo(nextStatus)) return@withLock
             all[relPath] = existing.copy(
                 status = nextStatus,
                 attempts = existing.attempts + 1,

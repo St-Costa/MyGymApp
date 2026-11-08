@@ -185,6 +185,7 @@ class SyncLedgerRepository @Inject constructor(
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[sessionId] ?: return@withLock
+            if (!existing.status.canTransitionTo(SyncStatus.SENT)) return@withLock
             all[sessionId] = existing.copy(
                 status = SyncStatus.SENT,
                 attempts = existing.attempts + 1,
@@ -208,6 +209,7 @@ class SyncLedgerRepository @Inject constructor(
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[sessionId] ?: return@withLock
+            if (!existing.status.canTransitionTo(SyncStatus.EXPIRED)) return@withLock
             all[sessionId] = existing.copy(
                 status = SyncStatus.EXPIRED,
                 attempts = existing.attempts + 1,
@@ -222,6 +224,7 @@ class SyncLedgerRepository @Inject constructor(
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[sessionId] ?: return@withLock
+            if (!existing.status.canTransitionTo(SyncStatus.FAILED)) return@withLock
             all[sessionId] = existing.copy(
                 status = SyncStatus.FAILED,
                 attempts = existing.attempts + 1,
@@ -238,14 +241,19 @@ class SyncLedgerRepository @Inject constructor(
 
     /**
      * "Resync all": marks every known entry PENDING again (does not forget delivery
-     * history, just makes everything eligible for resend). The caller is responsible for
-     * also enqueuing any session IDs not yet present in the ledger at all — see
-     * `SyncWorker`'s full-history rescan, triggered from the Options screen.
+     * history, just makes everything eligible for resend) — except EXPIRED
+     * dead-letters, which stay dead: reviving one needs an explicit re-enqueue
+     * with a live file, never a bulk reset (see [SyncStatus.canTransitionTo]).
+     * The caller is responsible for also enqueuing any session IDs not yet
+     * present in the ledger at all — see `SyncWorker`'s full-history rescan,
+     * triggered from the Options screen.
      */
     suspend fun resetAllToPending() = withContext(Dispatchers.IO) {
         mutex.withLock {
             val all = readAllUnlocked()
-            val reset = all.mapValues { (_, e) -> e.copy(status = SyncStatus.PENDING) }
+            val reset = all.mapValues { (_, e) ->
+                if (e.status == SyncStatus.EXPIRED) e else e.copy(status = SyncStatus.PENDING)
+            }
             writeAllUnlocked(reset)
         }
     }
