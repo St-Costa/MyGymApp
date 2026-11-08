@@ -434,7 +434,12 @@ Entering an active routine creates the `.md` file eagerly (so `StrengthExerciseV
 much was logged into it — completed exercises, filled sets — does not matter. The app cannot
 tell a crash from a deliberate exit at boot time, and the deliberate trade-off is "always
 clean up" rather than "keep a possibly-recoverable session". `WorkoutRepository.isGhostSession()`
-is just `completedAt.isBlank()`; `ActiveRoutineViewModel.onCleared()` reloads the session and
+delegates to `WorkoutSession.lifecycle().isGhost` (`data/model/SessionLifecycle.kt` — the
+single definition of the on-disk envelope/slot states `SessionLifecycle`/`SlotLifecycle`,
+with pure `canFinalize`/`canRegister`/`canSwitch`/`canComplete` guards and `isAllClosed()`;
+`isUntouched()`, `isSwitchEligible()`, `withExerciseSwitched` and `withExercisesStarted`
+all delegate to it, so the truth tables can't drift between readers). Disk format unchanged.
+`ActiveRoutineViewModel.onCleared()` reloads the session and
 deletes it on the same condition (after always stopping the Polar stream — see below).
 `sessionFinalized` (set true only in the "Termina"/register path) is what tells `onCleared`
 the user left without registering.

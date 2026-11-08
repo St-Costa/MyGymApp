@@ -4,6 +4,8 @@ import com.mygymapp.data.model.ExerciseSet
 import com.mygymapp.data.model.ExerciseStats
 import com.mygymapp.data.model.GitgraphHistory
 import com.mygymapp.data.model.WorkoutSession
+import com.mygymapp.data.model.isGhost
+import com.mygymapp.data.model.lifecycle
 import com.mygymapp.data.parser.ExerciseStatsCalculator
 import com.mygymapp.data.parser.ExerciseStatsParser
 import com.mygymapp.data.parser.GitgraphHistoryCalculator
@@ -828,7 +830,7 @@ class WorkoutRepository @Inject constructor(
                     } catch (_: Exception) {
                         return@forEach // malformed — leave it for runMaintenance to reap
                     }
-                    if (session.completedAt.isNotBlank()) return@forEach
+                    if (!session.lifecycle().isGhost) return@forEach
 
                     val rel = "$yearName/${monthDir.name}/${file.name}"
                     session.exercises.forEach { removeFromExerciseIndex(it.exerciseId, rel) }
