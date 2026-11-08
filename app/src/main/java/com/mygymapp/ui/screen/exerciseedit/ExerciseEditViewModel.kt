@@ -121,15 +121,7 @@ class ExerciseEditViewModel @Inject constructor(
     }
 
     fun onBodyweightChange(value: Boolean) {
-        _uiState.value = _uiState.value.copy(
-            isBodyweight = value,
-            // Mutually exclusive with assisted — see Exercise.LoadMode.
-            isAssisted = if (value) false else _uiState.value.isAssisted,
-            // Re-seed to the default whenever bodyweight is switched on, so a bodyweight
-            // exercise never persists with an out-of-range percent.
-            bwLoadPercent = if (value) _uiState.value.bwLoadPercent.takeIf { it in 1..100 }
-                ?: DEFAULT_BW_LOAD_PERCENT else _uiState.value.bwLoadPercent,
-        )
+        _uiState.value = applyBodyweightChange(_uiState.value, value)
     }
 
     fun onBwLoadPercentChange(value: Int) {
@@ -137,11 +129,7 @@ class ExerciseEditViewModel @Inject constructor(
     }
 
     fun onAssistedChange(value: Boolean) {
-        _uiState.value = _uiState.value.copy(
-            isAssisted = value,
-            // Mutually exclusive with bodyweight — see Exercise.LoadMode.
-            isBodyweight = if (value) false else _uiState.value.isBodyweight,
-        )
+        _uiState.value = applyAssistedChange(_uiState.value, value)
     }
 
     fun onBodypartChange(value: String) {
@@ -160,19 +148,11 @@ class ExerciseEditViewModel @Inject constructor(
     }
 
     fun onRepMinChange(value: Int) {
-        val newMin = value.coerceAtLeast(1)
-        val state = _uiState.value
-        // Keep max >= min: if user raises min above max, pull max up with it.
-        val newMax = if (newMin > state.defaultRepRangeMax) newMin else state.defaultRepRangeMax
-        _uiState.value = state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
+        _uiState.value = applyRepMinChange(_uiState.value, value)
     }
 
     fun onRepMaxChange(value: Int) {
-        val newMax = value.coerceAtLeast(1)
-        val state = _uiState.value
-        // Symmetric: if user drops max below min, pull min down with it.
-        val newMin = if (newMax < state.defaultRepRangeMin) newMax else state.defaultRepRangeMin
-        _uiState.value = state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
+        _uiState.value = applyRepMaxChange(_uiState.value, value)
     }
 
     /** Stepper for one tempo phase (0..3): delta is +1/-1, clamped (0 min, X max). */
@@ -196,40 +176,13 @@ class ExerciseEditViewModel @Inject constructor(
     // Saves synchronously so the list screen sees fresh cache data immediately.
     private var savedExplicitly = false
 
-    private fun ExerciseEditUiState.toExercise() = Exercise(
-        id = id,
-        name = name.trim(),
-        type = type,
-        // CARDIO exercises don't use bodypart — they live in their own dedicated section
-        // (ExerciseListViewModel), not grouped by muscle group. The field is hidden in the
-        // editor for CARDIO; force it blank here too in case of stale state.
-        bodypart = if (type == ExerciseType.CARDIO) "" else bodypart.trim(),
-        link = link.trim(),
-        notes = notes.trim(),
-        defaultRepRangeMin = defaultRepRangeMin,
-        defaultRepRangeMax = defaultRepRangeMax,
-        isBodyweight = isBodyweight,
-        // Persist the load percent only for bodyweight exercises; 0 otherwise (see
-        // Exercise.bwLoadPercent / ExerciseParser).
-        bwLoadPercent = if (isBodyweight) bwLoadPercent else 0,
-        loadMode = when {
-            isBodyweight -> LoadMode.BODYWEIGHT
-            isAssisted -> LoadMode.ASSISTED
-            else -> LoadMode.MANUAL
-        },
-        // Persisted only when not disabled (ExerciseParser omits the key then); enforced
-        // FORZA-only at the UI level, but stored as-is so a type flip never loses data.
-        tempo = tempo,
-        isFavorite = isFavorite,
-    )
-
     fun onFavoriteChange(value: Boolean) {
         _uiState.value = _uiState.value.copy(isFavorite = value)
     }
 
     suspend fun saveNow() {
         val state = _uiState.value
-        if (state.name.isBlank() || state.deleted) return
+        if (!state.isSavable()) return
         exerciseRepository.save(state.toExercise())
         dataChangedSignal.notifyExercisesChanged()
         savedExplicitly = true
@@ -239,7 +192,7 @@ class ExerciseEditViewModel @Inject constructor(
         super.onCleared()
         if (savedExplicitly) return
         val state = _uiState.value
-        if (state.name.isBlank() || state.deleted) return
+        if (!state.isSavable()) return
         clearScope.launch {
             try {
                 exerciseRepository.save(state.toExercise())
@@ -250,6 +203,74 @@ class ExerciseEditViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Explicit editor rules (ISM-28): load-mode mutual exclusion, rep-range
+ * coupling, the state→model mapping and the save guard. Pure so the
+ * "what does this combination persist as" answers are unit-testable without
+ * the ViewModel — the handlers above only assign state.
+ */
+
+/** Bodyweight and assisted are mutually exclusive (see [Exercise.LoadMode]). */
+internal fun applyBodyweightChange(state: ExerciseEditUiState, value: Boolean): ExerciseEditUiState =
+    state.copy(
+        isBodyweight = value,
+        isAssisted = if (value) false else state.isAssisted,
+        // Re-seed to the default whenever bodyweight is switched on, so a bodyweight
+        // exercise never persists with an out-of-range percent.
+        bwLoadPercent = if (value) state.bwLoadPercent.takeIf { it in 1..100 }
+            ?: DEFAULT_BW_LOAD_PERCENT else state.bwLoadPercent,
+    )
+
+internal fun applyAssistedChange(state: ExerciseEditUiState, value: Boolean): ExerciseEditUiState =
+    state.copy(
+        isAssisted = value,
+        isBodyweight = if (value) false else state.isBodyweight,
+    )
+
+/** Keep max >= min: if the user raises min above max, pull max up with it. */
+internal fun applyRepMinChange(state: ExerciseEditUiState, value: Int): ExerciseEditUiState {
+    val newMin = value.coerceAtLeast(1)
+    val newMax = if (newMin > state.defaultRepRangeMax) newMin else state.defaultRepRangeMax
+    return state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
+}
+
+/** Symmetric: if the user drops max below min, pull min down with it. */
+internal fun applyRepMaxChange(state: ExerciseEditUiState, value: Int): ExerciseEditUiState {
+    val newMax = value.coerceAtLeast(1)
+    val newMin = if (newMax < state.defaultRepRangeMin) newMax else state.defaultRepRangeMin
+    return state.copy(defaultRepRangeMin = newMin, defaultRepRangeMax = newMax)
+}
+
+/** A blank name or a deleted exercise silently drops the save — both entry points agree. */
+internal fun ExerciseEditUiState.isSavable(): Boolean = name.isNotBlank() && !deleted
+
+internal fun ExerciseEditUiState.toExercise() = Exercise(
+    id = id,
+    name = name.trim(),
+    type = type,
+    // CARDIO exercises don't use bodypart — they live in their own dedicated section
+    // (ExerciseListViewModel), not grouped by muscle group. The field is hidden in the
+    // editor for CARDIO; force it blank here too in case of stale state.
+    bodypart = if (type == ExerciseType.CARDIO) "" else bodypart.trim(),
+    link = link.trim(),
+    notes = notes.trim(),
+    defaultRepRangeMin = defaultRepRangeMin,
+    defaultRepRangeMax = defaultRepRangeMax,
+    isBodyweight = isBodyweight,
+    // Persist the load percent only for bodyweight exercises; 0 otherwise (see
+    // Exercise.bwLoadPercent / ExerciseParser).
+    bwLoadPercent = if (isBodyweight) bwLoadPercent else 0,
+    loadMode = when {
+        isBodyweight -> LoadMode.BODYWEIGHT
+        isAssisted -> LoadMode.ASSISTED
+        else -> LoadMode.MANUAL
+    },
+    // Persisted only when not disabled (ExerciseParser omits the key then); enforced
+    // FORZA-only at the UI level, but stored as-is so a type flip never loses data.
+    tempo = tempo,
+    isFavorite = isFavorite,
+)
 
 /**
  * Process-death drafts (Sprint 3): keystrokes in the text fields are mirrored into the
