@@ -54,8 +54,8 @@ class StopwatchService : Service() {
     private var startElapsedRealtime = 0L
     private var startWallClockTime = 0L
     private var lastVibrationAt = 0
-    // Countdown-loop mode (stretch): null = legacy count-up stopwatch.
-    private var countdownDuration: Int? = null
+    // Run mode (stretch countdown-loop vs legacy count-up stopwatch) — see StopwatchMode.
+    private var mode: StopwatchMode = StopwatchMode.CountUp
     private var loopStartElapsed = 0L
     private var loopCount = 1
 
@@ -75,27 +75,25 @@ class StopwatchService : Service() {
     private val tickRunnable = object : Runnable {
         override fun run() {
             val now = SystemClock.elapsedRealtime()
-            val duration = countdownDuration
+            val duration = (mode as? StopwatchMode.Countdown)?.durationSeconds
             if (duration != null) {
                 // Countdown-loop mode: the 30s cadence is per-loop and the loop-end
                 // triple buzz always wins (see StopwatchBuzzSchedule.countdown).
-                var loopElapsed = ((now - loopStartElapsed) / 1000).toInt()
-                when (StopwatchBuzzSchedule.countdown(loopElapsed, duration, lastVibrationAt)) {
-                    StopwatchBuzz.LOOP_END -> {
-                        vibrateTriple()
-                        loopStartElapsed = now
-                        loopElapsed = 0
-                        loopCount++
-                        lastVibrationAt = 0
-                    }
-                    StopwatchBuzz.PERIODIC -> {
-                        lastVibrationAt = loopElapsed
-                        vibrate()
-                    }
+                val advanced = advanceCountdown(
+                    CountdownState(loopStartElapsed, loopCount, lastVibrationAt),
+                    now,
+                    duration,
+                )
+                loopStartElapsed = advanced.state.loopStartElapsed
+                loopCount = advanced.state.loopCount
+                lastVibrationAt = advanced.state.lastVibrationAt
+                when (advanced.buzz) {
+                    StopwatchBuzz.LOOP_END -> vibrateTriple()
+                    StopwatchBuzz.PERIODIC -> vibrate()
                     StopwatchBuzz.NONE -> Unit
                 }
                 getSystemService(NotificationManager::class.java)
-                    .notify(NOTIFICATION_ID, buildCountdownNotification(duration - loopElapsed, loopCount))
+                    .notify(NOTIFICATION_ID, buildCountdownNotification(advanced.displayRemainingSeconds, loopCount))
             } else {
                 val elapsed = ((now - startElapsedRealtime) / 1000).toInt()
                 if (StopwatchBuzzSchedule.countUp(elapsed, lastVibrationAt)) {
@@ -122,11 +120,13 @@ class StopwatchService : Service() {
                 startElapsedRealtime = SystemClock.elapsedRealtime()
                 startWallClockTime = System.currentTimeMillis()
                 lastVibrationAt = 0
-                countdownDuration = intent.getIntExtra(EXTRA_DURATION_SECONDS, 0).takeIf { it > 0 }
+                mode = stopwatchModeFor(intent.getIntExtra(EXTRA_DURATION_SECONDS, 0))
                 loopStartElapsed = startElapsedRealtime
                 loopCount = 1
-                val notification = countdownDuration?.let { buildCountdownNotification(it, 1) }
-                    ?: buildNotification(0)
+                val notification = when (val m = mode) {
+                    is StopwatchMode.Countdown -> buildCountdownNotification(m.durationSeconds, 1)
+                    StopwatchMode.CountUp -> buildNotification(0)
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
                         NOTIFICATION_ID,
@@ -141,7 +141,7 @@ class StopwatchService : Service() {
             ACTION_STOP -> {
                 handler.removeCallbacks(tickRunnable)
                 lastVibrationAt = 0
-                countdownDuration = null
+                mode = StopwatchMode.CountUp
                 loopCount = 1
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()

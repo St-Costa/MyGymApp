@@ -239,6 +239,8 @@ Generated with `UUID.randomUUID().toString().replace("-", "").take(8)`. You can 
 
 `StopwatchService` handles repeated `ACTION_START` by calling `handler.removeCallbacks(tickRunnable)` before `postDelayed`. Without that, a duplicate start would queue two tickers and double every vibration.
 
+Mode and tick are pure (`ui/service/StopwatchState.kt`, ISM-15): `stopwatchModeFor()` (`EXTRA_DURATION_SECONDS > 0` → countdown, else count-up fallback) and `advanceCountdown()` (loop-end wrap + display, periodic bookkeeping, near-end suppression), pinned in `StopwatchStateTest`. The service only vibrates, reposts and notifies.
+
 ## Stretch countdown loop
 
 The stretch timer is a countdown, not the legacy count-up: `StretchExerciseScreen` passes
