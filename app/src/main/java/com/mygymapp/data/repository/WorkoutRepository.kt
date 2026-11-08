@@ -590,7 +590,7 @@ class WorkoutRepository @Inject constructor(
             // only ever folds a completed session into a sidecar (see `merge`), so an
             // incomplete one — a ghost session backed out of, in particular — contributed
             // nothing and its deletion invalidates nothing.
-            if (session.completedAt.isBlank()) return@withContext
+            if (session.lifecycle().isGhost) return@withContext
             invalidateGitgraphCacheIfInWindow(LocalDate.parse(session.date))
             // Snapshot which sidecars to rebuild, then leave the lock: each rebuild is a
             // full per-exercise history scan, and holding the mutex through N of them
@@ -778,17 +778,6 @@ class WorkoutRepository @Inject constructor(
     data class MaintenanceResult(val ghostsDeleted: Int, val prunedDeleted: Int, val orphanEcgDeleted: Int)
 
     /**
-     * True if a session was never registered: `completedAt` is blank. Nothing else matters —
-     * per an explicit product decision, a session you left without tapping "Termina" is gone
-     * at the next launch no matter how much was logged into it. The app cannot tell a crash
-     * from a deliberate exit at boot time, and the chosen trade-off is "always clean up"
-     * (see [deleteUnfinalizedSessions] and the on-exit check in
-     * ActiveRoutineViewModel.onCleared()).
-     */
-    private fun isGhostSession(session: WorkoutSession): Boolean =
-        session.completedAt.isBlank()
-
-    /**
      * Result of [deleteUnfinalizedSessions]: how many ghost `.md` (and paired `.ecg`) went,
      * plus the deleted session ids so callers can dead-letter their sync-ledger rows
      * (an ECG entry for a swept session must not retry forever — see `markDead`).
@@ -864,7 +853,7 @@ class WorkoutRepository @Inject constructor(
      *
      * Ghost-session cleanup is NOT throttled and does not live here — see
      * [deleteUnfinalizedSessions], which runs on every launch. This pass still reaps any
-     * unfinalized session it happens to see (via [isGhostSession]) as a cheap backstop, but
+     * unfinalized session it happens to see (via [decideMaintenanceAction]) as a cheap backstop, but
      * the unthrottled sweep is what actually guarantees "closed mid-session ⇒ gone next start".
      *
      * Pass [force] to bypass the throttle (e.g. a manual "clean up now" action, if ever added).
@@ -895,38 +884,32 @@ class WorkoutRepository @Inject constructor(
                     monthDir.listFiles()?.filter { it.extension == "md" }?.forEach { file ->
                         val rel = "$yearName/${monthDir.name}/${file.name}"
 
-                        // Malformed filename date -> discard outright, same as before.
+                        // One parse serves the whole verdict (see decideMaintenanceAction).
                         val fileDate = try {
                             LocalDate.parse(file.name.take(10), DateTimeFormatter.ISO_LOCAL_DATE)
                         } catch (_: Exception) {
-                            file.delete()
-                            return@forEach
+                            null
                         }
-
-                        // One parse serves all three checks below.
                         val session = try {
                             WorkoutParser.fromMarkdown(file.readText())
                         } catch (_: Exception) {
                             null
                         }
 
-                        val isPruneCandidate = fileDate.isBefore(cutoffDate)
-                        val isGhost = session != null && isGhostSession(session)
-
-                        if (isPruneCandidate || isGhost) {
-                            // A ghost session has no completed work, so it never fed a stats
-                            // sidecar — only a *completed* pruned session can invalidate one.
-                            val affectsStats =
-                                session != null && session.completedAt.isNotBlank()
-                            session?.exercises?.forEach { ex ->
-                                removeFromExerciseIndex(ex.exerciseId, rel)
-                                if (affectsStats) staleStatsExerciseIds.add(ex.exerciseId)
+                        when (val action = decideMaintenanceAction(fileDate, session, cutoffDate)) {
+                            MaintenanceAction.Keep -> {
+                                val id = file.nameWithoutExtension.substringAfterLast("_")
+                                if (id.isNotBlank()) validSessionIds.add(id)
                             }
-                            file.delete()
-                            if (isGhost) ghostsDeleted++ else prunedDeleted++
-                        } else {
-                            val id = file.nameWithoutExtension.substringAfterLast("_")
-                            if (id.isNotBlank()) validSessionIds.add(id)
+                            // Malformed filename date -> discard outright, same as before:
+                            // no index removal, no counter, no sidecar effect.
+                            MaintenanceAction.DeleteMalformedName -> file.delete()
+                            is MaintenanceAction.Delete -> {
+                                action.exerciseIds.forEach { removeFromExerciseIndex(it, rel) }
+                                if (action.affectsStats) staleStatsExerciseIds.addAll(action.exerciseIds)
+                                file.delete()
+                                if (action.kind == MaintenanceDeleteKind.GHOST) ghostsDeleted++ else prunedDeleted++
+                            }
                         }
                     }
                 }
