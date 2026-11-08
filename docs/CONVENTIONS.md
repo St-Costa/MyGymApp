@@ -143,6 +143,12 @@ back to "Completa"/"COMPLETE" the moment a value is touched — closing it then 
 (`completedEmpty = false`). A completed-and-performed slot stays locked. Cardio skipped blocks
 are reopenable the same way: a started block makes the member performed on close.
 
+For strength, the per-set rules are pure top-level functions (ISM-20,
+`StrengthExerciseViewModel.kt`): `applyRepsUpdate` / `applyWeightUpdate` (touch-gated
+tonnage-anchor recalc, grey-preserving) / `confirmRepsUpdate` / `confirmWeightUpdate`,
+plus `anyTouched()` and `allSetsFilled()` (bodyweight/assisted weight-0 exception).
+Purple ≠ performed by construction; tested in `StrengthSetOpsTest`.
+
 **Backing out preserves the entry completion flags.** The single-exercise exit save uses
 `WorkoutSession.withExerciseSetsOnExit(exerciseId, sets)` (replaces only `sets`) and the superset
 back-out is `buildUpdatedSession(completed = false)` with the same preserve-instead-of-reset

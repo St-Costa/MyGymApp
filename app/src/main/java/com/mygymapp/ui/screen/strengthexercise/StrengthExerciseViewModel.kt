@@ -298,9 +298,7 @@ class StrengthExerciseViewModel @Inject constructor(
         crumb("set ${setIndex + 1} reps → $reps", key = "reps.$setIndex")
         // A manual reps choice is the new truth: drop the tonnage anchor so the next weight
         // change preserves *this* tonnage, not the one from before the edit.
-        updateSet(setIndex) {
-            it.copy(reps = reps.coerceAtLeast(0), repsModified = true, repsTouched = true, tonnageAnchor = 0.0)
-        }
+        updateSet(setIndex) { applyRepsUpdate(it, reps) }
     }
 
     fun updateWeight(setIndex: Int, weight: Double) {
@@ -309,49 +307,18 @@ class StrengthExerciseViewModel @Inject constructor(
         // picker is hidden; for assisted the picker is the assist offset, not the lifted
         // weight, so changing it must not rewrite reps.
         val manualLoad = _uiState.value.exercise?.loadMode == LoadMode.MANUAL
-        updateSet(setIndex) { set ->
-            val newWeight = weight.coerceAtLeast(0.0)
-            // Se le reps sono già state toccate/confermate in questa visita, il peso
-            // cambia da solo: non ricalcolare le reps. L'eguagliamento del tonnellaggio
-            // vale solo finché le reps non sono state confermate.
-            if (set.repsTouched) {
-                return@updateSet set.copy(
-                    weight = newWeight,
-                    weightModified = true,
-                    weightTouched = true,
-                    tonnageAnchor = 0.0,
-                )
-            }
-            val anchor = if (manualLoad) {
-                set.tonnageAnchor.takeIf { it > 0.0 }
-                    ?: (set.reps * set.weight).takeIf { it > 0.0 }
-            } else {
-                null
-            }
-            val adjustedReps = anchor?.let { repsForSameTonnage(it, newWeight) }
-            set.copy(
-                weight = newWeight,
-                reps = adjustedReps ?: set.reps,
-                // Il ricalcolo automatico per tenere lo stesso tonnellaggio non deve
-                // marcare le reps come modificate (restano grigie): solo una modifica
-                // manuale delle reps o una conferma le promuove a viola.
-                repsModified = set.repsModified,
-                weightModified = true,
-                weightTouched = true,
-                tonnageAnchor = anchor ?: 0.0,
-            )
-        }
+        updateSet(setIndex) { set -> applyWeightUpdate(set, weight, manualLoad) }
     }
 
     fun confirmReps(setIndex: Int) {
         crumb("set ${setIndex + 1} reps confirmed")
-        updateSet(setIndex) { it.copy(repsModified = true, repsTouched = true, tonnageAnchor = 0.0) }
+        updateSet(setIndex, ::confirmRepsUpdate)
     }
 
     fun confirmWeight(setIndex: Int) {
         crumb("set ${setIndex + 1} weight confirmed")
         // Confirming accepts the current reps×weight pair as the new baseline.
-        updateSet(setIndex) { it.copy(weightModified = true, weightTouched = true, tonnageAnchor = 0.0) }
+        updateSet(setIndex, ::confirmWeightUpdate)
     }
 
     fun updateDescription(text: String) {
@@ -427,7 +394,7 @@ class StrengthExerciseViewModel @Inject constructor(
         // this session — the pre-filled numbers on the *other* (still-grey) sets are then
         // taken as done too and saved as-is. Tapping nothing means the exercise was not
         // performed and closes as completedEmpty (skipped styling; tonnage math skips it).
-        val anyTouched = sets.any { it.repsTouched || it.weightTouched }
+        val anyTouched = sets.anyTouched()
         crumb("complete $exerciseId (touched=$anyTouched, sets=${sets.size})")
         markCompletionAndSave {
             if (session != null) {
@@ -471,7 +438,7 @@ class StrengthExerciseViewModel @Inject constructor(
             val newExercise = exerciseRepository.getById(newExerciseId) ?: return@launch
             val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
                 ?: currentSession ?: return@launch
-            val untouched = _uiState.value.sets.none { it.repsTouched || it.weightTouched }
+            val untouched = !_uiState.value.sets.anyTouched()
             val updated = fresh.withExerciseSwitched(
                 exerciseId, newExercise, allowDiscardRecordedSets = untouched,
             )
@@ -522,8 +489,10 @@ class StrengthExerciseViewModel @Inject constructor(
             // means "no assistance" (full body weight), a perfectly normal value, not an
             // untouched field.
             val loadMode = _uiState.value.exercise?.loadMode ?: LoadMode.MANUAL
-            val weightOptional = loadMode == LoadMode.BODYWEIGHT || loadMode == LoadMode.ASSISTED
-            val allFilled = sets.all { it.reps > 0 && (it.weight > 0 || weightOptional) }
+            val allFilled = allSetsFilled(
+                sets,
+                weightOptional = loadMode == LoadMode.BODYWEIGHT || loadMode == LoadMode.ASSISTED,
+            )
             _uiState.value = _uiState.value.copy(sets = sets, allSetsFilled = allFilled)
             // Mirror into the SavedStateHandle so a process kill loses at most the
             // in-flight keystroke, never the typed sets (single choke point: every
@@ -532,6 +501,90 @@ class StrengthExerciseViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Explicit per-set touch/modify/anchor rules (ISM-20).
+ *
+ * A set carries two independent flag pairs: `repsModified`/`weightModified`
+ * (purple display = differs from the pre-fill) vs `repsTouched`/`weightTouched`
+ * (performed signal). Purple ≠ performed by design — a disk-loaded diff shows
+ * purple at init yet still counts as untouched. `tonnageAnchor` keeps reps ×
+ * weight constant across weight steps until a manual reps edit or a confirm
+ * clears it. The handlers above only route through these; all rules are
+ * unit-testable without the ViewModel.
+ */
+
+/** A manual reps choice is the new truth: flags on, anchor dropped. */
+internal fun applyRepsUpdate(set: StrengthSetUi, reps: Int): StrengthSetUi =
+    set.copy(
+        reps = reps.coerceAtLeast(0),
+        repsModified = true,
+        repsTouched = true,
+        tonnageAnchor = 0.0,
+    )
+
+/**
+ * Weight-change rule: with touched reps the weight moves alone (anchor
+ * cleared, no recalc); otherwise a manual load re-anchors (existing anchor,
+ * else current reps × weight) and rewrites reps to the ceiling holding the
+ * same tonnage — grey, never purple (`repsModified` preserved). Non-manual
+ * loads (bodyweight/assisted pickers) never rewrite reps and clear the anchor.
+ */
+internal fun applyWeightUpdate(set: StrengthSetUi, weight: Double, manualLoad: Boolean): StrengthSetUi {
+    val newWeight = weight.coerceAtLeast(0.0)
+    // Se le reps sono già state toccate/confermate in questa visita, il peso
+    // cambia da solo: non ricalcolare le reps. L'eguagliamento del tonnellaggio
+    // vale solo finché le reps non sono state confermate.
+    if (set.repsTouched) {
+        return set.copy(
+            weight = newWeight,
+            weightModified = true,
+            weightTouched = true,
+            tonnageAnchor = 0.0,
+        )
+    }
+    val anchor = if (manualLoad) {
+        set.tonnageAnchor.takeIf { it > 0.0 }
+            ?: (set.reps * set.weight).takeIf { it > 0.0 }
+    } else {
+        null
+    }
+    val adjustedReps = anchor?.let { repsForSameTonnage(it, newWeight) }
+    return set.copy(
+        weight = newWeight,
+        reps = adjustedReps ?: set.reps,
+        // Il ricalcolo automatico per tenere lo stesso tonnellaggio non deve
+        // marcare le reps come modificate (restano grigie): solo una modifica
+        // manuale delle reps o una conferma le promuove a viola.
+        repsModified = set.repsModified,
+        weightModified = true,
+        weightTouched = true,
+        tonnageAnchor = anchor ?: 0.0,
+    )
+}
+
+/** Confirming accepts the current value and clears the anchor (see confirmWeightUpdate). */
+internal fun confirmRepsUpdate(set: StrengthSetUi): StrengthSetUi =
+    set.copy(repsModified = true, repsTouched = true, tonnageAnchor = 0.0)
+
+/** Confirming accepts the current reps×weight pair as the new baseline. */
+internal fun confirmWeightUpdate(set: StrengthSetUi): StrengthSetUi =
+    set.copy(weightModified = true, weightTouched = true, tonnageAnchor = 0.0)
+
+/**
+ * "Touched" = the lifter tapped at least one reps/weight picker — the signal
+ * the exercise was actually performed (grey pre-fills on untouched sets count
+ * as done once any set is touched).
+ */
+internal fun List<StrengthSetUi>.anyTouched(): Boolean = any { it.repsTouched || it.weightTouched }
+
+/**
+ * A set is filled when reps are set and weight is set — except bodyweight /
+ * assisted, where 0 is a real value (body weight by design / "no assistance"),
+ * not an untouched field.
+ */
+internal fun allSetsFilled(sets: List<StrengthSetUi>, weightOptional: Boolean): Boolean =
+    sets.all { it.reps > 0 && (it.weight > 0 || weightOptional) }
 
 /**
  * Process-death drafts for strength sets (Sprint 9): `"reps|weight|repsTouched|weightTouched"`
