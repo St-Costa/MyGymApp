@@ -137,6 +137,7 @@ class EcgSyncLedgerRepository @Inject constructor(
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[id] ?: return@withLock
+            if (!existing.status.canTransitionTo(SyncStatus.SENT)) return@withLock
             all[id] = existing.copy(
                 status = SyncStatus.SENT,
                 attempts = existing.attempts + 1,
@@ -157,6 +158,7 @@ class EcgSyncLedgerRepository @Inject constructor(
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[id] ?: return@withLock
+            if (!existing.status.canTransitionTo(SyncStatus.EXPIRED)) return@withLock
             all[id] = existing.copy(
                 status = SyncStatus.EXPIRED,
                 attempts = existing.attempts + 1,
@@ -171,6 +173,7 @@ class EcgSyncLedgerRepository @Inject constructor(
         mutex.withLock {
             val all = readAllUnlocked()
             val existing = all[id] ?: return@withLock
+            if (!existing.status.canTransitionTo(SyncStatus.FAILED)) return@withLock
             all[id] = existing.copy(
                 status = SyncStatus.FAILED,
                 attempts = existing.attempts + 1,
