@@ -140,7 +140,7 @@ class SectionTimeEstimateTest {
     }
 
     @Test
-    fun `session envelope also scales configured fallbacks`() {
+    fun `session envelope surplus goes to strength work, never to a fixed stretch block`() {
         val current = listOf(
             active("bench", SessionExerciseCategory.NORMAL),
             active("stretch", SessionExerciseCategory.DAILY, ExerciseType.STRETCH, setCount = 3, timePerSetSeconds = 90),
@@ -151,12 +151,91 @@ class SectionTimeEstimateTest {
             completedAt = "2026-11-04T10:20:00",
         )
 
-        // Base: 600 measured + 270 configured = 870. The 20-minute session scales both by
-        // 1200/870, so the two section estimates still add up to the real duration.
+        // Base: 600 measured strength + 270 configured stretch = 870. The 330s surplus is
+        // strength work/rest, so the WORKOUT section absorbs it and the fixed DAILY stretch
+        // stays exactly at its configured 3×90s.
         val estimate = estimateSectionSeconds(current, prior)
-        assertEquals(828, estimate[SessionExerciseCategory.NORMAL])
-        assertEquals(372, estimate[SessionExerciseCategory.DAILY])
+        assertEquals(930, estimate[SessionExerciseCategory.NORMAL])
+        assertEquals(270, estimate[SessionExerciseCategory.DAILY])
         assertEquals(1200, estimate.values.sum())
+    }
+
+    @Test
+    fun `a fixed cardio block is never inflated by a longer session envelope`() {
+        val current = listOf(
+            active("bike", SessionExerciseCategory.WARMUP, ExerciseType.CARDIO, timePerSetSeconds = 600),
+        )
+        val prior = previous(
+            performed("bike", "2026-11-04T10:00:00", "2026-11-04T10:10:00", ExerciseType.CARDIO),
+            startedAt = "2026-11-04T10:00:00",
+            completedAt = "2026-11-04T11:00:00",
+        )
+
+        // The session lasted an hour, but the cardio block is fixed at 10 minutes: the extra
+        // 50 minutes are rest/idle time and must not turn the WARMUP header into ~20m or ~60m.
+        assertEquals(600, estimateSectionSeconds(current, prior)[SessionExerciseCategory.WARMUP])
+    }
+
+    @Test
+    fun `a fixed stretch estimate never drops below its configured execution time`() {
+        val current = listOf(
+            active("stretch", SessionExerciseCategory.NORMAL, ExerciseType.STRETCH, setCount = 3, timePerSetSeconds = 90),
+        )
+        val prior = previous(
+            performed(
+                "stretch", "2026-11-04T10:00:00", "2026-11-04T10:01:00", ExerciseType.STRETCH,
+                sets = List(3) { ExerciseSet.Stretch(timeSeconds = 90, done = true) },
+            ),
+        )
+
+        // The measured window is only one minute (the screen was closed early), but three
+        // 90-second holds take 4m30s: configured execution time is the floor.
+        assertEquals(270, estimateSectionSeconds(current, prior)[SessionExerciseCategory.NORMAL])
+    }
+
+    @Test
+    fun `performed strength slots without timestamps are estimated from the session envelope`() {
+        val current = listOf(
+            active("daily1", SessionExerciseCategory.DAILY, setCount = 3),
+            active("daily2", SessionExerciseCategory.DAILY, setCount = 3),
+            active("warmup", SessionExerciseCategory.WARMUP, ExerciseType.CARDIO, timePerSetSeconds = 600),
+            active("normal", SessionExerciseCategory.NORMAL, setCount = 6),
+        )
+        val prior = previous(
+            // Legacy session: completed work, but no per-slot startedAt/completedAt.
+            performed("daily1", "", ""),
+            performed("daily2", "", ""),
+            performed("warmup", "", "", ExerciseType.CARDIO),
+            performed("normal", "", ""),
+            startedAt = "2026-11-04T10:00:00",
+            completedAt = "2026-11-04T11:00:00",
+        )
+
+        val estimate = estimateSectionSeconds(current, prior)
+
+        // 60-minute session − 10-minute fixed cardio = 50 minutes of strength work over 12
+        // performed sets. The old code gave every strength slot 0 and inflated the cardio to
+        // absorb the whole hour; now DAILY and WORKOUT split the real strength time evenly.
+        assertEquals(600, estimate[SessionExerciseCategory.WARMUP])
+        assertEquals(1500, estimate[SessionExerciseCategory.DAILY])
+        assertEquals(1500, estimate[SessionExerciseCategory.NORMAL])
+        assertEquals(3600, estimate.values.sum())
+    }
+
+    @Test
+    fun `the same routine shape gets its own estimate from its own previous session`() {
+        val current = listOf(active("bench", SessionExerciseCategory.NORMAL, setCount = 3))
+        val short = previous(
+            performed("bench", "2026-11-04T10:00:00", "2026-11-04T10:10:00"),
+        )
+        val long = previous(
+            performed("bench", "2026-11-04T10:00:00", "2026-11-04T10:20:00"),
+        )
+
+        // Per-routine isolation: the estimate is driven by the routine's own previous session,
+        // not by a global average shared across routines.
+        assertEquals(600, estimateSectionSeconds(current, short)[SessionExerciseCategory.NORMAL])
+        assertEquals(1200, estimateSectionSeconds(current, long)[SessionExerciseCategory.NORMAL])
     }
 
     @Test

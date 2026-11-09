@@ -314,6 +314,15 @@ A reserved routine — `id: rt-fixeddaily`, name `Fixed daily exercise`, `day: "
 
 Warmup **and** fixed-daily exercises are excluded from tonnage. The exclusion is resolved when the session is built and persisted per-exercise as `WorkoutExercise.excludeFromTonnage`, so every tonnage reader — `finalizeSession`, `SessionProgressViewModel`, `MainViewModel.computeCommonTonnage`, and the active-session previous/historical comparisons — just filters `!excludeFromTonnage`. Cardio metrics are session-global (PolarManager) and intentionally still include these exercises.
 
+## Section time estimates (WORKOUT / DAILY / WARMUP)
+
+`estimateSectionSeconds()` in [SectionTimeEstimate.kt](../app/src/main/java/com/mygymapp/ui/screen/activeroutine/SectionTimeEstimate.kt) drives the `~Nm` badge next to the section headers. It is **per routine**: it reads the previous completed session of the routine being started, never another routine's history, so shared exercises (the fixed-daily mobility block, a common warmup cardio) still get a routine-specific number.
+
+- A measured slot window (per-exercise `startedAt`/`completedAt`, or closed cardio blocks) is the best source. For a stretch/cardio group the configured hold/block total is a **floor**: the estimate is never below the time it takes to execute the configured work, even if the measured window was cut short.
+- A **performed** strength slot with no window (legacy session, screen opened after the first set) starts at 3 min/set; the previous session's envelope then calibrates the real per-set rate. A **skipped** strength slot (`!completed` / `completedEmpty`) contributes 0, as before.
+- The session envelope (`startedAt→completedAt` of the previous session) surplus is distributed **only across performed strength sets**, proportionally to their count. Fixed-only groups are never inflated: a 10-minute cardio block stays 10 minutes even if the session ran an hour. The envelope is capped at 2× the base sum so an open-overnight session cannot produce nonsense.
+- A missing or shorter envelope leaves the measured/configured/per-set values untouched.
+
 ## Bodyweight load: materialize `weight` at completion, never at read time
 
 A bodyweight `Exercise` (`isBodyweight = true`) carries a mandatory `bwLoadPercent` ∈

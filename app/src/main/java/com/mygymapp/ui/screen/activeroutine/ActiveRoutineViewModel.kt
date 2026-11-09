@@ -152,8 +152,8 @@ data class ActiveExerciseUi(
     val loadMode: com.mygymapp.data.model.LoadMode = com.mygymapp.data.model.LoadMode.MANUAL,
     val completed: Boolean = false,
     val setCount: Int = 0,
-    // Configured block duration for CARDIO exercises (RoutineExercise.timePerSetSeconds).
-    // Unused for other types.
+    // Configured duration: hold seconds per set for STRETCH, block length for CARDIO
+    // (RoutineExercise.timePerSetSeconds). Unused for FORZA.
     val timePerSetSeconds: Int = 0,
     val tonnageChangePct: Double? = null,
     val rmChangePct: Double? = null,

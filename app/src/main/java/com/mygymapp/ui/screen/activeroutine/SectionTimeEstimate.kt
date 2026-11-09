@@ -1,6 +1,7 @@
 package com.mygymapp.ui.screen.activeroutine
 
 import com.mygymapp.data.model.ExerciseType
+import com.mygymapp.data.model.WorkoutExercise
 import com.mygymapp.data.model.WorkoutSession
 import com.mygymapp.data.model.measuredDurationSeconds
 import com.mygymapp.data.model.measuredSessionDurationSeconds
@@ -11,35 +12,35 @@ import kotlin.math.roundToInt
  * Estimated wall-clock seconds for every section of the current session, shown next to the
  * WORKOUT / DAILY / WARMUP headers.
  *
- * The estimate is built the same way the session will actually be performed: one duration per
- * exercise group (superset members share one window, so they are counted once, not once per
- * member). A group that has a measured duration in the previous session of this routine uses
- * it — [com.mygymapp.data.model.WorkoutExercise.measuredDurationSeconds] is wall-clock, so the
- * node includes rest/recovery, and for stretching that is the difference between "3 × 90 s" and
- * the real time spent. A group with no usable measurement falls back to the configured hold /
- * block duration; strength groups have no configured duration, so they only get an estimate
- * once a timed session exists.
+ * The estimate is built from **this routine's previous completed session** — never from another
+ * routine — so two routines that share an exercise (the fixed-daily mobility block, a common
+ * warmup cardio) still get their own number. The previous session is the only history source;
+ * the current session's slots are grouped exactly as they will be performed (superset members
+ * share one window and are counted once, not once per member).
  *
- * Daily composition: [currentExercises] is already the routine-filtered list (a fixed-daily
- * exercise that also lives in the routine is dropped, never duplicated), so the DAILY section
- * estimate naturally reflects only the daily slots actually present under this routine — no
- * extra filtering is needed here.
+ * Per-group rules:
+ * - **Measured window available** (the previous session recorded `startedAt`/`completedAt`, or
+ *   closed cardio blocks): use it. For a group that also has a fixed-time member, the configured
+ *   hold/block total is a floor — a stretch or cardio estimate is never below the time it takes
+ *   to execute the configured work, even if the measured window was cut short.
+ * - **Performed strength slot without a window** (a legacy session saved before per-slot
+ *   timestamps existed): start from [DEFAULT_STRENGTH_SET_SECONDS] per set. The session
+ *   envelope below then turns that prior into the real per-set rate of this session.
+ * - **Skipped strength slot** (`!completed` / `completedEmpty`): contributes 0, exactly as
+ *   before — a slot the lifter skipped last time is not billed as performed work.
+ * - **Fixed-time slot with no measurement**: use the configured duration (hold × sets for
+ *   stretching, block length for cardio). That is the "if you do it, this is how long it takes"
+ *   figure, not a record of a skip.
  *
- * Skipped slots: [com.mygymapp.data.model.WorkoutExercise.measuredDurationSeconds] returns
- * null for untouched slots (`!completed || completedEmpty`), so a strength slot skipped in
- * the previous session contributes 0 (never a phantom window), while a skipped timed slot
- * (stretch/cardio) falls back to its configured duration — the "if you do it, this is how
- * long it takes" figure, not a record of the skip.
- *
- * The per-slot windows are then reconciled with the **whole previous session** envelope. A slot
- * opened after the first set (common when the lifter already knows the load) measures only the
- * tail of that exercise, so summing slots would understate the session. When the session's
- * startedAt→completedAt span is longer than that sum, the surplus is distributed proportionally
- * across the groups: the section estimates add up to the real session duration and each group
- * keeps its relative weight. The envelope is capped at [MAX_RECONCILIATION_SCALE] × the measured
- * sum: a session left open for hours is far more likely to contain idle time than missed work.
- * If the envelope is missing or shorter than the sum (overlapping windows, legacy data), the
- * measured/configured values are left untouched.
+ * Session envelope: the previous session's `startedAt→completedAt` span is the total wall-clock
+ * time available. When it is longer than the sum above, the surplus is distributed **only across
+ * performed strength sets**, proportionally to their count. This is what lets a legacy session
+ * (no per-slot timestamps) still produce a realistic strength estimate from its total duration
+ * and set count. Fixed-only groups are never inflated: a 10-minute cardio block stays 10 minutes
+ * even when the whole session ran for an hour, because the extra time is not cardio work. The
+ * envelope is capped at [MAX_RECONCILIATION_SCALE] × the base sum, so a session left open for
+ * hours cannot turn into a nonsense estimate. A missing or shorter envelope leaves the measured /
+ * configured / per-set values untouched.
  *
  * Pure so the header rendering stays trivial and this rule is unit-tested.
  */
@@ -60,34 +61,110 @@ internal fun estimateSectionSeconds(
         group = { indices -> indices.map { currentExercises[it] } },
     )
 
-    val perGroup = groups.mapNotNull { group ->
-        val measured = group.mapNotNull { exercise ->
-            previousById[exercise.exerciseId]?.measuredDurationSeconds()
-        }
-        val seconds = if (measured.isNotEmpty()) {
-            // Superset members carry the same window: max, never sum.
-            measured.max()
-        } else {
-            group.sumOf { it.configuredDurationSeconds() }
-        }
-        seconds.takeIf { it > 0 }?.let { GroupEstimate(group.first().category, it) }
+    val estimates = groups.map { group ->
+        estimateGroup(group, previousById, hasHistory = previousSession != null)
     }
 
     val sessionSeconds = previousSession?.measuredSessionDurationSeconds()
-    val baseTotal = perGroup.sumOf { it.seconds }
+    val baseTotal = estimates.sumOf { it.totalSeconds }
     val targetSeconds = sessionSeconds?.let {
         minOf(it.toDouble(), baseTotal * MAX_RECONCILIATION_SCALE)
     }
     val reconciled = if (targetSeconds != null && baseTotal > 0 && targetSeconds > baseTotal) {
-        val scale = targetSeconds / baseTotal
-        perGroup.map { it.copy(seconds = (it.seconds * scale).roundToInt().coerceAtLeast(1)) }
+        distributeSurplus(estimates, (targetSeconds - baseTotal).roundToInt())
     } else {
-        perGroup
+        estimates
     }
 
     return reconciled
+        .filter { it.totalSeconds > 0 }
         .groupBy { it.category }
-        .mapValues { (_, estimates) -> estimates.sumOf { it.seconds } }
+        .mapValues { (_, estimates) -> estimates.sumOf { it.totalSeconds } }
+}
+
+/**
+ * One exercise group's estimate, split into the part that is fixed by configuration and the
+ * part that represents strength work. Only the strength part may absorb the session surplus;
+ * [fixedSeconds] is the stretch/cardio floor and never grows through reconciliation.
+ */
+private data class GroupEstimate(
+    val category: SessionExerciseCategory,
+    val fixedSeconds: Int,
+    val strengthSeconds: Int,
+    val strengthSets: Int,
+) {
+    val totalSeconds: Int get() = fixedSeconds + strengthSeconds
+    val scalable: Boolean get() = strengthSets > 0
+}
+
+private fun estimateGroup(
+    group: List<ActiveExerciseUi>,
+    previousById: Map<String, WorkoutExercise>,
+    hasHistory: Boolean,
+): GroupEstimate {
+    val configuredSeconds = group.sumOf { it.configuredDurationSeconds() }
+    val measuredSeconds = group
+        .mapNotNull { exercise -> previousById[exercise.exerciseId]?.measuredDurationSeconds() }
+        .maxOrNull()
+
+    // Sets that represent work the lifter will actually do: a slot missing from the previous
+    // session (a new exercise in the routine) is counted, a slot that was present but skipped
+    // is not. Skipped slots must keep contributing 0 (the long-standing rule).
+    val performedStrengthSets = group
+        .filter { it.type == ExerciseType.FORZA }
+        .sumOf { exercise ->
+            val previous = previousById[exercise.exerciseId]
+            if (previous == null || !previous.isUntouched()) exercise.setCount else 0
+        }
+
+    val fixedSeconds = configuredSeconds
+    val strengthSeconds = when {
+        // A real window already includes the fixed work and its recovery/rest. The configured
+        // total stays a floor; the remainder is strength time.
+        measuredSeconds != null -> (measuredSeconds - configuredSeconds).coerceAtLeast(0)
+        // Legacy slot: no per-exercise window, but the routine still contains the work. Start
+        // from a per-set prior; the session envelope below calibrates it.
+        hasHistory -> performedStrengthSets * DEFAULT_STRENGTH_SET_SECONDS
+        else -> 0
+    }
+
+    return GroupEstimate(
+        category = group.first().category,
+        fixedSeconds = fixedSeconds,
+        strengthSeconds = strengthSeconds,
+        strengthSets = if (hasHistory) performedStrengthSets else 0,
+    )
+}
+
+/**
+ * Splits [surplusSeconds] across the groups that contain performed strength work, proportionally
+ * to their set count. Fixed-only groups are left untouched, so a configured cardio block or a
+ * stretch hold never inherits idle time from the rest of the session. Returns [estimates]
+ * unchanged when there is no strength work to carry the surplus.
+ */
+private fun distributeSurplus(
+    estimates: List<GroupEstimate>,
+    surplusSeconds: Int,
+): List<GroupEstimate> {
+    val scalable = estimates.filter { it.scalable }
+    val totalSets = scalable.sumOf { it.strengthSets }
+    if (totalSets <= 0) return estimates
+
+    var remainingSeconds = surplusSeconds
+    var remainingSets = totalSets
+    return estimates.map { estimate ->
+        if (!estimate.scalable) return@map estimate
+        // Largest-remainder-free integer split: the last scalable group absorbs the rounding
+        // difference, so the section totals still add up to the session envelope.
+        val share = if (remainingSets == estimate.strengthSets) {
+            remainingSeconds
+        } else {
+            (surplusSeconds.toLong() * estimate.strengthSets / totalSets).toInt()
+        }
+        remainingSeconds -= share
+        remainingSets -= estimate.strengthSets
+        estimate.copy(strengthSeconds = estimate.strengthSeconds + share)
+    }
 }
 
 /**
@@ -97,17 +174,20 @@ internal fun estimateSectionSeconds(
  */
 private const val MAX_RECONCILIATION_SCALE = 2.0
 
-private data class GroupEstimate(
-    val category: SessionExerciseCategory,
-    val seconds: Int,
-)
-
+/**
+ * Starting point for a performed strength set whose slot has no measured window (a legacy
+ * session, or a visit opened after the first set). It is only a prior: when the previous
+ * session envelope is available, the surplus distribution makes the final per-set rate reflect
+ * the session's real total duration. 3 minutes is a deliberately conservative middle ground
+ * between a quick isolation set and a long compound set with full rest.
+ */
+private const val DEFAULT_STRENGTH_SET_SECONDS = 180
 
 /**
  * Configured duration for one slot when no measured history exists. Only timed exercise types
  * have one: stretching = hold seconds × sets, cardio = configured block length. Strength has
  * no fixed duration in the routine model (reps/rest are lifter-dependent), so it stays 0 and
- * simply contributes nothing until a measured session provides the real number.
+ * is estimated from its set count instead.
  */
 private fun ActiveExerciseUi.configuredDurationSeconds(): Int = when (type) {
     ExerciseType.STRETCH -> (timePerSetSeconds * setCount).coerceAtLeast(0)
