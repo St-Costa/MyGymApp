@@ -148,6 +148,16 @@ fun HeartRateScreen(
         }
     }
 
+    // Keep the Polar scan alive while this connection screen is open, even if the
+    // phone screen turns off: without a foreground service Android throttles/stops
+    // background BLE scans, and the strap would only connect after the screen came
+    // back on. The service is handed over to the normal HR one on connect; released
+    // on dispose so navigating away does not leave a "Searching…" notification.
+    DisposableEffect(Unit) {
+        viewModel.holdScanForeground()
+        onDispose { viewModel.releaseScanForeground() }
+    }
+
     // Both devices auto-scan on ON_RESUME, not just on first composition —
     // a plain LaunchedEffect(Unit) only fires once and never retries after
     // e.g. the user backgrounds the app to toggle Bluetooth in a system

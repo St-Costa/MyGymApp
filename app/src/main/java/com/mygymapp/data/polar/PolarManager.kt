@@ -505,6 +505,7 @@ class PolarManager @Inject constructor(
                     streamingFeatureReady = false
                     connectedDeviceId = null
                     lastConnectedDeviceId = null
+                    scanForegroundStarted = false
                     _heartRate.value = null
                     _batteryLevel.value = null
                     _batteryLow.value = false
@@ -521,6 +522,9 @@ class PolarManager @Inject constructor(
                 connectedDeviceName = polarDeviceInfo.name
                 lastConnectedDeviceId = polarDeviceInfo.deviceId
                 knownPolarDeviceRepository.setKnownDeviceId(polarDeviceInfo.deviceId)
+                // The scan-only FGS (connection screen waiting for the strap) becomes the
+                // normal HR/connecting FGS below — it must not be torn down as "idle scan".
+                scanForegroundStarted = false
                 userInitiatedDisconnect = false
                 reconnectStartAtMs = 0L
                 reconnectHandler.removeCallbacksAndMessages(null)
@@ -618,13 +622,23 @@ class PolarManager @Inject constructor(
                     scheduleReconnect()
                 } else {
                     _connectionState.value = ConnectionState.DISCONNECTED
-                    PolarStreamingService.stop(context)
+                    val rescanWhileWaiting = involuntary && scanForegroundHeld
+                    scanForegroundStarted = false
+                    // Never stop-then-start the FGS in the same teardown: the STOP intent
+                    // can race the fresh START_SCANNING and kill the keepalive. While the
+                    // connection screen waits, the service simply switches to scan mode.
+                    if (!rescanWhileWaiting) PolarStreamingService.stop(context)
                     // Involuntary out-of-session drop (strap powered off / went out of
                     // range): show NO_SIGNAL ⚠️ for a short window rather than jumping
                     // straight to grey — the SDK's own auto-reconnection may still bring
                     // it back if it was only briefly off. A user-initiated disconnect
                     // has userInitiatedDisconnect=true and skips this.
                     if (involuntary) startNoSignalGrace() else clearNoSignalGrace()
+                    // The connection screen is open and the strap dropped (powered off,
+                    // out of range): keep waiting for it while the screen is off too,
+                    // instead of requiring an unlock to re-run the ON_RESUME scan.
+                    // A user-initiated disconnect skips this (and stays disconnected).
+                    if (rescanWhileWaiting) startScan()
                 }
             }
 
@@ -694,11 +708,22 @@ class PolarManager @Inject constructor(
     }
 
     private var autoConnectAttempted = false
+    // The Bluetooth connection screen is visible. Android throttles background BLE
+    // scans when the screen turns off, so while waiting for the known strap this flag
+    // keeps a scan-only foreground service alive ("Searching for Polar…"). It is
+    // separate from a live connection: deviceConnected() hands the FGS over to the
+    // normal HR/connecting state and clears scanForegroundStarted.
+    private var scanForegroundHeld = false
+    private var scanForegroundStarted = false
 
     fun startScan() {
         _discoveredDevices.value = emptyList()
         _isScanning.value = true
         autoConnectAttempted = false
+        // Start the keepalive before subscribing: a synchronous first scan result can
+        // auto-connect and stop the scan before control returns here.
+        startScanForegroundIfNeeded()
+        appLogger.i(TAG, "Scan started (screen-off keepalive=$scanForegroundHeld)")
 
         val knownDeviceId = knownPolarDeviceRepository.getKnownDeviceId()
 
@@ -718,17 +743,64 @@ class PolarManager @Inject constructor(
                 { error ->
                     appLogger.e(TAG, "Scan error: $error")
                     _isScanning.value = false
+                    stopScanForegroundIfIdle()
                 },
                 {
                     _isScanning.value = false
+                    stopScanForegroundIfIdle()
                 }
             )
     }
 
+    /**
+     * Stops the BLE scan only. The scan-only FGS is owned by the connection screen
+     * (hold/release) and by the connect hand-off — it must not be torn down here:
+     * HeartRateScreen stops and immediately restarts the scan on ON_RESUME, and a
+     * stop/start race between the service's STOP intent and a fresh START_SCANNING
+     * could leave the keepalive dead.
+     */
     fun stopScan() {
         scanDisposable?.dispose()
         scanDisposable = null
         _isScanning.value = false
+    }
+
+    /**
+     * Called by the connection screen while it is composed. Starts the scan-only FGS
+     * immediately (the screen is foreground here, so the start is always allowed) and
+     * keeps it alive when the phone screen turns off.
+     */
+    fun holdScanForeground() {
+        scanForegroundHeld = true
+        startScanForegroundIfNeeded()
+    }
+
+    /** Connection screen disposed: drop the scan-only FGS unless a link is live/pending. */
+    fun releaseScanForeground() {
+        scanForegroundHeld = false
+        stopScanForegroundIfIdle()
+    }
+
+    private fun startScanForegroundIfNeeded() {
+        if (!scanForegroundHeld || scanForegroundStarted) return
+        if (!_isScanning.value || connectedDeviceId != null) return
+        if (_connectionState.value != ConnectionState.DISCONNECTED) return
+        val started = PolarStreamingService.startScanning(context, connectedDeviceName)
+        scanForegroundStarted = started
+        if (started) {
+            appLogger.i(TAG, "Scan keepalive FGS started — screen-off scan can continue")
+        } else {
+            appLogger.w(TAG, "Scan keepalive FGS start refused (background restriction) — will retry foreground")
+        }
+    }
+
+    private fun stopScanForegroundIfIdle() {
+        if (!scanForegroundStarted) return
+        if (connectedDeviceId != null) return
+        if (_connectionState.value == ConnectionState.CONNECTING) return
+        scanForegroundStarted = false
+        PolarStreamingService.stop(context)
+        appLogger.i(TAG, "Scan keepalive FGS stopped")
     }
 
     /** True if a strap was connected before (drives scan auto-connect). */
@@ -767,6 +839,7 @@ class PolarManager @Inject constructor(
         ecgRecorder.stop()
         activeEcgSessionId = null
         pendingEcgSessionId = null
+        scanForegroundStarted = false
         PolarStreamingService.stop(context)
         PolarStreamingService.clearDisconnectAlert(context)
         _connectionState.value = ConnectionState.DISCONNECTED
@@ -808,6 +881,7 @@ class PolarManager @Inject constructor(
                         reconnectStartAtMs = 0L
                         _connectionState.value = ConnectionState.DISCONNECTED
                         hrSeriesActive = false
+                        scanForegroundStarted = false
                         PolarStreamingService.stop(context)
                         PolarStreamingService.clearDisconnectAlert(context)
                         return
@@ -846,6 +920,7 @@ class PolarManager @Inject constructor(
         ecgRecorder.stop()
         activeEcgSessionId = null
         pendingEcgSessionId = null
+        scanForegroundStarted = false
         PolarStreamingService.stop(context)
         api.shutDown()
     }

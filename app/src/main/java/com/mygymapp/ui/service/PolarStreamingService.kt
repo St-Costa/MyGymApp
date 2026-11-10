@@ -29,6 +29,7 @@ class PolarStreamingService : Service() {
         const val NOTIFICATION_ID = 1002
         const val ALERT_NOTIFICATION_ID = 1003
         private const val ACTION_START = "com.mygymapp.START_POLAR"
+        private const val ACTION_SCANNING = "com.mygymapp.SCANNING_POLAR"
         private const val ACTION_STOP = "com.mygymapp.STOP_POLAR"
         private const val ACTION_UPDATE_HR = "com.mygymapp.UPDATE_POLAR_HR"
         private const val ACTION_RECONNECTING = "com.mygymapp.RECONNECTING_POLAR"
@@ -53,10 +54,38 @@ class PolarStreamingService : Service() {
                     action = ACTION_START
                     putExtra(EXTRA_DEVICE, deviceName ?: "Polar H10")
                 }
-                context.startForegroundService(intent)
+                // If the service is already running (e.g. the scan keepalive), only the
+                // notification state changes — no need to start a foreground service again
+                // from a possibly backgrounded callback thread.
+                if (isRunning) context.startService(intent) else context.startForegroundService(intent)
             } catch (t: Throwable) {
                 // Background start not allowed — BLE continues without the FGS; the OS
                 // may kill it while backgrounded, but that beats a crash/restart loop.
+            }
+        }
+
+        /**
+         * Scan-only keepalive for the connection screen. Android throttles/suspends
+         * background BLE scans when the screen turns off unless the app holds a
+         * foreground service; this keeps the process foreground while the screen waits
+         * for a known strap, with a "Searching for Polar…" notification. On connect the
+         * service transitions to the normal [start] state (HR/connecting).
+         *
+         * @return true when the start intent was accepted; false when the caller is
+         * backgrounded (Android 12+ background-start restriction) so it can retry the
+         * next time the screen is foreground.
+         */
+        fun startScanning(context: Context, deviceName: String?): Boolean {
+            return try {
+                val intent = Intent(context, PolarStreamingService::class.java).apply {
+                    action = ACTION_SCANNING
+                    putExtra(EXTRA_DEVICE, deviceName ?: "Polar H10")
+                }
+                if (isRunning) context.startService(intent) else context.startForegroundService(intent)
+                true
+            } catch (t: Throwable) {
+                // Background start not allowed — the scan still works while visible.
+                false
             }
         }
 
@@ -207,20 +236,17 @@ class PolarStreamingService : Service() {
             return START_NOT_STICKY
         }
         when (intent.action) {
-            ACTION_START -> {
+            ACTION_START, ACTION_SCANNING -> {
                 deviceName = intent.getStringExtra(EXTRA_DEVICE) ?: "Polar H10"
-                linkState = linkState.onAction(ServiceLinkAction.START)
+                linkState = linkState.onAction(
+                    if (intent.action == ACTION_SCANNING) {
+                        ServiceLinkAction.SCANNING
+                    } else {
+                        ServiceLinkAction.START
+                    },
+                )
                 isRunning = true
-                val notification = buildNotification()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-                    )
-                } else {
-                    startForeground(NOTIFICATION_ID, notification)
-                }
+                startForegroundWithNotification(buildNotification())
             }
             ACTION_UPDATE_HR -> {
                 val hr = intent.getIntExtra(EXTRA_HR, 0)
@@ -267,6 +293,18 @@ class PolarStreamingService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         super.onTaskRemoved(rootIntent)
+    }
+
+    private fun startForegroundWithNotification(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun buildNotification(): Notification {

@@ -88,6 +88,23 @@ keeping the BLE link up:
 
 ### Scan → connect → session
 
+**Screen-off connection.** Android throttles/stops background BLE scans when the
+screen turns off unless the app holds a foreground service. While the HeartRate
+(connection) screen is composed, `HeartRateScreen` calls
+`PolarManager.holdScanForeground()`: the scan-only mode of
+`PolarStreamingService` ("Searching for Polar…") keeps the process foreground, so
+a known strap that is switched on while the phone is locked is found and
+connected without waking the screen. The service is handed over to the normal
+HR/connecting state on `deviceConnected`, and `releaseScanForeground()` on
+dispose stops it if no link is live/pending. While the screen is held open, an
+involuntary out-of-session drop (strap switched off / out of range) restarts the
+scan instead of waiting for the next unlock; a user-initiated disconnect does not.
+The global auto-scan from
+`AppNavigation`/`MainScreen` is unchanged and remains best-effort with the screen
+off — the guarantee is scoped to the connection screen, where the user is
+explicitly waiting for the strap. The readiness start/end beep is already global
+(`PolarManager.signalReadiness()`), so it fires in this path too.
+
 ```
 startScan()  ──► api.searchForDevice()  ──► _discoveredDevices updates
                                           │

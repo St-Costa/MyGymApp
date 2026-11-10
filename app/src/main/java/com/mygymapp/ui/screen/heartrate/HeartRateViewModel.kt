@@ -191,6 +191,14 @@ class HeartRateViewModel @Inject constructor(
     fun connectToDevice(deviceId: String) = polarManager.connectToDevice(deviceId)
     fun disconnect() = polarManager.disconnect()
 
+    /**
+     * Connection screen visible: keep a scan-only foreground service alive so a known
+     * strap can connect while the phone screen is off (Android throttles background
+     * BLE scans otherwise). Released when the screen leaves composition.
+     */
+    fun holdScanForeground() = polarManager.holdScanForeground()
+    fun releaseScanForeground() = polarManager.releaseScanForeground()
+
     /** Leaves HR standby and resumes live BPM (no-op unless connected). */
     fun resumeLiveHr() = polarManager.resumeLiveHr()
 
