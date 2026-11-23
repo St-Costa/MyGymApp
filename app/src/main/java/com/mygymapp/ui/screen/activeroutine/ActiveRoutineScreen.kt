@@ -538,11 +538,21 @@ private fun ExerciseTrailingBadge(exercise: ActiveExerciseUi) {
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
         )
     } else {
-        Text(
-            text = exercise.setsOrDurationLabel(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = exercise.setsOrDurationLabel(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            )
+            if (exercise.estimatedSeconds != null) {
+                Text(
+                    text = formatSectionEstimate(exercise.estimatedSeconds),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = JetBrainsMono,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+            }
+        }
     }
 }
 

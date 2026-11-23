@@ -322,6 +322,7 @@ Warmup **and** fixed-daily exercises are excluded from tonnage. The exclusion is
 - A **performed** strength slot with no window (legacy session, screen opened after the first set) starts at 3 min/set; the previous session's envelope then calibrates the real per-set rate. A **skipped** strength slot (`!completed` / `completedEmpty`) contributes 0, as before.
 - The session envelope (`startedAt→completedAt` of the previous session) surplus is distributed **only across performed strength sets**, proportionally to their count. Fixed-only groups are never inflated: a 10-minute cardio block stays 10 minutes even if the session ran an hour. The envelope is capped at 2× the base sum so an open-overnight session cannot produce nonsense.
 - A missing or shorter envelope leaves the measured/configured/per-set values untouched.
+- `estimateExerciseSeconds()` splits the same reconciled group totals across members for the per-row `~Nm` under the set count (`ActiveExerciseUi.estimatedSeconds`): singles get the full group total; superset members keep their own configured fixed time plus a proportional share of the group's strength seconds (by performed set count), so the shares add up to the section total. Slots with no usable time (first-ever strength session, slot skipped last time) get no entry and the row shows only the set count.
 
 ## Bodyweight load: materialize `weight` at completion, never at read time
 

@@ -341,4 +341,96 @@ class SectionTimeEstimateTest {
         assertEquals(240, estimate[SessionExerciseCategory.DAILY])
         assertEquals(600, estimate[SessionExerciseCategory.NORMAL])
     }
+
+    @Test
+    fun `per-exercise estimate matches the section total for singles`() {
+        val current = listOf(
+            active("bench", SessionExerciseCategory.NORMAL),
+            active("row", SessionExerciseCategory.NORMAL),
+        )
+        val prior = previous(
+            performed("bench", "2026-11-04T10:00:00", "2026-11-04T10:10:00"),
+            performed("row", "2026-11-04T10:10:00", "2026-11-04T10:15:00"),
+        )
+
+        val perExercise = estimateExerciseSeconds(current, prior)
+
+        assertEquals(600, perExercise["bench"])
+        assertEquals(300, perExercise["row"])
+        assertEquals(
+            estimateSectionSeconds(current, prior)[SessionExerciseCategory.NORMAL],
+            perExercise.values.sum(),
+        )
+    }
+
+    @Test
+    fun `per-exercise superset shares add up to the shared window`() {
+        val current = listOf(
+            active("a", SessionExerciseCategory.NORMAL, supersetWithNext = true),
+            active("b", SessionExerciseCategory.NORMAL),
+        )
+        val prior = previous(
+            performed("a", "2026-11-04T09:00:00", "2026-11-04T09:10:00"),
+            performed("b", "2026-11-04T09:00:00", "2026-11-04T09:10:00"),
+        )
+
+        val perExercise = estimateExerciseSeconds(current, prior)
+
+        // Equal set counts: the 10-minute shared window splits evenly.
+        assertEquals(300, perExercise["a"])
+        assertEquals(300, perExercise["b"])
+        assertEquals(
+            estimateSectionSeconds(current, prior)[SessionExerciseCategory.NORMAL],
+            perExercise.values.sum(),
+        )
+    }
+
+    @Test
+    fun `per-exercise mixed superset keeps fixed time plus proportional strength`() {
+        val current = listOf(
+            active("bench", SessionExerciseCategory.NORMAL, setCount = 3, supersetWithNext = true),
+            active(
+                "stretch", SessionExerciseCategory.NORMAL, ExerciseType.STRETCH,
+                setCount = 3, timePerSetSeconds = 90,
+            ),
+        )
+        val prior = previous(
+            performed("bench", "2026-11-04T09:00:00", "2026-11-04T09:10:00"),
+            performed("stretch", "2026-11-04T09:00:00", "2026-11-04T09:10:00", ExerciseType.STRETCH),
+        )
+
+        val perExercise = estimateExerciseSeconds(current, prior)
+
+        // 600s window, 270s of it fixed stretch holds: stretch keeps 270, strength gets 330.
+        assertEquals(330, perExercise["bench"])
+        assertEquals(270, perExercise["stretch"])
+    }
+
+    @Test
+    fun `per-exercise estimate omits strength with no usable history`() {
+        val current = listOf(
+            active("bench", SessionExerciseCategory.NORMAL, setCount = 4),
+            active(
+                "stretch", SessionExerciseCategory.NORMAL, ExerciseType.STRETCH,
+                setCount = 3, timePerSetSeconds = 90,
+            ),
+        )
+
+        val perExercise = estimateExerciseSeconds(current, null)
+
+        // Strength has no configured duration and no previous session: no number to show.
+        // Stretch falls back to its configured holds.
+        assertNull(perExercise["bench"])
+        assertEquals(270, perExercise["stretch"])
+    }
+
+    @Test
+    fun `per-exercise estimate omits a strength slot skipped last time`() {
+        val current = listOf(active("bench", SessionExerciseCategory.NORMAL))
+        val prior = previous(
+            performed("bench", "2026-11-04T10:00:00", "2026-11-04T10:10:00").copy(completedEmpty = true),
+        )
+
+        assertNull(estimateExerciseSeconds(current, prior)["bench"])
+    }
 }

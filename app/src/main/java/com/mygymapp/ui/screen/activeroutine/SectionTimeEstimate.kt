@@ -48,38 +48,111 @@ internal fun estimateSectionSeconds(
     currentExercises: List<ActiveExerciseUi>,
     previousSession: WorkoutSession?,
 ): Map<SessionExerciseCategory, Int> {
-    if (currentExercises.isEmpty()) return emptyMap()
+    val reconciled = computeReconciledGroups(currentExercises, previousSession)
+
+    return reconciled
+        .filter { it.estimate.totalSeconds > 0 }
+        .groupBy { it.estimate.category }
+        .mapValues { (_, groups) -> groups.sumOf { it.estimate.totalSeconds } }
+}
+
+/**
+ * Per-exercise wall-clock estimate (`exerciseId → seconds`), from the same source as the
+ * section headers. Single exercises get their group's full total; superset members split
+ * it so the shares add up to the group total: each member keeps its own configured
+ * fixed time (stretch holds / cardio block) plus a proportional share of the group's
+ * strength seconds (by performed strength set count). Entries with no usable time
+ * (e.g. a strength slot with no history, or a slot skipped last time) are omitted —
+ * the row then shows only the set count.
+ *
+ * Pure so the row rendering stays trivial and this rule is unit-tested.
+ */
+internal fun estimateExerciseSeconds(
+    currentExercises: List<ActiveExerciseUi>,
+    previousSession: WorkoutSession?,
+): Map<String, Int> {
+    val reconciled = computeReconciledGroups(currentExercises, previousSession)
+    val previousById = previousSession?.exercises?.associateBy { it.exerciseId }.orEmpty()
+    val hasHistory = previousSession != null
+    val result = mutableMapOf<String, Int>()
+    for ((members, estimate) in reconciled) {
+        if (estimate.totalSeconds <= 0) continue
+        if (members.size == 1) {
+            result[members.first().exerciseId] = estimate.totalSeconds
+            continue
+        }
+        val strengthSets = members.map { member ->
+            if (!hasHistory || member.type != ExerciseType.FORZA) 0
+            else {
+                val previous = previousById[member.exerciseId]
+                if (previous == null || !previous.isUntouched()) member.setCount else 0
+            }
+        }
+        val totalStrengthSets = strengthSets.sum()
+        var remainingStrength = estimate.strengthSeconds
+        var remainingSets = totalStrengthSets
+        members.forEachIndexed { i, member ->
+            val configured = member.configuredDurationSeconds()
+            val share = if (totalStrengthSets <= 0 || strengthSets[i] <= 0) {
+                0
+            } else if (remainingSets == strengthSets[i]) {
+                remainingStrength
+            } else {
+                (estimate.strengthSeconds.toLong() * strengthSets[i] / totalStrengthSets).toInt()
+            }
+            if (strengthSets[i] > 0) {
+                remainingStrength -= share
+                remainingSets -= strengthSets[i]
+            }
+            val memberTotal = configured + share
+            if (memberTotal > 0) result[member.exerciseId] = memberTotal
+        }
+    }
+    return result
+}
+
+private data class ReconciledGroup(
+    val members: List<ActiveExerciseUi>,
+    val estimate: GroupEstimate,
+)
+
+private fun computeReconciledGroups(
+    currentExercises: List<ActiveExerciseUi>,
+    previousSession: WorkoutSession?,
+): List<ReconciledGroup> {
+    if (currentExercises.isEmpty()) return emptyList()
     val previousById = previousSession?.exercises?.associateBy { it.exerciseId }.orEmpty()
 
     // Group first so superset members — which were stamped with the same startedAt/completedAt
     // — contribute their shared window once. Section boundaries never split a chain (the
     // session builder clears the tail link), so grouping the whole ordered list is safe.
-    val groups = groupSupersets(
+    val groupedMembers = groupSupersets(
         items = currentExercises,
         isPairedWithNext = { it.supersetWithNext },
         single = { index -> listOf(currentExercises[index]) },
         group = { indices -> indices.map { currentExercises[it] } },
     )
 
-    val estimates = groups.map { group ->
-        estimateGroup(group, previousById, hasHistory = previousSession != null)
+    val estimates = groupedMembers.map { group ->
+        ReconciledGroup(
+            members = group,
+            estimate = estimateGroup(group, previousById, hasHistory = previousSession != null),
+        )
     }
 
     val sessionSeconds = previousSession?.measuredSessionDurationSeconds()
-    val baseTotal = estimates.sumOf { it.totalSeconds }
+    val baseTotal = estimates.sumOf { it.estimate.totalSeconds }
     val targetSeconds = sessionSeconds?.let {
         minOf(it.toDouble(), baseTotal * MAX_RECONCILIATION_SCALE)
     }
-    val reconciled = if (targetSeconds != null && baseTotal > 0 && targetSeconds > baseTotal) {
-        distributeSurplus(estimates, (targetSeconds - baseTotal).roundToInt())
-    } else {
-        estimates
+    if (targetSeconds == null || baseTotal <= 0 || targetSeconds <= baseTotal) return estimates
+    val reconciled = distributeSurplus(
+        estimates.map { it.estimate },
+        (targetSeconds - baseTotal).roundToInt(),
+    )
+    return groupedMembers.zip(reconciled) { members, estimate ->
+        ReconciledGroup(members, estimate)
     }
-
-    return reconciled
-        .filter { it.totalSeconds > 0 }
-        .groupBy { it.category }
-        .mapValues { (_, estimates) -> estimates.sumOf { it.totalSeconds } }
 }
 
 /**

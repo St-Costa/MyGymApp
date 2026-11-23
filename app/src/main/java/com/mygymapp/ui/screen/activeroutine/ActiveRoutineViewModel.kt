@@ -155,6 +155,11 @@ data class ActiveExerciseUi(
     // Configured duration: hold seconds per set for STRETCH, block length for CARDIO
     // (RoutineExercise.timePerSetSeconds). Unused for FORZA.
     val timePerSetSeconds: Int = 0,
+    // Per-exercise wall-clock estimate (seconds) from the routine's previous session —
+    // same source as the section headers, split across superset members so the shares
+    // add up to the group total. Null when there is no usable estimate yet (e.g. first
+    // strength session): the row then shows only the set count.
+    val estimatedSeconds: Int? = null,
     val tonnageChangePct: Double? = null,
     val rmChangePct: Double? = null,
     val isFirstTimeTonnage: Boolean = false,
@@ -329,8 +334,6 @@ class ActiveRoutineViewModel @Inject constructor(
                     category = category,
                 )
             }
-            supersetExerciseIds = exerciseIdsInSupersets(exercises)
-
             // Load previous session BEFORE saving the current one, so we don't find ourselves.
             // Used only for `commonPreviousTonnage` (the chart-consistency number) below — the
             // per-exercise change badges are seeded from the stats sidecar instead, further
@@ -339,8 +342,14 @@ class ActiveRoutineViewModel @Inject constructor(
             val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
             // Header estimates are static for the session: previous measured windows, with
             // configured durations as fallback and the previous session envelope as a cap
-            // (see SectionTimeEstimate.kt).
+            // (see SectionTimeEstimate.kt). The per-exercise shares come from the same
+            // source so the row "~Xm" values add up to the header totals.
             val sectionEstimates = estimateSectionSeconds(exercises, previousSession)
+            val exerciseEstimates = estimateExerciseSeconds(exercises, previousSession)
+            val exercisesWithEstimates = exercises.map { ex ->
+                ex.copy(estimatedSeconds = exerciseEstimates[ex.exerciseId])
+            }
+            supersetExerciseIds = exerciseIdsInSupersets(exercisesWithEstimates)
 
             // Seeded from the stats sidecar once `statsByExercise` is built (below).
             previousTonnageByExercise = emptyMap()
@@ -483,7 +492,7 @@ class ActiveRoutineViewModel @Inject constructor(
 
             _uiState.value = ActiveRoutineUiState(
                 routineName = routine.name,
-                exercises = exercises,
+                exercises = exercisesWithEstimates,
                 sessionId = saved.id,
                 isLoading = false,
                 previousTonnage = commonPreviousTonnage,
@@ -688,6 +697,9 @@ class ActiveRoutineViewModel @Inject constructor(
                             category = ex.category,
                             substitutedFor = oldExerciseId,
                             substitutedForName = ex.exerciseName,
+                            // The estimate belongs to the planned slot; keep it so the
+                            // switched-in exercise still shows the expected time.
+                            estimatedSeconds = ex.estimatedSeconds,
                         )
                         // Switch + complete nella stessa navigazione: il reload dal disco vede
                         // già completed=true (la write del Complete è atterrata prima del pop),
