@@ -183,17 +183,19 @@ class StretchExerciseViewModel @Inject constructor(
     }
 
     /**
-     * Called when the user taps "Complete Exercise". Persists on [clearScope], flips
-     * `completionSaved` once on disk — see [ExerciseSessionViewModel]. A set toggled done →
-     * real work; none toggled → completedEmpty (skipped styling; tonnage/history math skips it).
+     * Called when the user taps "Complete Exercise". Persists on [clearScope] only the sets
+     * the lifter actually ticked done — an unticked hold is a proposal, not performed work.
+     * Nothing ticked closes as completedEmpty (skipped styling) with an empty set list as
+     * the ghost-data guard. Flips `completionSaved` once on disk — see [ExerciseSessionViewModel].
      */
     fun completeExercise() {
         val sets = _uiState.value.sets
         val session = currentSession
-        // A stretch set only becomes `done` via an explicit toggle. Marking at least one set
-        // done is the signal the exercise was performed.
-        val anyDone = sets.any { it.done }
-        crumb("complete $exerciseId (anyDone=$anyDone)")
+        // Only an explicit tick marks a hold performed. Completed work is exactly the
+        // ticked sets — unticked rows are not recorded.
+        val doneSets = sets.filter { it.done }
+        val anyDone = doneSets.isNotEmpty()
+        crumb("complete $exerciseId (done=${doneSets.size}/${sets.size})")
         markCompletionAndSave {
             if (session != null) {
                 val exercises = session.exercises.map { ex ->
@@ -202,7 +204,7 @@ class StretchExerciseViewModel @Inject constructor(
                             completed = true,
                             completedEmpty = !anyDone,
                             completedAt = java.time.LocalDateTime.now().toString(),
-                            sets = sets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = it.done) },
+                            sets = doneSets.map { ExerciseSet.Stretch(timeSeconds = it.timeSeconds, done = true) },
                         )
                     } else ex
                 }

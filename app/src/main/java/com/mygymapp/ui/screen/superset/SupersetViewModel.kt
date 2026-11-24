@@ -569,10 +569,11 @@ class SupersetViewModel @Inject constructor(
      * @param completed true only on an explicit "Complete Superset" tap: every member closes
      * out. A member the lifter never touched (no touched FORZA field, no toggled STRETCH set)
      * closes as completedEmpty=true — the active-routine row then shows the neutral "skipped"
-     * styling (grey border + X) for that member and tonnage math skips it. Its shown numbers,
-     * grey pre-fills included, are still persisted so the next session's prefill finds real
-     * numbers. Touching any one value clears the flag: the member closes as real work.
-     * When false (back-out / autosave) nothing closes — completed/completedEmpty stay false.
+     * styling (grey border + X) for that member and tonnage math skips it — with an empty set
+     * list as the ghost-data guard. Touching any one value clears the flag: the member closes
+     * as real work with exactly the touched sets recorded (untouched grey pre-fills are
+     * proposals, not results). When false (back-out / autosave) nothing closes —
+     * completed/completedEmpty stay false.
      */
     private suspend fun WorkoutSession.buildUpdatedSession(
         sets: List<SupersetSetUi>,
@@ -623,29 +624,34 @@ class SupersetViewModel @Inject constructor(
         }
 
         // On an explicit "Complete Superset" (completed=true) every member closes out; a member
-        // the lifter never touched closes as completedEmpty (skipped) rather than staying open.
-        // Its shown numbers are still saved (grey pre-fills included) so nothing is lost.
-        // On back-out / autosave (completed=false) the settle step preserves the entry flags:
-        // a skipped member the lifter re-entered stays skipped, and a performed one stays
-        // performed (see docs/CONVENTIONS.md "Re-entering a skipped exercise").
+        // the lifter never touched closes as completedEmpty (skipped) with an empty set list
+        // rather than staying open — and a partially-touched member records exactly its
+        // touched sets (grey pre-fills are proposals, not results). The next session's
+        // pre-fill still finds real numbers via the stats sidecar, which only ever advances
+        // from real sets. On back-out / autosave (completed=false) the settle step preserves
+        // the entry flags: a skipped member the lifter re-entered stays skipped, and a
+        // performed one stays performed (see docs/CONVENTIONS.md "Re-entering a skipped exercise").
         val completedAtNow = LocalDateTime.now().toString()
         val updatedExercises = exercises.map { ex ->
             val mi = exerciseIds.indexOf(ex.exerciseId)
             if (mi < 0) return@map ex
             val memberSets = sets.filter { it.exerciseIndex == mi }.sortedBy { it.setIndex }
             val performed = supersetMemberPerformed(anyTouched(memberSets), ex.completed, ex.completedEmpty)
+            fun isClicked(setUi: SupersetSetUi) = setUi.repsTouched || setUi.weightTouched ||
+                (setUi.exerciseType == ExerciseType.STRETCH && setUi.done)
+            // Completion records only clicked sets; back-out keeps every row for the merge.
+            val setsToWrite = if (completed) memberSets.filter(::isClicked) else memberSets
             val bw = bwByIndex.getOrElse(mi) { Bw(0, 0.0, 0.0, false) }
             ex.copy(
                 completed = if (completed) true else ex.completed,
                 completedEmpty = if (completed) !performed else ex.completedEmpty,
                 completedAt = if (completed) completedAtNow else ex.completedAt,
-                sets = memberSets.map { setUi ->
-                    // A touched set (or an explicit completion) persists the on-screen value;
-                    // an untouched set on back-out keeps its on-disk entry value via
-                    // mergeExitSets, so a zero-touch visit can't fabricate recorded data and
-                    // lock the member's "Switch exercise" slot (see its KDoc).
-                    val touched = setUi.repsTouched || setUi.weightTouched ||
-                        (setUi.exerciseType == ExerciseType.STRETCH && setUi.done)
+                sets = setsToWrite.map { setUi ->
+                    // A kept set on completion persists the on-screen value; an untouched set
+                    // on back-out keeps its on-disk entry value via mergeExitSets, so a
+                    // zero-touch visit can't fabricate recorded data and lock the member's
+                    // "Switch exercise" slot (see its KDoc).
+                    val touched = isClicked(setUi)
                     val built: ExerciseSet = when (setUi.exerciseType) {
                         ExerciseType.FORZA -> strengthSet(setUi, bw)
                         ExerciseType.STRETCH -> ExerciseSet.Stretch(timeSeconds = setUi.timeSeconds, done = setUi.done)

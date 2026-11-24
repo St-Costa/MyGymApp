@@ -382,35 +382,44 @@ class StrengthExerciseViewModel @Inject constructor(
     }
 
     /**
-     * Called when the user taps "Complete Exercise". Persists set data on [clearScope] and
-     * flips `completionSaved` once it lands, so the screen navigates back only after the write
-     * is on disk (see [ExerciseSessionViewModel] / docs/CONVENTIONS.md#completionsaved-pattern).
+     * Called when the user taps "Complete Exercise". Persists on [clearScope] only the sets
+     * the lifter actually clicked (touched reps/weight picker or confirm — see
+     * [List.touchedStrengthIndices]); untouched grey pre-fills are dropped, not recorded.
+     * Nothing touched closes as completedEmpty (skipped styling; tonnage math skips it) with
+     * an empty set list as the ghost-data guard. Flips `completionSaved` once the write lands
+     * (see [ExerciseSessionViewModel] / docs/CONVENTIONS.md#completionsaved-pattern).
+     *
+     * Dropping (not zeroing) is safe for the next visit: the per-exercise stats sidecar only
+     * ever advances from real sets, so the grey pre-fill still walks back to the last real
+     * session, and the set count always re-derives from the owning routine above.
      */
     fun completeExercise() {
         val sets = _uiState.value.sets
         val session = currentSession
         // "Touched" = the lifter tapped at least one reps/weight picker on this screen.
-        // Tapping any single value is the signal that this exercise was actually performed
-        // this session — the pre-filled numbers on the *other* (still-grey) sets are then
-        // taken as done too and saved as-is. Tapping nothing means the exercise was not
-        // performed and closes as completedEmpty (skipped styling; tonnage math skips it).
-        val anyTouched = sets.anyTouched()
-        crumb("complete $exerciseId (touched=$anyTouched, sets=${sets.size})")
+        // Only touched sets represent performed work — the pre-filled numbers on the
+        // *other* (still-grey) sets are proposals, not results, and are not recorded.
+        // Tapping nothing means the exercise was not performed (completedEmpty).
+        val touched = sets.touchedStrengthIndices()
+        val anyTouched = touched.isNotEmpty()
+        crumb("complete $exerciseId (touched=$touched, sets=${sets.size})")
         markCompletionAndSave {
             if (session != null) {
-                val builtSets = buildStrengthSets(sets, session.date)
+                val performedSets = buildStrengthSets(
+                    sets.filterIndexed { i, _ -> i in touched },
+                    session.date,
+                )
                 val exercises = session.exercises.map { ex ->
                     if (ex.exerciseId == exerciseId) {
                         ex.copy(
                             completed = true,
                             completedEmpty = !anyTouched,
                             completedAt = java.time.LocalDateTime.now().toString(),
-                            // Persist the shown numbers either way — grey pre-fills included.
-                            // Even a completed-empty exercise keeps its pre-filled sets (not
-                            // emptyList()) so the next session's prefill walk-back still finds
-                            // this exercise's last real numbers instead of restarting at 0x0
-                            // (the fixed-load warmup/daily regression — see CHANGELOG Phase 74).
-                            sets = builtSets,
+                            // Only performed sets — untouched pre-fills are proposals.
+                            // A completed-empty (skipped) exercise keeps an empty list as
+                            // the ghost-data guard (never recorded data, never locks the
+                            // switch slot).
+                            sets = performedSets,
                         )
                     } else ex
                 }
@@ -572,11 +581,18 @@ internal fun confirmWeightUpdate(set: StrengthSetUi): StrengthSetUi =
     set.copy(weightModified = true, weightTouched = true, tonnageAnchor = 0.0)
 
 /**
- * "Touched" = the lifter tapped at least one reps/weight picker — the signal
- * the exercise was actually performed (grey pre-fills on untouched sets count
- * as done once any set is touched).
+ * "Touched" = the lifter tapped at least one reps/weight picker on this screen — the signal
+ * the exercise was actually performed. Only touched sets are recorded on completion
+ * (see [touchedStrengthIndices]); untouched grey pre-fills are proposals, not results.
  */
 internal fun List<StrengthSetUi>.anyTouched(): Boolean = any { it.repsTouched || it.weightTouched }
+
+/**
+ * Indices of the sets the lifter actually clicked (touched reps/weight picker or confirm).
+ * Completion persists exactly these — untouched grey pre-fills are proposals, not results.
+ */
+internal fun List<StrengthSetUi>.touchedStrengthIndices(): Set<Int> =
+    mapIndexedNotNull { i, s -> i.takeIf { s.repsTouched || s.weightTouched } }.toSet()
 
 /**
  * A set is filled when reps are set and weight is set — except bodyweight /

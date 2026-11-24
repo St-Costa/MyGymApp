@@ -117,4 +117,17 @@ class StrengthSetOpsTest {
         assertTrue(allSetsFilled(listOf(set(reps = 8, weight = 0.0)), weightOptional = true))
         assertFalse(allSetsFilled(listOf(set(reps = 0, weight = 30.0)), weightOptional = true))
     }
+
+    // ─── touchedStrengthIndices (completion records only clicked sets) ───
+
+    @Test
+    fun `only clicked sets are recorded`() {
+        val sets = listOf(set(), set(repsTouched = true), set(weightTouched = true))
+        assertEquals(setOf(1, 2), sets.touchedStrengthIndices())
+    }
+
+    @Test
+    fun `no clicks means no performed sets`() {
+        assertTrue(listOf(set(), set()).touchedStrengthIndices().isEmpty())
+    }
 }

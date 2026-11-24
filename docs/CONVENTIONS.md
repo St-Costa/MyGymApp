@@ -114,9 +114,19 @@ without a valid 0-9 rating.
 
 ## Untouched-exercise guard (completing without changing anything)
 
-**Touching any one value = the whole exercise is done, with every shown number saved.** Tap "Complete Exercise"/"Complete Superset" after touching at least one reps/weight picker (or, for stretch, toggling at least one set `done`), and the exercise closes as `completed = true` with **all** its sets persisted as shown — the touched ones *and* the still-grey pre-filled ones. This is the intended behaviour for fixed-load warmup/daily exercises: the lifter has no reason to re-enter "8 × 30" every session, so tapping any single value confirms "yes, I did this at the numbers on screen".
+**Touching any one value = the exercise is done, with only the touched sets recorded.**
+Tap "Complete Exercise"/"Complete Superset" after touching at least one reps/weight picker
+(or, for stretch, toggling at least one set `done`), and the exercise closes as
+`completed = true` persisting **exactly the touched sets** (`touchedStrengthIndices()` /
+clicked-superset-member filter / ticked stretch holds). Untouched grey pre-fills are
+proposals, not results, and are dropped — Phase 205 changed this from "every shown number
+saved": recording pre-fills as work inflated tonnage the lifter never lifted, and the
+next session's pre-fill no longer needs them (the stats sidecar only ever advances from
+real sets, so the grey proposals still walk back to the last real session). This is still
+the intended behaviour for fixed-load warmup/daily exercises: tapping any single value
+confirms "yes, I did this", and the touched set carries the screen's numbers.
 
-**Touching nothing = completed-empty (skipped), still closed out.** Tap Complete without touching anything and the exercise is saved as `completed = true, completedEmpty = true`. Its `sets` still carry the grey pre-fill that was on screen (not `emptyList()`) so the next session's prefill walk-back finds real numbers instead of restarting at 0×0 — the fixed-load warmup/daily regression that Phase 74 introduced by conflating "empty flag" with "empty sets list", fixed properly in Phase 81. The active-routine row renders it with the neutral **skipped** styling — grey border (`SkippedColor`) + `Close` icon — instead of a tonnage change, and all tonnage / history / PR math skips it. For supersets this is per-member: `buildUpdatedSession(completed = true)` closes every chain member (2–3 of them), flagging any untouched member `completedEmpty = true` independently, always persisting that member's shown sets.
+**Touching nothing = completed-empty (skipped), still closed out.** Tap Complete without touching anything and the exercise is saved as `completed = true, completedEmpty = true` with an **empty set list** as the ghost-data guard — no fabricated data, and the switch slot stays unlocked (`hasNoRecordedSets()`). The active-routine row renders it with the neutral **skipped** styling — grey border (`SkippedColor`) + `Close` icon — instead of a tonnage change, and all tonnage / history / PR math skips it. For supersets this is per-member: `buildUpdatedSession(completed = true)` closes every chain member (2–3 of them), flagging any untouched member `completedEmpty = true` independently with an empty set list.
 
 The **"Complete Exercise" button label and colour reflect the outcome**: with any value touched it reads "Completa" on the primary colour; with nothing touched it reads "Salta" on `surfaceVariant`. So the lifter knows before tapping whether this will record work or a skip. (Superset: keyed on whether *any* member was touched.)
 
@@ -126,7 +136,7 @@ Touch tracking: each set UI model (`StrengthSetUi`, `SupersetSetUi`) carries `re
 
 ### `isUntouched()` means "not performed work" — `completed = false` OR `completedEmpty = true`
 
-`completedEmpty` always implies `completed` (the lifter did tap Complete). But a completed-empty exercise carries no performed work, and its `sets` hold only the retained pre-fill — so "empty sets" is not a usable proxy either way. Therefore:
+`completedEmpty` always implies `completed` (the lifter did tap Complete). But a completed-empty exercise carries no performed work, and since Phase 205 its `sets` are empty (before: retained pre-fill) — so "empty sets" is not a usable proxy either way. Therefore:
 
 - **`WorkoutExercise.isUntouched()` is `!completed || completedEmpty`.** `computeCommonTonnage()` (`GitgraphHistoryCalculator`) — the session-vs-session comparison behind the gitgraph's day colour and `%` change — excludes `isUntouched()` exercises from the common-exercise-ID intersection in *either* session, alongside `excludeFromTonnage` (warmup/daily). Without this a skipped exercise's pre-fill would count as "0-vs-something" work and drag that day's average around.
 - **Ghost-session detection is `completedAt.isBlank()`, nothing else (Phase 97).** Both `ActiveRoutineViewModel.onCleared()` and `WorkoutRepository.isGhostSession()`. Completed exercises / filled sets no longer rescue an unfinalized session — see [Ghost session prevention](#ghost-session-prevention) for why (crash vs. deliberate exit is indistinguishable at boot). Earlier builds also required `exercises.none { it.completed }`.
