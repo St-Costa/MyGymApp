@@ -26,6 +26,15 @@ solo cose vive.
 - [ ] **Merge UI nel restore.** Oggi l'overwrite salva in `gymdata/_conflicts/<ts>/`
       e conta gli "overwritten" (Phase 172): manca la schermata di scelta riga per
       riga (tieni il mio / tieni il suo). Vedi `BACKUP.md` §3.6/§5.
+- [ ] **Equivalenza switch nel picker e nel superset.** Phase 205 mostra il carico
+      per eguagliare il tonnellaggio solo *dopo* lo switch e solo nella scheda forza
+      singola (`equivalenceHint`): mancano il suggerimento per-riga nel picker
+      filtrato (serve il target per-set nell'`ExercisePicker` route) e l'equivalenza
+      per-membro nel superset. Vedi `CONVENTIONS.md` § Switch exercise.
+- [ ] **+ Add set nel superset.** Phase 205 lo aggiunge a forza singola e stretch;
+      la catena superset (2–3 membri con `setIndex` condiviso) richiede add/remove
+      per-membro in `SupersetViewModel` + UI. Stessa regola: proposta grigia,
+      append subito su disco, stime ricalcolate al completamento.
 - [ ] **Process-death: timer in corso.** Bozze testi/set/RPE fatte (Phase 151,
       179); i countdown attivi ripartono da capo e il blocco cardio aperto si
       chiude dal disco per disegno — documentato, non dimenticato.
