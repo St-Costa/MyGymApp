@@ -10,6 +10,7 @@ import com.mygymapp.data.model.materializeAssistedWeight
 import com.mygymapp.data.model.materializeBodyweightWeight
 import com.mygymapp.data.model.repsForSameTonnage
 import com.mygymapp.data.model.repsToBeatTonnage
+import com.mygymapp.data.model.weightForSameTonnage
 import com.mygymapp.data.model.withExerciseSetsOnExit
 import com.mygymapp.data.model.withExerciseStarted
 import com.mygymapp.data.model.withExerciseSwitched
@@ -90,6 +91,12 @@ data class StrengthExerciseUiState(
     val allSetsFilled: Boolean = false,
     val tonnagePr: TonnagePr? = null,
     val rmPr: RmPr? = null,
+    /**
+     * Post-switch equivalence hint (see [SwitchEquivalenceHint]): set when this slot was
+     * swapped in for another exercise (`substitutedFor != null`) and the replaced exercise
+     * has previous real performance to match. Null otherwise.
+     */
+    val equivalenceHint: SwitchEquivalenceHint? = null,
     /**
      * Bodyweight only: reps to perform at the latest weigh-in to beat [tonnagePr]'s
      * tonnage, shown as ` [N]` after the badge (null when unknown — no weigh-in, legacy
@@ -278,6 +285,42 @@ class StrengthExerciseViewModel @Inject constructor(
             // WorkoutExercise.isSwitchEligible().
             val switchEligible = workoutExercise?.isSwitchEligible() == true && !isWarmup
 
+            // Post-switch equivalence: this slot replaced another exercise — show the load
+            // needed per set to match what the replaced exercise did last time. Target =
+            // replaced exercise's previous per-set tonnage (like-with-like on slot context
+            // and weighting approach, same rule as the pre-fill); reps = middle of the NEW
+            // exercise's own rep range (its defaults — it has no routine entry to read a
+            // range from); weight = load reaching that tonnage in those reps. Bodyweight /
+            // assisted loads aren't free weights, so they get the target with no suggestion.
+            val equivalenceHint = workoutExercise?.substitutedFor?.let { oldId ->
+                val oldExercise = exerciseRepository.getById(oldId)
+                val oldPrev = oldExercise?.let {
+                    workoutRepository.getExerciseStats(oldId).forContext(slotContext)
+                        ?.previousSetsFor(it.loadMode)
+                }.orEmpty().filter { it.reps > 0 && it.weight > 0.0 }
+                if (oldPrev.isEmpty()) null else {
+                    val perSet = oldPrev.sumOf { it.reps * it.weight } / oldPrev.size
+                    val fallbackReps = oldPrev.sumOf { it.reps } / oldPrev.size
+                    val repsMid = midReps(
+                        exercise.defaultRepRangeMin,
+                        exercise.defaultRepRangeMax,
+                        fallbackReps,
+                    )
+                    SwitchEquivalenceHint(
+                        oldExerciseName = oldExercise?.name ?: "?",
+                        setCount = setCount,
+                        repsMid = repsMid,
+                        targetPerSetTonnage = perSet,
+                        suggestedWeightKg =
+                            if (exercise.loadMode == LoadMode.MANUAL) {
+                                weightForSameTonnage(perSet, repsMid)
+                            } else {
+                                null
+                            },
+                    )
+                }
+            }
+
             _uiState.value = StrengthExerciseUiState(
                 exercise = exercise,
                 sets = restoredSets,
@@ -296,6 +339,7 @@ class StrengthExerciseViewModel @Inject constructor(
                 previousHistoryDates = historyDates,
                 switchEligible = switchEligible,
                 excludeIds = session?.exercises?.map { it.exerciseId }?.toSet() ?: emptySet(),
+                equivalenceHint = equivalenceHint,
             )
         }
     }
@@ -749,4 +793,27 @@ internal fun applyStrengthDraft(
             weightModified = d.weightModified ?: (d.weight != s.previousWeight),
         )
     }
+}
+
+/**
+ * Post-switch tonnage equivalence: the load needed per set on the NEW exercise to match
+ * what the replaced exercise did last time. [repsMid] is the middle of the new exercise's
+ * rep range; [suggestedWeightKg] the free-weight load reaching [targetPerSetTonnage] in
+ * those reps (null for bodyweight/assisted loads, where the target alone is shown).
+ */
+data class SwitchEquivalenceHint(
+    val oldExerciseName: String,
+    val setCount: Int,
+    val repsMid: Int,
+    val targetPerSetTonnage: Double,
+    val suggestedWeightKg: Double?,
+)
+
+/**
+ * Middle of a rep range — the rep count the equivalence hint plans on. Falls back to
+ * [fallback] (the replaced exercise's own average reps) when the range is unset.
+ */
+internal fun midReps(repMin: Int, repMax: Int, fallback: Int): Int {
+    val mid = if (repMin > 0 && repMax > 0) (repMin + repMax) / 2 else 0
+    return mid.takeIf { it > 0 } ?: fallback.coerceAtLeast(1)
 }

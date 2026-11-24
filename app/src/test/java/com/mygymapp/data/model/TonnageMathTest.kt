@@ -129,6 +129,24 @@ class TonnageMathTest {
     }
 
     @Test
+    fun `weightForSameTonnage rounds up to the nearest half kilo`() {
+        // 500 kg in 10 reps = exactly 50.0.
+        assertEquals(50.0, weightForSameTonnage(500.0, 10)!!, 0.0)
+        // 500/9 = 55.55.. -> 56.0 (up, never undershooting the target).
+        assertEquals(56.0, weightForSameTonnage(500.0, 9)!!, 0.0)
+        // 500/12 = 41.66.. -> 42.0.
+        assertEquals(42.0, weightForSameTonnage(500.0, 12)!!, 0.0)
+    }
+
+    @Test
+    fun `weightForSameTonnage returns null without a usable target or rep count`() {
+        assertNull(weightForSameTonnage(0.0, 10))
+        assertNull(weightForSameTonnage(-5.0, 10))
+        assertNull(weightForSameTonnage(500.0, 0))
+        assertNull(weightForSameTonnage(500.0, -2))
+    }
+
+    @Test
     fun `materializeAssistedWeight subtracts the assist offset from body weight`() {
         // 80kg body weight, 20kg assistance -> 60kg net load
         assertEquals(60.0, materializeAssistedWeight(80.0, 20.0), 0.0001)

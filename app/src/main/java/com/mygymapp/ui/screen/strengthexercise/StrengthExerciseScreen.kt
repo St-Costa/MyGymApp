@@ -218,6 +218,26 @@ fun StrengthExerciseScreen(
                     textAlign = TextAlign.Center,
                 )
 
+                // Post-switch equivalence: the per-set load matching the replaced
+                // exercise's previous tonnage (see StrengthExerciseViewModel).
+                uiState.equivalenceHint?.let { hint ->
+                    Text(
+                        text = if (hint.suggestedWeightKg != null) {
+                            "Match ${hint.oldExerciseName}: " +
+                                "${hint.setCount} x ${hint.repsMid} @ " +
+                                "${formatWeight(hint.suggestedWeightKg)} kg " +
+                                "= ${formatWeight(hint.targetPerSetTonnage)} kg/set"
+                        } else {
+                            "To match ${hint.oldExerciseName}: " +
+                                "= ${formatWeight(hint.targetPerSetTonnage)} kg/set"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+
                 HorizontalDivider()
 
                 // Set rows

@@ -607,6 +607,16 @@ riga mostra "primo dato". `exercisesWithPriorTonnage` segue la stessa precedenza
 `isFirstTimeTonnage` è falso quando c'è un riferimento dal sostituito. The precomputed
 fast-path for non-switched exercises is untouched.
 
+**Post-switch equivalence hint (Phase 205).** After the re-navigation, the new strength
+screen shows how to match the replaced exercise: target = its previous per-set tonnage
+(like-with-like on slot context and weighting approach, same rule as the pre-fill), reps =
+the middle of the NEW exercise's own `defaultRepRangeMin/Max` (`midReps()`, falling back
+to the replaced average when unset), weight = `weightForSameTonnage()` rounded **up** to
+the nearest 0.5 kg — pure in `TonnageMath.kt`, tested in `TonnageMathTest`. For
+bodyweight/assisted loads (not free weights) the banner shows the target alone with no
+suggestion. No history on the replaced side = no banner (the active-routine
+"Sostituito: …" row already covers that case).
+
 **Switch + complete nella stessa navigazione — i due result arrivano insieme.** Quando il
 lifter completa un esercizio *appena sostituito* senza ripassare dalla lista, al pop finale
 l'entry di `ActiveRoutine` contiene **sia** `"switchedExerciseIds"` **sia**

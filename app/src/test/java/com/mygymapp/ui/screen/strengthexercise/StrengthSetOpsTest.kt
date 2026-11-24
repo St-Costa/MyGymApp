@@ -31,6 +31,20 @@ class StrengthSetOpsTest {
         tonnageAnchor = tonnageAnchor,
     )
 
+    // ─── midReps (post-switch equivalence hint) ───
+
+    @Test
+    fun `midReps takes the middle of the range`() {
+        assertEquals(10, midReps(8, 12, 7))
+        assertEquals(8, midReps(6, 10, 12))
+    }
+
+    @Test
+    fun `midReps falls back to the replaced average when the range is unset`() {
+        assertEquals(7, midReps(0, 0, 7))
+        assertEquals(1, midReps(0, 0, 0))
+    }
+
     // ─── Reps update ───
 
     @Test

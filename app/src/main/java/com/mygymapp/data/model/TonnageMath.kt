@@ -40,6 +40,19 @@ fun repsForSameTonnage(tonnage: Double, weight: Double): Int? {
 }
 
 /**
+ * Weight that reaches [tonnage] in [reps] reps, rounded **up** to the nearest 0.5 kg so the
+ * set always meets (never undershoots) the target. Returns null for unusable input.
+ *
+ * Used by the post-switch equivalence hint ("to match the replaced exercise, do N × M at
+ * W kg"): the reps come from the middle of the new exercise's rep range, the tonnage from
+ * the replaced exercise's previous performance. Pure, unit-tested.
+ */
+fun weightForSameTonnage(tonnage: Double, reps: Int): Double? {
+    if (tonnage <= 0.0 || reps <= 0) return null
+    return ceil(tonnage / reps * 2.0) / 2.0
+}
+
+/**
  * Reps to perform at [currentWeight] to *beat* a record set of [prReps] reps at [prWeight]
  * (strictly greater tonnage). Always a whole number, rounded up: the lifter sees `10 x 77`
  * and `[11]` means "11 reps at today's weight beats it".
