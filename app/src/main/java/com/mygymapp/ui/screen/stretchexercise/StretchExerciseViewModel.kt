@@ -132,6 +132,58 @@ class StretchExerciseViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Appends a new hold row ("+ Add set") with the same duration as the others,
+     * still unticked — planning, not performing: it only counts once the lifter ticks it.
+     * The neutral hold is appended to the session on disk right away so the row survives
+     * back-out/process death and the active-routine time estimate can count it on return.
+     */
+    fun addSet() {
+        val sets = _uiState.value.sets
+        val duration = sets.firstOrNull()?.timeSeconds?.coerceAtLeast(1) ?: 60
+        crumb("add set ${sets.size + 1}")
+        val updated = sets + StretchSetUi(timeSeconds = duration, done = false)
+        _uiState.value = _uiState.value.copy(sets = updated)
+        savedStateHandle[DRAFT_STRETCH_SETS] = encodeStretchDraft(updated)
+        viewModelScope.launch {
+            val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+                ?: currentSession ?: return@launch
+            val entry = fresh.exercises.find { it.exerciseId == exerciseId } ?: return@launch
+            val saved = workoutRepository.save(
+                fresh.withExerciseSetsOnExit(
+                    exerciseId,
+                    entry.sets + ExerciseSet.Stretch(timeSeconds = duration, done = false),
+                )
+            )
+            currentSession = saved
+        }
+    }
+
+    /**
+     * Removes the last hold row, but only while it is still unticked — ticked work is never
+     * deleted by navigation chrome. No-op with a single row or a ticked trailing hold.
+     */
+    fun removeLastSet() {
+        val sets = _uiState.value.sets
+        if (sets.size <= 1) return
+        if (sets.last().done) return
+        crumb("remove set ${sets.size}")
+        val updated = sets.dropLast(1)
+        _uiState.value = _uiState.value.copy(sets = updated)
+        savedStateHandle[DRAFT_STRETCH_SETS] = encodeStretchDraft(updated)
+        viewModelScope.launch {
+            val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+                ?: currentSession ?: return@launch
+            val entry = fresh.exercises.find { it.exerciseId == exerciseId } ?: return@launch
+            val last = entry.sets.lastOrNull() as? ExerciseSet.Stretch ?: return@launch
+            if (last.done) return@launch
+            val saved = workoutRepository.save(
+                fresh.withExerciseSetsOnExit(exerciseId, entry.sets.dropLast(1))
+            )
+            currentSession = saved
+        }
+    }
+
     fun toggleStopwatch() {
         val wasRunning = _uiState.value.isStopwatchRunning
         crumb(if (wasRunning) "stopwatch stop" else "stopwatch start")

@@ -157,18 +157,24 @@ class StrengthExerciseViewModel @Inject constructor(
 
             // Get set count + rep range from the owning routine. Daily exercises live in the
             // fixed-daily routine, not the session's routine, so look them up there.
-            // Looked up here (not just from workoutExercise.sets) because completing an exercise
-            // without touching any value intentionally clears sets = emptyList() as a ghost-data
-            // guard (see completeExercise()) — falling back to workoutExercise.sets.size alone
-            // would leave the screen with zero set rows on re-entry.
+            // The routine plan alone is not enough: a completed-compact save (only touched
+            // sets persisted, see completeExercise()) or a mid-visit "+ Add set" changes
+            // what the live slot holds — hence max(live, planned) below, so an added row
+            // survives a reopen and a compact save never shrinks the next visit.
             val rangeRoutineId =
                 if (isDaily) com.mygymapp.data.model.FIXED_DAILY_ROUTINE_ID else session?.routineId ?: ""
             val routine = if (rangeRoutineId.isNotBlank()) routineRepository.getById(rangeRoutineId) else null
             val routineExercise = routine?.exercises?.find { it.exerciseId == exerciseId }
 
-            val setCount = workoutExercise?.sets?.takeIf { it.isNotEmpty() }?.size
-                ?: routineExercise?.sets
-                ?: 3
+            val setCount = run {
+                // Planned count from the owning routine (daily → fixed-daily routine). The live
+                // session wins when larger: an added mid-visit set ("+ Add set") must
+                // survive a reopen, and a completed-compact save (only touched sets are
+                // persisted — see completeExercise()) must not shrink the next visit.
+                val sessionSize = workoutExercise?.sets?.takeIf { it.isNotEmpty() }?.size ?: 0
+                val planned = routineExercise?.sets ?: 0
+                maxOf(sessionSize, planned).takeIf { it > 0 } ?: 3
+            }
 
             // Previous workout data + all-time PR for this exercise come from the per-exercise
             // stats sidecar (history/_stats/{id}.yaml) — a single small read instead of parsing
@@ -319,6 +325,90 @@ class StrengthExerciseViewModel @Inject constructor(
         crumb("set ${setIndex + 1} weight confirmed")
         // Confirming accepts the current reps×weight pair as the new baseline.
         updateSet(setIndex, ::confirmWeightUpdate)
+    }
+
+    /**
+     * Appends a new set row ("+ Add set"). The row inherits the last set's numbers as
+     * a grey proposal — planning, not performing: it only counts once the lifter touches
+     * it (or any other set, per the pre-fill rule). The neutral set is appended to the
+     * session on disk right away so the row survives back-out/process death and the
+     * active-routine time estimate (per-set rate) can count it on return.
+     */
+    fun addSet() {
+        val sets = _uiState.value.sets
+        val addition = sets.lastOrNull()?.copy(
+            repsTouched = false,
+            weightTouched = false,
+            tonnageAnchor = 0.0,
+        ) ?: StrengthSetUi()
+        crumb("add set ${sets.size + 1}")
+        val updated = sets + addition
+        val loadMode = _uiState.value.exercise?.loadMode ?: LoadMode.MANUAL
+        _uiState.value = _uiState.value.copy(
+            sets = updated,
+            allSetsFilled = allSetsFilled(
+                updated,
+                weightOptional = loadMode == LoadMode.BODYWEIGHT || loadMode == LoadMode.ASSISTED,
+            ),
+        )
+        savedStateHandle[DRAFT_STRENGTH_SETS] = encodeStrengthDraft(updated)
+        appendNeutralSessionSet()
+    }
+
+    /**
+     * Removes the last set row, but only while it is still an untouched proposal — performed
+     * input is never deleted by navigation chrome (it either completes or stays on disk).
+     * No-op with a single row or a touched trailing set.
+     */
+    fun removeLastSet() {
+        val sets = _uiState.value.sets
+        if (sets.size <= 1) return
+        val last = sets.last()
+        if (last.repsTouched || last.weightTouched) return
+        crumb("remove set ${sets.size}")
+        val updated = sets.dropLast(1)
+        val loadMode = _uiState.value.exercise?.loadMode ?: LoadMode.MANUAL
+        _uiState.value = _uiState.value.copy(
+            sets = updated,
+            allSetsFilled = allSetsFilled(
+                updated,
+                weightOptional = loadMode == LoadMode.BODYWEIGHT || loadMode == LoadMode.ASSISTED,
+            ),
+        )
+        savedStateHandle[DRAFT_STRENGTH_SETS] = encodeStrengthDraft(updated)
+        truncateNeutralSessionSet()
+    }
+
+    /** Appends a neutral (no recorded data) set to this slot on disk — see [addSet]. */
+    private fun appendNeutralSessionSet() {
+        val exercise = _uiState.value.exercise ?: return
+        viewModelScope.launch {
+            val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+                ?: currentSession ?: return@launch
+            val entry = fresh.exercises.find { it.exerciseId == exerciseId } ?: return@launch
+            val saved = workoutRepository.save(
+                fresh.withExerciseSetsOnExit(
+                    exerciseId,
+                    entry.sets + ExerciseSet.Strength(isBodyweight = exercise.isBodyweight),
+                )
+            )
+            currentSession = saved
+        }
+    }
+
+    /** Drops the trailing neutral set on disk — see [removeLastSet]. Never touches recorded data. */
+    private fun truncateNeutralSessionSet() {
+        viewModelScope.launch {
+            val fresh = workoutRepository.getSession(sessionId, java.time.LocalDate.now())
+                ?: currentSession ?: return@launch
+            val entry = fresh.exercises.find { it.exerciseId == exerciseId } ?: return@launch
+            val last = entry.sets.lastOrNull() as? ExerciseSet.Strength ?: return@launch
+            if (last.reps != 0 || last.weight != 0.0) return@launch
+            val saved = workoutRepository.save(
+                fresh.withExerciseSetsOnExit(exerciseId, entry.sets.dropLast(1))
+            )
+            currentSession = saved
+        }
     }
 
     fun updateDescription(text: String) {

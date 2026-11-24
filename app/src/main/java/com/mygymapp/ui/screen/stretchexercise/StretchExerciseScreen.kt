@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -207,6 +208,22 @@ fun StretchExerciseScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+                // Set add/remove: the added hold is still unticked (it counts once ticked);
+                // only a still-unticked trailing hold can go.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = { viewModel.addSet() }) {
+                        Text("+ Add set")
+                    }
+                    val removable = uiState.sets.size > 1 && uiState.sets.lastOrNull()?.done == false
+                    TextButton(onClick = { viewModel.removeLastSet() }, enabled = removable) {
+                        Text("- Remove")
+                    }
+                }
 
                 // Label reflects what tapping records: no set toggled done -> closes as
                 // "skipped" (grey border + X, excluded from history); any set done -> closes

@@ -22,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -266,6 +267,21 @@ fun StrengthExerciseScreen(
                 // separates it from the last set. Il vecchio Spacer(32dp) in coda forzava
                 // ~32dp di overflow anche quando tutto stava in una pagina (minuscolo
                 // scroll di pochi pixel): resta solo 8dp di respiro.
+                // Set add/remove: the added row inherits the last set as a grey proposal
+                // (it counts once touched); only a still-untouched trailing row can go.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    TextButton(onClick = { viewModel.addSet() }) {
+                        Text("+ Add set")
+                    }
+                    val removable = uiState.sets.size > 1 &&
+                        uiState.sets.lastOrNull()?.let { !it.repsTouched && !it.weightTouched } == true
+                    TextButton(onClick = { viewModel.removeLastSet() }, enabled = removable) {
+                        Text("- Remove")
+                    }
+                }
                 Button(
                     onClick = { viewModel.completeExercise() },
                     modifier = Modifier.fillMaxWidth(0.85f).align(Alignment.CenterHorizontally),

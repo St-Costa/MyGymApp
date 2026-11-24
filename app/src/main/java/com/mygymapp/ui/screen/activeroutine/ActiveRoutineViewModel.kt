@@ -241,6 +241,10 @@ class ActiveRoutineViewModel @Inject constructor(
     // IDs belonging to a superset chain, so a stretch badge knows its screen window is shared.
     private var supersetExerciseIds: Set<String> = emptySet()
     private var sessionFinalized = false
+    // The routine's previous completed session that seeds the section/row time estimates
+    // (see SectionTimeEstimate.kt). Kept so markExerciseCompleted can re-split the shares
+    // when the lifter adds sets mid-visit — the estimate is per-set, not frozen.
+    private var estimatesPreviousSession: WorkoutSession? = null
     private val clearScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Serializza applyExerciseSwitch e markExerciseCompleted: al rientro da un esercizio appena
     // sostituito E completato, AppNavigation recapita entrambi i savedStateHandle-result
@@ -340,6 +344,7 @@ class ActiveRoutineViewModel @Inject constructor(
             // down, so they can compare like-with-like (same slot context AND same weighting
             // approach) rather than blindly against whatever the last routine session held.
             val previousSession = workoutRepository.getLastSessionForRoutine(routineId)
+            estimatesPreviousSession = previousSession
             // Header estimates are static for the session: previous measured windows, with
             // configured durations as fallback and the previous session envelope as a cap
             // (see SectionTimeEstimate.kt). The per-exercise shares come from the same
@@ -530,13 +535,27 @@ class ActiveRoutineViewModel @Inject constructor(
                         ex.withCompletionFrom(
                             reloadedExercise,
                             includeMeasuredStretchTime = exerciseId !in supersetExerciseIds,
+                        ).copy(
+                            // The lifter may have added sets mid-visit ("+ Add set"):
+                            // show the performed count, not the planned one. An empty save
+                            // (skipped) keeps the planned count for the reopen.
+                            setCount = reloadedExercise.sets.size.takeIf { it > 0 } ?: ex.setCount,
                         )
                     } else ex
                 }
-                val allCompleted = updatedExercises.all { it.completed }
+                // Re-split the time shares with the actual set counts: an added set bills
+                // its per-set rate into the row and section estimates (see SectionTimeEstimate).
+                val previousForEstimates = estimatesPreviousSession
+                val exerciseEstimates = estimateExerciseSeconds(updatedExercises, previousForEstimates)
+                val withEstimates = updatedExercises.map { ex ->
+                    ex.copy(estimatedSeconds = exerciseEstimates[ex.exerciseId])
+                }
+                val sectionEstimates = estimateSectionSeconds(withEstimates, previousForEstimates)
+                val allCompleted = withEstimates.all { it.completed }
                 _uiState.value = _uiState.value.copy(
-                    exercises = updatedExercises,
+                    exercises = withEstimates,
                     allCompleted = allCompleted,
+                    sectionEstimates = sectionEstimates,
                 )
 
                 if (allCompleted && !sessionFinalized) {
