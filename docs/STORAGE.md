@@ -26,6 +26,7 @@ filesDir/gymdata/              ← FileManager.root
 ├── exercises/                 ← Exercise repository
 │   ├── {slug}-ex-{8hex}.md
 │   └── _settings.md             ← file-backed user profile (birthYear/height/weight/sex, NOT a workout — see § below)
+│   └── _devices.md              ← paired-device mirror (Polar ID + scale MAC, NOT a workout — see § below)
 ├── routines/                  ← Routine repository
 │   └── {slug}-rt-{8hex}.md
 ├── history/                   ← Workout sessions
@@ -162,6 +163,30 @@ view — so the file is stored/committed/restored without polluting the exercise
 and `ExerciseRepository` skips `_`-prefixed files on load for the same reason. Secrets
 (server URL, bearer token) stay out — they live in `EncryptedSharedPreferences` and must
 never be backed up to the server they authenticate against (see [BACKUP.md](BACKUP.md)).
+
+### Paired devices (`exercises/_devices.md`)
+
+Mirror of the BLE pairings — the Polar H10 device ID and the VitaFit scale MAC — owned by
+[KnownDeviceBackupRepository](../app/src/main/java/com/mygymapp/data/device/KnownDeviceBackupRepository.kt),
+parsed by [DeviceBackupParser](../app/src/main/java/com/mygymapp/data/parser/DeviceBackupParser.kt):
+
+```yaml
+---
+type: device-ids
+version: 1
+polarDeviceId: A1B2C3D4       # absent until paired — same "missing key means unset" as _settings.md
+scaleAddress: AA:BB:CC:DD:EE:FF
+---
+```
+
+Same story as `_settings.md` (Phase 205): `known_polar_device` / `known_scale`
+`SharedPreferences` are wiped by every uninstall/`pm clear`/baseline-profile run, so every
+reinstall meant re-pairing both devices. The `Known*` repositories stay the runtime source
+of truth (fast prefs reads on the BLE scan path) but mirror every set/forget here, and an
+empty prefs entry self-heals from this file on read — the file rides the tar backup and the
+server full-store backup (`Ripristina` heals the prefs right away), so the pairings come
+back with no re-pairing. Neither value is a secret (Polar ID printed on the sensor, MAC
+visible in any BLE scan), so unlike the sync bearer they MAY be stored on the server.
 
 ### Workout session (`history/YYYY/MM/YYYY-MM-DD_{routineId}_{sessionId}.md`)
 
@@ -481,8 +506,8 @@ All `MODE_PRIVATE`. None of these leave the device via Android Auto Backup
 | `sync_config_enc` | `enabled` | Boolean (encrypted) | " | Sync stays dormant until explicitly turned on in Options, even with URL+token set |
 | `sync_config_enc` | `tarballManifestSha` | String (encrypted) | " | Last `X-Manifest-SHA256` seen from `GET /v1/repo/tarball`, for `?since=` incremental restore |
 | `powerlifting_schedule` | schedule state | String/Int | [PowerliftingScheduleRepository](../app/src/main/java/com/mygymapp/data/PowerliftingScheduleRepository.kt) | Powerlifting program position |
-| `known_polar_device` | known device id | String | [KnownPolarDeviceRepository](../app/src/main/java/com/mygymapp/data/polar/KnownPolarDeviceRepository.kt) | Last-connected Polar H10 for auto-reconnect |
-| `known_scale` | known address | String | [KnownScaleRepository](../app/src/main/java/com/mygymapp/data/scale/KnownScaleRepository.kt) | Last-connected BLE scale for auto-connect |
+| `known_polar_device` | known device id | String | [KnownPolarDeviceRepository](../app/src/main/java/com/mygymapp/data/polar/KnownPolarDeviceRepository.kt) | Last-connected Polar H10 for auto-reconnect — mirrored to `exercises/_devices.md`, self-heals from it after a reinstall |
+| `known_scale` | known address | String | [KnownScaleRepository](../app/src/main/java/com/mygymapp/data/scale/KnownScaleRepository.kt) | Last-connected BLE scale for auto-connect — mirrored to `exercises/_devices.md`, self-heals from it after a reinstall |
 
 The HRV baseline no longer lives in prefs (the old `hrv_baseline/lnrmssd_values` CSV is
 gone) — it is recomputed from readiness history the way `HrvBaselineCalculator` does.

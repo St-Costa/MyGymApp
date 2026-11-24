@@ -43,7 +43,8 @@ Result:
 | `history/_gitgraph.yaml` | Derived cache. Recomputed from session files when the window slides or the cache is dropped. |
 | `history/_idx/*.idx` | Derived index. Rebuilt on first run (guarded by `_idx/.migrated`). |
 | `cache/images/`, `image_cache/` | Re-downloadable from the exercise `link` URLs (which *are* backed up). |
-| `SharedPreferences` (sync bearer, schedule, paired Polar/scale) | Not files, never synced to the server (secrets + re-pair costs). Local safety net: `shared_prefs/` tar in `backups/prefs/` via `install-debug.sh`, restore with `scripts/restore-prefs.sh` — see §6. |
+| `SharedPreferences` (sync bearer, schedule) | Not files, never synced to the server (secrets + re-pair costs). Local safety net: `shared_prefs/` tar in `backups/prefs/` via `install-debug.sh`, restore with `scripts/restore-prefs.sh` — see §6. |
+| Paired Polar/scale IDs | Mirrored, not excluded: `KnownPolarDeviceRepository` / `KnownScaleRepository` mirror every set/forget to `exercises/_devices.md` (same `_`-prefix convention as `_settings.md`), which rides this pipeline like any repo file; empty prefs self-heal from it on read and right after "Ripristina". Not secrets (ID on the sensor / MAC in any BLE scan). |
 
 Backing up derived data would only add bytes and a chance of the cache disagreeing with its
 source of truth. The rule: **sync what a human typed, never what the app computed.**
@@ -428,13 +429,18 @@ dup, edit-after-SENT, schema drift, partial multipart). Two additions:
 
 ---
 
-## 6. Config / `SharedPreferences` backup (Phase 118: profile done, secrets stay out)
+## 6. Config / `SharedPreferences` backup (Phase 118: profile done, Phase 205: devices done, secrets stay out)
 
 The non-secret user profile (`birthYear`, `heightCm`, `weightKg`, `isMale`) now lives in
 `exercises/_settings.md` — a plain repo file synced through this same fifth pipeline
 (queued by `UserProfileRepository`, restored pull-only like everything else, `user_profile`
 prefs migrated once then deleted). The `_` prefix keeps it out of the server's SQL view
-and the phone's exercise list by the pre-existing convention; see `STORAGE.md`.
+and the phone's exercise list by the pre-existing convention; see `STORAGE.md`. The paired
+devices ride the same convention since Phase 205: `exercises/_devices.md` (Polar device ID
++ scale MAC, queued by `KnownDeviceBackupRepository`, already covered by the
+`exercises/*.md` restore allowlist) with the `Known*` prefs self-healing from it — "forget"
+propagates as a tombstone. Neither ID is a secret, so unlike the bearer they may be
+stored on the server.
 
 **Secrets stay out** — the sync bearer token and server URL must not be backed up to the
 server they authenticate against. They remain Keystore-encrypted on the device only
@@ -442,8 +448,7 @@ server they authenticate against. They remain Keystore-encrypted on the device o
 tars `shared_prefs/` to `backups/prefs/` (best-effort), restored via
 `scripts/restore-prefs.sh`. Caveat: after a full uninstall the Keystore keys are gone,
 so the restored encrypted blob is unreadable — re-enter URL + token by hand in that
-case. Paired-device MACs (Polar, scale) ride the prefs tar and are cheap to re-pair
-otherwise.
+case (then "Ripristina" brings back everything else, pairings included).
 
 ---
 

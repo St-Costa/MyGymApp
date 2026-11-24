@@ -6,11 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.mygymapp.data.BeepVolumeRepository
 import com.mygymapp.data.PowerliftingScheduleRepository
 import com.mygymapp.data.polar.ConnectionState
+import com.mygymapp.data.polar.KnownPolarDeviceRepository
 import com.mygymapp.data.polar.PolarManager
 import com.mygymapp.data.polar.PolarSelfTest
 import com.mygymapp.data.polar.ReadinessRepository
 import com.mygymapp.data.polar.UserProfile
 import com.mygymapp.data.polar.UserProfileRepository
+import com.mygymapp.data.scale.KnownScaleRepository
 import com.mygymapp.data.repository.FileManager
 import com.mygymapp.data.repository.ScaleHistoryRepository
 import com.mygymapp.data.repository.WorkoutRepository
@@ -120,6 +122,8 @@ class OptionsViewModel @Inject constructor(
     private val appLogger: AppLogger,
     private val stepLedgerRepository: StepLedgerRepository,
     private val healthConnectStepsReader: HealthConnectStepsReader,
+    private val knownPolarDeviceRepository: KnownPolarDeviceRepository,
+    private val knownScaleRepository: KnownScaleRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -487,6 +491,10 @@ class OptionsViewModel @Inject constructor(
             // UserProfileRepository's cache — pick it up so the profile card shows
             // the restored values without an app restart.
             profileRepo.refresh()
+            // Same for the paired-device mirror (exercises/_devices.md): heal the
+            // SharedPreferences so both auto-reconnects work without re-pairing.
+            knownPolarDeviceRepository.healFromBackup()
+            knownScaleRepository.healFromBackup()
             refreshSyncStatus()
             _uiState.value = _uiState.value.copy(
                 profile = profileRepo.get(),
